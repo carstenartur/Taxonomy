@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitHistoryBackupContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitHistoryBackupContributor.java</span></div><h1>GitHistoryBackupContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.fasterxml.jackson.core.JsonGenerator;
+import java.io.IOException;
+import java.util.*;
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Complete history payloads backed by the exact authorized database and Git closure. */
+public final class GitHistoryBackupContributor implements BackupDataContributor {
+    private final ExistingGitBackupRepositories repositories;
+    private final GitStandBackupSource workingCopies;
+    private final WorkspaceGitHistoryReferences databaseReferences;
+    private final GitHistoryCapture.Limits limits;
+    private final GitStandBackupSource.Limits workingLimits;
+    private Plan plan;
+    public GitHistoryBackupContributor(ExistingGitBackupRepositories repositories, GitStandBackupSource workingCopies,
+<span class="fc" id="L20">            WorkspaceGitHistoryReferences databaseReferences, GitHistoryCapture.Limits limits, GitStandBackupSource.Limits workingLimits) {</span>
+<span class="fc" id="L21">        this.repositories = Objects.requireNonNull(repositories); this.workingCopies = Objects.requireNonNull(workingCopies);</span>
+<span class="fc" id="L22">        this.databaseReferences = Objects.requireNonNull(databaseReferences); this.limits = Objects.requireNonNull(limits);</span>
+<span class="fc" id="L23">        this.workingLimits = Objects.requireNonNull(workingLimits);</span>
+<span class="fc" id="L24">    }</span>
+    public List&lt;BackupManifest.Repository&gt; inspect(AuthorizedBackupRequest authorization, Set&lt;BackupRepositoryKey&gt; keys, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L27">            requireProfile(authorization.request()); checkpoint.check(); keys = Set.copyOf(keys);</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">            if (plan != null) throw failure(&quot;History contributor already has a fenced capture plan&quot;);</span>
+<span class="fc" id="L29">            var database = databaseReferences.inspect(authorization, keys, limits, checkpoint);</span>
+<span class="fc" id="L30">            var entries = new ArrayList&lt;BackupManifest.Repository&gt;(); var evidence = new HashMap&lt;BackupRepositoryKey, Evidence&gt;();</span>
+<span class="fc" id="L31">            var budget = new Budget();</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            for (var key : ordered(keys)) {</span>
+<span class="fc" id="L33">                checkpoint.check();</span>
+<span class="fc" id="L34">                try (var session = repositories.open(authorization, key, checkpoint);</span>
+<span class="fc" id="L35">                     var working = openWorking(authorization, key, checkpoint)) {</span>
+<span class="fc" id="L36">                    var history = session.captureHistory(database.requiredCommits().get(key), database.workingStates().get(key), limits, checkpoint);</span>
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">                    if (authorization.request().gitRepresentation() == GitRepresentation.BUNDLE &amp;&amp; history.objectCount() == 0)</span>
+<span class="nc" id="L38">                        throw failure(&quot;An empty Git history requires a bare repository representation&quot;);</span>
+<span class="fc" id="L39">                    budget.add(history, working); budget.documents(history.documents(key, checkpoint).size());</span>
+<span class="fc" id="L40">                    var proof = evidence(history, working); evidence.put(key, proof);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                    String head = working == null ? history.state().refs().get(&quot;HEAD&quot;)</span>
+<span class="fc" id="L42">                            : working.state().refs().get(working.state().symbolicHead());</span>
+<span class="fc" id="L43">                    entries.add(new BackupManifest.Repository(key, UUID.randomUUID().toString(), authorization.request().gitRepresentation(), history.state(), null, head, null));</span>
+                }
+<span class="fc" id="L45">            }</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            if (!database.equals(databaseReferences.inspect(authorization, keys, limits, checkpoint)))</span>
+<span class="nc" id="L47">                throw failure(&quot;Database history closure changed during inventory&quot;);</span>
+<span class="fc" id="L48">            checkpoint.check(); plan = new Plan(authorization, database, Map.copyOf(evidence), List.copyOf(entries));</span>
+<span class="fc" id="L49">            return plan.repositories();</span>
+<span class="fc" id="L50">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+    public List&lt;BackupDocumentReference&gt; documents(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L54">            requireSnapshot(snapshot, checkpoint); var documents = new ArrayList&lt;BackupDocumentReference&gt;(); var budget = new Budget();</span>
+<span class="fc" id="L55">            scan(snapshot, checkpoint, budget, (key, history, working) -&gt; {</span>
+<span class="fc" id="L56">                var current = history.documents(key, checkpoint); budget.documents(current.size()); documents.addAll(current);</span>
+<span class="fc" id="L57">            });</span>
+<span class="fc" id="L58">            requireDatabase(snapshot, checkpoint); return List.copyOf(documents);</span>
+<span class="fc" id="L59">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+    /** Inspects original document bytes under the exact fenced plan and one shared selection budget. */
+    public GitHistoryCapture.DocumentVisit visitDocuments(SnapshotContext snapshot, GitHistoryCapture.DocumentLimits bounds,
+            BackupCheckpoint checkpoint, GitHistoryCapture.DocumentVisitor visitor) throws IOException {
+        try {
+<span class="fc" id="L65">            Objects.requireNonNull(bounds); Objects.requireNonNull(visitor); requireSnapshot(snapshot, checkpoint);</span>
+<span class="fc" id="L66">            int[] documents = {0}; long[] bytes = {0};</span>
+<span class="fc" id="L67">            scan(snapshot, checkpoint, new Budget(), (key, history, working) -&gt; {</span>
+<span class="fc" id="L68">                var remaining = new GitHistoryCapture.DocumentLimits(bounds.maxDocuments() - documents[0], bounds.maxDocumentBytes(), bounds.maxTotalBytes() - bytes[0]);</span>
+<span class="fc" id="L69">                var visited = history.visitDocuments(key, remaining, checkpoint, visitor);</span>
+<span class="fc" id="L70">                documents[0] += visited.documents(); bytes[0] += visited.bytes();</span>
+<span class="fc" id="L71">            });</span>
+<span class="fc" id="L72">            requireDatabase(snapshot, checkpoint); return new GitHistoryCapture.DocumentVisit(documents[0], bytes[0]);</span>
+<span class="fc" id="L73">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+<span class="fc" id="L75">    @Override public BackupComponentId componentId() { return new BackupComponentId(&quot;workspace&quot;); }</span>
+<span class="fc" id="L76">    @Override public int schemaVersion() { return 1; }</span>
+<span class="fc" id="L77">    @Override public Set&lt;String&gt; categories() { return Set.of(&quot;storage.jgit.objects-refs-reflogs&quot;, &quot;com.taxonomy.workspace.model.GitReflogProvenanceRecord&quot;); }</span>
+<span class="fc" id="L78">    @Override public List&lt;String&gt; omissions(BackupProfile profile) { return List.of(); }</span>
+    @Override public void write(SnapshotContext snapshot, ComponentSink sink) throws IOException {
+        try {
+<span class="fc" id="L81">            requireSnapshot(snapshot, sink::checkpoint);</span>
+<span class="fc" id="L82">            var request = snapshot.authorization().request();</span>
+<span class="fc" id="L83">            scan(snapshot, sink::checkpoint, new Budget(), (key, history, working) -&gt; {</span>
+<span class="fc" id="L84">                String archiveId = snapshot.repositoryArchiveIds().get(key);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                if (working == null) history.write(archiveId, request.gitRepresentation(), request.profile(), sink);</span>
+<span class="fc" id="L86">                else history.writeWorkingTree(archiveId, request.profile(), working, sink);</span>
+<span class="fc" id="L87">            });</span>
+<span class="fc" id="L88">            requireDatabase(snapshot, sink::checkpoint);</span>
+<span class="fc" id="L89">            records(&quot;git-commit-references&quot;, request.profile(), plan.database().references(), sink);</span>
+<span class="fc" id="L90">            records(&quot;git-working-copy-proofs&quot;, request.profile(), plan.database().workingCopies(), sink);</span>
+            // A later repository or metadata write may not conceal movement in an earlier source.
+<span class="fc" id="L92">            scan(snapshot, sink::checkpoint, new Budget(), (key, history, working) -&gt; { });</span>
+<span class="fc" id="L93">            requireDatabase(snapshot, sink::checkpoint);</span>
+<span class="fc" id="L94">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L95">    }</span>
+    private static void records(String kind, BackupProfile profile, List&lt;? extends Record&gt; records, ComponentSink sink) throws IOException {
+<span class="fc" id="L97">        GitTreeCapture.writeGenerated(&quot;data/workspace/&quot; + kind + &quot;.ndjson&quot;, sink, output -&gt; {</span>
+<span class="fc" id="L98">            var json = PortableRows.json();</span>
+<span class="fc" id="L99">            try (var generator = json.getFactory().createGenerator(output).disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)) {</span>
+<span class="fc" id="L100">                generator.setRootValueSeparator(null);</span>
+<span class="fc" id="L101">                json.writeValue(generator, new PortableRows.Header(1, kind, profile)); generator.writeRaw('\n');</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                for (var record : records) {</span>
+<span class="fc" id="L103">                    sink.checkpoint(); json.writeValue(generator, record); generator.writeRaw('\n');</span>
+<span class="fc" id="L104">                }</span>
+<span class="fc" id="L105">                generator.flush(); sink.checkpoint();</span>
+            }
+<span class="fc" id="L107">        });</span>
+<span class="fc" id="L108">    }</span>
+    private GitStandBackupSource.Stand openWorking(AuthorizedBackupRequest authorization, BackupRepositoryKey key, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        return authorization.request().gitRepresentation() == GitRepresentation.WORKTREE</span>
+<span class="fc" id="L111">                ? workingCopies.openHistoryWorkingCopy(authorization, key, workingLimits, checkpoint) : null;</span>
+    }
+    private void scan(SnapshotContext snapshot, BackupCheckpoint checkpoint, Budget budget, Visitor visitor) throws IOException {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (var key : ordered(snapshot.repositories().keySet())) {</span>
+<span class="fc" id="L115">            checkpoint.check();</span>
+<span class="fc" id="L116">            try (var session = repositories.open(snapshot.authorization(), key, checkpoint);</span>
+<span class="fc" id="L117">                 var working = openWorking(snapshot.authorization(), key, checkpoint)) {</span>
+<span class="fc" id="L118">                var database = plan.database();</span>
+<span class="fc" id="L119">                var history = session.captureHistory(database.requiredCommits().get(key), database.workingStates().get(key), limits, checkpoint);</span>
+<span class="fc" id="L120">                budget.add(history, working);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                if (!evidence(history, working).equals(plan.evidence().get(key))) throw failure(&quot;Git history changed after inventory&quot;);</span>
+<span class="fc" id="L122">                visitor.accept(key, history, working); checkpoint.check();</span>
+            }
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">    }</span>
+    private void requireSnapshot(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L127">        checkpoint.check(); requireProfile(snapshot.authorization().request());</span>
+<span class="pc bpc" id="L128" title="2 of 4 branches missed.">        if (plan == null || !plan.authorization().equals(snapshot.authorization())</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                || !Integer.valueOf(schemaVersion()).equals(snapshot.componentVersions().get(componentId()))</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">                || !plan.evidence().keySet().equals(snapshot.repositories().keySet())</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                || !snapshot.repositoryArchiveIds().keySet().equals(snapshot.repositories().keySet()))</span>
+<span class="nc" id="L132">            throw failure(&quot;History payload requires its own authorized capture plan&quot;);</span>
+<span class="fc" id="L133">        var heads = new HashMap&lt;BackupRepositoryKey, String&gt;();</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        for (var repository : plan.repositories()) {</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            if (!repository.archiveId().equals(snapshot.repositoryArchiveIds().get(repository.id()))</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">                    || !repository.captured().equals(snapshot.repositories().get(repository.id())))</span>
+<span class="nc" id="L137">                throw failure(&quot;History manifest source differs from inventory&quot;);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (repository.exportedHead() != null) heads.put(repository.id(), repository.exportedHead());</span>
+<span class="fc" id="L139">        }</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        if (!heads.equals(snapshot.exportedHeads())) throw failure(&quot;History exported heads differ from inventory&quot;);</span>
+<span class="fc" id="L141">        requireDatabase(snapshot, checkpoint);</span>
+<span class="fc" id="L142">    }</span>
+    private void requireDatabase(SnapshotContext snapshot, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (!plan.database().equals(databaseReferences.inspect(snapshot.authorization(), snapshot.repositories().keySet(), limits, checkpoint)))</span>
+<span class="fc" id="L145">            throw failure(&quot;Database history reference or raw working copy changed after inventory&quot;);</span>
+<span class="fc" id="L146">        checkpoint.check();</span>
+<span class="fc" id="L147">    }</span>
+    private static Evidence evidence(GitHistoryCapture history, GitStandBackupSource.Stand working) throws IOException {
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (working != null) {</span>
+<span class="fc" id="L150">            var source = working.state();</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">            if (!Objects.equals(source.refs().get(source.symbolicHead()), history.state().refs().get(source.symbolicHead()))</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">                    || !history.state().workingStates().entrySet().containsAll(source.workingStates().entrySet()))</span>
+<span class="nc" id="L153">                throw failure(&quot;Raw working copy differs from history inventory&quot;);</span>
+        }
+<span class="fc" id="L155">        return new Evidence(history.state(), history.symbolicRefs(), history.reflogs(), history.importedReflogs(), history.objectCount(), history.objectBytes(),</span>
+<span class="fc bfc" id="L156" title="All 4 branches covered.">                working == null ? null : working.state(), working == null ? List.of() : working.files());</span>
+    }
+    private static void requireProfile(BackupRequest request) throws IOException {
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">        if (!request.profile().includesHistory() || request.gitRepresentation() == GitRepresentation.NONE)</span>
+<span class="nc" id="L160">            throw failure(&quot;Complete Git history requires an authorized history profile&quot;);</span>
+<span class="fc" id="L161">    }</span>
+    private static List&lt;BackupRepositoryKey&gt; ordered(Set&lt;BackupRepositoryKey&gt; keys) {
+<span class="fc" id="L163">        return keys.stream().sorted(Comparator.comparing(BackupRepositoryKey::repositoryId)</span>
+<span class="fc" id="L164">                .thenComparing(BackupRepositoryKey::workspaceId, Comparator.nullsFirst(Comparator.naturalOrder()))).toList();</span>
+    }
+<span class="fc" id="L166">    private record Evidence(SnapshotContext.RepositoryState state, Map&lt;String, String&gt; aliases, List&lt;GitHistoryCapture.Reflog&gt; reflogs,</span>
+                            List&lt;GitReflogProvenance.Event&gt; importedReflogs,
+                            int objects, long bytes, SnapshotContext.RepositoryState working, List&lt;GitStandBackupSource.File&gt; workingFiles) { }
+<span class="fc" id="L169">    private record Plan(AuthorizedBackupRequest authorization, WorkspaceGitHistoryReferences.Capture database,</span>
+                        Map&lt;BackupRepositoryKey, Evidence&gt; evidence, List&lt;BackupManifest.Repository&gt; repositories) { }
+    @FunctionalInterface private interface Visitor {
+        void accept(BackupRepositoryKey key, GitHistoryCapture history, GitStandBackupSource.Stand working) throws IOException;
+    }
+<span class="fc" id="L174">    private final class Budget {</span>
+        long objects, bytes, refs, reflogs, documents, workingFiles, workingBytes;
+        void add(GitHistoryCapture history, GitStandBackupSource.Stand working) throws IOException {
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">            if (history.objectCount() &gt; limits.maxObjects() - objects || history.objectBytes() &gt; limits.maxTotalBytes() - bytes</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                    || history.state().refs().size() &gt; limits.maxRefs() - refs</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                    || history.reflogs().size() + history.importedReflogs().size() &gt; limits.maxReflogEntries() - reflogs)</span>
+<span class="fc" id="L180">                throw failure(&quot;Complete Git history inventory exceeds its shared budget&quot;);</span>
+<span class="fc" id="L181">            objects += history.objectCount(); bytes += history.objectBytes(); refs += history.state().refs().size();</span>
+<span class="fc" id="L182">            reflogs += history.reflogs().size() + history.importedReflogs().size();</span>
+<span class="fc bfc" id="L183" title="All 4 branches covered.">            if (working != null) for (var file : working.files()) {</span>
+<span class="pc bpc" id="L184" title="2 of 4 branches missed.">                if (++workingFiles &gt; workingLimits.git().maxFiles() || file.length() &gt; workingLimits.git().maxTotalBytes() - workingBytes)</span>
+<span class="nc" id="L185">                    throw failure(&quot;Raw working copies exceed their shared budget&quot;);</span>
+<span class="fc" id="L186">                workingBytes += file.length();</span>
+<span class="fc" id="L187">            }</span>
+<span class="fc" id="L188">        }</span>
+        void documents(long count) throws IOException {
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">            if (count &gt; BackupLimits.MAX_ITEMS - documents) throw failure(&quot;Historical documents exceed the shared proof budget&quot;); documents += count;</span>
+<span class="fc" id="L191">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

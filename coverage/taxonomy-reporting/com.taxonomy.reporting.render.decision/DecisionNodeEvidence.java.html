@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionNodeEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.decision</a> &gt; <span class="el_source">DecisionNodeEvidence.java</span></div><h1>DecisionNodeEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.decision;
+
+import com.taxonomy.dto.AnalysisPercentages;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport.*;
+import com.taxonomy.reporting.api.decision.DecisionReportOptions.Section;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow;
+import com.taxonomy.reporting.render.document.WordDocumentWriter;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Document-local navigation over the full captured tree, independent of ranked-leaf limits. */
+public final class DecisionNodeEvidence {
+<span class="fc" id="L16">    public record Evidence(String text, ReasonSource source) {}</span>
+<span class="fc" id="L17">    public record Node(DecisionTreeRow row, String root, List&lt;String&gt; path, Evidence evidence) {}</span>
+    private final DecisionRationaleReport report;
+<span class="fc" id="L19">    private final LinkedHashMap&lt;String, List&lt;Node&gt;&gt; roots = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L20">    private final Map&lt;String, Node&gt; nodes = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L22">    public DecisionNodeEvidence(DecisionRationaleReport report) {</span>
+<span class="fc" id="L23">        this.report = report;</span>
+<span class="fc" id="L24">        String root = null;</span>
+<span class="fc" id="L25">        var path = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (var row : report.scope().decisionTree().rows()) {</span>
+<span class="pc bpc" id="L27" title="1 of 4 branches missed.">            if (row.depth() == 0 || root == null) { root = row.code(); path.clear(); }</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            while (path.size() &gt; row.depth()) path.removeLast();</span>
+<span class="fc" id="L29">            path.add(row.code());</span>
+<span class="fc" id="L30">            var node = new Node(row, root, List.copyOf(path), evidence(row.code()));</span>
+<span class="fc" id="L31">            roots.computeIfAbsent(root, ignored -&gt; new ArrayList&lt;&gt;()).add(node);</span>
+<span class="fc" id="L32">            nodes.put(row.code(), node);</span>
+<span class="fc" id="L33">        }</span>
+        // Older sources may omit an unassessed selected root from their captured rows.
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">        for (String code : report.scope().reportRoots()) if (!roots.containsKey(code)) {</span>
+<span class="nc" id="L36">            String title = report.scope().availableRoots().stream().filter(r -&gt; r.code().equals(code))</span>
+<span class="nc" id="L37">                    .map(r -&gt; r.title()).findFirst().orElse(code);</span>
+<span class="nc" id="L38">            var row = new DecisionTreeRow(0, code, title, null, Disposition.NOT_EVALUATED, null, null);</span>
+<span class="nc" id="L39">            var node = new Node(row, code, List.of(code + &quot; · &quot; + title), evidence(code));</span>
+<span class="nc" id="L40">            roots.put(code, List.of(node)); nodes.put(code, node);</span>
+        }
+<span class="fc" id="L42">    }</span>
+
+<span class="fc" id="L44">    public static String reasonBookmark(String code) { return bookmark(&quot;dn_&quot;, code); }</span>
+<span class="fc" id="L45">    public static String rootBookmark(String code) { return bookmark(&quot;dt_&quot;, code); }</span>
+    private static String bookmark(String prefix, String code) {
+<span class="fc" id="L47">        return prefix + UUID.nameUUIDFromBytes(code.getBytes(StandardCharsets.UTF_8)).toString().replace(&quot;-&quot;, &quot;&quot;);</span>
+    }
+<span class="fc" id="L49">    public Node node(String code) { return nodes.get(code); }</span>
+    public boolean matches(String code, String text, ReasonSource source) {
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">        return nodes.containsKey(code) &amp;&amp; nodes.get(code).evidence().equals(new Evidence(text, source));</span>
+    }
+    private Evidence evidence(String code) {
+<span class="fc" id="L54">        String recorded = report.scope().recordedReasons().get(code);</span>
+<span class="fc" id="L55">        var saved = report.chapters().stream().flatMap(ch -&gt; ch.children().stream())</span>
+<span class="fc" id="L56">                .filter(child -&gt; child.code().equals(code)).findFirst().orElse(null);</span>
+<span class="fc" id="L57">        var leaf = report.leadingLeaves().stream().filter(l -&gt; l.code().equals(code)).findFirst().orElse(null);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        var step = report.executiveSummary() == null ? null : report.executiveSummary().path().stream()</span>
+<span class="fc" id="L59">                .filter(p -&gt; p.code().equals(code)).findFirst().orElse(null);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (recorded != null) {</span>
+<span class="fc bfc" id="L61" title="All 4 branches covered.">            ReasonSource source = saved != null &amp;&amp; Objects.equals(saved.reason(), recorded) ? saved.reasonSource()</span>
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">                    : leaf != null &amp;&amp; Objects.equals(leaf.reason(), recorded) ? leaf.reasonSource()</span>
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">                    : step != null &amp;&amp; Objects.equals(step.reason(), recorded) ? step.reasonSource() : ReasonSource.AI_SCORING;</span>
+<span class="fc" id="L64">            return new Evidence(recorded, source);</span>
+        }
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (saved != null) return new Evidence(saved.reason(), saved.reasonSource());</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (leaf != null) return new Evidence(leaf.reason(), leaf.reasonSource());</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (step != null) return new Evidence(step.reason(), step.reasonSource());</span>
+<span class="fc" id="L69">        return new Evidence(null, ReasonSource.MISSING);</span>
+    }
+    public static String source(Evidence evidence, DecisionReportLabels labels) {
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (evidence.source() == null) return labels.missingReason();</span>
+<span class="fc bfc" id="L73" title="All 3 branches covered.">        return switch (evidence.source()) {</span>
+<span class="fc" id="L74">            case AI_SCORING -&gt; labels.aiReason();</span>
+<span class="fc" id="L75">            case DETERMINISTIC_TRACE -&gt; labels.deterministicReason();</span>
+<span class="fc" id="L76">            case MISSING -&gt; labels.missingReason();</span>
+        };
+    }
+    public static String status(DecisionTreeRow row, DecisionReportLabels labels) {
+<span class="fc bfc" id="L80" title="All 4 branches covered.">        return switch (row.disposition()) {</span>
+<span class="fc" id="L81">            case CONTINUED -&gt; labels.continued(); case LEAF_CANDIDATE -&gt; labels.leafCandidate();</span>
+<span class="fc" id="L82">            case REJECTED -&gt; labels.rejected(); case NOT_EVALUATED -&gt; labels.notEvaluated();</span>
+        };
+    }
+    public boolean includesFullReasons() {
+<span class="fc" id="L86">        var options = report.scope().options();</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        return (options.profile() != com.taxonomy.reporting.api.decision.DecisionReportOptions.Profile.COMPACT</span>
+<span class="pc bpc" id="L88" title="1 of 4 branches missed.">                || options.includes(Section.CHAPTERS) || options.includes(Section.EVIDENCE))</span>
+<span class="pc bpc" id="L89" title="1 of 4 branches missed.">                &amp;&amp; (options.includes(Section.SUMMARY) || options.includes(Section.TREE)</span>
+<span class="pc bnc" id="L90" title="All 4 branches missed.">                    || options.includes(Section.CHAPTERS) || options.includes(Section.EVIDENCE));</span>
+    }
+    public boolean hasOriginal(String code) {
+<span class="fc" id="L93">        var node = nodes.get(code);</span>
+<span class="pc bpc" id="L94" title="2 of 6 branches missed.">        return node != null &amp;&amp; node.evidence().text() != null &amp;&amp; !node.evidence().text().isBlank();</span>
+    }
+    public Set&lt;String&gt; linkedReasonCodes() {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (!includesFullReasons()) return Set.of();</span>
+<span class="fc" id="L98">        return nodes.keySet().stream().filter(this::hasOriginal).collect(java.util.stream.Collectors.toUnmodifiableSet());</span>
+    }
+    public void writeOverview(XWPFDocument document, DecisionReportLabels labels) {
+<span class="fc" id="L101">        var writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        writer.heading(labels.german() ? &quot;Ergebnisse je Taxonomie&quot; : &quot;Results by taxonomy&quot;, 2, null);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        writer.paragraph(labels.german()</span>
+<span class="fc" id="L104">                ? &quot;Effektive Relevanz ist keine statistische Wahrscheinlichkeit. Lokaler Anteil und Produkteignung bleiben getrennte Bewertungsgrößen.&quot;</span>
+<span class="fc" id="L105">                : &quot;Effective relevance is not a statistical probability. Local share and product suitability remain distinct measures.&quot;);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        var table = writer.table(List.of(labels.german() ? &quot;Taxonomie&quot; : &quot;Taxonomy&quot;, labels.score(),</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                labels.german() ? &quot;Repräsentatives Ergebnis&quot; : &quot;Representative result&quot;,</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                labels.german() ? &quot;Gespeicherte Begründung / Navigation&quot; : &quot;Saved reason / navigation&quot;), List.of());</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        for (var group : roots.values()) {</span>
+<span class="fc" id="L110">            Node root = group.getFirst();</span>
+<span class="fc" id="L111">            var row = table.createRow(); row.setCantSplitRow(true);</span>
+<span class="fc" id="L112">            writer.cell(row.getCell(0), root.row().code() + &quot; · &quot; + root.row().title());</span>
+<span class="pc bpc" id="L113" title="1 of 6 branches missed.">            String recordedState = root.row().score() == null || root.row().score() == 0d &amp;&amp; root.row().disposition() == Disposition.REJECTED</span>
+<span class="fc" id="L114">                    ? status(root.row(), labels) : score(root.row(), labels) + &quot; · &quot; + status(root.row(), labels);</span>
+<span class="fc" id="L115">            writer.cell(row.getCell(1), recordedState);</span>
+<span class="pc bpc" id="L116" title="1 of 4 branches missed.">            var candidates = group.stream().filter(n -&gt; n.row().disposition() == Disposition.LEAF_CANDIDATE &amp;&amp; n.row().score() != null)</span>
+<span class="fc" id="L117">                    .sorted(Comparator.comparingDouble((Node n) -&gt; n.row().score()).reversed().thenComparing(n -&gt; n.row().code())).toList();</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            Node representative = candidates.isEmpty() ? root : candidates.getFirst();</span>
+<span class="fc" id="L119">            long ties = candidates.stream().filter(n -&gt; Objects.equals(n.row().score(), representative.row().score())).count();</span>
+<span class="fc" id="L120">            writer.cell(row.getCell(2), String.join(&quot; → &quot;, representative.path())</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                    + (representative == root ? &quot;&quot; : &quot; · &quot; + representative.row().title() + &quot; · &quot; + score(representative.row(), labels))</span>
+<span class="pc bpc" id="L122" title="1 of 4 branches missed.">                    + (ties &gt; 1 ? &quot; · &quot; + ties + (labels.german() ? &quot; gleichauf; keine eindeutige Rangfolge&quot; : &quot; tied; no unique winner&quot;) : &quot;&quot;));</span>
+<span class="fc" id="L123">            var excerptNodes = new ArrayList&lt;Node&gt;();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (hasOriginal(root.row().code())) excerptNodes.add(root);</span>
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">            if (representative != root &amp;&amp; hasOriginal(representative.row().code())</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                    &amp;&amp; !representative.evidence().equals(root.evidence())) excerptNodes.add(representative);</span>
+            // Historical compact sources can carry essential ranked evidence even when no leaf was frozen in the tree.
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (excerptNodes.isEmpty()) report.leadingLeaves().stream().filter(leaf -&gt; root.root().equals(leaf.taxonomyRoot()))</span>
+<span class="fc" id="L129">                    .map(leaf -&gt; nodes.get(leaf.code())).filter(Objects::nonNull).filter(node -&gt; hasOriginal(node.row().code()))</span>
+<span class="fc" id="L130">                    .findFirst().ifPresent(excerptNodes::add);</span>
+<span class="fc" id="L131">            var reasonCell = row.getCell(3);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            if (excerptNodes.isEmpty()) writer.cell(reasonCell, labels.missingReason());</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            for (var node : excerptNodes) {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                var p = excerptNodes.indexOf(node) == 0 ? reasonCell.getParagraphs().getFirst() : reasonCell.addParagraph();</span>
+<span class="fc" id="L135">                p.setSpacingAfter(60);</span>
+<span class="fc" id="L136">                var run = p.createRun(); run.setFontSize(10);</span>
+<span class="fc" id="L137">                run.setText(node.row().code() + &quot; · &quot; + source(node.evidence(), labels) + &quot;: &quot; + excerpt(node.evidence().text()));</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                if (includesFullReasons()) writer.link(p, reasonBookmark(node.row().code()), &quot; · Original&quot;, 10);</span>
+<span class="fc" id="L139">            }</span>
+<span class="pc bpc" id="L140" title="2 of 4 branches missed.">            if (report.scope().options().includes(Section.TREE) &amp;&amp; treeContains(root.row().code()))</span>
+<span class="fc" id="L141">                writer.link(reasonCell.addParagraph(), rootBookmark(root.row().code()), labels.treeOverview() + &quot; · &quot; + root.row().code(), 10);</span>
+<span class="fc" id="L142">        }</span>
+<span class="fc" id="L143">        writer.columnWidths(table, 18, 16, 28, 38);</span>
+<span class="fc" id="L144">        table.getRows().forEach(row -&gt; row.getTableCells().forEach(cell -&gt; cell.getParagraphs().forEach(p -&gt; p.getRuns().forEach(r -&gt; r.setFontSize(10)))));</span>
+<span class="fc" id="L145">    }</span>
+    private boolean treeContains(String code) {
+<span class="fc" id="L147">        return report.scope().decisionTree().rows().stream().anyMatch(row -&gt; row.code().equals(code));</span>
+    }
+    private static String score(DecisionTreeRow row, DecisionReportLabels labels) {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        return row.score() == null ? labels.notEvaluated() : AnalysisPercentages.display(row.score());</span>
+    }
+    private static String excerpt(String text) {
+<span class="fc" id="L153">        int count = text.codePointCount(0, text.length());</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        return count &lt;= 120 ? text : text.substring(0, text.offsetByCodePoints(0, 120)) + &quot;…&quot;;</span>
+    }
+    public void writeReasons(XWPFDocument document, DecisionReportLabels labels) {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (linkedReasonCodes().isEmpty()) return;</span>
+<span class="fc" id="L158">        var writer = new WordDocumentWriter(document, labels);</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        writer.heading(labels.german() ? &quot;Gespeicherte Knotenbegründungen&quot; : &quot;Recorded node reasons&quot;, 1, &quot;decision_node_reasons&quot;);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        for (var group : roots.values()) {</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (group.stream().noneMatch(node -&gt; hasOriginal(node.row().code()))) continue;</span>
+<span class="fc" id="L162">            writer.heading(group.getFirst().row().code() + &quot; · &quot; + group.getFirst().row().title(), 2, null);</span>
+<span class="fc" id="L163">            var shared = new LinkedHashMap&lt;Evidence, List&lt;Node&gt;&gt;();</span>
+<span class="fc" id="L164">            group.stream().filter(node -&gt; hasOriginal(node.row().code()))</span>
+<span class="fc" id="L165">                    .forEach(node -&gt; shared.computeIfAbsent(node.evidence(), ignored -&gt; new ArrayList&lt;&gt;()).add(node));</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            for (var entry : shared.entrySet()) {</span>
+<span class="fc" id="L167">                var p = writer.paragraph(String.join(&quot;, &quot;, entry.getValue().stream().map(n -&gt; n.row().code()).toList())</span>
+<span class="fc" id="L168">                        + &quot; · &quot; + source(entry.getKey(), labels));</span>
+<span class="fc" id="L169">                p.setKeepNext(true);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                for (var node : entry.getValue()) writer.bookmark(p, reasonBookmark(node.row().code()));</span>
+<span class="fc" id="L171">                String reason = entry.getKey().text();</span>
+<span class="pc bpc" id="L172" title="2 of 4 branches missed.">                writer.paragraph(reason == null || reason.isBlank() ? labels.missingReason() : reason);</span>
+<span class="fc" id="L173">            }</span>
+<span class="pc bpc" id="L174" title="2 of 4 branches missed.">            if (report.scope().options().includes(Section.TREE) &amp;&amp; treeContains(group.getFirst().root()))</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">                writer.link(writer.paragraph(&quot;&quot;), rootBookmark(group.getFirst().root()), labels.german() ? &quot;Zurück zum Wurzelbaum&quot; : &quot;Back to root tree&quot;);</span>
+<span class="fc" id="L176">        }</span>
+<span class="fc" id="L177">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginArtifactValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-runtime</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.runtime</a> &gt; <span class="el_source">PluginArtifactValidator.java</span></div><h1>PluginArtifactValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.runtime;
+
+import com.taxonomy.extension.api.plugin.*;
+import org.pf4j.DefaultVersionManager;
+
+import java.io.IOException;
+import java.nio.file.*;
+import java.security.*;
+import java.util.*;
+import java.util.jar.*;
+
+/** Validates trusted operator artifacts; this is compatibility checking, not a Java sandbox. */
+<span class="fc" id="L13">public final class PluginArtifactValidator {</span>
+<span class="fc" id="L14">    static final String SERVICE = &quot;META-INF/services/&quot; + TaxonomyPlugin.class.getName();</span>
+
+    public PluginDescriptor validate(Path artifact) {
+<span class="fc" id="L17">        try (var jar = new JarFile(artifact.toFile())) {</span>
+<span class="fc" id="L18">            Manifest manifest = jar.getManifest();</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">            if (manifest == null) throw new IllegalArgumentException(&quot;Plugin manifest is missing&quot;);</span>
+<span class="fc" id="L20">            var attributes = manifest.getMainAttributes();</span>
+<span class="fc" id="L21">            String id = required(attributes, &quot;Plugin-Id&quot;);</span>
+<span class="fc" id="L22">            String version = required(attributes, &quot;Plugin-Version&quot;);</span>
+<span class="fc" id="L23">            String range = required(attributes, &quot;Plugin-Requires&quot;);</span>
+<span class="fc" id="L24">            PluginMode mode = PluginMode.valueOf(required(attributes, &quot;Taxonomy-Plugin-Mode&quot;));</span>
+<span class="fc" id="L25">            var versions = new DefaultVersionManager();</span>
+<span class="fc" id="L26">            versions.compareVersions(version, version);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">            if (!versions.checkVersionConstraint(PluginDescriptor.HOST_API_VERSION, range))</span>
+<span class="fc" id="L28">                throw new IllegalArgumentException(&quot;Host API range is incompatible: &quot; + id);</span>
+<span class="pc bpc" id="L29" title="2 of 4 branches missed.">            if (attributes.getValue(&quot;Plugin-Class&quot;) != null || attributes.getValue(&quot;Class-Path&quot;) != null)</span>
+<span class="nc" id="L30">                throw new IllegalArgumentException(&quot;Plugin-Class and manifest Class-Path are not supported&quot;);</span>
+<span class="fc" id="L31">            List&lt;PluginRequirement&gt; dependencies = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            for (String dependency : tokens(attributes.getValue(&quot;Plugin-Dependencies&quot;))) {</span>
+<span class="fc" id="L33">                int separator = dependency.indexOf('@');</span>
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">                if (separator &lt; 1 || separator == dependency.length() - 1)</span>
+<span class="nc" id="L35">                    throw new IllegalArgumentException(&quot;Plugin dependencies require id@version-range&quot;);</span>
+<span class="fc" id="L36">                String dependencyRange = dependency.substring(separator + 1).trim();</span>
+<span class="fc" id="L37">                versions.checkVersionConstraint(PluginDescriptor.HOST_API_VERSION, dependencyRange);</span>
+<span class="fc" id="L38">                dependencies.add(new PluginRequirement(dependency.substring(0, separator).trim(), dependencyRange));</span>
+<span class="fc" id="L39">            }</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            if (jar.getJarEntry(SERVICE) == null)</span>
+<span class="nc" id="L41">                throw new IllegalArgumentException(&quot;TaxonomyPlugin service entry is missing&quot;);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            for (var entries = jar.entries(); entries.hasMoreElements();) {</span>
+<span class="fc" id="L43">                String name = entries.nextElement().getName();</span>
+<span class="pc bpc" id="L44" title="3 of 6 branches missed.">                if (name.startsWith(&quot;/&quot;) || name.contains(&quot;\\&quot;) || Arrays.asList(name.split(&quot;/&quot;)).contains(&quot;..&quot;))</span>
+<span class="nc" id="L45">                    throw new IllegalArgumentException(&quot;Invalid plugin entry path&quot;);</span>
+<span class="fc" id="L46">                name = name.replaceFirst(&quot;^META-INF/versions/[0-9]+/&quot;, &quot;&quot;);</span>
+<span class="fc bfc" id="L47" title="All 4 branches covered.">                if (name.endsWith(&quot;.class&quot;) &amp;&amp; ((name.startsWith(&quot;com/taxonomy/&quot;)</span>
+<span class="pc bpc" id="L48" title="1 of 4 branches missed.">                        &amp;&amp; !name.startsWith(&quot;com/taxonomy/plugins/&quot;)) || name.startsWith(&quot;org/pf4j/&quot;)))</span>
+<span class="fc" id="L49">                    throw new IllegalArgumentException(&quot;Plugin must not contain host SDK or loader classes: &quot; + name);</span>
+<span class="pc bpc" id="L50" title="3 of 6 branches missed.">                if (name.startsWith(&quot;BOOT-INF/&quot;) || name.startsWith(&quot;WEB-INF/&quot;) || name.endsWith(&quot;.jar&quot;))</span>
+<span class="nc" id="L51">                    throw new IllegalArgumentException(&quot;Plugin must be a plain JAR without nested artifacts&quot;);</span>
+<span class="fc" id="L52">            }</span>
+<span class="fc" id="L53">            var digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L54">            try (var input = Files.newInputStream(artifact); var stream = new DigestInputStream(input, digest)) {</span>
+<span class="fc" id="L55">                stream.transferTo(java.io.OutputStream.nullOutputStream());</span>
+            }
+<span class="fc" id="L57">            return new PluginDescriptor(new PluginIdentity(id, version, HexFormat.of().formatHex(digest.digest())),</span>
+<span class="fc" id="L58">                    range, dependencies, Set.copyOf(tokens(attributes.getValue(&quot;Taxonomy-Plugin-Capabilities&quot;))), mode);</span>
+<span class="nc" id="L59">        } catch (IOException | NoSuchAlgorithmException invalid) {</span>
+<span class="nc" id="L60">            throw new IllegalArgumentException(&quot;Cannot validate plugin artifact&quot;, invalid);</span>
+<span class="fc" id="L61">        } catch (RuntimeException invalid) {</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">            if (invalid instanceof IllegalArgumentException) throw invalid;</span>
+<span class="nc" id="L63">            throw new IllegalArgumentException(&quot;Invalid plugin manifest or version range&quot;, invalid);</span>
+        }
+    }
+
+    private static String required(Attributes attributes, String name) {
+<span class="fc" id="L68">        String value = attributes.getValue(name);</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) throw new IllegalArgumentException(&quot;Missing plugin attribute: &quot; + name);</span>
+<span class="fc" id="L70">        return value.trim();</span>
+    }
+
+    private static List&lt;String&gt; tokens(String text) {
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">        if (text == null || text.isBlank()) return List.of();</span>
+<span class="fc" id="L75">        List&lt;String&gt; values = Arrays.stream(text.split(&quot;,&quot;, -1)).map(String::trim).toList();</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if (values.stream().anyMatch(String::isBlank)) throw new IllegalArgumentException(&quot;Empty plugin manifest list entry&quot;);</span>
+<span class="fc" id="L77">        return values;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,192 @@
+Taxonomy reactor-wide JaCoCo coverage
+
+Source: /home/runner/work/Taxonomy/Taxonomy/taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+Policy: versioned multi-counter aggregate ratchet
+
+Per-module coverage:
+- taxonomy-analysis
+  - INSTRUCTION: 92.28% (72392/78447)
+  - LINE: 93.16% (10848/11645)
+  - BRANCH: 76.55% (6569/8581)
+  - METHOD: 94.80% (2261/2385)
+  - CLASS: 98.96% (380/384)
+- taxonomy-app
+  - INSTRUCTION: 89.77% (76403/85113)
+  - LINE: 91.68% (12129/13230)
+  - BRANCH: 70.14% (5864/8361)
+  - METHOD: 93.22% (2641/2833)
+  - CLASS: 97.87% (506/517)
+- taxonomy-architecture
+  - INSTRUCTION: 91.67% (14946/16304)
+  - LINE: 92.73% (3024/3261)
+  - BRANCH: 76.51% (1384/1809)
+  - METHOD: 94.01% (471/501)
+  - CLASS: 98.68% (75/76)
+- taxonomy-domain
+  - INSTRUCTION: 94.12% (12586/13372)
+  - LINE: 94.13% (2099/2230)
+  - BRANCH: 80.17% (853/1064)
+  - METHOD: 91.68% (1080/1178)
+  - CLASS: 98.70% (227/230)
+- taxonomy-dsl
+  - INSTRUCTION: 91.09% (14205/15595)
+  - LINE: 93.70% (2484/2651)
+  - BRANCH: 74.85% (1146/1531)
+  - METHOD: 94.54% (606/641)
+  - CLASS: 94.62% (88/93)
+- taxonomy-export
+  - INSTRUCTION: 93.74% (39022/41627)
+  - LINE: 95.89% (5744/5990)
+  - BRANCH: 79.26% (3454/4358)
+  - METHOD: 97.38% (891/915)
+  - CLASS: 100.00% (127/127)
+- taxonomy-extension-api
+  - INSTRUCTION: 91.32% (4041/4425)
+  - LINE: 90.83% (317/349)
+  - BRANCH: 69.10% (199/288)
+  - METHOD: 92.31% (144/156)
+  - CLASS: 95.65% (88/92)
+- taxonomy-extension-runtime
+  - INSTRUCTION: 85.95% (2765/3217)
+  - LINE: 89.81% (467/520)
+  - BRANCH: 74.08% (283/382)
+  - METHOD: 92.16% (94/102)
+  - CLASS: 94.74% (18/19)
+- taxonomy-interop
+  - INSTRUCTION: 91.80% (28863/31442)
+  - LINE: 92.95% (3257/3504)
+  - BRANCH: 75.80% (2757/3637)
+  - METHOD: 90.72% (733/808)
+  - CLASS: 95.69% (111/116)
+- taxonomy-knowledge
+  - INSTRUCTION: 91.86% (32494/35373)
+  - LINE: 92.45% (7112/7693)
+  - BRANCH: 78.13% (2472/3164)
+  - METHOD: 94.00% (1425/1516)
+  - CLASS: 99.14% (230/232)
+- taxonomy-mermaid-plugin
+  - INSTRUCTION: 100.00% (66/66)
+  - LINE: 100.00% (13/13)
+  - BRANCH: 75.00% (3/4)
+  - METHOD: 100.00% (7/7)
+  - CLASS: 100.00% (2/2)
+- taxonomy-portfolio
+  - INSTRUCTION: 94.95% (45559/47982)
+  - LINE: 95.73% (8356/8729)
+  - BRANCH: 78.26% (3395/4338)
+  - METHOD: 95.44% (1633/1711)
+  - CLASS: 98.62% (285/289)
+- taxonomy-reporting
+  - INSTRUCTION: 92.39% (22269/24103)
+  - LINE: 93.26% (3913/4196)
+  - BRANCH: 77.76% (1710/2199)
+  - METHOD: 94.71% (555/586)
+  - CLASS: 100.00% (50/50)
+- taxonomy-reporting-api
+  - INSTRUCTION: 96.34% (2583/2681)
+  - LINE: 96.10% (345/359)
+  - BRANCH: 76.44% (172/225)
+  - METHOD: 100.00% (62/62)
+  - CLASS: 100.00% (27/27)
+- taxonomy-templates
+  - INSTRUCTION: 88.62% (7807/8810)
+  - LINE: 88.32% (1732/1961)
+  - BRANCH: 71.63% (765/1068)
+  - METHOD: 95.17% (256/269)
+  - CLASS: 97.50% (39/40)
+- taxonomy-templates-api
+  - INSTRUCTION: 90.80% (296/326)
+  - LINE: 86.54% (45/52)
+  - BRANCH: 66.67% (20/30)
+  - METHOD: 87.50% (14/16)
+  - CLASS: 100.00% (11/11)
+- taxonomy-workspace
+  - INSTRUCTION: 91.65% (41492/45271)
+  - LINE: 92.77% (7839/8450)
+  - BRANCH: 75.98% (2986/3930)
+  - METHOD: 94.01% (1616/1719)
+  - CLASS: 99.60% (252/253)
+
+Aggregate coverage:
+- INSTRUCTION: 91.99% (417789/454154); required 81.00%; PASS
+- LINE: 93.17% (69724/74833); required 82.00%; PASS
+- BRANCH: 75.68% (34032/44969); required 64.00%; PASS
+- METHOD: 94.05% (14489/15405); required 85.00%; PASS
+- CLASS: 98.36% (2516/2558); required 92.00%; PASS
+Additional report groups: taxonomy-extension-runtime, taxonomy-mermaid-plugin, taxonomy-reporting, taxonomy-reporting-api, taxonomy-templates-api
+Result: PASS
+
+Taxonomy release-critical coverage
+
+Source: /home/runner/work/Taxonomy/Taxonomy/taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+Policy: critical package and changed-source ratchets
+
+Critical package coverage:
+- package:taxonomy-app:com/taxonomy/security/config
+  - LINE: 95.05% (653/687); required 79.00%; PASS
+  - BRANCH: 86.26% (295/342); required 66.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/service
+  - LINE: 92.51% (420/454); required 89.00%; PASS
+  - BRANCH: 78.86% (194/246); required 66.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/controller
+  - LINE: 97.01% (195/201); required 64.00%; PASS
+  - BRANCH: 91.04% (61/67); required 60.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/keycloak
+  - LINE: 98.01% (148/151); required 75.00%; PASS
+  - BRANCH: 87.50% (42/48); required 67.00%; PASS
+- package:taxonomy-app:com/taxonomy/provenance/service
+  - LINE: 88.41% (572/647); required 86.00%; PASS
+  - BRANCH: 73.25% (241/329); required 69.00%; PASS
+- package:taxonomy-app:com/taxonomy/provenance/controller
+  - LINE: 98.61% (142/144); required 37.00%; PASS
+  - BRANCH: 98.15% (53/54); required 37.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/catalog/service/importer
+  - LINE: 96.55% (336/348); required 84.00%; PASS
+  - BRANCH: 83.27% (219/263); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/importer
+  - LINE: 98.02% (99/101); required 84.00%; PASS
+  - BRANCH: 100.00% (2/2); required 58.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/storage
+  - LINE: 90.93% (1033/1136); required 87.00%; PASS
+  - BRANCH: 77.75% (290/373); required 71.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/persistence
+  - LINE: 94.20% (471/500); required 87.00%; PASS
+  - BRANCH: 72.54% (206/284); required 71.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/versioning/controller
+  - LINE: 90.63% (445/491); required 81.00%; PASS
+  - BRANCH: 75.74% (103/136); required 58.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/relations/controller
+  - LINE: 94.33% (1032/1094); required 81.00%; PASS
+  - BRANCH: 84.24% (278/330); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/report
+  - LINE: 98.70% (227/230); required 81.00%; PASS
+  - BRANCH: 77.27% (153/198); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/dsl/controller
+  - LINE: 100.00% (119/119); required 81.00%; PASS
+  - BRANCH: 100.00% (10/10); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/dsl/service
+  - LINE: 100.00% (53/53); required 77.00%; PASS
+  - BRANCH: 100.00% (18/18); required 59.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/versioning/service
+  - LINE: 89.93% (1027/1142); required 77.00%; PASS
+  - BRANCH: 76.64% (233/304); required 59.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/relations/service
+  - LINE: 94.66% (2056/2172); required 77.00%; PASS
+  - BRANCH: 81.29% (491/604); required 59.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/controller
+  - LINE: 95.60% (522/546); required 77.00%; PASS
+  - BRANCH: 83.82% (114/136); required 70.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/service
+  - LINE: 93.48% (1850/1979); required 82.00%; PASS
+  - BRANCH: 79.92% (772/966); required 58.00%; PASS
+- package:taxonomy-portfolio:com/taxonomy/portfolio/controller
+  - LINE: 97.18% (448/461); required 45.00%; PASS
+  - BRANCH: 85.82% (115/134); required 52.00%; PASS
+- package:taxonomy-portfolio:com/taxonomy/portfolio/service
+  - LINE: 94.37% (3908/4141); required 74.00%; PASS
+  - BRANCH: 78.74% (1370/1740); required 52.00%; PASS
+
+Changed critical source coverage:
+- Discovery: not a pull-request checkout; aggregate and package gates only; 0 file(s) are release-critical
+- No changed critical Java source requires a diff gate.
+Result: PASS

@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisAnalysisWorker.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisAnalysisWorker.java</span></div><h1>ArtemisAnalysisWorker.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.dag.AnalysisCompletionMessage;
+import com.taxonomy.analysis.dag.AnalysisMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskCompletionStore;
+import com.taxonomy.analysis.dag.AnalysisTaskHandlers;
+import com.taxonomy.analysis.dag.AnalysisTaskMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskType;
+import com.taxonomy.analysis.dag.AnalysisWorkerShards;
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import com.taxonomy.analysis.dag.json.AnalysisMessageFormatException;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Shard worker: consumes the configured roots' task queues in transacted JMS
+ * sessions and applies the worker completion protocol of #1161:
+ *
+ * &lt;ol&gt;
+ *   &lt;li&gt;receive inside a local JMS transaction;&lt;/li&gt;
+ *   &lt;li&gt;decode the versioned contract and verify it belongs to this queue;&lt;/li&gt;
+ *   &lt;li&gt;answer from the durable completion ledger if the task already ran;&lt;/li&gt;
+ *   &lt;li&gt;otherwise prepare the result without durable mutations or a database transaction;&lt;/li&gt;
+ *   &lt;li&gt;atomically reserve the task, persist its result and record completion in the database;&lt;/li&gt;
+ *   &lt;li&gt;send the completion and commit the delivery in one JMS transaction.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * A failure before the commit rolls back the delivery, so the broker redelivers it
+ * (bounded by its max-delivery-attempts, then the dead-letter address). A crash
+ * after step 5 redelivers, observes the recorded completion and does not repeat
+ * durable effects. Malformed, unknown-schema and misrouted messages are moved to
+ * the rejected queue immediately and never reach a handler.
+ */
+public final class ArtemisAnalysisWorker implements AutoCloseable {
+
+<span class="fc" id="L49">    private static final Logger log = LoggerFactory.getLogger(ArtemisAnalysisWorker.class);</span>
+
+    /** Test seam between the durable record and the acknowledgement. */
+    @FunctionalInterface
+    interface AcknowledgementHook {
+        void beforeAcknowledge(AnalysisTaskMessage task);
+    }
+
+<span class="fc" id="L57">    private record Subscription(Session session, MessageConsumer consumer, MessageProducer producer) { }</span>
+
+    private final ArtemisAnalysisConnection connection;
+    private final AnalysisDestinations destinations;
+    private final AnalysisWorkerShards shards;
+    private final int consumersPerQueue;
+    private final AnalysisTaskHandlers handlers;
+    private final AnalysisTaskCompletionStore completions;
+    private final AnalysisMessageCodec codec;
+<span class="fc" id="L66">    private final List&lt;Subscription&gt; subscriptions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L67">    private final AtomicLong executions = new AtomicLong();</span>
+<span class="fc" id="L68">    private final AtomicLong idempotentReplays = new AtomicLong();</span>
+<span class="fc" id="L69">    private final AtomicLong rejected = new AtomicLong();</span>
+<span class="fc" id="L70">    private final AtomicLong rolledBack = new AtomicLong();</span>
+<span class="fc" id="L71">    private volatile AcknowledgementHook hook = task -&gt; { };</span>
+    private boolean started;
+    private boolean closed;
+
+    public ArtemisAnalysisWorker(ArtemisAnalysisConnection connection, AnalysisDestinations destinations,
+                                 AnalysisWorkerShards shards, int consumersPerQueue, AnalysisTaskHandlers handlers,
+<span class="fc" id="L77">                                 AnalysisTaskCompletionStore completions, AnalysisMessageCodec codec) {</span>
+<span class="fc" id="L78">        this.connection = Objects.requireNonNull(connection, &quot;connection&quot;);</span>
+<span class="fc" id="L79">        this.destinations = Objects.requireNonNull(destinations, &quot;destinations&quot;);</span>
+<span class="fc" id="L80">        this.shards = Objects.requireNonNull(shards, &quot;shards&quot;);</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">        if (consumersPerQueue &lt; 1 || consumersPerQueue &gt; 64) {</span>
+<span class="nc" id="L82">            throw new IllegalArgumentException(&quot;consumersPerQueue must be within 1..64&quot;);</span>
+        }
+<span class="fc" id="L84">        this.consumersPerQueue = consumersPerQueue;</span>
+<span class="fc" id="L85">        this.handlers = Objects.requireNonNull(handlers, &quot;handlers&quot;);</span>
+<span class="fc" id="L86">        this.completions = Objects.requireNonNull(completions, &quot;completions&quot;);</span>
+<span class="fc" id="L87">        this.codec = Objects.requireNonNull(codec, &quot;codec&quot;);</span>
+<span class="fc" id="L88">    }</span>
+
+    /** Subscribe once the broker connection is usable; idempotent. */
+    public synchronized void start() {
+<span class="fc" id="L92">        start(true, shards.roots().containsAll(TaxonomyShardRoot.DEFAULT_ROOTS));</span>
+<span class="fc" id="L93">    }</span>
+
+    public synchronized void start(boolean rootWork, boolean sharedPreparation) {
+<span class="pc bpc" id="L96" title="2 of 4 branches missed.">        if (started || closed) return;</span>
+<span class="fc" id="L97">        started = true;</span>
+        try {
+<span class="fc bfc" id="L99" title="All 4 branches covered.">            for (TaxonomyShardRoot root : rootWork ? shards.roots() : List.&lt;TaxonomyShardRoot&gt;of()) {</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                if (handlers.handles(AnalysisTaskType.SUBTAXONOMY_ANALYSIS)) {</span>
+<span class="fc" id="L101">                    subscribe(destinations.subtaxonomy(root), AnalysisTaskType.SUBTAXONOMY_ANALYSIS, root);</span>
+                }
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                if (handlers.handles(AnalysisTaskType.RELATION_ANALYSIS)) {</span>
+<span class="fc" id="L104">                    subscribe(destinations.relation(root), AnalysisTaskType.RELATION_ANALYSIS, root);</span>
+                }
+<span class="fc" id="L106">            }</span>
+<span class="fc bfc" id="L107" title="All 4 branches covered.">            if (handlers.handles(AnalysisTaskType.RELATION_ANALYSIS)</span>
+                    &amp;&amp; sharedPreparation) {
+                // Multi-root relation work needs every root's data: only full-catalogue workers take it.
+<span class="fc" id="L110">                subscribe(destinations.generalRelation(), AnalysisTaskType.RELATION_ANALYSIS, null);</span>
+            }
+<span class="nc" id="L112">        } catch (JMSException | RuntimeException failure) {</span>
+<span class="nc" id="L113">            closeSubscriptions();</span>
+<span class="nc" id="L114">            started = false;</span>
+<span class="nc" id="L115">            throw new IllegalStateException(&quot;Analysis worker could not subscribe (&quot;</span>
+<span class="nc" id="L116">                    + failure.getClass().getSimpleName() + &quot;)&quot;, failure);</span>
+<span class="fc" id="L117">        }</span>
+<span class="fc" id="L118">        log.info(&quot;Analysis worker consuming {} queue(s) for shards {}&quot;, subscriptions.size(), shards.roots());</span>
+<span class="fc" id="L119">    }</span>
+
+    private void subscribe(String queue, AnalysisTaskType family, TaxonomyShardRoot root) throws JMSException {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (int i = 0; i &lt; consumersPerQueue; i++) {</span>
+<span class="fc" id="L123">            Session session = connection.createSession(true);</span>
+<span class="fc" id="L124">            MessageConsumer consumer = session.createConsumer(session.createQueue(queue));</span>
+<span class="fc" id="L125">            MessageProducer producer = session.createProducer(null);</span>
+<span class="fc" id="L126">            producer.setDeliveryMode(DeliveryMode.PERSISTENT);</span>
+<span class="fc" id="L127">            var subscription = new Subscription(session, consumer, producer);</span>
+<span class="fc" id="L128">            subscriptions.add(subscription);</span>
+<span class="fc" id="L129">            consumer.setMessageListener(message -&gt; onMessage(subscription, queue, family, root, message));</span>
+        }
+<span class="fc" id="L131">    }</span>
+
+    private void onMessage(Subscription subscription, String queue, AnalysisTaskType family,
+                           TaxonomyShardRoot root, Message message) {
+<span class="fc" id="L135">        Session session = subscription.session();</span>
+        try {
+            AnalysisTaskMessage task;
+            try {
+<span class="fc" id="L139">                task = accept(codec.decode(ArtemisAnalysisMessages.body(message)), family, root);</span>
+<span class="fc" id="L140">            } catch (AnalysisMessageFormatException invalid) {</span>
+<span class="fc" id="L141">                reject(subscription, queue, message, invalid.kind().name());</span>
+<span class="fc" id="L142">                return;</span>
+<span class="fc" id="L143">            }</span>
+<span class="fc" id="L144">            task = task.atAttempt(ArtemisAnalysisMessages.deliveryAttempt(message));</span>
+            AnalysisCompletionMessage completion;
+<span class="fc" id="L146">            var recorded = completions.find(task);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            if (recorded.isPresent()) {</span>
+<span class="fc" id="L148">                idempotentReplays.incrementAndGet();</span>
+<span class="fc" id="L149">                completion = recorded.get();</span>
+            } else {
+<span class="fc" id="L151">                completion = handlers.prepareAndCommit(task, completions, executions::incrementAndGet);</span>
+            }
+<span class="fc" id="L153">            subscription.producer().send(session.createQueue(destinations.completion()),</span>
+<span class="fc" id="L154">                    ArtemisAnalysisMessages.encode(session, codec, completion));</span>
+<span class="fc" id="L155">            hook.beforeAcknowledge(task);</span>
+<span class="fc" id="L156">            session.commit();</span>
+<span class="fc" id="L157">        } catch (JMSException | RuntimeException failure) {</span>
+<span class="fc" id="L158">            rolledBack.incrementAndGet();</span>
+<span class="fc" id="L159">            log.warn(&quot;Analysis task delivery rolled back for redelivery ({})&quot;, failure.getClass().getSimpleName());</span>
+            try {
+<span class="fc" id="L161">                session.rollback();</span>
+<span class="nc" id="L162">            } catch (JMSException | RuntimeException ignored) {</span>
+                // A broken session is recovered by the client; the broker still owns the delivery.
+<span class="fc" id="L164">            }</span>
+<span class="fc" id="L165">        }</span>
+<span class="fc" id="L166">    }</span>
+
+    private static AnalysisTaskMessage accept(AnalysisMessage decoded, AnalysisTaskType family, TaxonomyShardRoot root) {
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">        if (!(decoded instanceof AnalysisTaskMessage task) || task.taskType() != family</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                || !Objects.equals(task.routingRoot(), root)) {</span>
+<span class="fc" id="L171">            throw new AnalysisMessageFormatException(AnalysisMessageFormatException.Kind.INVALID_CONTRACT,</span>
+                    &quot;message does not belong to this queue&quot;, null);
+        }
+<span class="fc" id="L174">        return task;</span>
+    }
+
+    private void reject(Subscription subscription, String queue, Message original, String kind) throws JMSException {
+<span class="fc" id="L178">        Session session = subscription.session();</span>
+<span class="fc" id="L179">        BytesMessage copy = session.createBytesMessage();</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (original instanceof BytesMessage bytes) {</span>
+<span class="fc" id="L181">            long length = Math.min(bytes.getBodyLength(), AnalysisMessageCodec.MAX_MESSAGE_BYTES);</span>
+<span class="fc" id="L182">            byte[] body = new byte[(int) length];</span>
+<span class="fc" id="L183">            bytes.reset();</span>
+<span class="fc" id="L184">            bytes.readBytes(body);</span>
+<span class="fc" id="L185">            copy.writeBytes(body);</span>
+        }
+<span class="fc" id="L187">        copy.setStringProperty(ArtemisAnalysisMessages.REJECTION, kind);</span>
+<span class="fc" id="L188">        copy.setStringProperty(ArtemisAnalysisMessages.ORIGIN, queue);</span>
+<span class="fc" id="L189">        subscription.producer().send(session.createQueue(destinations.rejected()), copy);</span>
+<span class="fc" id="L190">        session.commit();</span>
+<span class="fc" id="L191">        rejected.incrementAndGet();</span>
+<span class="fc" id="L192">        log.warn(&quot;Rejected analysis message from {} ({})&quot;, queue, kind);</span>
+<span class="fc" id="L193">    }</span>
+
+    void acknowledgementHook(AcknowledgementHook hook) {
+<span class="fc" id="L196">        this.hook = Objects.requireNonNull(hook, &quot;hook&quot;);</span>
+<span class="fc" id="L197">    }</span>
+
+    public long executions() {
+<span class="fc" id="L200">        return executions.get();</span>
+    }
+
+    public long idempotentReplays() {
+<span class="fc" id="L204">        return idempotentReplays.get();</span>
+    }
+
+    public long rejected() {
+<span class="fc" id="L208">        return rejected.get();</span>
+    }
+
+    public long rolledBack() {
+<span class="fc" id="L212">        return rolledBack.get();</span>
+    }
+
+    public synchronized int consumerCount() {
+<span class="fc" id="L216">        return subscriptions.size();</span>
+    }
+
+    private void closeSubscriptions() {
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        for (Subscription subscription : subscriptions) {</span>
+            try {
+<span class="fc" id="L222">                subscription.consumer().close();</span>
+<span class="fc" id="L223">                subscription.session().close();</span>
+<span class="nc" id="L224">            } catch (JMSException | RuntimeException ignored) {</span>
+                // Closing rolls back in-flight deliveries; the broker redelivers them.
+<span class="fc" id="L226">            }</span>
+<span class="fc" id="L227">        }</span>
+<span class="fc" id="L228">        subscriptions.clear();</span>
+<span class="fc" id="L229">    }</span>
+
+    @Override
+    public synchronized void close() {
+<span class="fc" id="L233">        closed = true;</span>
+<span class="fc" id="L234">        closeSubscriptions();</span>
+<span class="fc" id="L235">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

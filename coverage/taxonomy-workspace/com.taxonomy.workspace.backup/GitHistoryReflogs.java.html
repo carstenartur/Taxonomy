@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitHistoryReflogs.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitHistoryReflogs.java</span></div><h1>GitHistoryReflogs.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.util.RawParseUtils;
+import java.io.*;
+import java.nio.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+
+/** Reads native reflogs incrementally; JGit's file reader otherwise materializes the entire log. */
+final class GitHistoryReflogs {
+    static final int MAX_RECORD_BYTES = 65_536;
+    static final long MAX_TOTAL_BYTES = 64L &lt;&lt; 20;
+    private GitHistoryReflogs() { }
+
+    static List&lt;GitHistoryCapture.Reflog&gt; file(Path path, String name, Budget budget, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L21">        check.check();</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return List.of();</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) throw failure(&quot;Retained Git reflog path is not a regular file&quot;);</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (Files.size(path) &gt; MAX_TOTAL_BYTES - budget.bytes) throw failure(&quot;Git reflog byte limit exceeded&quot;);</span>
+<span class="fc" id="L25">        var result = new ArrayList&lt;GitHistoryCapture.Reflog&gt;();</span>
+<span class="fc" id="L26">        try (var input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {</span>
+<span class="fc" id="L27">            var line = new ByteArrayOutputStream(); var buffer = new byte[8_192];</span>
+            for (;;) {
+<span class="fc bfc" id="L29" title="All 2 branches covered.">                check.check(); int count = input.read(buffer); if (count &lt; 0) break;</span>
+<span class="pc bpc" id="L30" title="3 of 4 branches missed.">                if (count == 0) { int value = input.read(); if (value &lt; 0) break; buffer[0] = (byte) value; count = 1; }</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">                for (int index = 0; index &lt; count; index++) {</span>
+<span class="fc" id="L32">                    int value = buffer[index] &amp; 0xff;</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                    if (value == '\n') {</span>
+<span class="fc" id="L34">                        var entry = parse(name, line.toByteArray()); budget.add(entry); result.add(entry); line.reset();</span>
+<span class="fc" id="L35">                    } else {</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">                        if (line.size() &gt;= MAX_RECORD_BYTES) throw failure(&quot;Git reflog record byte limit exceeded&quot;);</span>
+<span class="fc" id="L37">                        line.write(value);</span>
+                    }
+                }
+<span class="fc" id="L40">            }</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (line.size() != 0) throw failure(&quot;Incomplete retained Git reflog record&quot;);</span>
+<span class="fc" id="L42">            check.check(); return List.copyOf(result);</span>
+        }
+    }
+
+    private static GitHistoryCapture.Reflog parse(String name, byte[] bytes) throws IOException {
+<span class="fc" id="L47">        String line = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();</span>
+<span class="fc" id="L48">        int tab = line.indexOf('\t', 82);</span>
+<span class="pc bpc" id="L49" title="4 of 8 branches missed.">        if (line.length() &lt; 83 || line.charAt(40) != ' ' || line.charAt(81) != ' ' || tab &lt; 82</span>
+<span class="fc bfc" id="L50" title="All 4 branches covered.">                || !ObjectId.isId(line.substring(0, 40)) || !ObjectId.isId(line.substring(41, 81))</span>
+<span class="fc bfc" id="L51" title="All 4 branches covered.">                || line.indexOf('\0') &gt;= 0 || line.indexOf('\r') &gt;= 0) throw failure(&quot;Invalid retained Git reflog record&quot;);</span>
+<span class="fc" id="L52">        String identity = line.substring(82, tab);</span>
+<span class="fc" id="L53">        var who = RawParseUtils.parsePersonIdent(identity);</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">        if (who == null || !identity.equals(who.toExternalString()))</span>
+<span class="fc" id="L55">            throw failure(&quot;Invalid retained Git reflog author&quot;);</span>
+<span class="fc" id="L56">        return new GitHistoryCapture.Reflog(name, line.substring(0, 40), line.substring(41, 81), who.getName(), who.getEmailAddress(),</span>
+<span class="fc" id="L57">                who.getWhenAsInstant().getEpochSecond(), who.getTimeZoneOffset(), line.substring(tab + 1));</span>
+    }
+
+    static final class Budget {
+        private final int maximum;
+        private int entries;
+        private long bytes;
+<span class="fc" id="L64">        Budget(int maximum) { this.maximum = maximum; }</span>
+        void add(GitHistoryCapture.Reflog entry) throws IOException {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (++entries &gt; maximum) throw failure(&quot;Git reflog entry limit exceeded&quot;);</span>
+<span class="fc" id="L67">            long characters = (long) entry.name().length() + entry.email().length() + entry.message().length() + 128;</span>
+<span class="pc bpc" id="L68" title="3 of 6 branches missed.">            if (characters &gt; MAX_RECORD_BYTES || entry.message().indexOf('\n') &gt;= 0 || entry.message().indexOf('\r') &gt;= 0</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                    || entry.message().indexOf('\0') &gt;= 0) throw failure(&quot;Git reflog record byte limit exceeded&quot;);</span>
+<span class="fc" id="L70">            String content = entry.name() + &quot; &quot; + entry.email() + &quot; &quot; + entry.message();</span>
+<span class="fc" id="L71">            int size = StandardCharsets.UTF_8.newEncoder().encode(CharBuffer.wrap(content)).remaining() + 128;</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">            if (size &gt; MAX_RECORD_BYTES || size &gt; MAX_TOTAL_BYTES - bytes) throw failure(&quot;Git reflog byte limit exceeded&quot;);</span>
+<span class="fc" id="L73">            bytes += size;</span>
+<span class="fc" id="L74">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

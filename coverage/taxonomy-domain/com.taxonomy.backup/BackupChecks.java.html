@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupChecks.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupChecks.java</span></div><h1>BackupChecks.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.util.Objects;
+
+final class BackupChecks {
+    private BackupChecks() { }
+    static String text(String value, String name) {
+<span class="fc" id="L8">        Objects.requireNonNull(value, name);</span>
+<span class="fc bfc" id="L9" title="All 8 branches covered.">        if (value.isBlank() || !value.equals(value.strip()) || value.codePointCount(0, value.length()) &gt; BackupLimits.MAX_TEXT_LENGTH || value.chars().anyMatch(Character::isISOControl)) {</span>
+<span class="fc" id="L10">            throw new IllegalArgumentException(&quot;Invalid &quot; + name);</span>
+        }
+<span class="fc" id="L12">        return value;</span>
+    }
+    static void count(int size) {
+<span class="fc bfc" id="L15" title="All 2 branches covered.">        if (size &gt; BackupLimits.MAX_ITEMS) throw new IllegalArgumentException(&quot;Too many manifest items&quot;);</span>
+<span class="fc" id="L16">    }</span>
+    static String hash(String value, int length, String name) {
+<span class="fc" id="L18">        text(value, name);</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        if (!value.matches(&quot;[0-9a-f]{&quot; + length + &quot;}&quot;)) throw new IllegalArgumentException(&quot;Invalid &quot; + name);</span>
+<span class="fc" id="L20">        return value;</span>
+    }
+    static String archiveId(String value) {
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (!text(value, &quot;archiveId&quot;).matches(&quot;[a-zA-Z0-9-]{1,128}&quot;)</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">                || value.matches(&quot;(?i)CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]&quot;)) throw new IllegalArgumentException(&quot;Invalid opaque archive ID&quot;);</span>
+<span class="fc" id="L25">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

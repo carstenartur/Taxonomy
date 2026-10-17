@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateRelationProvenance.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.archimate.exchange</a> &gt; <span class="el_source">ArchiMateRelationProvenance.java</span></div><h1>ArchiMateRelationProvenance.java</h1><pre class="source lang-java linenums">package com.taxonomy.archimate.exchange;
+
+import com.taxonomy.archimate.ArchiMateProperty;
+import com.taxonomy.diagram.DiagramRelationMetadata;
+import com.taxonomy.dto.RelationOrigin;
+import com.taxonomy.dto.RelationSearchModel.*;
+import com.taxonomy.model.SeedType;
+
+import java.math.BigDecimal;
+import java.util.*;
+
+/** Optional, typed Exchange properties retain recorded evidence without inventing review status. */
+public final class ArchiMateRelationProvenance {
+    private static final String PREFIX = &quot;taxonomy.provenance.&quot;;
+    private ArchiMateRelationProvenance() { }
+
+    public static Map&lt;String, ArchiMateProperty&gt; write(DiagramRelationMetadata metadata) {
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        if (metadata == null) return Map.of();</span>
+<span class="fc" id="L19">        var fields = new LinkedHashMap&lt;String, ArchiMateProperty&gt;();</span>
+<span class="fc" id="L20">        put(fields, &quot;version&quot;, &quot;1&quot;);</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (metadata.relationId() != null)</span>
+<span class="fc" id="L22">            fields.put(PREFIX + &quot;relationId&quot;, new ArchiMateProperty(&quot;number&quot;, metadata.relationId().toString()));</span>
+<span class="fc" id="L23">        put(fields, &quot;origin&quot;, metadata.origin());</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        if (metadata.confidence() != null) fields.put(PREFIX + &quot;confidence&quot;, ArchiMateProperty.number(metadata.confidence()));</span>
+<span class="fc" id="L25">        put(fields, &quot;includedBecause&quot;, metadata.includedBecause());</span>
+<span class="fc" id="L26">        put(fields, &quot;derivationReason&quot;, metadata.derivationReason());</span>
+<span class="fc" id="L27">        put(fields, &quot;presenceReason&quot;, metadata.presenceReason());</span>
+<span class="fc" id="L28">        put(fields, &quot;seedType&quot;, metadata.seedType());</span>
+<span class="fc" id="L29">        fields.put(PREFIX + &quot;evidenceCount&quot;, ArchiMateProperty.number(metadata.requirementEvidence().size()));</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (int index = 0; index &lt; metadata.requirementEvidence().size(); index++) {</span>
+<span class="fc" id="L31">            Edge evidence = metadata.requirementEvidence().get(index);</span>
+<span class="fc" id="L32">            String key = &quot;evidence.&quot; + index + &quot;.&quot;;</span>
+<span class="fc" id="L33">            node(fields, key + &quot;contribution.source.&quot;, evidence.contribution().source());</span>
+<span class="fc" id="L34">            put(fields, key + &quot;contribution.text&quot;, evidence.contribution().text());</span>
+<span class="fc" id="L35">            put(fields, key + &quot;contribution.quote&quot;, evidence.contribution().quote());</span>
+<span class="fc" id="L36">            put(fields, key + &quot;contribution.condition&quot;, evidence.contribution().condition());</span>
+<span class="fc" id="L37">            node(fields, key + &quot;target.&quot;, evidence.target());</span>
+<span class="fc" id="L38">            put(fields, key + &quot;type&quot;, evidence.type());</span>
+<span class="fc" id="L39">            put(fields, key + &quot;direction&quot;, evidence.direction());</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            fields.put(PREFIX + key + &quot;hasDecision&quot;, ArchiMateProperty.flag(evidence.evidence() != null));</span>
+<span class="fc" id="L41">            Decision d = evidence.evidence();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (d != null) {</span>
+<span class="fc" id="L43">                put(fields, key + &quot;decision.targetId&quot;, d.targetId());</span>
+<span class="fc" id="L44">                put(fields, key + &quot;decision.outcome&quot;, d.outcome());</span>
+<span class="fc" id="L45">                put(fields, key + &quot;decision.contribution&quot;, d.contribution());</span>
+<span class="fc" id="L46">                put(fields, key + &quot;decision.quote&quot;, d.quote());</span>
+<span class="fc" id="L47">                put(fields, key + &quot;decision.necessity&quot;, d.necessity());</span>
+<span class="fc" id="L48">                put(fields, key + &quot;decision.condition&quot;, d.condition());</span>
+<span class="fc" id="L49">                put(fields, key + &quot;decision.alternativeGroup&quot;, d.alternativeGroup());</span>
+<span class="fc" id="L50">                put(fields, key + &quot;decision.rationale&quot;, d.rationale());</span>
+<span class="fc" id="L51">                put(fields, key + &quot;decision.question&quot;, d.question());</span>
+            }
+        }
+<span class="fc" id="L54">        return fields;</span>
+    }
+
+    public static DiagramRelationMetadata read(Map&lt;String, ArchiMateProperty&gt; properties) {
+<span class="fc" id="L58">        var f = new Fields(properties);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (f.values.isEmpty()) return null; // Legacy exchanges never asserted provenance.</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (!&quot;1&quot;.equals(f.required(&quot;version&quot;, &quot;string&quot;))) throw new IllegalArgumentException(&quot;Unsupported relationship provenance version&quot;);</span>
+<span class="fc" id="L61">        String relationId = f.optional(&quot;relationId&quot;, &quot;number&quot;);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        Long id = relationId == null ? null : new BigDecimal(relationId).longValueExact();</span>
+<span class="fc" id="L63">        RelationOrigin origin = f.enumeration(&quot;origin&quot;, RelationOrigin.class);</span>
+<span class="fc" id="L64">        String confidenceValue = f.optional(&quot;confidence&quot;, &quot;number&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        Double confidence = confidenceValue == null ? null : Double.valueOf(confidenceValue);</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">        if (confidence != null &amp;&amp; !Double.isFinite(confidence)) throw new IllegalArgumentException(&quot;Non-finite relationship confidence&quot;);</span>
+<span class="fc" id="L67">        String included = f.optional(&quot;includedBecause&quot;, &quot;string&quot;);</span>
+<span class="fc" id="L68">        String derivation = f.optional(&quot;derivationReason&quot;, &quot;string&quot;);</span>
+<span class="fc" id="L69">        String presence = f.optional(&quot;presenceReason&quot;, &quot;string&quot;);</span>
+<span class="fc" id="L70">        SeedType seed = f.enumeration(&quot;seedType&quot;, SeedType.class);</span>
+<span class="fc" id="L71">        int count = new BigDecimal(f.required(&quot;evidenceCount&quot;, &quot;number&quot;)).intValueExact();</span>
+        // Each evidence item needs several properties; reject impossible counts before iteration/allocation.
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">        if (count &lt; 0 || count &gt; f.values.size()) throw new IllegalArgumentException(&quot;Invalid relationship evidence count&quot;);</span>
+<span class="fc" id="L74">        var evidence = new ArrayList&lt;Edge&gt;();</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        for (int index = 0; index &lt; count; index++) {</span>
+<span class="fc" id="L76">            String key = &quot;evidence.&quot; + index + &quot;.&quot;;</span>
+<span class="fc" id="L77">            var source = node(f, key + &quot;contribution.source.&quot;);</span>
+<span class="fc" id="L78">            var contribution = new Contribution(source, f.required(key + &quot;contribution.text&quot;, &quot;string&quot;),</span>
+<span class="fc" id="L79">                    f.required(key + &quot;contribution.quote&quot;, &quot;string&quot;), f.required(key + &quot;contribution.condition&quot;, &quot;string&quot;));</span>
+<span class="fc" id="L80">            var target = node(f, key + &quot;target.&quot;);</span>
+<span class="fc" id="L81">            String type = f.required(key + &quot;type&quot;, &quot;string&quot;);</span>
+<span class="fc" id="L82">            Direction direction = Direction.valueOf(f.required(key + &quot;direction&quot;, &quot;string&quot;));</span>
+<span class="fc" id="L83">            Decision decision = null;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (Boolean.parseBoolean(f.required(key + &quot;hasDecision&quot;, &quot;boolean&quot;))) {</span>
+<span class="fc" id="L85">                decision = new Decision(f.optional(key + &quot;decision.targetId&quot;, &quot;string&quot;),</span>
+<span class="fc" id="L86">                        f.enumeration(key + &quot;decision.outcome&quot;, Outcome.class),</span>
+<span class="fc" id="L87">                        f.optional(key + &quot;decision.contribution&quot;, &quot;string&quot;), f.optional(key + &quot;decision.quote&quot;, &quot;string&quot;),</span>
+<span class="fc" id="L88">                        f.enumeration(key + &quot;decision.necessity&quot;, Necessity.class), f.optional(key + &quot;decision.condition&quot;, &quot;string&quot;),</span>
+<span class="fc" id="L89">                        f.optional(key + &quot;decision.alternativeGroup&quot;, &quot;string&quot;), f.optional(key + &quot;decision.rationale&quot;, &quot;string&quot;),</span>
+<span class="fc" id="L90">                        f.optional(key + &quot;decision.question&quot;, &quot;string&quot;));</span>
+            }
+<span class="fc" id="L92">            evidence.add(new Edge(contribution, target, type, direction, decision));</span>
+        }
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (!f.values.isEmpty()) throw new IllegalArgumentException(&quot;Unsupported relationship provenance fields: &quot; + f.values.keySet());</span>
+<span class="fc" id="L95">        return new DiagramRelationMetadata(id, origin, confidence, included, derivation, presence, seed, evidence);</span>
+    }
+
+    private static void node(Map&lt;String, ArchiMateProperty&gt; fields, String key, Node node) {
+<span class="fc" id="L99">        put(fields, key + &quot;id&quot;, node.id()); put(fields, key + &quot;root&quot;, node.root());</span>
+<span class="fc" id="L100">        put(fields, key + &quot;name&quot;, node.name()); put(fields, key + &quot;description&quot;, node.description());</span>
+<span class="fc" id="L101">        fields.put(PREFIX + key + &quot;container&quot;, ArchiMateProperty.flag(node.container()));</span>
+<span class="fc" id="L102">    }</span>
+
+    private static Node node(Fields fields, String key) {
+<span class="fc" id="L105">        return new Node(fields.required(key + &quot;id&quot;, &quot;string&quot;), fields.required(key + &quot;root&quot;, &quot;string&quot;),</span>
+<span class="fc" id="L106">                fields.required(key + &quot;name&quot;, &quot;string&quot;), fields.required(key + &quot;description&quot;, &quot;string&quot;),</span>
+<span class="fc" id="L107">                Boolean.parseBoolean(fields.required(key + &quot;container&quot;, &quot;boolean&quot;)));</span>
+    }
+
+    private static void put(Map&lt;String, ArchiMateProperty&gt; fields, String key, Object value) {
+<span class="fc bfc" id="L111" title="All 4 branches covered.">        if (value != null) fields.put(PREFIX + key, ArchiMateProperty.text(value instanceof Enum&lt;?&gt; e ? e.name() : value.toString()));</span>
+<span class="fc" id="L112">    }</span>
+
+    private static final class Fields {
+<span class="fc" id="L115">        private final Map&lt;String, ArchiMateProperty&gt; values = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L116">        Fields(Map&lt;String, ArchiMateProperty&gt; properties) {</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            properties.forEach((key, value) -&gt; { if (key.startsWith(PREFIX)) values.put(key.substring(PREFIX.length()), value); });</span>
+<span class="fc" id="L118">        }</span>
+        String required(String key, String type) {
+<span class="fc" id="L120">            String result = optional(key, type);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (result == null) throw new IllegalArgumentException(&quot;Missing relationship provenance property: &quot; + key);</span>
+<span class="fc" id="L122">            return result;</span>
+        }
+        String optional(String key, String type) {
+<span class="fc" id="L125">            var value = values.remove(key);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (value == null) return null;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (!type.equals(value.type())) throw new IllegalArgumentException(&quot;Wrongly typed relationship provenance property: &quot; + key);</span>
+<span class="fc" id="L128">            return value.value();</span>
+        }
+        &lt;T extends Enum&lt;T&gt;&gt; T enumeration(String key, Class&lt;T&gt; type) {
+<span class="fc" id="L131">            String value = optional(key, &quot;string&quot;);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            return value == null ? null : Enum.valueOf(type, value);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

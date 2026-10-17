@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortableKnowledgeReferences.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.backup</a> &gt; <span class="el_source">PortableKnowledgeReferences.java</span></div><h1>PortableKnowledgeReferences.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.backup;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.taxonomy.backup.*;
+import java.io.IOException;
+import java.util.*;
+
+/** Catalogue references in typed portable payload fields; never treats labels or arbitrary strings as identities. */
+<span class="fc" id="L9">final class PortableKnowledgeReferences {</span>
+<span class="fc" id="L10">    final Set&lt;String&gt; codes=new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L11">    final Set&lt;SourceRecordId&gt; hypotheses=new HashSet&lt;&gt;();</span>
+    void code(String code)throws IOException {
+<span class="fc bfc" id="L13" title="All 2 branches covered.">        if(code==null)return;</span>
+<span class="pc bpc" id="L14" title="4 of 8 branches missed.">        if(code.isBlank() || !code.equals(code.strip()) || code.length()&gt;256 || code.chars().anyMatch(Character::isISOControl))throw new IOException(&quot;Invalid catalogue reference&quot;);</span>
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">        codes.add(code);if(codes.size()&gt;100_000)throw new IOException(&quot;Catalogue reference limit exceeded&quot;);</span>
+<span class="fc" id="L16">    }</span>
+    void hypothesis(String id)throws IOException {
+<span class="pc bpc" id="L18" title="1 of 8 branches missed.">        if(id==null || id.isEmpty() || id.length()&gt;19 || id.charAt(0)=='0'</span>
+<span class="fc bfc" id="L19" title="All 6 branches covered.">                || id.chars().anyMatch(c-&gt;c&lt;'0' || c&gt;'9'))throw new IOException(&quot;Invalid hypothesis reference&quot;);</span>
+<span class="fc" id="L20">        try {Long.parseLong(id);}catch(NumberFormatException invalid){throw new IOException(&quot;Invalid hypothesis reference&quot;,invalid);}</span>
+<span class="fc" id="L21">        var identity=new SourceRecordId(&quot;knowledge.hypothesis&quot;,id);</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        if(!hypotheses.contains(identity)) {</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">            if(hypotheses.size()&gt;=100_000)throw new IOException(&quot;Hypothesis reference limit exceeded&quot;);</span>
+<span class="fc" id="L24">            hypotheses.add(identity);</span>
+        }
+<span class="fc" id="L26">    }</span>
+<span class="pc bpc" id="L27" title="1 of 6 branches missed.">    void value(JsonNode value)throws IOException {if(value==null || value.isNull())return;if(!value.isTextual())throw new IOException(&quot;Invalid catalogue reference field&quot;);code(value.textValue());}</span>
+<span class="pc bpc" id="L28" title="2 of 8 branches missed.">    void array(JsonNode value)throws IOException {if(value==null || value.isNull())return;if(!value.isArray())throw new IOException(&quot;Invalid catalogue reference list&quot;);for(var item:value)value(item);}</span>
+    void payload(JsonNode value)throws IOException {
+<span class="fc bfc" id="L30" title="All 4 branches covered.">        if(value==null || value.isNull())return;</span>
+<span class="fc bfc" id="L31" title="All 4 branches covered.">        if(value.isArray()){for(var child:value)payload(child);return;}</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        if(!value.isObject())return;</span>
+        // These names belong to AnalysisResult / architecture views / catalogue trees / analysis questions.
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for(String field:List.of(&quot;code&quot;,&quot;nodeCode&quot;,&quot;sourceCode&quot;,&quot;targetCode&quot;,&quot;parentCode&quot;,&quot;parentNodeCode&quot;,&quot;productFamilyCode&quot;,&quot;sourceNodeCode&quot;,&quot;taxonomyRoot&quot;,&quot;sourceRoot&quot;,&quot;expectedTargetRoot&quot;))value(value.get(field));</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        for(String field:List.of(&quot;scores&quot;,&quot;rawScores&quot;,&quot;effectiveScores&quot;,&quot;productSuitabilityScores&quot;,&quot;reasons&quot;,&quot;scoreDetails&quot;,&quot;scoreSemanticsContext&quot;)) {</span>
+<span class="pc bpc" id="L36" title="1 of 4 branches missed.">            var map=value.get(field);if(map!=null &amp;&amp; !map.isNull()) {</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">                if(!map.isObject())throw new IOException(&quot;Invalid catalogue-indexed payload&quot;);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">                var names=map.fieldNames();while(names.hasNext())code(names.next());</span>
+            }
+<span class="fc" id="L40">        }</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for(String field:List.of(&quot;evaluatedNodes&quot;,&quot;candidateCodes&quot;))array(value.get(field));</span>
+<span class="pc bpc" id="L42" title="3 of 4 branches missed.">        var coverage=value.get(&quot;analysisCoverage&quot;);if(coverage!=null &amp;&amp; !coverage.isNull()) {</span>
+<span class="nc bnc" id="L43" title="All 4 branches missed.">            var nodes=coverage.get(&quot;nodes&quot;);if(nodes==null || !nodes.isObject())throw new IOException(&quot;Invalid analysis coverage references&quot;);</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">            var names=nodes.fieldNames();while(names.hasNext())code(names.next());</span>
+        }
+        // Traverse only declared structured evidence, never diagnostics, free text or provider prompts.
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for(String field:List.of(&quot;tree&quot;,&quot;children&quot;,&quot;discrepancies&quot;,&quot;architectureView&quot;,&quot;anchors&quot;,&quot;includedElements&quot;,&quot;includedRelationships&quot;,&quot;provisionalRelations&quot;,&quot;productCoverageGaps&quot;,&quot;confirmedElements&quot;,&quot;proposedElements&quot;,&quot;suggestedRelations&quot;,&quot;missingRelations&quot;,&quot;incompletePatterns&quot;,&quot;coverageGaps&quot;,&quot;matchedPatterns&quot;,&quot;explanationTrace&quot;,&quot;analysisResult&quot;))payload(value.get(field));</span>
+<span class="pc bpc" id="L48" title="3 of 4 branches missed.">        var report=value.get(&quot;relationSearchReport&quot;);if(report!=null &amp;&amp; !report.isNull())relationReport(report);</span>
+<span class="pc bpc" id="L49" title="3 of 4 branches missed.">        var edges=value.get(&quot;requirementEvidence&quot;);if(edges!=null &amp;&amp; !edges.isNull()) {</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">            if(!edges.isArray())throw new IOException(&quot;Invalid architecture relation evidence&quot;);</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">            for(var edge:edges)edge(com.taxonomy.exchange.backup.PortableRows.json().treeToValue(edge,com.taxonomy.dto.RelationSearchModel.Edge.class));</span>
+        }
+<span class="fc bfc" id="L53" title="All 4 branches covered.">        var provisional=value.get(&quot;provisionalRelations&quot;);if(provisional!=null &amp;&amp; !provisional.isNull()) {</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">            if(!provisional.isArray())throw new IOException(&quot;Invalid provisional relation references&quot;);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            for(var item:provisional) {</span>
+<span class="pc bpc" id="L56" title="2 of 4 branches missed.">                var id=item.get(&quot;hypothesisId&quot;);if(id!=null &amp;&amp; !id.isNull()) {</span>
+<span class="pc bpc" id="L57" title="2 of 6 branches missed.">                    if(!id.isIntegralNumber() || !id.canConvertToLong() || id.longValue()&lt;1)throw new IOException(&quot;Invalid hypothesis reference&quot;);</span>
+<span class="fc" id="L58">                    hypothesis(id.asText());</span>
+                }
+<span class="fc" id="L60">            }</span>
+        }
+<span class="fc" id="L62">    }</span>
+    private void edge(com.taxonomy.dto.RelationSearchModel.Edge edge)throws IOException {
+<span class="nc" id="L64">        code(edge.contribution().source().id());code(edge.target().id());code(edge.contribution().source().root());code(edge.target().root());</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        if(edge.evidence()!=null)code(edge.evidence().targetId());</span>
+<span class="nc" id="L66">    }</span>
+    private void relationReport(JsonNode document)throws IOException {
+<span class="nc" id="L68">        var report=com.taxonomy.exchange.backup.PortableRows.json().treeToValue(document,com.taxonomy.dto.RelationSearchReport.class);</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        for(var source:report.sources()) {</span>
+<span class="nc" id="L70">            code(source.node().id());code(source.node().root());</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            for(var contribution:source.contributions()){code(contribution.source().id());code(contribution.source().root());}</span>
+<span class="nc" id="L72">        }</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        for(var edge:report.result().edges())edge(edge);</span>
+<span class="nc bnc" id="L74" title="All 4 branches missed.">        for(var unfinished:report.result().unfinished()){code(unfinished.sourceId());for(var target:unfinished.targets())code(target);}</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        for(var trace:report.result().trace()){code(trace.sourceId());code(trace.targetId());}</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        for(var task:report.tasks()){code(task.sourceId());code(task.targetRoot());}</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if(report.progress()!=null) {</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">            for(var taxonomy:report.progress().taxonomies())code(taxonomy.root());</span>
+<span class="nc bnc" id="L79" title="All 4 branches missed.">            var current=report.progress().current();if(current!=null){code(current.sourceId());code(current.targetRoot());for(var candidate:current.candidates())code(candidate);}</span>
+        }
+<span class="nc" id="L81">    }</span>
+    void encoded(JsonNode record,String field)throws IOException {
+<span class="pc bpc" id="L83" title="3 of 4 branches missed.">        var value=record.get(field);if(value==null || value.isNull())return;</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        if(!value.isTextual())throw new IOException(&quot;Invalid encoded analysis references&quot;);</span>
+<span class="nc" id="L85">        payload(com.taxonomy.exchange.backup.PortableRows.json().readTree(value.textValue()));</span>
+<span class="nc" id="L86">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

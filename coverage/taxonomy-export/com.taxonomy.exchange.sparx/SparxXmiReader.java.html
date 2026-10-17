@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxXmiReader.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxXmiReader.java</span></div><h1>SparxXmiReader.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.exchange.ReqifExchangeCodec;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import org.w3c.dom.Element;
+
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+import static com.taxonomy.exchange.sparx.SparxMappingProfile.*;
+
+/** Bounded parser for the documented EA XMI 2.1 profile, not arbitrary UML/MDG semantics. */
+<span class="fc" id="L14">final class SparxXmiReader {</span>
+<span class="fc" id="L15">    private final Map&lt;String, Element&gt; details = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L16">    private final Set&lt;String&gt; identities = new HashSet&lt;&gt;(), taxonomyIds = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L17">    private final List&lt;Artifact&gt; artifacts = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L18">    private final List&lt;Relation&gt; relations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L19">    private final List&lt;Placement&gt; placements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L20">    private final List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+    private String modelId;
+
+    ExchangeDocument read(byte[] content, String version, boolean complete) {
+<span class="fc" id="L24">        var document = ExchangeXml.parse(content);</span>
+<span class="fc" id="L25">        Element root = document.getDocumentElement();</span>
+<span class="pc bpc" id="L26" title="1 of 4 branches missed.">        if (!XMI.equals(root.getNamespaceURI()) || !&quot;XMI&quot;.equals(root.getLocalName())</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">                || !&quot;2.1&quot;.equals(root.getAttributeNS(XMI, &quot;version&quot;)))</span>
+<span class="fc" id="L28">            throw ExchangeXml.invalid(&quot;SPARX_XMI_VERSION&quot;, &quot;Select the documented EA XMI 2.1 export profile&quot;);</span>
+<span class="pc bpc" id="L29" title="1 of 4 branches missed.">        List&lt;Element&gt; models = ExchangeXml.children(root).stream().filter(e -&gt; UML.equals(e.getNamespaceURI()) &amp;&amp; &quot;Model&quot;.equals(e.getLocalName())).toList();</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        if (models.size() != 1) throw ExchangeXml.invalid(&quot;SPARX_MODEL_SCOPE&quot;, &quot;Exactly one UML model scope is required&quot;);</span>
+<span class="fc bfc" id="L31" title="All 6 branches covered.">        for (Element extension : ExchangeXml.children(root)) if (XMI.equals(extension.getNamespaceURI()) &amp;&amp; &quot;Extension&quot;.equals(extension.getLocalName())) {</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">            if (!&quot;Enterprise Architect&quot;.equals(extension.getAttribute(&quot;extender&quot;))) {</span>
+<span class="nc" id="L33">                loss(null, &quot;extension&quot;, &quot;SPARX_EXTENSION_EXCLUDED&quot;, &quot;Unrecognized producer extension is retained only in source evidence&quot;);</span>
+<span class="nc" id="L34">                continue;</span>
+            }
+<span class="fc bfc" id="L36" title="All 2 branches covered.">            for (Element section : ExchangeXml.children(extension)) {</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">                if (Set.of(&quot;elements&quot;, &quot;connectors&quot;).contains(section.getLocalName())) {</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">                    for (Element item : ExchangeXml.children(section)) {</span>
+<span class="fc" id="L39">                        String id = guid(item.getAttributeNS(XMI, &quot;idref&quot;));</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                        if (details.putIfAbsent(id, item) != null) throw duplicate();</span>
+<span class="fc" id="L41">                    }</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">                } else loss(null, section.getLocalName(), section.getLocalName().equals(&quot;diagrams&quot;) ? &quot;SPARX_LAYOUT_EXCLUDED&quot; : &quot;SPARX_EXTENSION_EXCLUDED&quot;,</span>
+                        &quot;Presentation or unsupported extension is retained only in source evidence and is not exported&quot;);
+<span class="fc" id="L44">            }</span>
+        }
+<span class="fc" id="L46">        Element model = models.getFirst(); modelId = guid(model.getAttributeNS(XMI, &quot;id&quot;)); identities.add(modelId);</span>
+<span class="fc" id="L47">        walk(model, null);</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        if (artifacts.size() + relations.size() &gt; ExchangeXml.MAX_ARTIFACTS) throw ExchangeXml.invalid(&quot;ITEM_LIMIT&quot;, &quot;Sparx scope exceeds the supported item limit&quot;);</span>
+<span class="fc" id="L49">        Set&lt;String&gt; objects = new HashSet&lt;&gt;(); artifacts.forEach(a -&gt; objects.add(a.id()));</span>
+<span class="pc bpc" id="L50" title="2 of 6 branches missed.">        for (Relation relation : relations) if (!objects.contains(relation.source()) || !objects.contains(relation.target()))</span>
+<span class="nc" id="L51">            throw ExchangeXml.invalid(&quot;SPARX_ENDPOINT_REQUIRED&quot;, &quot;A connector endpoint is outside the supplied model scope&quot;);</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">        for (String id : details.keySet()) if (!identities.contains(id))</span>
+<span class="nc" id="L53">            loss(id, &quot;extension&quot;, &quot;SPARX_ORPHAN_EXTENSION&quot;, &quot;An extension has no matching semantic object in this scope&quot;);</span>
+<span class="fc" id="L54">        artifacts.sort(Comparator.comparing(Artifact::id)); relations.sort(Comparator.comparing(Relation::id)); placements.sort(Comparator.comparing(Placement::id));</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        return new ExchangeDocument(PROFILE, VERSION, version == null ? ReqifExchangeCodec.digest(content) : version, complete,</span>
+<span class="fc" id="L56">                new String(ExchangeXml.write(document), StandardCharsets.UTF_8), artifacts, relations, placements,</span>
+<span class="fc" id="L57">                Map.of(&quot;identifier&quot;, modelId, &quot;title&quot;, model.getAttribute(&quot;name&quot;)), losses);</span>
+    }
+
+    private void walk(Element parent, String parentPlacement) {
+<span class="fc" id="L61">        int position = 0;</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (Element node : ExchangeXml.children(parent)) {</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">            if (!&quot;packagedElement&quot;.equals(node.getLocalName()) || node.getNamespaceURI() != null) {</span>
+<span class="nc" id="L64">                loss(null, node.getLocalName(), &quot;SPARX_CONSTRUCT_EXCLUDED&quot;, &quot;Unmapped UML construct is retained only in source evidence&quot;);</span>
+<span class="nc" id="L65">                continue;</span>
+            }
+<span class="fc" id="L67">            String type = type(node), id = guid(node.getAttributeNS(XMI, &quot;id&quot;));</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (!identities.add(id)) throw duplicate();</span>
+<span class="fc" id="L69">            Element detail = details.get(id), properties = ExchangeXml.child(detail, &quot;properties&quot;);</span>
+<span class="fc" id="L70">            Map&lt;String, String&gt; attributes = tags(detail), extension = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">            for (String key : new ArrayList&lt;&gt;(attributes.keySet())) if (key.startsWith(&quot;tag:taxonomy.&quot;)</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                    &amp;&amp; !Set.of(&quot;tag:taxonomy.id&quot;, &quot;tag:taxonomy.mappingProfile&quot;, &quot;tag:taxonomy.elementType&quot;, &quot;tag:taxonomy.relationType&quot;, &quot;tag:taxonomy.lastSyncRevision&quot;).contains(key))</span>
+<span class="fc" id="L73">                extension.put(&quot;taxonomy:&quot; + key.substring(&quot;tag:taxonomy.&quot;.length()), attributes.remove(key));</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            String stereotype = properties == null ? &quot;&quot; : properties.getAttribute(&quot;stereotype&quot;);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (!stereotype.isEmpty()) extension.put(&quot;stereotype&quot;, stereotype);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            String description = properties == null ? &quot;&quot; : properties.getAttribute(&quot;documentation&quot;);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (description.isEmpty()) {</span>
+<span class="fc" id="L78">                Element comment = ExchangeXml.child(node, &quot;ownedComment&quot;);</span>
+<span class="pc bpc" id="L79" title="3 of 4 branches missed.">                if (comment != null) description = comment.hasAttribute(&quot;body&quot;) ? comment.getAttribute(&quot;body&quot;) : ExchangeXml.text(comment, &quot;body&quot;);</span>
+            }
+<span class="fc" id="L81">            copyProperties(properties, attributes);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            if (isRelation(type)) {</span>
+<span class="fc" id="L83">                String source = reference(detail, &quot;source&quot;, node.getAttribute(&quot;client&quot;));</span>
+<span class="fc" id="L84">                String target = reference(detail, &quot;target&quot;, node.getAttribute(&quot;supplier&quot;));</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                if (type.equals(&quot;Association&quot;)) {</span>
+<span class="fc" id="L86">                    List&lt;Element&gt; ends = ExchangeXml.children(node).stream().filter(e -&gt; &quot;ownedEnd&quot;.equals(e.getLocalName())).toList();</span>
+<span class="pc bpc" id="L87" title="3 of 4 branches missed.">                    if (source.isEmpty() &amp;&amp; ends.size() == 2) { source = ends.get(0).getAttribute(&quot;type&quot;); target = ends.get(1).getAttribute(&quot;type&quot;); }</span>
+                }
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">                String eaType = properties != null &amp;&amp; properties.hasAttribute(&quot;ea_type&quot;) ? properties.getAttribute(&quot;ea_type&quot;) : type;</span>
+<span class="fc" id="L90">                String canonical = attributes.getOrDefault(&quot;tag:taxonomy.relationType&quot;, relationType(eaType));</span>
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">                if (canonical != null &amp;&amp; eaRelation(canonical) != null) extension.put(&quot;canonicalType&quot;, canonical);</span>
+<span class="nc" id="L92">                else loss(id, &quot;type&quot;, &quot;SPARX_RELATION_UNMAPPED&quot;, &quot;Connector needs an explicit supported mapping&quot;);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                String direction = properties == null ? &quot;&quot; : properties.getAttribute(&quot;direction&quot;);</span>
+<span class="pc bpc" id="L94" title="3 of 4 branches missed.">                if (direction.isEmpty()) direction = type.equals(&quot;Association&quot;) ? &quot;Unspecified&quot; : &quot;Source -&gt; Destination&quot;;</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                if (!Set.of(&quot;Unspecified&quot;, &quot;Source -&gt; Destination&quot;, &quot;Destination -&gt; Source&quot;, &quot;Bi-Directional&quot;).contains(direction))</span>
+<span class="nc" id="L96">                    throw ExchangeXml.invalid(&quot;SPARX_DIRECTION&quot;, &quot;Unsupported connector direction&quot;);</span>
+<span class="fc" id="L97">                extension.put(&quot;direction&quot;, direction);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                if (direction.equals(&quot;Bi-Directional&quot;))</span>
+<span class="fc" id="L99">                    loss(id, &quot;direction&quot;, &quot;SPARX_DIRECTION_UNMAPPED&quot;, &quot;One native relation cannot represent both directions; reject this connector before apply&quot;);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                if (!node.getAttribute(&quot;name&quot;).isEmpty()) attributes.put(&quot;name&quot;, node.getAttribute(&quot;name&quot;));</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                if (!description.isEmpty()) attributes.put(&quot;description&quot;, description);</span>
+<span class="fc" id="L102">                relations.add(new Relation(id, eaType, guid(source), guid(target), attributes, extension));</span>
+<span class="fc" id="L103">            } else {</span>
+<span class="fc bfc" id="L104" title="All 6 branches covered.">                boolean requirement = stereotype.equalsIgnoreCase(&quot;requirement&quot;) || properties != null &amp;&amp; &quot;Requirement&quot;.equals(properties.getAttribute(&quot;sType&quot;));</span>
+<span class="fc bfc" id="L105" title="All 4 branches covered.">                ArtifactKind kind = type.equals(&quot;Package&quot;) ? ArtifactKind.SPECIFICATION : requirement ? ArtifactKind.REQUIREMENT : ArtifactKind.ELEMENT;</span>
+<span class="fc" id="L106">                String canonical = elementType(type, stereotype, attributes.get(&quot;tag:taxonomy.elementType&quot;));</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                if (kind == ArtifactKind.ELEMENT) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                    if (canonical != null) extension.put(&quot;canonicalType&quot;, canonical);</span>
+<span class="fc" id="L109">                    else loss(id, &quot;type&quot;, &quot;SPARX_ELEMENT_UNMAPPED&quot;, &quot;Element needs an explicit supported mapping&quot;);</span>
+                }
+<span class="fc" id="L111">                artifacts.add(new Artifact(id, kind, type, node.getAttribute(&quot;name&quot;), description, attributes, extension));</span>
+<span class="fc" id="L112">                String placement = &quot;placement:&quot; + id;</span>
+<span class="fc" id="L113">                placements.add(new Placement(placement, modelId, parentPlacement, id, position++, Map.of()));</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                if (kind == ArtifactKind.SPECIFICATION) walk(node, placement);</span>
+<span class="pc bpc" id="L115" title="1 of 4 branches missed.">                else for (Element child : ExchangeXml.children(node)) if (!&quot;ownedComment&quot;.equals(child.getLocalName()))</span>
+<span class="nc" id="L116">                    loss(id, child.getLocalName(), &quot;SPARX_FEATURE_EXCLUDED&quot;, &quot;Feature is outside the v1 semantic subset and retained only in source evidence&quot;);</span>
+            }
+<span class="fc bfc" id="L118" title="All 4 branches covered.">            if (detail != null) for (Element child : ExchangeXml.children(detail)) {</span>
+<span class="fc" id="L119">                String feature = child.getLocalName();</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (Set.of(&quot;source&quot;, &quot;target&quot;).contains(feature)) {</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                    for (Element endFeature : ExchangeXml.children(child))</span>
+<span class="fc" id="L122">                        loss(id, feature + &quot;.&quot; + endFeature.getLocalName(), &quot;SPARX_FEATURE_EXCLUDED&quot;, &quot;Connector-end metadata is retained only in source evidence&quot;);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                    for (int i = 0; i &lt; child.getAttributes().getLength(); i++) {</span>
+<span class="fc" id="L124">                        var attribute = child.getAttributes().item(i);</span>
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">                        if (!(XMI.equals(attribute.getNamespaceURI()) &amp;&amp; &quot;idref&quot;.equals(attribute.getLocalName())))</span>
+<span class="fc" id="L126">                            loss(id, feature + &quot;.&quot; + attribute.getNodeName(), &quot;SPARX_PROPERTY_EXCLUDED&quot;, &quot;Connector-end metadata is retained only in source evidence&quot;);</span>
+                    }
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                } else if (!Set.of(&quot;properties&quot;, &quot;tags&quot;).contains(feature))</span>
+<span class="nc" id="L129">                    loss(id, feature, &quot;SPARX_FEATURE_EXCLUDED&quot;, &quot;EA feature is retained only in source evidence&quot;);</span>
+<span class="fc" id="L130">            }</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            for (int i = 0; i &lt; node.getAttributes().getLength(); i++) {</span>
+<span class="fc" id="L132">                var a = node.getAttributes().item(i);</span>
+<span class="fc bfc" id="L133" title="All 4 branches covered.">                if (!XMI.equals(a.getNamespaceURI()) &amp;&amp; !Set.of(&quot;name&quot;, &quot;client&quot;, &quot;supplier&quot;).contains(a.getNodeName()))</span>
+<span class="fc" id="L134">                    loss(id, a.getNodeName(), &quot;SPARX_PROPERTY_EXCLUDED&quot;, &quot;Unmapped UML property is retained only in source evidence&quot;);</span>
+            }
+<span class="fc" id="L136">        }</span>
+<span class="fc" id="L137">    }</span>
+
+    private Map&lt;String, String&gt; tags(Element detail) {
+<span class="fc" id="L140">        Map&lt;String, String&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (Element tag : ExchangeXml.children(ExchangeXml.child(detail, &quot;tags&quot;))) {</span>
+<span class="fc" id="L142">            String name = tag.getAttribute(&quot;name&quot;), value = tag.getAttribute(&quot;value&quot;);</span>
+<span class="pc bpc" id="L143" title="4 of 8 branches missed.">            if (name.isBlank() || name.length() &gt; 240 || value.length() &gt; 100000 || result.putIfAbsent(&quot;tag:&quot; + name, value) != null)</span>
+<span class="nc" id="L144">                throw ExchangeXml.invalid(&quot;SPARX_TAG_INVALID&quot;, &quot;Tagged values need unique bounded names and values&quot;);</span>
+<span class="fc bfc" id="L145" title="All 4 branches covered.">            if (&quot;taxonomy.mappingProfile&quot;.equals(name) &amp;&amp; !(PROFILE + &quot;@&quot; + VERSION).equals(value))</span>
+<span class="fc" id="L146">                throw ExchangeXml.invalid(&quot;PROFILE_VERSION_CHANGED&quot;, &quot;The tagged mapping profile differs from this connection profile&quot;);</span>
+<span class="fc bfc" id="L147" title="All 4 branches covered.">            if (&quot;taxonomy.id&quot;.equals(name) &amp;&amp; !taxonomyIds.add(guid(value))) throw duplicate();</span>
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">        return result;</span>
+    }
+
+    private static void copyProperties(Element properties, Map&lt;String, String&gt; result) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (properties == null) return;</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (int i = 0; i &lt; properties.getAttributes().getLength(); i++) {</span>
+<span class="fc" id="L155">            var attribute = properties.getAttributes().item(i);</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">            if (!Set.of(&quot;documentation&quot;, &quot;stereotype&quot;, &quot;sType&quot;, &quot;ea_type&quot;, &quot;direction&quot;).contains(attribute.getNodeName()))</span>
+<span class="nc" id="L157">                result.put(&quot;ea:&quot; + attribute.getNodeName(), attribute.getNodeValue());</span>
+        }
+<span class="fc" id="L159">    }</span>
+    private static String type(Element node) {
+<span class="fc" id="L161">        String qualified = node.getAttributeNS(XMI, &quot;type&quot;); int colon = qualified.indexOf(':');</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">        if (colon &lt; 1 || !UML.equals(node.lookupNamespaceURI(qualified.substring(0, colon))))</span>
+<span class="nc" id="L163">            throw ExchangeXml.invalid(&quot;SPARX_UML_TYPE&quot;, &quot;Semantic objects require a supported UML namespace&quot;);</span>
+<span class="fc" id="L164">        return qualified.substring(colon + 1);</span>
+    }
+    private static String reference(Element detail, String side, String fallback) {
+<span class="fc" id="L167">        Element reference = ExchangeXml.child(detail, side);</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        return reference == null ? fallback : reference.getAttributeNS(XMI, &quot;idref&quot;);</span>
+    }
+<span class="fc" id="L170">    private void loss(String id, String field, String code, String detail) { losses.add(new MappingLoss(id, field, code, LossDisposition.UNSUPPORTED, detail)); }</span>
+<span class="fc" id="L171">    private static RuntimeException duplicate() { return ExchangeXml.invalid(&quot;DUPLICATE_IDENTITY&quot;, &quot;The scope contains a duplicated EA GUID or Taxonomy identity&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureSemanticPatch.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.command</a> &gt; <span class="el_source">ArchitectureSemanticPatch.java</span></div><h1>ArchitectureSemanticPatch.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.command;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * A reconstructible semantic patch between canonical workspace or checkpoint documents.
+ * Only changed blocks are replaced; unrelated source remains byte-for-byte intact.
+ * Comments in edited blocks are retained, but their placement, indentation and line endings may change.
+ * Applying an inverse requires the affected blocks to still match the accepted after-state.
+ */
+public final class ArchitectureSemanticPatch {
+<span class="fc" id="L23">    private static final TaxDslParser PARSER = new TaxDslParser();</span>
+<span class="fc" id="L24">    private static final TaxDslSerializer SERIALIZER = new TaxDslSerializer();</span>
+<span class="fc" id="L25">    private static final Set&lt;String&gt; COMPOSITE_IDENTITY_KINDS =</span>
+<span class="fc" id="L26">            Set.of(&quot;relation&quot;, &quot;mapping&quot;, &quot;projectRequirement&quot;, &quot;requirementVersion&quot;);</span>
+
+    private ArchitectureSemanticPatch() {}
+
+<span class="fc" id="L30">    public record BlockChange(String id, String before, String after) {}</span>
+
+    public static List&lt;BlockChange&gt; between(String before, String after) {
+<span class="fc" id="L33">        Map&lt;String, BlockAst&gt; oldBlocks = index(before);</span>
+<span class="fc" id="L34">        Map&lt;String, BlockAst&gt; newBlocks = index(after);</span>
+<span class="fc" id="L35">        var ids = new LinkedHashSet&lt;&gt;(oldBlocks.keySet());</span>
+<span class="fc" id="L36">        ids.addAll(newBlocks.keySet());</span>
+<span class="fc" id="L37">        List&lt;BlockChange&gt; changes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (String id : ids) {</span>
+<span class="fc" id="L39">            BlockAst oldBlock = oldBlocks.get(id);</span>
+<span class="fc" id="L40">            BlockAst newBlock = newBlocks.get(id);</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (!Objects.equals(canonical(oldBlock), canonical(newBlock))) {</span>
+<span class="fc" id="L42">                changes.add(new BlockChange(id, raw(before, oldBlock), raw(after, newBlock)));</span>
+            }
+<span class="fc" id="L44">        }</span>
+<span class="fc" id="L45">        return List.copyOf(changes);</span>
+    }
+
+    /** Apply a server-generated projection without reformatting unrelated blocks or document comments. */
+    public static String applyProjection(String source, String projection) {
+<span class="fc" id="L50">        Map&lt;String, BlockAst&gt; before = index(source), after = index(projection);</span>
+<span class="fc" id="L51">        List&lt;BlockAst&gt; existing = new ArrayList&lt;&gt;(before.values());</span>
+<span class="fc" id="L52">        String result = source;</span>
+        // Earlier source locations remain valid when blocks are replaced from the end of the document.
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (int i = existing.size() - 1; i &gt;= 0; i--) {</span>
+<span class="fc" id="L55">            BlockAst block = existing.get(i); result = replace(result, block, after.get(key(block)));</span>
+        }
+<span class="fc bfc" id="L57" title="All 4 branches covered.">        for (var entry : after.entrySet()) if (!before.containsKey(entry.getKey())) result = replace(result, null, entry.getValue());</span>
+<span class="fc" id="L58">        return result;</span>
+    }
+
+    public static String inverse(String current, String original, List&lt;BlockChange&gt; changes) {
+<span class="fc" id="L62">        Map&lt;String, BlockAst&gt; currentBlocks = index(current);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        for (BlockChange change : changes) {</span>
+<span class="fc" id="L64">            String actual = raw(current, currentBlocks.get(change.id()));</span>
+<span class="fc" id="L65">            String expected = change.after();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (!Objects.equals(actual, expected)) {</span>
+<span class="fc" id="L67">                throw new ArchitectureDslCommands.CommandProblem(&quot;UNDO_CONFLICT&quot;, change.id(),</span>
+<span class="fc" id="L68">                        &quot;The affected object changed after the target command&quot;, List.of(change.id()));</span>
+            }
+<span class="fc" id="L70">        }</span>
+<span class="fc" id="L71">        String result = current;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        for (BlockChange change : changes) {</span>
+<span class="fc" id="L73">            BlockAst existing = index(result).get(change.id());</span>
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">            if (existing == null &amp;&amp; change.before() != null) {</span>
+<span class="fc" id="L75">                int insertion = restorationOffset(result, original, change.id());</span>
+<span class="fc" id="L76">                result = result.substring(0, insertion) + change.before() + result.substring(insertion);</span>
+<span class="fc" id="L77">            } else {</span>
+<span class="fc" id="L78">                result = replaceRaw(result, existing, change.before());</span>
+            }
+<span class="fc" id="L80">        }</span>
+<span class="fc" id="L81">        return result;</span>
+    }
+
+    /** Restore beside an original neighbor, preserving intervening source and later unrelated block edits. */
+    private static int restorationOffset(String current, String original, String id) {
+<span class="fc" id="L86">        Map&lt;String, BlockAst&gt; oldBlocks = index(original);</span>
+<span class="fc" id="L87">        List&lt;String&gt; order = new ArrayList&lt;&gt;(oldBlocks.keySet());</span>
+<span class="fc" id="L88">        int position = order.indexOf(id);</span>
+<span class="fc" id="L89">        int[] target = range(original, oldBlocks.get(id));</span>
+<span class="fc" id="L90">        Map&lt;String, BlockAst&gt; live = index(current);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        String previous = position == 0 ? null : order.get(position - 1);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        String next = position + 1 &lt; order.size() ? order.get(position + 1) : null;</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        int oldLeft = previous == null ? 0 : range(original, oldBlocks.get(previous))[1];</span>
+<span class="fc" id="L94">        String leftGap = original.substring(oldLeft, target[0]);</span>
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">        int liveLeft = previous == null ? 0 : live.containsKey(previous) ? range(current, live.get(previous))[1] : -1;</span>
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">        int liveRight = next != null &amp;&amp; live.containsKey(next) ? range(current, live.get(next))[0] : current.length();</span>
+<span class="pc bpc" id="L97" title="1 of 6 branches missed.">        if (liveLeft &gt;= 0 &amp;&amp; liveLeft + leftGap.length() &lt;= liveRight &amp;&amp; current.startsWith(leftGap, liveLeft)) {</span>
+<span class="fc" id="L98">            return liveLeft + leftGap.length();</span>
+        }
+
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">        if (next != null &amp;&amp; live.containsKey(next)) {</span>
+<span class="fc" id="L102">            String rightGap = original.substring(target[1], range(original, oldBlocks.get(next))[0]);</span>
+<span class="fc" id="L103">            int insertion = liveRight - rightGap.length();</span>
+<span class="pc bpc" id="L104" title="1 of 4 branches missed.">            if (insertion &gt;= Math.max(0, liveLeft) &amp;&amp; current.startsWith(rightGap, insertion)) return insertion;</span>
+        }
+<span class="fc" id="L106">        throw new ArchitectureDslCommands.CommandProblem(&quot;UNDO_CONFLICT&quot;, id,</span>
+<span class="fc" id="L107">                &quot;The original insertion boundary changed; choose a new explicit placement&quot;, List.of(id));</span>
+    }
+
+    public static Map&lt;String, BlockAst&gt; index(String source) {
+<span class="fc" id="L111">        Map&lt;String, BlockAst&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        for (BlockAst block : PARSER.parse(source, &quot;architecture.taxdsl&quot;).getBlocks()) {</span>
+<span class="fc" id="L113">            String id = key(block);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (result.putIfAbsent(id, block) != null) {</span>
+<span class="fc" id="L115">                throw new ArchitectureDslCommands.CommandProblem(&quot;DUPLICATE_ID&quot;, id,</span>
+<span class="fc" id="L116">                        &quot;Ambiguous duplicate block identity&quot;, List.of(id));</span>
+            }
+<span class="fc" id="L118">        }</span>
+<span class="fc" id="L119">        return result;</span>
+    }
+
+    public static String key(BlockAst block) {
+<span class="fc" id="L123">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (tokens.isEmpty()) {</span>
+<span class="nc" id="L125">            throw new ArchitectureDslCommands.CommandProblem(&quot;INVALID_HEADER&quot;, block.getKind(),</span>
+<span class="nc" id="L126">                    &quot;Block identity is missing&quot;, List.of());</span>
+        }
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        return block.getKind() + &quot;:&quot; + (COMPOSITE_IDENTITY_KINDS.contains(block.getKind())</span>
+<span class="fc" id="L129">                ? String.join(&quot; &quot;, tokens) : tokens.getFirst());</span>
+    }
+
+    public static String replace(String source, BlockAst existing, BlockAst replacement) {
+<span class="fc" id="L133">        String next = canonical(replacement);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (Objects.equals(canonical(existing), next)) return source;</span>
+<span class="fc bfc" id="L135" title="All 4 branches covered.">        if (existing != null &amp;&amp; replacement != null) {</span>
+            // The formatter does not model comments. Retain them explicitly inside the edited block.
+<span class="fc" id="L137">            StringBuilder comments = new StringBuilder();</span>
+<span class="fc" id="L138">            raw(source, existing).lines().map(ArchitectureSemanticPatch::comment).filter(Objects::nonNull)</span>
+<span class="fc" id="L139">                    .forEach(comment -&gt; comments.append(comment).append('\n'));</span>
+<span class="fc" id="L140">            int opening = next.indexOf('\n') + 1;</span>
+<span class="fc" id="L141">            next = next.substring(0, opening) + comments + next.substring(opening);</span>
+        }
+<span class="fc" id="L143">        return replaceRaw(source, existing, next);</span>
+    }
+
+    private static String replaceRaw(String source, BlockAst existing, String replacement) {
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (existing == null) {</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">            if (replacement == null) return source;</span>
+<span class="pc bpc" id="L149" title="1 of 4 branches missed.">            return source + (source.isEmpty() || source.endsWith(&quot;\n&quot;) ? &quot;&quot; : &quot;\n&quot;) + replacement;</span>
+        }
+<span class="fc" id="L151">        int[] range = range(source, existing);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        return source.substring(0, range[0]) + (replacement == null ? &quot;&quot; : replacement)</span>
+<span class="fc" id="L153">                + source.substring(range[1]);</span>
+    }
+
+    private static String raw(String source, BlockAst block) {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (block == null) return null;</span>
+<span class="fc" id="L158">        int[] range = range(source, block);</span>
+<span class="fc" id="L159">        return source.substring(range[0], range[1]);</span>
+    }
+
+    private static int[] range(String source, BlockAst block) {
+<span class="fc" id="L163">        int start = 0;</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        for (int line = 1; line &lt; block.getSourceLocation().line(); line++) {</span>
+<span class="fc" id="L165">            start = lineEnd(source, start);</span>
+        }
+<span class="fc" id="L167">        int depth = 0;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        for (int cursor = start; cursor &lt; source.length();) {</span>
+<span class="fc" id="L169">            int end = lineEnd(source, cursor);</span>
+<span class="fc" id="L170">            int delimiter = TaxDslParser.blockDelimiter(source.substring(cursor, end));</span>
+<span class="fc" id="L171">            depth += delimiter;</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">            if (depth &gt; 1) throw new ArchitectureDslCommands.CommandProblem(&quot;INVALID_DOCUMENT&quot;, key(block),</span>
+<span class="nc" id="L173">                    &quot;Nested blocks are not supported on an edited object&quot;, List.of(key(block)));</span>
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">            if (depth == 0 &amp;&amp; delimiter &lt; 0) return new int[]{start, end};</span>
+<span class="fc" id="L175">            cursor = end;</span>
+<span class="fc" id="L176">        }</span>
+<span class="fc" id="L177">        throw new ArchitectureDslCommands.CommandProblem(&quot;INVALID_DOCUMENT&quot;, key(block),</span>
+<span class="fc" id="L178">                &quot;Block has no closing delimiter&quot;, List.of(key(block)));</span>
+    }
+
+    private static int lineEnd(String source, int start) {
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        for (int cursor = start; cursor &lt; source.length(); cursor++) {</span>
+<span class="fc" id="L183">            char value = source.charAt(cursor);</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            if (value == '\n') return cursor + 1;</span>
+<span class="pc bpc" id="L185" title="1 of 6 branches missed.">            if (value == '\r') return cursor + 1 &lt; source.length() &amp;&amp; source.charAt(cursor + 1) == '\n' ? cursor + 2 : cursor + 1;</span>
+        }
+<span class="nc" id="L187">        return source.length();</span>
+    }
+
+    /** Retain both full-line and trailing comments without treating a quoted hash as a comment. */
+    private static String comment(String line) {
+<span class="fc" id="L192">        boolean quoted = false;</span>
+<span class="fc" id="L193">        boolean escaped = false;</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        for (int index = 0; index &lt; line.length(); index++) {</span>
+<span class="fc" id="L195">            char value = line.charAt(index);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">            if (escaped) { escaped = false; continue; }</span>
+<span class="fc bfc" id="L197" title="All 4 branches covered.">            if (quoted &amp;&amp; value == '\\') { escaped = true; continue; }</span>
+<span class="fc bfc" id="L198" title="All 4 branches covered.">            if (value == '&quot;') quoted = !quoted;</span>
+<span class="fc bfc" id="L199" title="All 4 branches covered.">            if (!quoted &amp;&amp; value == '#') return &quot;  &quot; + line.substring(index);</span>
+        }
+<span class="fc" id="L201">        return null;</span>
+    }
+
+    private static String canonical(BlockAst block) {
+<span class="fc bfc" id="L205" title="All 2 branches covered.">        return block == null ? null : SERIALIZER.serialize(new DocumentAst(null, List.of(block)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

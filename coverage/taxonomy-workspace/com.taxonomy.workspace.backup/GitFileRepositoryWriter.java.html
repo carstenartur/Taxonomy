@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitFileRepositoryWriter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitFileRepositoryWriter.java</span></div><h1>GitFileRepositoryWriter.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import org.eclipse.jgit.internal.storage.pack.PackWriter;
+import org.eclipse.jgit.lib.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.time.*;
+import java.util.*;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+
+/** Streams ordinary independent Git repositories; no source config, hooks or external gitdir. */
+final class GitFileRepositoryWriter {
+    private GitFileRepositoryWriter() { }
+    static void write(GitHistoryCapture capture, String archiveId, GitRepresentation representation,
+                      GitStandBackupSource.Stand workingCopy, ComponentSink sink, BackupCheckpoint check) throws IOException {
+<span class="fc bfc" id="L18" title="All 2 branches covered.">        boolean working = representation == GitRepresentation.WORKTREE;</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        String root = &quot;repositories/&quot; + archiveId + &quot;/&quot;, git = root + (working ? &quot;.git/&quot; : &quot;&quot;);</span>
+<span class="fc bfc" id="L20" title="All 4 branches covered.">        var tree = workingCopy != null ? workingCopy.sourceTree() : working ? capture.headTree(check).orElse(null) : null;</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        String head = workingCopy != null ? &quot;ref: &quot; + workingCopy.state().symbolicHead()</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">                : capture.state().symbolicHead() != null ? &quot;ref: &quot; + capture.state().symbolicHead()</span>
+<span class="fc" id="L23">                : capture.state().refs().get(Constants.HEAD);</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (head == null) throw failure(&quot;Captured repository has no declared HEAD&quot;);</span>
+<span class="fc" id="L25">        var logs = new TreeMap&lt;String, List&lt;GitHistoryCapture.Reflog&gt;&gt;();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (var log : capture.reflogs()) logs.computeIfAbsent(log.ref(), ignored -&gt; new ArrayList&lt;&gt;()).add(log);</span>
+<span class="fc" id="L27">        try { PortableGitPaths.requireTree(logs.keySet().stream().map(ref -&gt; &quot;logs/&quot; + ref).toList()); }</span>
+<span class="pc" id="L28">        catch (IllegalArgumentException problem) { throw failure(&quot;Reflog paths are not portable; select a Git bundle&quot;); }</span>
+<span class="fc" id="L29">        try { PortableGitPaths.requireTree(capture.symbolicRefs().keySet()); }</span>
+<span class="pc" id="L30">        catch (IllegalArgumentException problem) { throw failure(&quot;Symbolic ref paths are not portable; select a Git bundle&quot;); }</span>
+<span class="fc" id="L31">        check.check();</span>
+        // Native Git requires refs/ even when every ref is packed or HEAD is unborn.
+<span class="fc" id="L33">        text(git + &quot;refs/&quot;, &quot;&quot;, sink);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        text(git + &quot;config&quot;, &quot;[core]\n\trepositoryformatversion = 0\n\tbare = &quot; + !working</span>
+                + &quot;\n\tfilemode = false\n\tlogallrefupdates = true\n\tautocrlf = false\n&quot;, sink);
+<span class="fc" id="L36">        text(git + &quot;HEAD&quot;, head + &quot;\n&quot;, sink);</span>
+<span class="fc" id="L37">        GitTreeCapture.writeGenerated(git + &quot;packed-refs&quot;, sink, output -&gt; {</span>
+<span class="fc" id="L38">            output.write(&quot;# pack-refs with: sorted\n&quot;.getBytes(StandardCharsets.US_ASCII));</span>
+<span class="fc" id="L39">            var sorted = new TreeMap&lt;String, String&gt;((left, right) -&gt; Arrays.compareUnsigned(</span>
+<span class="fc" id="L40">                    left.getBytes(StandardCharsets.UTF_8), right.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="fc" id="L41">            sorted.putAll(capture.exportedRefs());</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            for (var ref : sorted.entrySet()) {</span>
+<span class="fc bfc" id="L43" title="All 4 branches covered.">                check.check(); if (ref.getKey().equals(Constants.HEAD) || capture.symbolicRefs().containsKey(ref.getKey())) continue;</span>
+<span class="fc" id="L44">                output.write((ref.getValue() + &quot; &quot; + ref.getKey() + &quot;\n&quot;).getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L45">            }</span>
+<span class="fc" id="L46">        });</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for (var ref : capture.symbolicRefs().entrySet()) {</span>
+<span class="fc" id="L48">            check.check(); text(git + ref.getKey(), &quot;ref: &quot; + ref.getValue() + &quot;\n&quot;, sink);</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc" id="L50">        try (var reader = capture.reader(check); var writer = new PackWriter(GitHistoryCapture.packConfig(), reader)) {</span>
+<span class="fc" id="L51">            var roots = new HashSet&lt;ObjectId&gt;(); capture.exportedRefs().values().forEach(id -&gt; roots.add(ObjectId.fromString(id)));</span>
+<span class="fc" id="L52">            var monitor = GitHistoryCapture.monitor(check);</span>
+<span class="fc" id="L53">            writer.setThin(false); writer.setUseCachedPacks(false); writer.setUseBitmaps(false);</span>
+<span class="fc" id="L54">            writer.preparePack(monitor, roots, Set.of()); check.check();</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">            if (writer.getObjectCount() != capture.objectCount()) throw failure(&quot;Git pack differs from the captured object closure&quot;);</span>
+<span class="fc" id="L56">            String pack = git + &quot;objects/pack/pack-&quot; + writer.computeName().name();</span>
+<span class="fc" id="L57">            GitTreeCapture.writeGenerated(pack + &quot;.pack&quot;, sink, output -&gt; { writer.writePack(monitor, monitor, output); check.check(); });</span>
+<span class="fc" id="L58">            GitTreeCapture.writeGenerated(pack + &quot;.idx&quot;, sink, output -&gt; { writer.writeIndex(output); check.check(); });</span>
+        }
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        for (var log : logs.entrySet()) {</span>
+<span class="fc" id="L61">            check.check();</span>
+<span class="fc" id="L62">            GitTreeCapture.writeGenerated(git + &quot;logs/&quot; + log.getKey(), sink, output -&gt; {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                for (var entry : log.getValue()) {</span>
+<span class="fc" id="L64">                    check.check();</span>
+<span class="fc" id="L65">                    var who = new PersonIdent(entry.name(), entry.email(), Instant.ofEpochSecond(entry.epochSeconds()),</span>
+<span class="fc" id="L66">                            ZoneOffset.ofTotalSeconds(Math.multiplyExact(entry.offsetMinutes(), 60)));</span>
+<span class="pc bpc" id="L67" title="3 of 6 branches missed.">                    if (entry.message().contains(&quot;\n&quot;) || entry.message().contains(&quot;\r&quot;) || entry.message().contains(&quot;\0&quot;))</span>
+<span class="nc" id="L68">                        throw failure(&quot;Git reflog message cannot be represented as one record&quot;);</span>
+<span class="fc" id="L69">                    String line = entry.oldId() + &quot; &quot; + entry.newId() + &quot; &quot; + who.toExternalString() + &quot;\t&quot; + entry.message() + &quot;\n&quot;;</span>
+<span class="fc" id="L70">                    output.write(line.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L71">                }</span>
+<span class="fc" id="L72">            });</span>
+<span class="fc" id="L73">        }</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (working) {</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            var files = tree == null ? List.&lt;GitTreeCapture.File&gt;of() : tree.files();</span>
+<span class="fc" id="L76">            GitTreeCapture.writeGenerated(git + &quot;index&quot;, sink, output -&gt; PortableGitIndex.write(files, output, check));</span>
+<span class="fc bfc" id="L77" title="All 4 branches covered.">            if (workingCopy == null) for (var file : files) { check.check(); tree.writeFile(file, root + file.path(), sink); }</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            else for (var file : workingCopy.files()) { check.check(); workingCopy.writeFile(file, root + file.path(), sink); }</span>
+        }
+<span class="fc" id="L80">        check.check();</span>
+<span class="fc" id="L81">    }</span>
+    private static void text(String path, String text, ComponentSink sink) throws IOException {
+<span class="fc" id="L83">        GitTreeCapture.writeGenerated(path, sink, output -&gt; output.write(text.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="fc" id="L84">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

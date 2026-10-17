@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VersionedSearchResult.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">VersionedSearchResult.java</span></div><h1>VersionedSearchResult.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * A search result enriched with version-context metadata.
+ *
+ * &lt;p&gt;Extends a regular commit search hit with information about how the
+ * matched commit relates to the caller's current working context
+ * (branch, lineage, recency).
+ *
+ * @param commitId                the commit SHA of the match
+ * @param branch                  the branch the commit belongs to
+ * @param timestamp               when the commit was created
+ * @param matchedElementId        the element ID matched (if applicable)
+ * @param matchedText             excerpt of matched text
+ * @param relevanceScore          Lucene relevance score
+ * @param onCurrentLineage        whether the commit is an ancestor of the current branch HEAD
+ * @param latestOnCurrentBranch   whether this is the newest match on the caller's branch
+ * @param latestOverall           whether this is the newest match across all branches
+ * @param contextOpenActions      suggested actions the UI can offer (e.g. OPEN_READ_ONLY, SWITCH)
+ */
+<span class="nc" id="L24">public record VersionedSearchResult(</span>
+    String commitId,
+    String branch,
+    Instant timestamp,
+    String matchedElementId,
+    String matchedText,
+    float relevanceScore,
+    boolean onCurrentLineage,
+    boolean latestOnCurrentBranch,
+    boolean latestOverall,
+    List&lt;String&gt; contextOpenActions
+) {}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

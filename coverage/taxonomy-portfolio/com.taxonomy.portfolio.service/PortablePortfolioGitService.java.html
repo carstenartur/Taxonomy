@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortablePortfolioGitService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortablePortfolioGitService.java</span></div><h1>PortablePortfolioGitService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
+import com.taxonomy.portfolio.repository.RequirementElementMappingRepository;
+import com.taxonomy.portfolio.reformulation.ReformulationEvidenceCodec;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Portable Git projection variant.
+ *
+ * &lt;p&gt;Database primary keys are not part of the collaboration contract. The
+ * current requirement version is represented and restored by its project-local,
+ * monotonically increasing version number so the same DSL can be materialized
+ * in another database or workspace. Durable solution and product decisions are
+ * contributed through stable business keys as part of the same Git document.&lt;/p&gt;
+ */
+@Service
+@Primary
+public class PortablePortfolioGitService extends PortfolioGitService {
+
+    /** Shareable working state; ordinary collaboration exports continue to retain their declared history. */
+    @Transactional(readOnly = true)
+    public String exportCurrentState(String username, WorkspaceContext context) {
+<span class="fc" id="L45">        return decisionContributor.contributeTo(exportCurrentPortfolio(username, context), username, context);</span>
+    }
+
+    private static final String CURRENT_VERSION_NUMBER = &quot;currentVersionNumber&quot;;
+    private static final String DATABASE_CURRENT_VERSION_ID = &quot;currentVersionId&quot;;
+
+    private final ArchitectureProjectRepository projectRepository;
+    private final ProjectRequirementRepository requirementRepository;
+    private final ProjectRequirementVersionRepository versionRepository;
+    private final PortfolioDecisionGitContributor decisionContributor;
+    private final ReformulationEvidenceCodec reformulationEvidence;
+<span class="fc" id="L56">    private final TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L57">    private final TaxDslSerializer serializer = new TaxDslSerializer();</span>
+
+    public PortablePortfolioGitService(
+            ProjectPortfolioService projectService,
+            ArchitectureProjectRepository projectRepository,
+            ProjectRequirementRepository requirementRepository,
+            ProjectRequirementVersionRepository versionRepository,
+            RequirementElementMappingRepository elementMappingRepository,
+            WorkspacePortfolioDocumentPort repositoryFactory,
+            PortfolioDecisionGitContributor decisionContributor,
+            ReformulationEvidenceCodec reformulationEvidence) {
+<span class="fc" id="L68">        super(projectService, projectRepository, requirementRepository,</span>
+                versionRepository, elementMappingRepository, repositoryFactory);
+<span class="fc" id="L70">        this.projectRepository = projectRepository;</span>
+<span class="fc" id="L71">        this.requirementRepository = requirementRepository;</span>
+<span class="fc" id="L72">        this.versionRepository = versionRepository;</span>
+<span class="fc" id="L73">        this.decisionContributor = decisionContributor;</span>
+<span class="fc" id="L74">        this.reformulationEvidence = reformulationEvidence;</span>
+<span class="fc" id="L75">    }</span>
+
+    @Override
+    @Transactional(readOnly = true)
+    public String exportPortfolio(String username, WorkspaceContext context) {
+<span class="fc" id="L80">        String requirements = addPortableCurrentVersion(</span>
+<span class="fc" id="L81">                super.exportPortfolio(username, context), username, context);</span>
+<span class="fc" id="L82">        String decisions = decisionContributor.contributeTo(requirements, username, context);</span>
+<span class="fc" id="L83">        return reformulationEvidence.contributeTo(decisions, PortfolioScope.key(username, context));</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String contributeTo(String existingDsl,
+                               String username,
+                               WorkspaceContext context) {
+<span class="fc" id="L91">        String requirements = addPortableCurrentVersion(</span>
+<span class="fc" id="L92">                super.contributeTo(existingDsl, username, context), username, context);</span>
+<span class="fc" id="L93">        String decisions = decisionContributor.contributeTo(requirements, username, context);</span>
+<span class="fc" id="L94">        return reformulationEvidence.contributeTo(decisions, PortfolioScope.key(username, context));</span>
+    }
+
+    @Override
+    @Transactional
+    public MaterializeResult materialize(String dsl,
+                                         String username,
+                                         WorkspaceContext context) {
+<span class="fc" id="L102">        var portableEvidence = reformulationEvidence.validateForMaterialization(dsl);</span>
+<span class="fc" id="L103">        MaterializeResult result = super.materialize(dsl, username, context);</span>
+<span class="fc" id="L104">        restorePortableCurrentVersions(dsl, username, context);</span>
+<span class="fc" id="L105">        PortfolioDecisionGitContributor.DecisionMaterializeResult decisions =</span>
+<span class="fc" id="L106">                decisionContributor.materialize(dsl, username, context);</span>
+<span class="fc" id="L107">        reformulationEvidence.storeImported(portableEvidence, PortfolioScope.key(username, context));</span>
+<span class="fc" id="L108">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;(result.warnings());</span>
+<span class="fc" id="L109">        warnings.addAll(decisions.warnings());</span>
+<span class="fc" id="L110">        return new MaterializeResult(</span>
+<span class="fc" id="L111">                result.projectsCreated(),</span>
+<span class="fc" id="L112">                result.requirementsCreated(),</span>
+<span class="fc" id="L113">                result.versionsCreated(),</span>
+<span class="fc" id="L114">                List.copyOf(warnings));</span>
+    }
+
+    private String addPortableCurrentVersion(String dsl,
+                                             String username,
+                                             WorkspaceContext context) {
+<span class="fc" id="L120">        Map&lt;String, Integer&gt; currentVersions = currentVersionNumbers(username, context);</span>
+<span class="fc" id="L121">        DocumentAst document = parser.parse(dsl, &quot;portfolio-portable-version.taxdsl&quot;);</span>
+<span class="fc" id="L122">        List&lt;BlockAst&gt; blocks = new ArrayList&lt;&gt;(document.getBlocks().size());</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        for (BlockAst block : document.getBlocks()) {</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (!REQUIREMENT_BLOCK.equals(block.getKind())</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                    || block.getHeaderTokens().size() &lt; 2) {</span>
+<span class="fc" id="L126">                blocks.add(block);</span>
+<span class="fc" id="L127">                continue;</span>
+            }
+<span class="fc" id="L129">            String identity = composite(</span>
+<span class="fc" id="L130">                    block.getHeaderTokens().get(0), block.getHeaderTokens().get(1));</span>
+<span class="fc" id="L131">            Integer versionNumber = currentVersions.get(identity);</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">            if (versionNumber == null) {</span>
+<span class="nc" id="L133">                blocks.add(block);</span>
+<span class="nc" id="L134">                continue;</span>
+            }
+<span class="fc" id="L136">            List&lt;PropertyAst&gt; properties = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            for (PropertyAst property : block.getProperties()) {</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                if (!CURRENT_VERSION_NUMBER.equals(property.key())</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                        &amp;&amp; !DATABASE_CURRENT_VERSION_ID.equals(property.key())) {</span>
+<span class="fc" id="L140">                    properties.add(property);</span>
+                }
+<span class="fc" id="L142">            }</span>
+<span class="fc" id="L143">            properties.add(new PropertyAst(</span>
+                    CURRENT_VERSION_NUMBER,
+<span class="fc" id="L145">                    Integer.toString(versionNumber),</span>
+<span class="fc" id="L146">                    block.getSourceLocation()));</span>
+<span class="fc" id="L147">            blocks.add(new BlockAst(</span>
+<span class="fc" id="L148">                    block.getKind(),</span>
+<span class="fc" id="L149">                    block.getHeaderTokens(),</span>
+                    properties,
+<span class="fc" id="L151">                    block.getChildren(),</span>
+<span class="fc" id="L152">                    block.getExtensions(),</span>
+<span class="fc" id="L153">                    block.getSourceLocation()));</span>
+<span class="fc" id="L154">        }</span>
+<span class="fc" id="L155">        return serializer.serialize(new DocumentAst(document.getMeta(), blocks));</span>
+    }
+
+    private Map&lt;String, Integer&gt; currentVersionNumbers(String username,
+                                                       WorkspaceContext context) {
+<span class="fc" id="L160">        Map&lt;String, Integer&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L161">        String scopeKey = PortfolioScope.key(username, context);</span>
+        for (ArchitectureProject project :
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                projectRepository.findByScopeKeyOrderByUpdatedAtDesc(scopeKey)) {</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            for (ProjectRequirement requirement : requirementRepository</span>
+<span class="fc" id="L165">                    .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(</span>
+<span class="fc" id="L166">                            project.getId(), scopeKey)) {</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                if (requirement.getCurrentVersionId() == null) continue;</span>
+<span class="fc" id="L168">                versionRepository.findByIdAndRequirementIdAndScopeKey(</span>
+<span class="fc" id="L169">                                requirement.getCurrentVersionId(),</span>
+<span class="fc" id="L170">                                requirement.getId(),</span>
+                                scopeKey)
+<span class="fc" id="L172">                        .ifPresent(version -&gt; result.put(</span>
+<span class="fc" id="L173">                                composite(project.getProjectKey(), requirement.getRequirementKey()),</span>
+<span class="fc" id="L174">                                version.getVersionNumber()));</span>
+<span class="fc" id="L175">            }</span>
+<span class="fc" id="L176">        }</span>
+<span class="fc" id="L177">        return result;</span>
+    }
+
+    private void restorePortableCurrentVersions(String dsl,
+                                                String username,
+                                                WorkspaceContext context) {
+<span class="fc" id="L183">        DocumentAst document = parser.parse(dsl, &quot;portfolio-current-version.taxdsl&quot;);</span>
+<span class="fc" id="L184">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L185">        Instant now = Instant.now();</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        for (BlockAst block : document.blocksOfKind(REQUIREMENT_BLOCK)) {</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">            if (block.getHeaderTokens().size() &lt; 2) continue;</span>
+<span class="fc" id="L188">            Integer versionNumber = parseVersionNumber(block.property(CURRENT_VERSION_NUMBER));</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            if (versionNumber == null) continue;</span>
+<span class="fc" id="L190">            String projectKey = block.getHeaderTokens().get(0);</span>
+<span class="fc" id="L191">            String requirementKey = block.getHeaderTokens().get(1);</span>
+<span class="fc" id="L192">            ArchitectureProject project = projectRepository</span>
+<span class="fc" id="L193">                    .findByScopeKeyAndProjectKeyIgnoreCase(scopeKey, projectKey)</span>
+<span class="fc" id="L194">                    .orElse(null);</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">            if (project == null) continue;</span>
+<span class="fc" id="L196">            ProjectRequirement requirement = requirementRepository</span>
+<span class="fc" id="L197">                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(</span>
+<span class="fc" id="L198">                            project.getId(), scopeKey, requirementKey)</span>
+<span class="fc" id="L199">                    .orElse(null);</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">            if (requirement == null) continue;</span>
+<span class="fc" id="L201">            ProjectRequirementVersion version = versionRepository</span>
+<span class="fc" id="L202">                    .findByRequirementIdAndScopeKeyAndVersionNumber(</span>
+<span class="fc" id="L203">                            requirement.getId(), scopeKey, versionNumber)</span>
+<span class="fc" id="L204">                    .orElse(null);</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">            if (version != null</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                    &amp;&amp; !Objects.equals(requirement.getCurrentVersionId(), version.getId())) {</span>
+<span class="fc" id="L207">                requirement.pointToVersion(version.getId(), now);</span>
+            }
+<span class="fc" id="L209">        }</span>
+<span class="fc" id="L210">    }</span>
+
+    private static Integer parseVersionNumber(String value) {
+<span class="pc bpc" id="L213" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) return null;</span>
+        try {
+<span class="fc" id="L215">            int parsed = Integer.parseInt(value.strip());</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            return parsed &gt; 0 ? parsed : null;</span>
+<span class="nc" id="L217">        } catch (NumberFormatException exception) {</span>
+<span class="nc" id="L218">            return null;</span>
+        }
+    }
+
+    private static String composite(String projectKey, String requirementKey) {
+<span class="fc" id="L223">        return projectKey + '\u0000' + requirementKey;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

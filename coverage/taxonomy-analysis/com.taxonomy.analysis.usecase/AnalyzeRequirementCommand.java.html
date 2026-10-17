@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalyzeRequirementCommand.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">AnalyzeRequirementCommand.java</span></div><h1>AnalyzeRequirementCommand.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.dto.AnalysisProvenance;
+import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.workspace.service.WorkspaceContext;
+
+public record AnalyzeRequirementCommand(
+        String businessText,
+        boolean includeArchitectureView,
+        int maxArchitectureNodes,
+        String provider,
+        String username,
+        WorkspaceContext workspaceContext,
+        AnalysisProvenance provenance,
+        AnalysisScope analysisScope,
+        com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
+        com.taxonomy.analysis.recovery.AnalysisContinuationBinding continuationBinding,
+        AnalysisReasonLength analysisReasonLength) {
+
+<span class="fc" id="L21">    public AnalyzeRequirementCommand {</span>
+<span class="fc" id="L22">        analysisScope = AnalysisScope.orDefault(analysisScope);</span>
+<span class="fc" id="L23">    }</span>
+
+    /** Admission fills a missing mode; older persisted commands retain their absent provenance. */
+    public AnalyzeRequirementCommand withAnalysisReasonLength(AnalysisReasonLength value) {
+<span class="fc" id="L27">        return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,</span>
+                username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding, value);
+    }
+
+    public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView, int maxArchitectureNodes,
+            String provider, String username, WorkspaceContext workspaceContext, AnalysisProvenance provenance,
+            AnalysisScope analysisScope, com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
+            com.taxonomy.analysis.recovery.AnalysisContinuationBinding continuationBinding) {
+<span class="fc" id="L35">        this(businessText, includeArchitectureView, maxArchitectureNodes, provider, username, workspaceContext,</span>
+                provenance, analysisScope, providerBinding, continuationBinding, null);
+<span class="fc" id="L37">    }</span>
+
+    public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView, int maxArchitectureNodes,
+            String provider, String username, WorkspaceContext workspaceContext, AnalysisProvenance provenance,
+            AnalysisScope analysisScope, com.taxonomy.extension.api.plugin.PluginInvocation providerBinding) {
+<span class="fc" id="L42">        this(businessText, includeArchitectureView, maxArchitectureNodes, provider, username, workspaceContext,</span>
+                provenance, analysisScope, providerBinding, null);
+<span class="fc" id="L44">    }</span>
+
+    public AnalyzeRequirementCommand withContinuationBinding(com.taxonomy.analysis.recovery.AnalysisContinuationBinding binding) {
+<span class="fc" id="L47">        return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,</span>
+                username, workspaceContext, provenance, analysisScope, providerBinding, binding, analysisReasonLength);
+    }
+
+    /** Old persisted commands have no plugin binding and remain readable for built-in providers only. */
+    public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView,
+            int maxArchitectureNodes, String provider, String username, WorkspaceContext workspaceContext,
+            AnalysisProvenance provenance, AnalysisScope analysisScope) {
+<span class="fc" id="L55">        this(businessText, includeArchitectureView, maxArchitectureNodes, provider, username,</span>
+                workspaceContext, provenance, analysisScope, null);
+<span class="fc" id="L57">    }</span>
+
+    public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView,
+            int maxArchitectureNodes, String provider, String username,
+            WorkspaceContext workspaceContext, AnalysisProvenance provenance) {
+<span class="fc" id="L62">        this(businessText, includeArchitectureView, maxArchitectureNodes, provider, username,</span>
+<span class="fc" id="L63">                workspaceContext, provenance, AnalysisScope.full());</span>
+<span class="fc" id="L64">    }</span>
+
+    /** Backward-compatible constructor for ad-hoc analyses. */
+    public AnalyzeRequirementCommand(String businessText,
+                                     boolean includeArchitectureView,
+                                     int maxArchitectureNodes,
+                                     String provider,
+                                     String username,
+                                     WorkspaceContext workspaceContext) {
+<span class="fc" id="L73">        this(businessText, includeArchitectureView, maxArchitectureNodes,</span>
+<span class="fc" id="L74">                provider, username, workspaceContext, null, AnalysisScope.full());</span>
+<span class="fc" id="L75">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

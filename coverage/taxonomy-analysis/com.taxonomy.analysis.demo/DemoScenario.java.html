@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DemoScenario.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.demo</a> &gt; <span class="el_source">DemoScenario.java</span></div><h1>DemoScenario.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.demo;
+
+import com.taxonomy.identity.StableIdentityHash;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+
+/**
+ * Versioned product-demo scenario: the scenario definition (a) and the
+ * pre-produced provider replies (b). The independent reference annotation (c)
+ * is deliberately not part of this type; see {@code evaluation.DemoReference}.
+ */
+<span class="fc" id="L24">public record DemoScenario(String id, int version, String fingerprint, Map&lt;String, String&gt; title,</span>
+                           Map&lt;String, String&gt; banner, String catalogueSource, Map&lt;String, String&gt; catalogueAnchors,
+                           Requirement requirement, String r0Text, List&lt;String&gt; r1RequiredPhrases,
+                           List&lt;DemoDecision&gt; demoDecisions, List&lt;DemoReview&gt; demoReviews,
+                           List&lt;Station&gt; stations, Map&lt;String, Iteration&gt; iterations) {
+
+<span class="fc" id="L30">    public static final List&lt;String&gt; ROOTS = List.of(&quot;BP&quot;, &quot;BR&quot;, &quot;CP&quot;, &quot;CI&quot;, &quot;CO&quot;, &quot;CR&quot;, &quot;IP&quot;, &quot;UA&quot;);</span>
+    static final String SCENARIO_SCHEMA = &quot;taxonomy-product-demo-scenario-v1&quot;;
+    static final String REPLIES_SCHEMA = &quot;taxonomy-product-demo-replies-v1&quot;;
+<span class="fc" id="L33">    private static final JsonMapper JSON = JsonMapper.builder().build();</span>
+
+<span class="fc" id="L35">    public record Requirement(String key, String title, String language, String text) { }</span>
+<span class="fc" id="L36">    public record DemoDecision(String question, List&lt;String&gt; values, String rationale) { }</span>
+<span class="fc" id="L37">    public record DemoReview(String wording, String action, String rationale) { }</span>
+<span class="fc" id="L38">    public record Station(String id, String de, String en) { }</span>
+<span class="fc" id="L39">    public record Score(double score, String reason) { }</span>
+<span class="fc" id="L40">    public record Relation(String source, String type, List&lt;String&gt; path, String contribution) {</span>
+<span class="fc" id="L41">        public String target() { return path.getLast(); }</span>
+    }
+<span class="fc" id="L43">    public record Addition(String anchorRoot, String provenance, String wording) { }</span>
+<span class="fc" id="L44">    public record Question(String id, String anchorRoot, String subject, String dimension, String wording,</span>
+                           String rationale, String kind, Map&lt;String, String&gt; consequences, String consequenceSummary) {
+<span class="fc" id="L46">        public List&lt;String&gt; options() { return List.copyOf(consequences.keySet()); }</span>
+    }
+<span class="fc" id="L48">    public record Reformulation(String defaultSummary, Map&lt;String, String&gt; summaries,</span>
+                                List&lt;Addition&gt; additions, List&lt;Question&gt; questions) { }
+<span class="fc" id="L50">    public record Iteration(String name, String zeroReason, Map&lt;String, Score&gt; roots,</span>
+                            Map&lt;String, Map&lt;String, Score&gt;&gt; expansions, Map&lt;String, String&gt; justifications,
+                            List&lt;Relation&gt; relations, Reformulation reformulation) {
+        /** Authored score of a node, or {@code null} when the scenario does not score it positively. */
+        public Double authoredScore(String code) {
+<span class="fc" id="L55">            Score root = roots.get(code);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (root != null) return root.score();</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">            for (var children : expansions.values()) {</span>
+<span class="fc" id="L58">                Score child = children.get(code);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                if (child != null) return child.score();</span>
+<span class="fc" id="L60">            }</span>
+<span class="nc" id="L61">            return null;</span>
+        }
+
+        /** All codes the iteration scores (roots and declared children). */
+        public Map&lt;String, Double&gt; declaredScores() {
+<span class="fc" id="L66">            var scores = new LinkedHashMap&lt;String, Double&gt;();</span>
+<span class="fc" id="L67">            roots.forEach((code, score) -&gt; scores.put(code, score.score()));</span>
+<span class="fc" id="L68">            expansions.values().forEach(children -&gt; children.forEach((code, score) -&gt; scores.put(code, score.score())));</span>
+<span class="fc" id="L69">            return Collections.unmodifiableMap(scores);</span>
+        }
+    }
+
+    public Iteration iteration(String name) {
+<span class="fc" id="L74">        Iteration iteration = iterations.get(name);</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (iteration == null) throw new IllegalArgumentException(&quot;Unknown demo iteration &quot; + name + &quot; for &quot; + id);</span>
+<span class="fc" id="L76">        return iteration;</span>
+    }
+
+    public Question question(String questionId) {
+<span class="fc" id="L80">        return iterations.values().stream().flatMap(i -&gt; i.reformulation().questions().stream())</span>
+<span class="fc" id="L81">                .filter(q -&gt; q.id().equals(questionId)).findFirst()</span>
+<span class="pc" id="L82">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown demo question &quot; + questionId));</span>
+    }
+
+    public int maxIteration() {
+<span class="fc" id="L86">        return iterations.keySet().stream().mapToInt(k -&gt; Integer.parseInt(k.substring(1))).max().orElse(0);</span>
+    }
+
+    /** Loads (a) and (b) only. A missing reference annotation never affects replay. */
+    public static DemoScenario load(String id, Function&lt;String, InputStream&gt; resources) {
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">        if (id == null || !id.matches(&quot;[a-z0-9][a-z0-9-]{0,63}&quot;)) throw new IllegalArgumentException(&quot;Invalid demo scenario ID&quot;);</span>
+<span class="fc" id="L92">        byte[] scenarioBytes = read(resources, &quot;demo-scenarios/&quot; + id + &quot;/scenario.json&quot;);</span>
+<span class="fc" id="L93">        byte[] replyBytes = read(resources, &quot;demo-scenarios/&quot; + id + &quot;/replies.json&quot;);</span>
+<span class="fc" id="L94">        JsonNode scenario = JSON.readTree(scenarioBytes);</span>
+<span class="fc" id="L95">        JsonNode replies = JSON.readTree(replyBytes);</span>
+<span class="fc" id="L96">        require(SCENARIO_SCHEMA.equals(scenario.path(&quot;schema&quot;).asString()), &quot;Unsupported scenario schema&quot;);</span>
+<span class="fc" id="L97">        require(REPLIES_SCHEMA.equals(replies.path(&quot;schema&quot;).asString()), &quot;Unsupported replies schema&quot;);</span>
+<span class="fc" id="L98">        require(id.equals(scenario.path(&quot;id&quot;).asString()), &quot;Scenario ID mismatch&quot;);</span>
+<span class="fc" id="L99">        require(id.equals(replies.path(&quot;scenario&quot;).asString()), &quot;Reply book belongs to another scenario&quot;);</span>
+<span class="fc" id="L100">        int version = scenario.path(&quot;version&quot;).asInt(0);</span>
+<span class="pc bpc" id="L101" title="2 of 4 branches missed.">        require(version &gt; 0 &amp;&amp; version == replies.path(&quot;version&quot;).asInt(-1), &quot;Scenario and reply versions must match&quot;);</span>
+
+<span class="fc" id="L103">        var requirementNode = scenario.path(&quot;requirement&quot;);</span>
+<span class="fc" id="L104">        var requirement = new Requirement(text(requirementNode, &quot;key&quot;), text(requirementNode, &quot;title&quot;),</span>
+<span class="fc" id="L105">                text(requirementNode, &quot;language&quot;), text(requirementNode, &quot;text&quot;));</span>
+<span class="fc" id="L106">        require(Set.of(&quot;de&quot;, &quot;en&quot;).contains(requirement.language()), &quot;Scenario language must be de or en&quot;);</span>
+<span class="fc" id="L107">        String r0 = text(scenario.path(&quot;iterations&quot;).path(&quot;R0&quot;), &quot;exactText&quot;);</span>
+<span class="fc" id="L108">        require(r0.equals(requirement.text()), &quot;R0 must equal the scenario requirement&quot;);</span>
+<span class="fc" id="L109">        var phrases = strings(scenario.path(&quot;iterations&quot;).path(&quot;R1&quot;), &quot;requiredPhrases&quot;);</span>
+
+<span class="fc" id="L111">        var iterations = new LinkedHashMap&lt;String, Iteration&gt;();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        for (var entry : replies.path(&quot;iterations&quot;).properties()) {</span>
+<span class="fc" id="L113">            iterations.put(entry.getKey(), iteration(entry.getKey(), entry.getValue()));</span>
+<span class="fc" id="L114">        }</span>
+<span class="fc" id="L115">        var declaredIterations = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L116">        scenario.path(&quot;iterations&quot;).properties().forEach(e -&gt; declaredIterations.add(e.getKey()));</span>
+<span class="pc bpc" id="L117" title="2 of 4 branches missed.">        require(declaredIterations.equals(iterations.keySet()) &amp;&amp; iterations.keySet().equals(Set.of(&quot;R0&quot;, &quot;R1&quot;)),</span>
+                &quot;Scenario and reply book must define exactly R0 and R1&quot;);
+
+<span class="fc" id="L120">        var decisions = new ArrayList&lt;DemoDecision&gt;();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        for (var node : scenario.path(&quot;demoDecisions&quot;)) {</span>
+<span class="fc" id="L122">            decisions.add(new DemoDecision(text(node, &quot;question&quot;), strings(node, &quot;values&quot;), text(node, &quot;rationale&quot;)));</span>
+<span class="fc" id="L123">        }</span>
+<span class="fc" id="L124">        var reviews = new ArrayList&lt;DemoReview&gt;();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        for (var node : scenario.path(&quot;demoReviews&quot;)) {</span>
+<span class="fc" id="L126">            reviews.add(new DemoReview(text(node, &quot;wording&quot;), text(node, &quot;action&quot;), text(node, &quot;rationale&quot;)));</span>
+<span class="fc" id="L127">        }</span>
+<span class="fc" id="L128">        var stations = new ArrayList&lt;Station&gt;();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        for (var node : scenario.path(&quot;stations&quot;)) {</span>
+<span class="fc" id="L130">            stations.add(new Station(text(node, &quot;id&quot;), text(node, &quot;de&quot;), text(node, &quot;en&quot;)));</span>
+<span class="fc" id="L131">        }</span>
+<span class="fc" id="L132">        var anchors = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L133">        scenario.path(&quot;catalogue&quot;).path(&quot;anchors&quot;).properties().forEach(e -&gt; anchors.put(e.getKey(), e.getValue().asString()));</span>
+<span class="fc" id="L134">        String fingerprint = StableIdentityHash.sha256(new String(scenarioBytes, StandardCharsets.UTF_8)</span>
+                + &quot;\n--replies--\n&quot; + new String(replyBytes, StandardCharsets.UTF_8));
+<span class="fc" id="L136">        var result = new DemoScenario(id, version, fingerprint, localized(scenario.path(&quot;title&quot;)),</span>
+<span class="fc" id="L137">                localized(scenario.path(&quot;banner&quot;)), text(scenario.path(&quot;catalogue&quot;), &quot;source&quot;), Map.copyOf(anchors),</span>
+<span class="fc" id="L138">                requirement, r0, phrases, List.copyOf(decisions), List.copyOf(reviews), List.copyOf(stations),</span>
+<span class="fc" id="L139">                Collections.unmodifiableMap(iterations));</span>
+<span class="fc" id="L140">        result.validateStructure();</span>
+<span class="fc" id="L141">        return result;</span>
+    }
+
+    private void validateStructure() {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        for (var iteration : iterations.values()) {</span>
+<span class="fc" id="L146">            require(iteration.roots().keySet().equals(Set.copyOf(ROOTS)),</span>
+<span class="fc" id="L147">                    iteration.name() + &quot;: every taxonomy root needs an authored root reply&quot;);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            for (var parent : iteration.expansions().entrySet()) {</span>
+<span class="fc" id="L149">                Double parentScore = iteration.authoredScore(parent.getKey());</span>
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">                require(parentScore != null &amp;&amp; parentScore &gt; 0,</span>
+<span class="fc" id="L151">                        iteration.name() + &quot;: expansion of unscored parent &quot; + parent.getKey());</span>
+<span class="fc" id="L152">                double sum = parent.getValue().values().stream().mapToDouble(Score::score).sum();</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                require(sum == parentScore, iteration.name() + &quot;: children of &quot; + parent.getKey()</span>
+                        + &quot; must sum to its authored score &quot; + parentScore + &quot; but sum to &quot; + sum);
+<span class="fc" id="L155">            }</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            for (var relation : iteration.relations()) {</span>
+<span class="pc bpc" id="L157" title="2 of 4 branches missed.">                require(relation.path().size() &gt;= 2 &amp;&amp; ROOTS.contains(relation.path().getFirst()),</span>
+<span class="fc" id="L158">                        iteration.name() + &quot;: relation path must start at a taxonomy root&quot;);</span>
+<span class="fc" id="L159">                Double sourceScore = iteration.authoredScore(relation.source());</span>
+<span class="pc bpc" id="L160" title="2 of 4 branches missed.">                require(sourceScore != null &amp;&amp; sourceScore &gt; 0, iteration.name() + &quot;: relation source must be scored&quot;);</span>
+<span class="fc" id="L161">            }</span>
+<span class="fc" id="L162">            var questionIds = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L163">            var subjects = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            for (var question : iteration.reformulation().questions()) {</span>
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">                require(questionIds.add(question.id()) &amp;&amp; subjects.add(question.subject()), &quot;Duplicate demo question &quot; + question.id());</span>
+<span class="fc" id="L166">                require(ROOTS.contains(question.anchorRoot()), &quot;Question anchor must be a taxonomy root&quot;);</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                require(question.consequences().size() &gt;= 2, &quot;Choice question &quot; + question.id() + &quot; needs two options&quot;);</span>
+<span class="fc" id="L168">                require(Set.of(&quot;SINGLE_CHOICE&quot;, &quot;MULTIPLE_CHOICE&quot;).contains(question.kind()), &quot;Unsupported question kind&quot;);</span>
+<span class="fc" id="L169">            }</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            for (var addition : iteration.reformulation().additions()) {</span>
+<span class="fc" id="L171">                require(ROOTS.contains(addition.anchorRoot()), &quot;Addition anchor must be a taxonomy root&quot;);</span>
+<span class="fc" id="L172">                require(Set.of(&quot;MODEL_ADDITION&quot;, &quot;CATALOGUE_INSPIRATION&quot;, &quot;ARCHITECTURE_HYPOTHESIS&quot;).contains(addition.provenance()),</span>
+                        &quot;Replay additions cannot claim original, human or adopted provenance&quot;);
+<span class="fc" id="L174">            }</span>
+<span class="fc" id="L175">        }</span>
+<span class="fc" id="L176">        var consequences = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        for (var decision : demoDecisions) {</span>
+<span class="fc" id="L178">            var question = question(decision.question());</span>
+<span class="pc bpc" id="L179" title="2 of 4 branches missed.">            require(question.consequences().keySet().containsAll(decision.values()) &amp;&amp; !decision.values().isEmpty(),</span>
+<span class="fc" id="L180">                    &quot;Demo decision &quot; + decision.question() + &quot; uses an unknown option&quot;);</span>
+<span class="fc" id="L181">            decision.values().forEach(value -&gt; consequences.add(question.consequences().get(value)));</span>
+<span class="fc" id="L182">        }</span>
+<span class="fc" id="L183">        require(Set.copyOf(consequences).equals(Set.copyOf(r1RequiredPhrases)),</span>
+                &quot;R1 required phrases must be exactly the consequences of the visible demo decisions&quot;);
+<span class="fc" id="L185">        var additions = iterations.values().stream().flatMap(i -&gt; i.reformulation().additions().stream())</span>
+<span class="fc" id="L186">                .map(Addition::wording).toList();</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        for (var review : demoReviews) {</span>
+<span class="pc bpc" id="L188" title="2 of 4 branches missed.">            require(&quot;REJECT&quot;.equals(review.action()) &amp;&amp; additions.contains(review.wording()),</span>
+                    &quot;Demo review must reject an authored addition&quot;);
+<span class="fc" id="L190">        }</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        require(maxIteration() == 1, &quot;This scenario supports exactly one adopted iteration&quot;);</span>
+<span class="fc" id="L192">    }</span>
+
+    private static Iteration iteration(String name, JsonNode node) {
+<span class="fc" id="L195">        require(name.matches(&quot;R[0-9]{1,2}&quot;), &quot;Invalid iteration name &quot; + name);</span>
+<span class="fc" id="L196">        var roots = new LinkedHashMap&lt;String, Score&gt;();</span>
+<span class="fc" id="L197">        node.path(&quot;roots&quot;).properties().forEach(e -&gt; roots.put(e.getKey(), score(e.getValue())));</span>
+<span class="fc" id="L198">        var expansions = new LinkedHashMap&lt;String, Map&lt;String, Score&gt;&gt;();</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        for (var parent : node.path(&quot;expansions&quot;).properties()) {</span>
+<span class="fc" id="L200">            var children = new LinkedHashMap&lt;String, Score&gt;();</span>
+<span class="fc" id="L201">            parent.getValue().properties().forEach(e -&gt; children.put(e.getKey(), score(e.getValue())));</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">            require(!children.isEmpty(), name + &quot;: empty expansion &quot; + parent.getKey());</span>
+<span class="fc" id="L203">            expansions.put(parent.getKey(), Collections.unmodifiableMap(children));</span>
+<span class="fc" id="L204">        }</span>
+<span class="fc" id="L205">        var justifications = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L206">        node.path(&quot;justifications&quot;).properties().forEach(e -&gt; justifications.put(e.getKey(), nonBlank(e.getValue().asString(), &quot;justification&quot;)));</span>
+<span class="fc" id="L207">        var relations = new ArrayList&lt;Relation&gt;();</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        for (var relation : node.path(&quot;relations&quot;)) {</span>
+<span class="fc" id="L209">            relations.add(new Relation(text(relation, &quot;source&quot;), text(relation, &quot;type&quot;), strings(relation, &quot;path&quot;), text(relation, &quot;contribution&quot;)));</span>
+<span class="fc" id="L210">        }</span>
+<span class="fc" id="L211">        var reformulation = node.path(&quot;reformulation&quot;);</span>
+<span class="fc" id="L212">        var summaries = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L213">        reformulation.path(&quot;summaries&quot;).properties().forEach(e -&gt; summaries.put(e.getKey(), nonBlank(e.getValue().asString(), &quot;summary&quot;)));</span>
+<span class="fc" id="L214">        var additions = new ArrayList&lt;Addition&gt;();</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        for (var addition : reformulation.path(&quot;additions&quot;)) {</span>
+<span class="fc" id="L216">            additions.add(new Addition(text(addition, &quot;anchorRoot&quot;), text(addition, &quot;provenance&quot;), text(addition, &quot;wording&quot;)));</span>
+<span class="fc" id="L217">        }</span>
+<span class="fc" id="L218">        var questions = new ArrayList&lt;Question&gt;();</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (var question : reformulation.path(&quot;questions&quot;)) {</span>
+<span class="fc" id="L220">            var consequences = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L221">            question.path(&quot;consequences&quot;).properties().forEach(e -&gt; consequences.put(nonBlank(e.getKey(), &quot;option&quot;), nonBlank(e.getValue().asString(), &quot;consequence&quot;)));</span>
+<span class="fc" id="L222">            questions.add(new Question(text(question, &quot;id&quot;), text(question, &quot;anchorRoot&quot;), text(question, &quot;subject&quot;),</span>
+<span class="fc" id="L223">                    text(question, &quot;dimension&quot;), text(question, &quot;wording&quot;), text(question, &quot;rationale&quot;), text(question, &quot;kind&quot;),</span>
+<span class="fc" id="L224">                    Collections.unmodifiableMap(consequences), text(question, &quot;consequenceSummary&quot;)));</span>
+<span class="fc" id="L225">        }</span>
+<span class="fc" id="L226">        return new Iteration(name, text(node, &quot;zeroReason&quot;), Collections.unmodifiableMap(roots),</span>
+<span class="fc" id="L227">                Collections.unmodifiableMap(expansions), Collections.unmodifiableMap(justifications), List.copyOf(relations),</span>
+<span class="fc" id="L228">                new Reformulation(text(reformulation, &quot;defaultSummary&quot;), Collections.unmodifiableMap(summaries),</span>
+<span class="fc" id="L229">                        List.copyOf(additions), List.copyOf(questions)));</span>
+    }
+
+    private static Score score(JsonNode node) {
+<span class="fc" id="L233">        require(node.path(&quot;score&quot;).isIntegralNumber(), &quot;Score must be an integer&quot;);</span>
+<span class="fc" id="L234">        int value = node.path(&quot;score&quot;).asInt();</span>
+<span class="pc bpc" id="L235" title="2 of 4 branches missed.">        require(value &gt;= 0 &amp;&amp; value &lt;= 100, &quot;Score must be within 0..100&quot;);</span>
+<span class="fc" id="L236">        return new Score(value, text(node, &quot;reason&quot;));</span>
+    }
+
+    private static Map&lt;String, String&gt; localized(JsonNode node) {
+<span class="fc" id="L240">        return Map.of(&quot;de&quot;, text(node, &quot;de&quot;), &quot;en&quot;, text(node, &quot;en&quot;));</span>
+    }
+
+    private static byte[] read(Function&lt;String, InputStream&gt; resources, String path) {
+<span class="fc" id="L244">        try (InputStream stream = resources.apply(path)) {</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">            if (stream == null) throw new IllegalArgumentException(&quot;Missing demo scenario resource &quot; + path);</span>
+<span class="fc" id="L246">            return stream.readAllBytes();</span>
+<span class="nc" id="L247">        } catch (IOException failure) {</span>
+<span class="nc" id="L248">            throw new IllegalArgumentException(&quot;Cannot read demo scenario resource &quot; + path, failure);</span>
+        }
+    }
+
+    static String text(JsonNode node, String field) {
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">        JsonNode value = node == null ? null : node.get(field);</span>
+<span class="pc bpc" id="L254" title="3 of 6 branches missed.">        require(value != null &amp;&amp; value.isString() &amp;&amp; !value.asString().isBlank(), &quot;Missing scenario text: &quot; + field);</span>
+<span class="fc" id="L255">        return value.asString();</span>
+    }
+
+    private static String nonBlank(String value, String field) {
+<span class="pc bpc" id="L259" title="2 of 4 branches missed.">        require(value != null &amp;&amp; !value.isBlank(), &quot;Missing scenario text: &quot; + field);</span>
+<span class="fc" id="L260">        return value;</span>
+    }
+
+    static List&lt;String&gt; strings(JsonNode node, String field) {
+<span class="fc" id="L264">        JsonNode array = node.path(field);</span>
+<span class="pc bpc" id="L265" title="2 of 4 branches missed.">        require(array.isArray() &amp;&amp; !array.isEmpty(), &quot;Missing scenario list: &quot; + field);</span>
+<span class="fc" id="L266">        var values = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        for (var item : array) {</span>
+<span class="pc bpc" id="L268" title="2 of 4 branches missed.">            require(item.isString() &amp;&amp; !item.asString().isBlank(), &quot;Invalid scenario list entry: &quot; + field);</span>
+<span class="fc" id="L269">            values.add(item.asString());</span>
+<span class="fc" id="L270">        }</span>
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">        require(new LinkedHashSet&lt;&gt;(values).size() == values.size(), &quot;Duplicate scenario list entry: &quot; + field);</span>
+<span class="fc" id="L272">        return List.copyOf(values);</span>
+    }
+
+    static void require(boolean condition, String message) {
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (!condition) throw new IllegalArgumentException(&quot;Invalid demo scenario: &quot; + message);</span>
+<span class="fc" id="L277">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

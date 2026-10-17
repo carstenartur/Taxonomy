@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PlanningProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.planning</a> &gt; <span class="el_source">PlanningProfile.java</span></div><h1>PlanningProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.planning;
+
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import java.util.List;
+import java.util.Map;
+
+/** Pure domain extension. Neither a vendor codec nor a parallel persistence model. */
+public interface PlanningProfile {
+    record Field(String key, boolean required, List&lt;String&gt; choices) {
+<span class="fc" id="L10">        public Field { PlanningEntry.token(key, &quot;field&quot;); choices = List.copyOf(choices); }</span>
+    }
+    record Descriptor(String id, String version, List&lt;Field&gt; fields) {
+<span class="fc" id="L13">        public Descriptor { PlanningEntry.token(id, &quot;profile&quot;); PlanningEntry.token(version, &quot;version&quot;); fields = List.copyOf(fields); }</span>
+    }
+    record Stored(String dsl, Map&lt;String, String&gt; values) {
+<span class="fc" id="L16">        public Stored { values = Map.copyOf(values); }</span>
+    }
+    Descriptor descriptor();
+    void validate(Map&lt;String, String&gt; values);
+    default Stored store(String dsl, String requirement, String entry, Map&lt;String, String&gt; values) {
+<span class="fc" id="L21">        validate(values); return new Stored(dsl, values);</span>
+    }
+<span class="nc" id="L23">    default String remove(String dsl, String requirement, String entry, Map&lt;String, String&gt; stored) { return dsl; }</span>
+    default Map&lt;String, String&gt; read(CanonicalArchitectureModel model, String requirement, Map&lt;String, String&gt; stored) {
+<span class="fc" id="L25">        validate(stored); return stored;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

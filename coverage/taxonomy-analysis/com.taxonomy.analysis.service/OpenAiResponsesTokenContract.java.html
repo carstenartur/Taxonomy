@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OpenAiResponsesTokenContract.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">OpenAiResponsesTokenContract.java</span></div><h1>OpenAiResponsesTokenContract.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.core.StreamReadFeature;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Complete stateless Responses contract; no text/token ratio or hidden server state. */
+<span class="nc" id="L13">final class OpenAiResponsesTokenContract {</span>
+    static final String ADAPTER = &quot;openai.responses.gpt-4o-mini-2024-07-18.v1&quot;;
+    static final String MODEL = &quot;gpt-4o-mini-2024-07-18&quot;;
+    static final String COUNT_URL = &quot;https://api.openai.com/v1/responses/input_tokens&quot;;
+    static final String GENERATION_URL = &quot;https://api.openai.com/v1/responses&quot;;
+    static final int MAX_REQUEST_BYTES = 1_048_576;
+    static final int MAX_COUNT_RESPONSE_BYTES = 16_384;
+    static final int MAX_GENERATION_RESPONSE_BYTES = 2_097_152;
+    static final long MAX_OPERATION_MILLIS = 30_000;
+<span class="fc" id="L22">    record Prepared(String countBody, String generationBody) {}</span>
+    static Prepared prepare(LlmProvider provider, String endpoint, String model,
+                            ProviderRateQuotas.TokenBudget budget, String prompt, ObjectMapper json) {
+<span class="fc" id="L25">        return prepare(provider, endpoint, model, budget, prompt, json, null);</span>
+    }
+    static Prepared prepare(LlmProvider provider, String endpoint, String model,
+                            ProviderRateQuotas.TokenBudget budget, String prompt, ObjectMapper json,
+                            LlmCompletionOptions options) {
+<span class="fc" id="L30">        requireContract(provider, endpoint, model, budget);</span>
+<span class="pc bpc" id="L31" title="3 of 6 branches missed.">        if (prompt == null || prompt.isBlank() || prompt.length() &gt; MAX_REQUEST_BYTES) throw rejected();</span>
+<span class="fc" id="L32">        var input = List.of(Map.of(&quot;role&quot;, &quot;user&quot;, &quot;content&quot;, List.of(Map.of(&quot;type&quot;, &quot;input_text&quot;, &quot;text&quot;, prompt))));</span>
+<span class="fc" id="L33">        var count = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L34">        count.put(&quot;model&quot;, MODEL); count.put(&quot;input&quot;, input); count.put(&quot;truncation&quot;, &quot;disabled&quot;);</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">        if (options != null &amp;&amp; options.schema() != null) {</span>
+<span class="fc" id="L36">            count.put(&quot;text&quot;, Map.of(&quot;format&quot;, Map.of(&quot;type&quot;, &quot;json_schema&quot;, &quot;name&quot;, options.schemaName(),</span>
+<span class="fc" id="L37">                    &quot;strict&quot;, true, &quot;schema&quot;, options.schema())));</span>
+        }
+<span class="fc" id="L39">        var generation = new LinkedHashMap&lt;String, Object&gt;(count);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        generation.put(&quot;max_output_tokens&quot;, options == null ? budget.maximumOutputTokens()</span>
+<span class="fc" id="L41">                : Math.min(options.maxOutputTokens(), budget.maximumOutputTokens()));</span>
+<span class="fc" id="L42">        generation.put(&quot;store&quot;, false);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (options != null) generation.put(&quot;temperature&quot;, 0);</span>
+<span class="fc" id="L44">        String countBody = json.writeValueAsString(count), generationBody = json.writeValueAsString(generation);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (countBody.getBytes(StandardCharsets.UTF_8).length &gt; MAX_REQUEST_BYTES</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                || generationBody.getBytes(StandardCharsets.UTF_8).length &gt; MAX_REQUEST_BYTES) throw rejected();</span>
+<span class="fc" id="L47">        return new Prepared(countBody, generationBody);</span>
+    }
+    static void requireContract(LlmProvider provider, String endpoint, String model, ProviderRateQuotas.TokenBudget budget) {
+<span class="fc bfc" id="L50" title="All 4 branches covered.">        if (provider != LlmProvider.OPENAI || !LlmProviderConfig.OPENAI_URL.equals(endpoint)</span>
+<span class="pc bpc" id="L51" title="1 of 6 branches missed.">                || !LlmProviderConfig.OPENAI_MODEL.equals(model) || budget == null || !ADAPTER.equals(budget.adapterId())</span>
+<span class="fc bfc" id="L52" title="All 4 branches covered.">                || budget.maximumOutputTokens() &gt; 16_384 || budget.maximumTokens() &gt; 128_000)</span>
+<span class="fc" id="L53">            throw new ProviderRateQuotas.UnavailableException(&quot;Unsupported complete Responses token contract&quot;, null);</span>
+<span class="fc" id="L54">    }</span>
+    static long validateCount(String body, ProviderRateQuotas.TokenBudget budget, ObjectMapper json) {
+<span class="fc" id="L56">        var root = read(body, MAX_COUNT_RESPONSE_BYTES, json);</span>
+<span class="fc" id="L57">        var count = root.get(&quot;input_tokens&quot;);</span>
+<span class="pc bpc" id="L58" title="1 of 6 branches missed.">        if (root.size() != 2 || !&quot;response.input_tokens&quot;.equals(root.path(&quot;object&quot;).asText())</span>
+<span class="fc bfc" id="L59" title="All 4 branches covered.">                || count == null || !count.isIntegralNumber() || !count.canConvertToLong()</span>
+<span class="fc bfc" id="L60" title="All 4 branches covered.">                || count.longValue() &lt; 0 || count.longValue() &gt; budget.inputUpperBound()) throw rejected();</span>
+<span class="fc" id="L61">        return count.longValue();</span>
+    }
+    static String extractText(String body, ObjectMapper json) {
+<span class="fc" id="L64">        var root = read(body, MAX_GENERATION_RESPONSE_BYTES, json);</span>
+<span class="fc" id="L65">        var output = root.get(&quot;output&quot;);</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (&quot;response&quot;.equals(root.path(&quot;object&quot;).asText())</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">                &amp;&amp; (&quot;incomplete&quot;.equals(root.path(&quot;status&quot;).asText()) || &quot;failed&quot;.equals(root.path(&quot;status&quot;).asText()))) {</span>
+<span class="fc" id="L68">            var partial = new StringBuilder();</span>
+<span class="pc bpc" id="L69" title="2 of 6 branches missed.">            if (output != null &amp;&amp; output.isArray()) for (var item : output) {</span>
+<span class="fc" id="L70">                var parts = item.path(&quot;content&quot;);</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                if (!&quot;message&quot;.equals(item.path(&quot;type&quot;).asText())</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">                        || !&quot;assistant&quot;.equals(item.path(&quot;role&quot;).asText()) || !parts.isArray()) continue;</span>
+<span class="pc bpc" id="L73" title="2 of 6 branches missed.">                for (var part : parts) if (&quot;output_text&quot;.equals(part.path(&quot;type&quot;).asText()) &amp;&amp; part.path(&quot;text&quot;).isString()) {</span>
+<span class="fc" id="L74">                    partial.append(part.path(&quot;text&quot;).stringValue());</span>
+                }
+<span class="fc" id="L76">            }</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            throw new LlmIncompleteResponseException(partial.toString(), &quot;failed&quot;.equals(root.path(&quot;status&quot;).asText())</span>
+<span class="pc" id="L78">                    ? &quot;error&quot; : root.path(&quot;incomplete_details&quot;).path(&quot;reason&quot;).asText());</span>
+        }
+<span class="pc bpc" id="L80" title="3 of 6 branches missed.">        if (!&quot;response&quot;.equals(root.path(&quot;object&quot;).asText()) || !&quot;completed&quot;.equals(root.path(&quot;status&quot;).asText())</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">                || output == null || !output.isArray() || output.size() != 1) throw rejected();</span>
+<span class="fc" id="L82">        var message = output.get(0); var content = message.get(&quot;content&quot;);</span>
+<span class="pc bpc" id="L83" title="3 of 6 branches missed.">        if (!&quot;message&quot;.equals(message.path(&quot;type&quot;).asText()) || !&quot;assistant&quot;.equals(message.path(&quot;role&quot;).asText())</span>
+<span class="pc bpc" id="L84" title="2 of 4 branches missed.">                || content == null || !content.isArray() || content.isEmpty()) throw rejected();</span>
+<span class="fc" id="L85">        var result = new StringBuilder();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (var part : content) {</span>
+<span class="fc" id="L87">            var text = part.get(&quot;text&quot;);</span>
+<span class="pc bpc" id="L88" title="2 of 6 branches missed.">            if (!&quot;output_text&quot;.equals(part.path(&quot;type&quot;).asText()) || text == null || !text.isString()) throw rejected();</span>
+<span class="fc" id="L89">            result.append(text.stringValue());</span>
+<span class="fc" id="L90">        }</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (result.isEmpty()) throw rejected();</span>
+<span class="fc" id="L92">        return result.toString();</span>
+    }
+    private static JsonNode read(String body, int limit, ObjectMapper json) {
+<span class="pc bpc" id="L95" title="3 of 6 branches missed.">        if (body == null || body.length() &gt; limit || body.getBytes(StandardCharsets.UTF_8).length &gt; limit) throw rejected();</span>
+        try {
+<span class="fc" id="L97">            var root = json.reader().with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L98">                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(body);</span>
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">            if (root == null || !root.isObject()) throw rejected();</span>
+<span class="fc" id="L100">            return root;</span>
+<span class="nc" id="L101">        } catch (LlmProviderException failure) { throw failure; }</span>
+<span class="fc" id="L102">        catch (RuntimeException invalid) { throw rejected(); }</span>
+    }
+    private static LlmProviderException rejected() {
+<span class="fc" id="L105">        return new LlmProviderException(LlmProviderException.Reason.REQUEST_REJECTED,</span>
+                &quot;Complete Responses token contract could not be established&quot;);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

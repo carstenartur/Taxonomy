@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationSearchEngine.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RelationSearchEngine.java</span></div><h1>RelationSearchEngine.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
+import java.util.*;
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/** Bounded, request-local hierarchy search. Navigation never implies an architectural edge. */
+public final class RelationSearchEngine {
+    private final Catalogue catalogue;
+    private final Evaluator evaluator;
+    private final Runnable checkpoint;
+    private final Observer observer;
+    private final boolean externalBudget;
+    private final int maxPromptCharacters;
+
+    public interface Observer {
+<span class="fc" id="L17">        default void started(Query query, int depth) { }</span>
+<span class="fc" id="L18">        default void finished(Intent intent, boolean complete) { }</span>
+<span class="fc" id="L19">        default void verified(Edge edge) { }</span>
+    }
+
+    public RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint) {
+<span class="fc" id="L23">        this(catalogue, evaluator, checkpoint, new Observer() { }, false);</span>
+<span class="fc" id="L24">    }</span>
+
+    public RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint,
+                                Observer observer, boolean externalBudget) {
+<span class="fc" id="L28">        this(catalogue, evaluator, checkpoint, observer, externalBudget, 16_000);</span>
+<span class="fc" id="L29">    }</span>
+    public RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint,
+<span class="fc" id="L31">                                Observer observer, boolean externalBudget, int maxPromptCharacters) {</span>
+<span class="fc" id="L32">        this.catalogue = Objects.requireNonNull(catalogue);</span>
+<span class="fc" id="L33">        this.evaluator = Objects.requireNonNull(evaluator);</span>
+<span class="fc" id="L34">        this.checkpoint = Objects.requireNonNull(checkpoint);</span>
+<span class="fc" id="L35">        this.observer = Objects.requireNonNull(observer);</span>
+<span class="fc" id="L36">        this.externalBudget = externalBudget;</span>
+<span class="fc" id="L37">        this.maxPromptCharacters = maxPromptCharacters;</span>
+<span class="fc" id="L38">    }</span>
+
+    /** Malformed provider output is distinct from a negative semantic decision. */
+    public static final class InvalidResponseException extends IllegalArgumentException {
+        private static final long serialVersionUID = 1L;
+<span class="fc" id="L43">        public InvalidResponseException(String message) { super(message); }</span>
+    }
+
+    /** Carries already verified results when cancellation, memory pressure or an upstream call stops work. */
+    public static final class InterruptedSearchException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
+        private final transient Result partialResult;
+        InterruptedSearchException(RuntimeException cause, Result partialResult) {
+<span class="fc" id="L51">            super(cause.getMessage(), cause); this.partialResult = partialResult;</span>
+<span class="fc" id="L52">        }</span>
+<span class="fc" id="L53">        public Result partialResult() { return partialResult; }</span>
+    }
+
+    public Result search(String original, List&lt;Intent&gt; intents, Limits limits) {
+<span class="fc" id="L57">        Objects.requireNonNull(intents); Objects.requireNonNull(limits);</span>
+<span class="pc bpc" id="L58" title="2 of 4 branches missed.">        if (original == null || original.isBlank()) throw new IllegalArgumentException(&quot;Missing original requirement&quot;);</span>
+<span class="fc" id="L59">        return new Run(original, limits).execute(List.copyOf(intents));</span>
+    }
+
+<span class="fc" id="L62">    private record Work(Query query, int depth, Set&lt;String&gt; path) { }</span>
+
+    private final class Run {
+        private final String original;
+        private final Limits limits;
+<span class="fc" id="L67">        private final long started = System.nanoTime();</span>
+<span class="fc" id="L68">        private final Deque&lt;Work&gt; queue = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L69">        private final Set&lt;Query&gt; scheduled = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L70">        private final Set&lt;Edge&gt; edges = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L71">        private final List&lt;Unfinished&gt; unfinished = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L72">        private final List&lt;Trace&gt; trace = new ArrayList&lt;&gt;();</span>
+        private int calls;
+        private int visited;
+<span class="fc" id="L75">        private List&lt;Intent&gt; seeds = List.of();</span>
+        private int nextSeed;
+        private Intent activeSeed;
+        private int unfinishedAtSeed;
+
+<span class="fc" id="L80">        Run(String original, Limits limits) { this.original = original; this.limits = limits; }</span>
+
+        Result execute(List&lt;Intent&gt; intents) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            for (Intent intent : intents) {</span>
+                // All supplied root sets are known before the first remote evaluation.
+<span class="fc" id="L85">                validateCandidates(intent.roots());</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                if (!original.contains(intent.contribution().quote())) {</span>
+<span class="nc" id="L87">                    throw new IllegalArgumentException(&quot;Contribution evidence is not an original quote&quot;);</span>
+                }
+<span class="fc" id="L89">            }</span>
+<span class="fc" id="L90">            seeds = intents;</span>
+<span class="fc bfc" id="L91" title="All 4 branches covered.">            while (!queue.isEmpty() || nextSeed &lt; seeds.size()) {</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                if (queue.isEmpty()) {</span>
+<span class="fc" id="L93">                    finishSeed();</span>
+<span class="fc" id="L94">                    Intent seed = seeds.get(nextSeed++);</span>
+<span class="fc" id="L95">                    activeSeed = seed; unfinishedAtSeed = unfinished.size();</span>
+<span class="fc" id="L96">                    enqueue(seed.contribution(), seed.type(), seed.direction(), Phase.NAVIGATE,</span>
+<span class="fc" id="L97">                            seed.roots(), null, 0, Set.of());</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                    if (queue.isEmpty()) continue;</span>
+                }
+<span class="fc" id="L100">                Work work = queue.removeFirst();</span>
+<span class="fc" id="L101">                Query q = work.query();</span>
+<span class="fc" id="L102">                try { checkpoint.run(); }</span>
+<span class="pc" id="L103">                catch (RuntimeException stopped) { interrupt(work, stopped); }</span>
+<span class="fc bfc" id="L104" title="All 4 branches covered.">                if (!externalBudget &amp;&amp; calls &gt;= limits.maxCalls()) {</span>
+<span class="fc" id="L105">                    issue(q, &quot;CALL_BUDGET&quot;, &quot;&quot;); drain(&quot;CALL_BUDGET&quot;); break;</span>
+                }
+<span class="fc" id="L107">                calls++;</span>
+                List&lt;Decision&gt; decisions;
+                try {
+<span class="fc" id="L110">                    observer.started(q, work.depth());</span>
+<span class="fc" id="L111">                    decisions = validate(q, evaluator.evaluate(q));</span>
+<span class="fc" id="L112">                } catch (com.taxonomy.analysis.recovery.AnalysisCheckpointSession.DeferredException deferred) {</span>
+<span class="fc" id="L113">                    issue(q, deferred.getMessage(), &quot;&quot;); drain(deferred.getMessage()); break;</span>
+<span class="fc" id="L114">                } catch (InvalidResponseException invalid) {</span>
+<span class="fc" id="L115">                    issue(q, &quot;INVALID_RESPONSE&quot;, invalid.getMessage());</span>
+<span class="fc" id="L116">                    continue;</span>
+<span class="nc" id="L117">                } catch (RuntimeException stopped) {</span>
+<span class="nc" id="L118">                    interrupt(work, stopped);</span>
+<span class="nc" id="L119">                    throw new AssertionError(&quot;unreachable&quot;);</span>
+<span class="fc" id="L120">                }</span>
+<span class="fc" id="L121">                visited++;</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                for (int i = 0; i &lt; q.candidates().size(); i++) {</span>
+<span class="fc" id="L123">                    Node node = q.candidates().get(i);</span>
+<span class="fc" id="L124">                    Decision decision = decisions.get(i);</span>
+<span class="fc" id="L125">                    trace.add(new Trace(q.contribution().source().id(), q.type(), q.direction(),</span>
+<span class="fc" id="L126">                            q.phase(), node.id(), decision.outcome(), decision.rationale()));</span>
+<span class="pc bpc" id="L127" title="1 of 6 branches missed.">                    switch (decision.outcome()) {</span>
+<span class="fc" id="L128">                        case REJECT -&gt; { /* Pruned by policy; trace retains the negative assessment. */ }</span>
+<span class="fc" id="L129">                        case UNRESOLVED -&gt; unfinished.add(new Unfinished(q.contribution().source().id(),</span>
+<span class="fc" id="L130">                                q.type(), q.direction(), List.of(node.id()), unfinishedReason(decision.question()), decision.question()));</span>
+<span class="fc" id="L131">                        case MATCH -&gt; enqueue(q.contribution(), q.type(), q.direction(), Phase.VERIFY,</span>
+<span class="fc" id="L132">                                List.of(node), decision, work.depth(), work.path());</span>
+                        case VERIFIED -&gt; {
+<span class="fc" id="L134">                            Edge edge = new Edge(q.contribution(), node, q.type(), q.direction(), decision);</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                            if (edges.add(edge)) observer.verified(edge);</span>
+<span class="fc" id="L136">                        }</span>
+<span class="fc" id="L137">                        case DESCEND -&gt; descend(work, node);</span>
+                    }
+                }
+<span class="fc" id="L140">            }</span>
+<span class="fc" id="L141">            finishSeed();</span>
+<span class="fc" id="L142">            return snapshot();</span>
+        }
+
+        private void finishSeed() {
+<span class="fc bfc" id="L146" title="All 4 branches covered.">            if (activeSeed != null) observer.finished(activeSeed, unfinished.size() == unfinishedAtSeed);</span>
+<span class="fc" id="L147">            activeSeed = null;</span>
+<span class="fc" id="L148">        }</span>
+
+        private void descend(Work work, Node node) {
+<span class="fc" id="L151">            Query q = work.query();</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (work.depth() &gt;= limits.maxDepth()) {</span>
+<span class="fc" id="L153">                unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),</span>
+<span class="fc" id="L154">                        List.of(node.id()), &quot;DEPTH_LIMIT&quot;, &quot;&quot;));</span>
+<span class="fc" id="L155">                return;</span>
+            }
+            List&lt;Node&gt; children;
+            try {
+<span class="fc" id="L159">                children = List.copyOf(catalogue.children(node));</span>
+                // Newly discovered invalid candidates stop with the same partial-result
+                // contract as other catalogue failures, preserving verified evidence.
+<span class="fc" id="L162">                validateCandidates(children);</span>
+            }
+<span class="pc" id="L164">            catch (RuntimeException failed) { interrupt(work, failed); return; }</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (children.isEmpty()) {</span>
+<span class="fc" id="L166">                unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),</span>
+<span class="fc" id="L167">                        List.of(node.id()), &quot;NO_CHILDREN&quot;, &quot;Refinement was requested but the catalogue has no children.&quot;));</span>
+<span class="fc" id="L168">                return;</span>
+            }
+<span class="fc" id="L170">            Set&lt;String&gt; path = new HashSet&lt;&gt;(work.path()); path.add(node.id());</span>
+<span class="fc" id="L171">            List&lt;Node&gt; safe = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            for (Node child : children) {</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                if (path.contains(child.id())) {</span>
+<span class="fc" id="L174">                    unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),</span>
+<span class="fc" id="L175">                            List.of(child.id()), &quot;CYCLE&quot;, &quot;&quot;));</span>
+<span class="fc" id="L176">                } else { safe.add(child); }</span>
+<span class="fc" id="L177">            }</span>
+<span class="fc" id="L178">            enqueue(q.contribution(), q.type(), q.direction(), Phase.NAVIGATE, safe, null,</span>
+<span class="fc" id="L179">                    work.depth() + 1, Set.copyOf(path));</span>
+<span class="fc" id="L180">        }</span>
+
+        private void enqueue(Contribution contribution, String type, Direction direction, Phase phase,
+                             List&lt;Node&gt; candidates, Decision proposal, int depth, Set&lt;String&gt; path) {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            for (Query query : queries(contribution, type, direction, phase, candidates, proposal)) {</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                if (scheduled.contains(query)) continue;</span>
+<span class="fc bfc" id="L186" title="All 4 branches covered.">                if (!externalBudget &amp;&amp; scheduled.size() &gt;= limits.maxWorkItems()) { issue(query, &quot;WORK_LIMIT&quot;, &quot;&quot;); continue; }</span>
+<span class="fc" id="L187">                scheduled.add(query);</span>
+<span class="fc" id="L188">                Work work = new Work(query, depth, path);</span>
+                // Finish an admitted branch before admitting unrelated source roots.
+<span class="fc bfc" id="L190" title="All 4 branches covered.">                if (phase == Phase.VERIFY || depth &gt; 0) queue.addFirst(work);</span>
+<span class="fc" id="L191">                else queue.addLast(work);</span>
+<span class="fc" id="L192">            }</span>
+<span class="fc" id="L193">        }</span>
+
+        private List&lt;Query&gt; queries(Contribution contribution, String type, Direction direction, Phase phase,
+                                    List&lt;Node&gt; candidates, Decision proposal) {
+<span class="fc" id="L197">            validateCandidates(candidates);</span>
+<span class="fc" id="L198">            Map&lt;String, Node&gt; unique = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            for (Node node : candidates) unique.put(node.id(), node);</span>
+<span class="fc" id="L200">            List&lt;Node&gt; ordered = List.copyOf(unique.values());</span>
+<span class="fc" id="L201">            List&lt;Query&gt; batches = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            for (List&lt;Node&gt; batch : RelationCandidateBatches.split(ordered, limits.batchSize(), maxPromptCharacters,</span>
+<span class="fc" id="L203">                    offered -&gt; RelationSearchProtocol.requestCharacters(RelationSearchProtocol.decisionPrompt(new Query(original, contribution, type, direction, phase, offered, proposal), Map.of())))) {</span>
+<span class="fc" id="L204">                batches.add(new Query(original, contribution, type, direction, phase, batch, proposal));</span>
+<span class="fc" id="L205">            }</span>
+<span class="fc" id="L206">            return batches;</span>
+        }
+
+        private List&lt;Decision&gt; validate(Query q, List&lt;Decision&gt; response) {
+<span class="fc" id="L210">            return validateResponse(q, response);</span>
+        }
+
+        private void interrupt(Work current, RuntimeException stopped) {
+<span class="fc" id="L214">            issue(current.query(), &quot;INTERRUPTED&quot;, &quot;&quot;); drain(&quot;INTERRUPTED&quot;); finishSeed();</span>
+<span class="fc" id="L215">            throw new InterruptedSearchException(stopped, snapshot());</span>
+        }
+        private void drain(String reason) {
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            while (!queue.isEmpty()) issue(queue.removeFirst().query(), reason, &quot;&quot;);</span>
+<span class="fc" id="L219">            Set&lt;Query&gt; reported = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            while (nextSeed &lt; seeds.size()) {</span>
+<span class="fc" id="L221">                Intent seed = seeds.get(nextSeed++);</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                for (Query query : queries(seed.contribution(), seed.type(), seed.direction(), Phase.NAVIGATE, seed.roots(), null)) {</span>
+<span class="pc bpc" id="L223" title="2 of 4 branches missed.">                    if (!scheduled.contains(query) &amp;&amp; reported.add(query)) issue(query, reason, &quot;&quot;);</span>
+<span class="fc" id="L224">                }</span>
+<span class="fc" id="L225">            }</span>
+<span class="fc" id="L226">        }</span>
+        private void issue(Query q, String reason, String question) {
+<span class="fc" id="L228">            unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),</span>
+<span class="fc" id="L229">                    q.candidates().stream().map(Node::id).toList(), reason, question));</span>
+<span class="fc" id="L230">        }</span>
+        private Result snapshot() {
+<span class="fc" id="L232">            return new Result(List.copyOf(edges), unfinished, trace, calls, visited,</span>
+<span class="fc" id="L233">                    (System.nanoTime() - started) / 1_000_000);</span>
+        }
+    }
+
+    /** Shared with the protocol so durable answers are validated before they are committed. */
+    static List&lt;Decision&gt; validateResponse(Query q, List&lt;Decision&gt; response) {
+<span class="pc bpc" id="L239" title="1 of 4 branches missed.">        if (response == null || response.size() != q.candidates().size()) invalid(&quot;Every offered candidate requires exactly one decision&quot;);</span>
+<span class="fc" id="L240">        Map&lt;String, Decision&gt; byId = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        for (Decision d : response) {</span>
+<span class="pc bpc" id="L242" title="4 of 8 branches missed.">            if (d == null || d.targetId() == null || d.outcome() == null || blank(d.rationale())</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">                    || byId.putIfAbsent(d.targetId(), d) != null) invalid(&quot;Missing or duplicate decision fields&quot;);</span>
+<span class="fc" id="L244">        }</span>
+<span class="fc" id="L245">        List&lt;Decision&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        for (Node node : q.candidates()) {</span>
+<span class="fc" id="L247">            Decision d = byId.get(node.id());</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">            if (d == null) invalid(&quot;Response contains an unknown or missing target ID&quot;);</span>
+<span class="pc bpc" id="L249" title="1 of 4 branches missed.">            if ((q.phase() == Phase.NAVIGATE &amp;&amp; d.outcome() == Outcome.VERIFIED)</span>
+<span class="pc bpc" id="L250" title="2 of 6 branches missed.">                    || (q.phase() == Phase.VERIFY &amp;&amp; (d.outcome() == Outcome.DESCEND || d.outcome() == Outcome.MATCH))) {</span>
+<span class="nc" id="L251">                invalid(&quot;Decision is not permitted in this phase&quot;);</span>
+            }
+<span class="pc bpc" id="L253" title="1 of 4 branches missed.">            if (d.outcome() == Outcome.UNRESOLVED &amp;&amp; blank(d.question())) invalid(&quot;Unresolved decision requires a question&quot;);</span>
+<span class="fc bfc" id="L254" title="All 4 branches covered.">            if (d.outcome() == Outcome.MATCH || d.outcome() == Outcome.VERIFIED) {</span>
+<span class="pc bpc" id="L255" title="1 of 4 branches missed.">                if (node.container() || node.id().equals(q.contribution().source().id())) invalid(&quot;Not a concrete distinct endpoint&quot;);</span>
+<span class="pc bpc" id="L256" title="3 of 8 branches missed.">                if (blank(d.contribution()) || blank(d.quote()) || !q.original().contains(d.quote()) || d.necessity() == null) {</span>
+<span class="nc" id="L257">                    invalid(&quot;Positive relation requires a scoped contribution and exact original evidence&quot;);</span>
+                }
+<span class="pc bpc" id="L259" title="1 of 4 branches missed.">                if (d.necessity() == Necessity.ALTERNATIVE &amp;&amp; blank(d.alternativeGroup())) invalid(&quot;Alternative requires an explicit choice group&quot;);</span>
+<span class="pc bpc" id="L260" title="1 of 4 branches missed.">                if (d.necessity() == Necessity.OPTIONAL &amp;&amp; blank(d.condition())) invalid(&quot;Optional relation requires an explicit condition&quot;);</span>
+<span class="pc bpc" id="L261" title="1 of 4 branches missed.">                if (q.phase() == Phase.VERIFY &amp;&amp; !sameClaim(q.proposal(), d)) invalid(&quot;Verification must not replace the proposed claim&quot;);</span>
+            }
+<span class="fc" id="L263">            result.add(d);</span>
+<span class="fc" id="L264">        }</span>
+<span class="fc" id="L265">        return List.copyOf(result);</span>
+    }
+
+    private static void validateCandidates(List&lt;Node&gt; candidates) {
+<span class="fc" id="L269">        ChildAssessmentContract.validateCandidates(candidates.stream().map(Node::id).toList());</span>
+<span class="fc" id="L270">    }</span>
+
+    private static boolean sameClaim(Decision a, Decision b) {
+<span class="pc bpc" id="L273" title="2 of 4 branches missed.">        return Objects.equals(a.targetId(), b.targetId()) &amp;&amp; Objects.equals(a.contribution(), b.contribution())</span>
+<span class="pc bpc" id="L274" title="2 of 4 branches missed.">                &amp;&amp; Objects.equals(a.quote(), b.quote()) &amp;&amp; a.necessity() == b.necessity()</span>
+<span class="pc bpc" id="L275" title="2 of 4 branches missed.">                &amp;&amp; Objects.equals(a.condition(), b.condition()) &amp;&amp; Objects.equals(a.alternativeGroup(), b.alternativeGroup());</span>
+    }
+<span class="pc bpc" id="L277" title="2 of 4 branches missed.">    private static boolean blank(String s) { return s == null || s.isBlank(); }</span>
+    private static String unfinishedReason(String question) {
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        if (!question.startsWith(&quot;TECHNICAL_ASSESSMENT_FAILURE:&quot;)) return &quot;UNRESOLVED&quot;;</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        for (String reason : List.of(&quot;CALL_BUDGET&quot;, &quot;WORK_LIMIT&quot;, &quot;SOURCE_LIMIT&quot;))</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">            if (question.startsWith(&quot;TECHNICAL_ASSESSMENT_FAILURE: &quot; + reason + &quot;:&quot;)) return reason;</span>
+<span class="fc" id="L282">        return &quot;INVALID_RESPONSE&quot;;</span>
+    }
+<span class="fc" id="L284">    private static void invalid(String reason) { throw new InvalidResponseException(reason); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

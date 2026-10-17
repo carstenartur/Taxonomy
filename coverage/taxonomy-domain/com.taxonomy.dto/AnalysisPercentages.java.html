@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisPercentages.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AnalysisPercentages.java</span></div><h1>AnalysisPercentages.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Numeric boundary for analysis percentages (0.5 means 0.5%, never 50%).
+ * Decimal arithmetic is used before conversion to the existing JSON/JavaScript
+ * numeric representation. An unrepresentable positive result is an explicit
+ * error, not evidence that the node is irrelevant.
+ */
+public final class AnalysisPercentages {
+    public static final String POLICY = &quot;decimal-percent-v2&quot;;
+<span class="fc" id="L17">    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);</span>
+<span class="fc" id="L18">    private static final MathContext PRECISION = MathContext.DECIMAL128;</span>
+    private AnalysisPercentages() { }
+
+    public static double require(Number number) {
+<span class="fc" id="L22">        Objects.requireNonNull(number, &quot;An assessment requires a numeric percentage&quot;);</span>
+        final BigDecimal value;
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        try { value = number instanceof BigDecimal decimal ? decimal : new BigDecimal(number.toString()); }</span>
+<span class="nc" id="L25">        catch (NumberFormatException invalid) {</span>
+<span class="nc" id="L26">            throw new IllegalArgumentException(&quot;Percentage must be a finite number between 0 and 100&quot;, invalid);</span>
+<span class="fc" id="L27">        }</span>
+<span class="fc bfc" id="L28" title="All 4 branches covered.">        if (value.signum() &lt; 0 || value.compareTo(HUNDRED) &gt; 0)</span>
+<span class="fc" id="L29">            throw new IllegalArgumentException(&quot;Percentage must be between 0 and 100&quot;);</span>
+<span class="fc" id="L30">        return represent(value);</span>
+    }
+
+<span class="fc" id="L33">    public static double require(double value) { return require(Double.valueOf(value)); }</span>
+
+    public static boolean valid(Double value) {
+<span class="pc bpc" id="L36" title="3 of 8 branches missed.">        return value != null &amp;&amp; Double.isFinite(value) &amp;&amp; value &gt;= 0 &amp;&amp; value &lt;= 100;</span>
+    }
+
+    public static Map&lt;String, Double&gt; copy(Map&lt;String, ? extends Number&gt; input) {
+<span class="fc" id="L40">        var result = new LinkedHashMap&lt;String, Double&gt;();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (input != null) input.forEach((key, value) -&gt; result.put(key, require(value)));</span>
+<span class="fc" id="L42">        return result;</span>
+    }
+
+    public static double product(double family, double suitability) {
+<span class="fc" id="L46">        return represent(BigDecimal.valueOf(require(family))</span>
+<span class="fc" id="L47">                .multiply(BigDecimal.valueOf(require(suitability))).movePointLeft(2));</span>
+    }
+
+    /** Proportional allocation; explicit zero weights stay zero, including an all-zero answer. */
+    public static Map&lt;String, Double&gt; normalize(Map&lt;String, ? extends Number&gt; scores, double parent) {
+<span class="fc" id="L52">        var result = copy(Objects.requireNonNull(scores));</span>
+<span class="fc" id="L53">        BigDecimal target = BigDecimal.valueOf(require(parent));</span>
+<span class="fc" id="L54">        BigDecimal sum = result.values().stream().map(BigDecimal::valueOf).reduce(BigDecimal.ZERO, BigDecimal::add);</span>
+<span class="fc bfc" id="L55" title="All 4 branches covered.">        if (sum.signum() == 0 || sum.compareTo(target) == 0) return result;</span>
+<span class="fc" id="L56">        String largest = null;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (var entry : result.entrySet()) {</span>
+<span class="fc" id="L58">            double scaled = represent(BigDecimal.valueOf(entry.getValue()).multiply(target).divide(sum, PRECISION));</span>
+<span class="fc" id="L59">            entry.setValue(scaled);</span>
+<span class="fc bfc" id="L60" title="All 4 branches covered.">            if (largest == null || scaled &gt; result.get(largest)</span>
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">                    || scaled == result.get(largest) &amp;&amp; entry.getKey().compareTo(largest) &lt; 0) largest = entry.getKey();</span>
+<span class="fc" id="L62">        }</span>
+        // Put any floating-point representation residual on the largest share, not
+        // on a tiny child. No whole-percent rounding and no artificial minimum score.
+<span class="pc bpc" id="L65" title="1 of 4 branches missed.">        if (largest != null &amp;&amp; parent &gt; 0) {</span>
+<span class="fc" id="L66">            double remainder = parent - result.values().stream().mapToDouble(Double::doubleValue).sum();</span>
+<span class="fc" id="L67">            double corrected = result.get(largest) + remainder;</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (!(corrected &gt; 0)) throw new IllegalArgumentException(&quot;Percentage allocation cannot preserve positive evidence&quot;);</span>
+<span class="fc" id="L69">            result.put(largest, require(corrected));</span>
+        }
+<span class="fc" id="L71">        return result;</span>
+    }
+
+    /** Canonical numeric text also preserves the spelling of historical integer evidence. */
+    public static String canonical(double percentage) {
+<span class="fc" id="L76">        return BigDecimal.valueOf(require(percentage)).stripTrailingZeros().toPlainString();</span>
+    }
+
+    /** Presentation only. Very small positives must not appear as an exact zero. */
+    public static String display(double percentage) {
+<span class="fc" id="L81">        require(percentage);</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">        if (percentage &gt; 0 &amp;&amp; percentage &lt; 0.000001) return &quot;&lt;0.000001%&quot;;</span>
+<span class="fc" id="L83">        return BigDecimal.valueOf(percentage).setScale(6, java.math.RoundingMode.HALF_UP)</span>
+<span class="fc" id="L84">                .stripTrailingZeros().toPlainString() + &quot;%&quot;;</span>
+    }
+
+    private static double represent(BigDecimal value) {
+<span class="fc" id="L88">        double result = value.doubleValue();</span>
+<span class="pc bpc" id="L89" title="1 of 6 branches missed.">        if (!Double.isFinite(result) || result == 0 &amp;&amp; value.signum() != 0)</span>
+<span class="fc" id="L90">            throw new IllegalArgumentException(&quot;Percentage is outside the supported numeric precision; leave the assessment open&quot;);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        return result == 0 ? 0d : result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisAnalysisBrokerHealthIndicator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisAnalysisBrokerHealthIndicator.java</span></div><h1>ArtemisAnalysisBrokerHealthIndicator.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import com.taxonomy.analysis.dispatch.AnalysisDispatchStatus;
+import com.taxonomy.analysis.dispatch.AnalysisDispatchStore;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
+
+import java.util.Objects;
+
+/**
+ * Reports the analysis broker connection and the number of dispatch intents that
+ * are waiting for it. Never exposes the broker URL or credentials. Not part of
+ * the readiness group: an unreachable broker delays analysis but must not take
+ * the editor, search or catalogue out of service.
+ */
+public final class ArtemisAnalysisBrokerHealthIndicator implements HealthIndicator {
+
+    private final ArtemisAnalysisConnection connection;
+    private final AnalysisDispatchStore store;
+
+<span class="fc" id="L21">    public ArtemisAnalysisBrokerHealthIndicator(ArtemisAnalysisConnection connection, AnalysisDispatchStore store) {</span>
+<span class="fc" id="L22">        this.connection = Objects.requireNonNull(connection, &quot;connection&quot;);</span>
+<span class="fc" id="L23">        this.store = Objects.requireNonNull(store, &quot;store&quot;);</span>
+<span class="fc" id="L24">    }</span>
+
+    @Override
+    public Health health() {
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        Health.Builder builder = connection.connected() ? Health.up() : Health.down();</span>
+<span class="fc" id="L29">        builder.withDetail(&quot;state&quot;, connection.state().name());</span>
+        try {
+<span class="fc" id="L31">            builder.withDetail(&quot;waitingForBroker&quot;, store.count(AnalysisDispatchStatus.WAITING_FOR_BROKER))</span>
+<span class="fc" id="L32">                    .withDetail(&quot;dispatchPending&quot;, store.count(AnalysisDispatchStatus.DISPATCH_PENDING))</span>
+<span class="fc" id="L33">                    .withDetail(&quot;dispatchFailed&quot;, store.count(AnalysisDispatchStatus.DISPATCH_FAILED));</span>
+<span class="nc" id="L34">        } catch (RuntimeException unavailable) {</span>
+<span class="nc" id="L35">            builder.withDetail(&quot;dispatchBacklog&quot;, &quot;unavailable&quot;);</span>
+<span class="fc" id="L36">        }</span>
+<span class="fc" id="L37">        return builder.build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

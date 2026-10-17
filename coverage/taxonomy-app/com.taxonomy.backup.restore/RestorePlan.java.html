@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestorePlan.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestorePlan.java</span></div><h1>RestorePlan.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.identity.StableIdentityHash;
+import java.io.IOException;
+import java.time.*;
+import java.util.*;
+
+/** Exact server-produced private plan. Approval and complete owner readiness are separate proofs. */
+public record RestorePlan(UUID planId,PrincipalId actor,String createdAt,String expiresAt,String archiveSha256,
+        String sourceInstallationId,String applicationVersion,BackupProfile profile,GitRepresentation representation,
+        SecretsSelection secrets,RestoreMode mode,UUID generationId,SourceDatabaseFamily sourceFamily,
+        boolean sourceFamilyWitnessed,AuditedSourceFamilyDeclaration sourceFamilyDeclaration,TargetDatabaseIdentity targetIdentity,String targetSchemaSha256,
+        List&lt;ComponentBinding&gt; components,List&lt;String&gt; requiredFeatures,List&lt;PrincipalMapping&gt; principals,
+        List&lt;RepositoryMapping&gt; repositories,String registryRevision,List&lt;RestoreDiagnostic&gt; diagnostics) {
+    public record PrincipalMapping(PrincipalId source,RestorePrincipalAllocation allocation) {
+<span class="fc" id="L17">        public PrincipalMapping{Objects.requireNonNull(source);Objects.requireNonNull(allocation);}</span>
+    }
+    public record RepositoryMapping(BackupRepositoryKey source,RestoreRepositoryAllocation allocation) {
+<span class="nc" id="L20">        public RepositoryMapping{Objects.requireNonNull(source);Objects.requireNonNull(allocation);}</span>
+    }
+    public record ComponentBinding(BackupComponentId owner,int version,BackupCompleteness completeness,
+                                    List&lt;String&gt; resources,List&lt;BackupComponentId&gt; dependencies) {
+<span class="fc" id="L24">        public ComponentBinding {</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">            Objects.requireNonNull(owner);Objects.requireNonNull(completeness);if(version&lt;1)throw new IllegalArgumentException(&quot;Invalid restore component version&quot;);</span>
+<span class="fc" id="L26">            resources=ordered(resources,Comparator.naturalOrder());dependencies=ordered(dependencies,Comparator.comparing(BackupComponentId::value));</span>
+<span class="fc" id="L27">            resources.forEach(value-&gt;text(value,4096));</span>
+<span class="fc" id="L28">        }</span>
+    }
+<span class="fc" id="L30">    public RestorePlan {</span>
+<span class="fc" id="L31">        Objects.requireNonNull(planId);Objects.requireNonNull(actor);Objects.requireNonNull(profile);Objects.requireNonNull(representation);</span>
+<span class="fc" id="L32">        Objects.requireNonNull(secrets);Objects.requireNonNull(mode);Objects.requireNonNull(generationId);Objects.requireNonNull(targetIdentity);</span>
+<span class="fc" id="L33">        hash(archiveSha256);hash(targetSchemaSha256);text(applicationVersion,255);text(registryRevision,255);</span>
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">        if(sourceInstallationId==null||!UUID.fromString(sourceInstallationId).toString().equals(sourceInstallationId))throw new IllegalArgumentException(&quot;Invalid source installation binding&quot;);</span>
+<span class="fc" id="L35">        Instant created=Instant.parse(createdAt),expires=Instant.parse(expiresAt);</span>
+<span class="pc bpc" id="L36" title="4 of 8 branches missed.">        if(!created.toString().equals(createdAt)||!expires.toString().equals(expiresAt)||!expires.isAfter(created)||Duration.between(created,expires).compareTo(Duration.ofHours(24))&gt;0)</span>
+<span class="nc" id="L37">            throw new IllegalArgumentException(&quot;Invalid restore plan expiry&quot;);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if(sourceFamilyWitnessed) {</span>
+<span class="pc bpc" id="L39" title="2 of 4 branches missed.">            if(sourceFamily==null||sourceFamilyDeclaration!=null)throw new IllegalArgumentException(&quot;Invalid source database witness binding&quot;);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        } else if(sourceFamilyDeclaration!=null) {</span>
+<span class="fc" id="L41">            Instant declared=Instant.parse(sourceFamilyDeclaration.declaredAt());</span>
+<span class="pc bpc" id="L42" title="2 of 4 branches missed.">            if(sourceFamily!=sourceFamilyDeclaration.family()||!archiveSha256.equals(sourceFamilyDeclaration.archiveSha256())</span>
+<span class="pc bpc" id="L43" title="3 of 6 branches missed.">                    ||!actor.equals(sourceFamilyDeclaration.declaredBy())||declared.isAfter(created)||declared.isBefore(created.minus(Duration.ofMinutes(15))))</span>
+<span class="nc" id="L44">                throw new IllegalArgumentException(&quot;Invalid source database declaration binding&quot;);</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        } else if(sourceFamily!=null)throw new IllegalArgumentException(&quot;Invalid source database declaration binding&quot;);</span>
+<span class="fc" id="L46">        components=ordered(components,Comparator.comparing(component-&gt;component.owner().value()));</span>
+<span class="fc" id="L47">        requiredFeatures=ordered(requiredFeatures,Comparator.naturalOrder());requiredFeatures.forEach(value-&gt;text(value,255));</span>
+<span class="pc" id="L48">        principals=ordered(principals,Comparator.comparing(mapping-&gt;mapping.source().value().toString()));</span>
+<span class="pc" id="L49">        repositories=ordered(repositories,Comparator.comparing((RepositoryMapping mapping)-&gt;mapping.source().repositoryId()).thenComparing(mapping-&gt;mapping.source().workspaceId(),Comparator.nullsFirst(Comparator.naturalOrder())));</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        diagnostics=List.copyOf(diagnostics);if(diagnostics.size()&gt;100_000)throw new IllegalArgumentException(&quot;Restore plan diagnostic budget exceeded&quot;);</span>
+<span class="fc" id="L51">        distinct(components.stream().map(ComponentBinding::owner).toList());distinct(principals.stream().map(PrincipalMapping::source).toList());</span>
+<span class="fc" id="L52">        distinct(principals.stream().map(mapping-&gt;mapping.allocation().targetPrincipal()).toList());distinct(principals.stream().map(mapping-&gt;mapping.allocation().targetScope()).toList());</span>
+<span class="pc" id="L53">        distinct(repositories.stream().map(RepositoryMapping::source).toList());distinct(repositories.stream().map(mapping-&gt;mapping.allocation().targetKey()).toList());</span>
+<span class="pc" id="L54">        distinct(repositories.stream().map(mapping-&gt;mapping.allocation().physicalStorageName()).toList());</span>
+<span class="fc" id="L55">    }</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">    public List&lt;RestoreDiagnostic&gt; blockers(){return diagnostics.stream().filter(diagnostic-&gt;diagnostic.severity()==RestoreDiagnostic.Severity.BLOCKER).toList();}</span>
+<span class="fc" id="L57">    public String sha256()throws IOException{return StableIdentityHash.sha256(RestorePlanCodec.encode(this));}</span>
+    private static &lt;T&gt;List&lt;T&gt; ordered(List&lt;T&gt; values,Comparator&lt;? super T&gt; order) {
+<span class="pc bpc" id="L59" title="2 of 4 branches missed.">        if(values==null||values.size()&gt;100_000)throw new IllegalArgumentException(&quot;Restore plan item budget exceeded&quot;);</span>
+<span class="fc" id="L60">        var copy=new ArrayList&lt;&gt;(values);copy.forEach(Objects::requireNonNull);copy.sort(order);return List.copyOf(copy);</span>
+    }
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">    private static void distinct(List&lt;?&gt; values){if(new HashSet&lt;&gt;(values).size()!=values.size())throw new IllegalArgumentException(&quot;Conflicting restore plan allocations&quot;);}</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">    private static void hash(String value){if(value==null||!value.matches(&quot;[a-f0-9]{64}&quot;))throw new IllegalArgumentException(&quot;Invalid restore plan digest&quot;);}</span>
+<span class="pc bpc" id="L64" title="4 of 8 branches missed.">    private static void text(String value,int maximum){if(value==null||value.isBlank()||value.length()&gt;maximum||value.chars().anyMatch(Character::isISOControl))throw new IllegalArgumentException(&quot;Invalid restore plan text&quot;);}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

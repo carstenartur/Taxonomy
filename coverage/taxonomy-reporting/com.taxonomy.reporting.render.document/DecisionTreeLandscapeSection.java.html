@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionTreeLandscapeSection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">DecisionTreeLandscapeSection.java</span></div><h1>DecisionTreeLandscapeSection.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.taxonomy.reporting.render.decision.DecisionReportLabels;
+
+import com.taxonomy.reporting.api.decision.DecisionRationaleReport;
+
+import com.taxonomy.reporting.render.decision.*;
+import org.apache.poi.xwpf.usermodel.*;
+import org.apache.poi.util.Units;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
+import java.io.ByteArrayInputStream;
+import java.math.BigInteger;
+
+/** Section properties describe the content BEFORE the break; the final body section follows it. */
+<span class="fc" id="L15">public final class DecisionTreeLandscapeSection {</span>
+    public void write(XWPFDocument doc, DecisionRationaleReport report, boolean followingContent) throws Exception {
+<span class="fc" id="L17">        write(doc, report, followingContent, false);</span>
+<span class="fc" id="L18">    }</span>
+    public void write(XWPFDocument doc, DecisionRationaleReport report, boolean followingContent, boolean reasonLinks) throws Exception {
+<span class="fc" id="L20">        var labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L21">        var writer = new WordDocumentWriter(doc, labels);</span>
+<span class="fc" id="L22">        var body = doc.getDocument().getBody();</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        var original = body.isSetSectPr() ? (CTSectPr) body.getSectPr().copy() : portrait();</span>
+<span class="fc" id="L24">        var panels = new DecisionTreeFigureRenderer().render(report.scope().decisionTree(), report.languageTag(), report.scope().options().treeLayout());</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        if (panels.isEmpty()) { writer.heading(labels.treeOverview(), 1, &quot;decision_tree&quot;); writer.paragraph(labels.notEvaluated()); return; }</span>
+<span class="fc" id="L26">        var seenRoots = new java.util.HashSet&lt;String&gt;();</span>
+<span class="fc" id="L27">        var evidence = new DecisionNodeEvidence(report);</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        for (int i = 0; i &lt; panels.size(); i++) {</span>
+<span class="fc" id="L29">            var panel = panels.get(i);</span>
+<span class="fc bfc" id="L30" title="All 4 branches covered.">            if (!doc.getBodyElements().isEmpty()) finishSection(doc, body.isSetSectPr() ? body.getSectPr() : original);</span>
+<span class="fc" id="L31">            var section = (CTSectPr) original.copy();</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">            var size = section.isSetPgSz() ? section.getPgSz() : section.addNewPgSz();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            size.setW(BigInteger.valueOf(panel.a3() ? 23811 : 16838));</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            size.setH(BigInteger.valueOf(panel.a3() ? 16838 : 11906)); size.setOrient(STPageOrientation.LANDSCAPE);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            var margins = section.isSetPgMar() ? section.getPgMar() : section.addNewPgMar();</span>
+<span class="fc" id="L36">            margins.setLeft(BigInteger.valueOf(900)); margins.setRight(BigInteger.valueOf(900));</span>
+<span class="fc" id="L37">            margins.setTop(BigInteger.valueOf(900)); margins.setBottom(BigInteger.valueOf(900));</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">            if (section.isSetType()) section.getType().setVal(STSectionMark.NEXT_PAGE);</span>
+<span class="fc" id="L39">            body.setSectPr(section);</span>
+            // SHORT contents includes outline level 1; additional roots and continuation
+            // panels remain available at level 2 without expanding that short overview.
+<span class="fc bfc" id="L42" title="All 4 branches covered.">            var heading = writer.heading(labels.treeOverview() + &quot; · &quot; + panel.rootCode() + &quot; · &quot; + (i + 1) + &quot;/&quot; + panels.size(), i == 0 ? 1 : 2, i == 0 ? &quot;decision_tree&quot; : null);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            if (seenRoots.add(panel.rootCode())) writer.bookmark(heading, DecisionNodeEvidence.rootBookmark(panel.rootCode()));</span>
+<span class="fc" id="L44">            var p = doc.createParagraph(); p.setSpacingBefore(0); p.setSpacingAfter(0);</span>
+<span class="fc" id="L45">            var run = p.createRun();</span>
+<span class="fc" id="L46">            run.addPicture(new ByteArrayInputStream(panel.png()), Document.PICTURE_TYPE_PNG, &quot;decision-tree-&quot;+i+&quot;.png&quot;,</span>
+<span class="fc" id="L47">                    Units.toEMU(panel.width()), Units.toEMU(panel.height()));</span>
+<span class="fc" id="L48">            var drawing = run.getCTR().getDrawingArray(0).getInlineArray(0).getDocPr();</span>
+<span class="fc" id="L49">            drawing.setDescr(panel.description()); drawing.setTitle(labels.treeOverview());</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            var reasonCodes = reasonLinks ? panel.nodeCodes().stream().filter(evidence::hasOriginal).toList() : java.util.List.&lt;String&gt;of();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (!reasonCodes.isEmpty()) {</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                var key = writer.paragraph(labels.german() ? &quot;Originalbegründungen (Knotencode anklicken): &quot; : &quot;Original reasons (select a node code): &quot;);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                for (String code : reasonCodes) writer.link(key, DecisionNodeEvidence.reasonBookmark(code), code);</span>
+            }
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (report.scope().options().includes(com.taxonomy.reporting.api.decision.DecisionReportOptions.Section.CHAPTERS)) {</span>
+<span class="fc" id="L56">                var chapterRows = report.scope().decisionTree().rows().stream()</span>
+<span class="fc bfc" id="L57" title="All 4 branches covered.">                        .filter(row -&gt; panel.nodeCodes().contains(row.code()) &amp;&amp; row.bookmark() != null).toList();</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                if (!chapterRows.isEmpty()) {</span>
+<span class="fc" id="L59">                    var chapters = writer.paragraph(&quot;&quot;);</span>
+<span class="fc" id="L60">                    chapterRows.forEach(row -&gt; writer.link(chapters, row.bookmark(), labels.chapter() + &quot; &quot; + row.chapterNumber() + &quot; · &quot; + row.code()));</span>
+                }
+            }
+        }
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (followingContent) { finishSection(doc, body.getSectPr()); body.setSectPr(original); }</span>
+<span class="fc" id="L65">    }</span>
+    private void finishSection(XWPFDocument doc, CTSectPr section) {
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        var p = doc.getParagraphs().isEmpty() ? doc.createParagraph() : doc.getParagraphs().getLast();</span>
+        // A table may be the last body element; its trailing paragraph owns the break.
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (doc.getBodyElements().getLast() != p) p = doc.createParagraph();</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        var pr = p.getCTP().isSetPPr() ? p.getCTP().getPPr() : p.getCTP().addNewPPr();</span>
+<span class="fc" id="L71">        var copy = (CTSectPr) section.copy();</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        (copy.isSetType() ? copy.getType() : copy.addNewType()).setVal(STSectionMark.NEXT_PAGE);</span>
+<span class="fc" id="L73">        pr.setSectPr(copy);</span>
+<span class="fc" id="L74">    }</span>
+    private CTSectPr portrait() {
+<span class="fc" id="L76">        var section = CTSectPr.Factory.newInstance(); var size = section.addNewPgSz();</span>
+<span class="fc" id="L77">        size.setW(BigInteger.valueOf(11906)); size.setH(BigInteger.valueOf(16838)); size.setOrient(STPageOrientation.PORTRAIT);</span>
+<span class="fc" id="L78">        return section;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

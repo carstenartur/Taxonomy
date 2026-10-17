@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementRelationSearchService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RequirementRelationSearchService.java</span></div><h1>RequirementRelationSearchService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.analysis.service.*;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import java.util.*;
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/** Spring adapter; scalar catalogue reads end before any remote model evaluation. */
+@Service
+public class RequirementRelationSearchService {
+    private final TaxonomyService catalogue;
+    private final RelationCompatibilityMatrix rules;
+    private final LlmService llm;
+    private final AiPromptBudgetPolicy promptBudget;
+
+<span class="fc" id="L23">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.enabled:true}&quot;)</span>
+    private boolean enabled = true;
+<span class="fc" id="L25">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-calls:24}&quot;)</span>
+    private int maxCalls = 24;
+<span class="fc" id="L27">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-depth:8}&quot;)</span>
+    private int maxDepth = 8;
+    @Value(&quot;${taxonomy.analysis.relations.hierarchical.batch-size:${TAXONOMY_RELATION_BATCH_SIZE:#{null}}}&quot;)
+    private Integer batchSize;
+    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-prompt-characters:${TAXONOMY_RELATION_MAX_PROMPT_CHARACTERS:#{null}}}&quot;)
+    private Integer maxPromptCharacters;
+<span class="fc" id="L33">    @Value(&quot;${custom.llm.max-output-tokens:4096}&quot;)</span>
+    private int maxOutputTokens = 4096;
+<span class="fc" id="L35">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-work-items:512}&quot;)</span>
+    private int maxWorkItems = 512;
+<span class="fc" id="L37">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-sources:32}&quot;)</span>
+    private int maxSources = 32;
+
+    public RequirementRelationSearchService(TaxonomyService catalogue, RelationCompatibilityMatrix rules,
+<span class="fc" id="L41">                                            LlmService llm, AiPromptBudgetPolicy promptBudget) {</span>
+<span class="fc" id="L42">        this.catalogue = catalogue; this.rules = rules; this.llm = llm; this.promptBudget = promptBudget;</span>
+<span class="fc" id="L43">    }</span>
+<span class="fc" id="L44">    public boolean isEnabled() { return enabled; }</span>
+    @PostConstruct
+<span class="fc" id="L46">    void validate() { options(false); }</span>
+    private RequirementRelationSearch.Options options(boolean custom) {
+<span class="fc bfc" id="L48" title="All 4 branches covered.">        int batch = batchSize == null ? custom ? 3 : 10 : batchSize;</span>
+<span class="fc bfc" id="L49" title="All 4 branches covered.">        int prompt = maxPromptCharacters == null ? custom ? 16_000 : 120_000 : maxPromptCharacters;</span>
+<span class="fc" id="L50">        return new RequirementRelationSearch.Options(new Limits(maxCalls, maxDepth, batch, maxWorkItems), maxSources, prompt);</span>
+    }
+
+    private RequirementRelationSearch.Options runtimeOptions() {
+<span class="fc" id="L54">        String provider = budgetProvider();</span>
+<span class="fc" id="L55">        var configured = options(&quot;CUSTOM_OPENAI&quot;.equals(provider));</span>
+<span class="fc" id="L56">        var target = promptBudget.requireWithinBudget(&quot;&quot;, provider);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        int cap = target == null ? configured.maxPromptCharacters()</span>
+<span class="fc" id="L58">                : Math.min(configured.maxPromptCharacters(), Math.min(target.promptBudget().maxInputCharacters(), target.promptBudget().maxInputBytes()));</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (cap &lt; 1) throw new IllegalArgumentException(&quot;Configured model context leaves no input budget after reserving the answer&quot;);</span>
+<span class="fc" id="L60">        return new RequirementRelationSearch.Options(configured.limits(), configured.maxSources(), cap);</span>
+    }
+
+    public RelationSearchReport search(String original, Map&lt;String,Double&gt; scores) {
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (!llm.supportsGenerativeCompletion()) {</span>
+<span class="fc" id="L65">            return RequirementRelationSearch.unassessed(original, maxCalls,</span>
+<span class="fc" id="L66">                    &quot;GENERATION_UNSUPPORTED: &quot; + llm.getActiveProviderId().value()</span>
+                            + &quot; provides embeddings, not requirement-scoped relation assessments; &quot;
+                            + &quot;all relationships remain unassessed.&quot;);
+        }
+<span class="fc" id="L70">        var adapter = new RequirementRelationSearch.InputCatalogue() {</span>
+<span class="fc" id="L71">            private final Map&lt;String, List&lt;Node&gt;&gt; children = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L72">            public Node find(String id) { return scalar(catalogue.getNodeByCode(id)); }</span>
+<span class="fc" id="L73">            public List&lt;Node&gt; roots() { return scalars(catalogue.getRootNodes()); }</span>
+            public List&lt;Node&gt; children(Node node) {
+                // Retain only successfully materialized immutable scalars, including
+                // empty lists. This adapter and its cache belong to one search.
+<span class="fc" id="L77">                return children.computeIfAbsent(node.id(), id -&gt; scalars(catalogue.getChildrenOf(id)));</span>
+            }
+        };
+<span class="fc" id="L80">        return new RequirementRelationSearch(adapter, rules, this::complete, AnalysisRunControl::checkpoint, llm.getActiveProviderName())</span>
+<span class="fc" id="L81">                .search(original, scores, runtimeOptions());</span>
+    }
+
+    /** Source preparation must receive the admission snapshot; there is no live-catalogue fallback. */
+    public RelationSearchDistribution.Plan prepare(String preparationId, String original, Map&lt;String, Double&gt; scores,
+            List&lt;String&gt; sourceResultIds, RequirementRelationSearch.InputCatalogue frozenCatalogue,
+            boolean includeRelations) {
+        // Version-two transport identities admit ordinals 0..511. Retain the
+        // complete intent plan, but bound distributed admission independently of
+        // a larger local continuation setting; excess work remains WORK_LIMIT.
+<span class="fc" id="L91">        var configured = runtimeOptions();</span>
+<span class="fc" id="L92">        var limits = configured.limits();</span>
+<span class="fc" id="L93">        var distributed = new RequirementRelationSearch.Options(new Limits(limits.maxCalls(), limits.maxDepth(),</span>
+<span class="fc" id="L94">                limits.batchSize(), Math.min(512, limits.maxWorkItems())), configured.maxSources(), configured.maxPromptCharacters());</span>
+<span class="fc" id="L95">        var engine = new RequirementRelationSearch(Objects.requireNonNull(frozenCatalogue), rules, this::complete,</span>
+<span class="fc" id="L96">                AnalysisRunControl::checkpoint, llm.getActiveProviderName());</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">        if (includeRelations &amp;&amp; !llm.supportsGenerativeCompletion()) {</span>
+<span class="fc" id="L98">            var disabled = engine.prepare(preparationId, original, scores, sourceResultIds, distributed, false);</span>
+<span class="fc" id="L99">            String reason = &quot;GENERATION_UNSUPPORTED: &quot; + llm.getActiveProviderId().value()</span>
+                    + &quot; provides embeddings, not requirement-scoped relation assessments; &quot;
+                    + &quot;all relationships remain unassessed.&quot;;
+<span class="fc" id="L102">            return new RelationSearchDistribution.Plan(disabled.schemaVersion(), disabled.preparationId(),</span>
+<span class="fc" id="L103">                    disabled.originalSha256(), disabled.sourceResultIds(), disabled.options(), List.of(), List.of(),</span>
+<span class="fc" id="L104">                    List.of(), List.of(), 0, disabled.durationMillis(), List.of(reason), reason, true);</span>
+        }
+<span class="fc" id="L106">        return engine.prepare(preparationId, original, scores, sourceResultIds, distributed, includeRelations);</span>
+    }
+
+    /** Target workers load only the exact frozen target shard and the persisted preparation. */
+    public RelationSearchDistribution.WorkResult evaluate(String original, RelationSearchDistribution.Plan plan,
+            RelationSearchDistribution.Work work, RequirementRelationSearch.InputCatalogue frozenTargetCatalogue) {
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (!llm.supportsGenerativeCompletion()) throw new IllegalStateException(&quot;GENERATION_UNSUPPORTED&quot;);</span>
+<span class="fc" id="L113">        return new RequirementRelationSearch(Objects.requireNonNull(frozenTargetCatalogue), rules, this::complete,</span>
+<span class="fc" id="L114">                AnalysisRunControl::checkpoint, llm.getActiveProviderName()).evaluate(original, plan, work);</span>
+    }
+
+    public String recoveryPolicyFingerprint() {
+        // Request/provider scope owns model identity separately. Keep the policy identity
+        // stable when a background worker restores that scope after admission.
+<span class="fc" id="L120">        return &quot;relation-downwalk-v4/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/&quot; + enabled</span>
+<span class="fc" id="L121">                + &quot;/&quot; + options(false) + &quot;/batch-override=&quot; + batchSize + &quot;/prompt-override=&quot; + maxPromptCharacters;</span>
+    }
+
+<span class="fc" id="L124">    public String scoringPolicyFingerprint(String provider) { return llm.recoveryPolicyFingerprint(provider); }</span>
+
+    private String complete(String prompt) {
+<span class="fc" id="L127">        String provider = llm.getActiveProviderName();</span>
+        // Presentation labels (notably Custom OpenAI-compatible and Local ONNX)
+        // are not stable provider keys. Preserve them in logs, not in budget lookup.
+<span class="fc" id="L130">        String budgetProvider = budgetProvider();</span>
+<span class="fc" id="L131">        promptBudget.requireWithinBudget(prompt, budgetProvider);</span>
+<span class="fc" id="L132">        return AnalysisRunControl.call(provider, &quot;RELATION_SEARCH&quot;, () -&gt; {</span>
+<span class="fc" id="L133">            LlmCallDetail detail = new LlmCallDetail();</span>
+<span class="fc" id="L134">            detail.setPrompt(prompt); detail.setProvider(provider);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            int outputLimit = &quot;CUSTOM_OPENAI&quot;.equals(budgetProvider) ? maxOutputTokens : 4096;</span>
+<span class="fc" id="L136">            String raw = llm.callLlmRaw(prompt, RelationSearchProtocol.completionOptions(prompt, outputLimit));</span>
+<span class="fc" id="L137">            detail.setRawResponse(raw);</span>
+<span class="pc bpc" id="L138" title="2 of 4 branches missed.">            if (raw == null || raw.isBlank()) detail.setError(&quot;Missing relation-search response&quot;);</span>
+<span class="fc" id="L139">            return detail;</span>
+<span class="fc" id="L140">        }).getRawResponse();</span>
+    }
+
+    private String budgetProvider() {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        return llm.isMockMode() ? &quot;MOCK&quot; : llm.getActiveProviderId().value();</span>
+    }
+
+    private List&lt;Node&gt; scalars(List&lt;TaxonomyNode&gt; nodes) {
+<span class="fc" id="L148">        Map&lt;String, String&gt; descriptions = catalogue.getAssessmentDescriptions(nodes);</span>
+<span class="fc" id="L149">        return nodes.stream().map(node -&gt; scalar(node,</span>
+<span class="fc" id="L150">                descriptions.getOrDefault(node.getCode(), node.getDescriptionEn()))).toList();</span>
+    }
+
+    private Node scalar(TaxonomyNode node) {
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        return node == null ? null : scalars(List.of(node)).getFirst();</span>
+    }
+
+    private static Node scalar(TaxonomyNode node, String description) {
+<span class="fc" id="L158">        return new Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(), description,</span>
+<span class="pc bpc" id="L159" title="1 of 4 branches missed.">                node.getParentCode() == null || node.getParentCode().isBlank());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

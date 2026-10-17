@@ -1,0 +1,1079 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="5.011" tests="26" errors="0" skipped="0" failures="0" flakes="0">
+  <properties>
+    <property name="java.specification.version" value="21"/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/taxonomy-extension-runtime-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/pf4j/pf4j/3.16.0/pf4j-3.16.0.jar:/home/runner/.m2/repository/com/github/zafarkhaja/java-semver/0.10.2/java-semver-0.10.2.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/taxonomy-reporting-api-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.1-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.1-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.18/jcl-over-slf4j-2.0.18.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.35.1/protobuf-java-4.35.1.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.18/slf4j-api-2.0.18.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/5.5.1/poi-ooxml-5.5.1.jar:/home/runner/.m2/repository/org/apache/poi/poi/5.5.1/poi-5.5.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.3.0/xmlbeans-5.3.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.21.0/commons-io-2.21.0.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.5.0/commons-collections4-4.5.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/5.5.1/poi-ooxml-full-5.5.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.3/jackson-databind-2.22.3.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.3/jackson-core-2.22.3.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.1-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.1/spring-boot-starter-flyway-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.1/spring-boot-flyway-4.1.1.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.0.Final/hibernate-search-mapper-orm-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.0.Final/hibernate-search-engine-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.0.Final/hibernate-search-mapper-pojo-base-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.0.Final/hibernate-search-util-common-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.5.Final/hibernate-core-7.4.5.Final.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.0.202609011348-r/org.eclipse.jgit-7.8.0.202609011348-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.11.3/jgit-storage-hibernate-core-0.11.3.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/taxonomy-knowledge-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-actuator/4.1.1/spring-boot-starter-actuator-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-micrometer-metrics/4.1.1/spring-boot-starter-micrometer-metrics-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-micrometer-metrics/4.1.1/spring-boot-micrometer-metrics-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-micrometer-observation/4.1.1/spring-boot-micrometer-observation-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-actuator-autoconfigure/4.1.1/spring-boot-actuator-autoconfigure-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-actuator/4.1.1/spring-boot-actuator-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-health/4.1.1/spring-boot-health-4.1.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.1/micrometer-observation-1.17.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.1/micrometer-commons-1.17.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-jakarta9/1.17.1/micrometer-jakarta9-1.17.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-core/1.17.1/micrometer-core-1.17.1.jar:/home/runner/.m2/repository/org/hdrhistogram/HdrHistogram/2.2.2/HdrHistogram-2.2.2.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-core/9.12.3/lucene-core-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-analysis-common/9.12.3/lucene-analysis-common-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queryparser/9.12.3/lucene-queryparser-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queries/9.12.3/lucene-queries-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-sandbox/9.12.3/lucene-sandbox-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-facet/9.12.3/lucene-facet-9.12.3.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-backend-lucene/8.4.0.Final/hibernate-search-backend-lucene-8.4.0.Final.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-join/9.12.3/lucene-join-9.12.3.jar:/home/runner/.m2/repository/com/carrotsearch/hppc/0.10.0/hppc-0.10.0.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-highlighter/9.12.3/lucene-highlighter-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-memory/9.12.3/lucene-memory-9.12.3.jar:/home/runner/.m2/repository/ai/djl/api/0.38.0/api-0.38.0.jar:/home/runner/.m2/repository/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar:/home/runner/.m2/repository/ai/djl/huggingface/tokenizers/0.38.0/tokenizers-0.38.0.jar:/home/runner/.m2/repository/ai/djl/onnxruntime/onnxruntime-engine/0.38.0/onnxruntime-engine-0.38.0.jar:/home/runner/.m2/repository/com/microsoft/onnxruntime/onnxruntime/1.21.1/onnxruntime-1.21.1.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/taxonomy-architecture-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.1/spring-boot-starter-web-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.1/spring-boot-starter-jackson-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.1/spring-boot-starter-tomcat-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.1/spring-boot-starter-tomcat-runtime-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.1/spring-boot-web-server-4.1.1.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.25/tomcat-embed-core-11.0.25.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.25/tomcat-embed-websocket-11.0.25.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.1/spring-boot-tomcat-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.1/spring-boot-http-converter-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.1/spring-boot-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.9/spring-web-7.0.9.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.1/spring-boot-webmvc-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.1/spring-boot-servlet-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.9/spring-webmvc-7.0.9.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.1/spring-boot-starter-data-jpa-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.1/spring-boot-starter-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.1/spring-boot-starter-logging-4.1.1.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.18/jul-to-slf4j-2.0.18.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.1/spring-boot-starter-jdbc-4.1.1.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.1/spring-boot-data-jpa-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.1/spring-boot-data-commons-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.1/spring-boot-persistence-4.1.1.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.1/spring-data-commons-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.1/spring-boot-hibernate-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.1/spring-boot-jpa-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.9/spring-orm-7.0.9.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.1/spring-data-jpa-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.9/spring-tx-7.0.9.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.9/spring-aspects-7.0.9.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.1/spring-boot-jdbc-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.1/spring-boot-sql-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.1/spring-boot-transaction-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.9/spring-jdbc-7.0.9.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.1/spring-boot-starter-security-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.1/spring-boot-security-4.1.1.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.1/spring-security-config-7.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.9/spring-aop-7.0.9.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.9/spring-beans-7.0.9.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.1.1/springdoc-openapi-starter-common-3.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.1/spring-boot-autoconfigure-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.1/spring-boot-validation-4.1.1.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.25/tomcat-embed-el-11.0.25.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.3.Final/hibernate-validator-9.1.3.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core-jakarta/2.2.55/swagger-core-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations-jakarta/2.2.55/swagger-annotations-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models-jakarta/2.2.55/swagger-models-jakarta-2.2.55.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.3/jackson-dataformat-yaml-2.22.3.jar:/home/runner/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.22.3/jackson-datatype-jsr310-2.22.3.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.1/spring-boot-jackson-4.1.1.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.1/spring-boot-starter-test-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.1/spring-boot-test-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.1/spring-boot-test-autoconfigure-4.1.1.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.11/byte-buddy-1.18.11.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.11/byte-buddy-agent-1.18.11.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.9/spring-core-7.0.9.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.9/spring-test-7.0.9.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-test/7.1.1/spring-security-test-7.1.1.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.1/spring-security-core-7.1.1.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.1/spring-security-crypto-7.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.9/spring-context-7.0.9.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.9/spring-expression-7.0.9.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.1/spring-security-web-7.1.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5/1.5.1/archunit-junit5-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-api/1.5.1/archunit-junit5-api-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit/1.5.1/archunit-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-engine/1.5.1/archunit-junit5-engine-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-engine-api/1.5.1/archunit-junit5-engine-api-1.5.1.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:"/>
+    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="user.timezone" value="Etc/UTC"/>
+    <property name="os.name" value="Linux"/>
+    <property name="java.vm.specification.version" value="21"/>
+    <property name="keycloak.container.image" value="quay.io/keycloak/keycloak:26.7.0"/>
+    <property name="taxonomy.test.browser.offline" value="maven:false"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-21-jdk-amd64/lib"/>
+    <property name="runKeycloakTests" value="true"/>
+    <property name="sun.java.command" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/surefire/surefirebooter-20261017165153128_975.jar /home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/surefire 2026-10-17T16-46-23_633-jvmRun1 surefire-20261017165153128_973tmp surefire_13-20261017165153128_974tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/test-classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/classes:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/taxonomy-extension-runtime-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/pf4j/pf4j/3.16.0/pf4j-3.16.0.jar:/home/runner/.m2/repository/com/github/zafarkhaja/java-semver/0.10.2/java-semver-0.10.2.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/taxonomy-reporting-api-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.1-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.1-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/apache/jena/jena-arq/6.2.0/jena-arq-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-core/6.2.0/jena-core-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-base/6.2.0/jena-base-6.2.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-csv/1.14.1/commons-csv-1.14.1.jar:/home/runner/.m2/repository/com/github/ben-manes/caffeine/caffeine/3.2.4/caffeine-3.2.4.jar:/home/runner/.m2/repository/com/github/andrewoma/dexx/collection/0.7/collection-0.7.jar:/home/runner/.m2/repository/org/apache/jena/jena-iri3986/6.2.0/jena-iri3986-6.2.0.jar:/home/runner/.m2/repository/org/apache/jena/jena-langtag/6.2.0/jena-langtag-6.2.0.jar:/home/runner/.m2/repository/org/roaringbitmap/RoaringBitmap/1.6.15/RoaringBitmap-1.6.15.jar:/home/runner/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/home/runner/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar:/home/runner/.m2/repository/org/slf4j/jcl-over-slf4j/2.0.18/jcl-over-slf4j-2.0.18.jar:/home/runner/.m2/repository/com/apicatalog/titanium-json-ld/1.7.0/titanium-json-ld-1.7.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-jcs/1.1.1/titanium-jcs-1.1.1.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-api/1.0.0/titanium-rdf-api-1.0.0.jar:/home/runner/.m2/repository/com/apicatalog/titanium-rdf-n-quads/1.0.2/titanium-rdf-n-quads-1.0.2.jar:/home/runner/.m2/repository/org/glassfish/jakarta.json/2.0.1/jakarta.json-2.0.1.jar:/home/runner/.m2/repository/com/google/protobuf/protobuf-java/4.35.1/protobuf-java-4.35.1.jar:/home/runner/.m2/repository/org/apache/thrift/libthrift/0.24.0/libthrift-0.24.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-lang3/3.20.0/commons-lang3-3.20.0.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/pdfbox-io/3.0.8/pdfbox-io-3.0.8.jar:/home/runner/.m2/repository/org/apache/pdfbox/fontbox/3.0.8/fontbox-3.0.8.jar:/home/runner/.m2/repository/commons-logging/commons-logging/1.3.6/commons-logging-1.3.6.jar:/home/runner/.m2/repository/com/thoughtworks/xstream/xstream/1.4.21/xstream-1.4.21.jar:/home/runner/.m2/repository/io/github/x-stream/mxparser/1.2.2/mxparser-1.2.2.jar:/home/runner/.m2/repository/xmlpull/xmlpull/1.1.3.1/xmlpull-1.1.3.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.18/slf4j-api-2.0.18.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml/5.5.1/poi-ooxml-5.5.1.jar:/home/runner/.m2/repository/org/apache/poi/poi/5.5.1/poi-5.5.1.jar:/home/runner/.m2/repository/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar:/home/runner/.m2/repository/com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar:/home/runner/.m2/repository/org/apache/xmlbeans/xmlbeans/5.3.0/xmlbeans-5.3.0.jar:/home/runner/.m2/repository/org/apache/commons/commons-compress/1.28.0/commons-compress-1.28.0.jar:/home/runner/.m2/repository/commons-io/commons-io/2.21.0/commons-io-2.21.0.jar:/home/runner/.m2/repository/com/github/virtuald/curvesapi/1.08/curvesapi-1.08.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-api/2.25.5/log4j-api-2.25.5.jar:/home/runner/.m2/repository/org/apache/commons/commons-collections4/4.5.0/commons-collections4-4.5.0.jar:/home/runner/.m2/repository/org/apache/poi/poi-ooxml-full/5.5.1/poi-ooxml-full-5.5.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.22.3/jackson-databind-2.22.3.jar:/home/runner/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.22.3/jackson-core-2.22.3.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.1-SNAPSHOT.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-flyway/4.1.1/spring-boot-starter-flyway-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-flyway/4.1.1/spring-boot-flyway-4.1.1.jar:/home/runner/.m2/repository/org/flywaydb/flyway-core/12.4.0/flyway-core-12.4.0.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-orm/8.4.0.Final/hibernate-search-mapper-orm-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-engine/8.4.0.Final/hibernate-search-engine-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-mapper-pojo-base/8.4.0.Final/hibernate-search-mapper-pojo-base-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-util-common/8.4.0.Final/hibernate-search-util-common-8.4.0.Final.jar:/home/runner/.m2/repository/org/hibernate/orm/hibernate-core/7.4.5.Final/hibernate-core-7.4.5.Final.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-runtime/4.0.9/jaxb-runtime-4.0.9.jar:/home/runner/.m2/repository/org/glassfish/jaxb/jaxb-core/4.0.9/jaxb-core-4.0.9.jar:/home/runner/.m2/repository/org/eclipse/angus/angus-activation/2.0.3/angus-activation-2.0.3.jar:/home/runner/.m2/repository/org/glassfish/jaxb/txw2/4.0.9/txw2-4.0.9.jar:/home/runner/.m2/repository/com/sun/istack/istack-commons-runtime/4.1.2/istack-commons-runtime-4.1.2.jar:/home/runner/.m2/repository/jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar:/home/runner/.m2/repository/org/antlr/antlr4-runtime/4.13.2/antlr4-runtime-4.13.2.jar:/home/runner/.m2/repository/org/hibernate/models/hibernate-models/1.1.1/hibernate-models-1.1.1.jar:/home/runner/.m2/repository/jakarta/persistence/jakarta.persistence-api/3.2.0/jakarta.persistence-api-3.2.0.jar:/home/runner/.m2/repository/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar:/home/runner/.m2/repository/io/smallrye/jandex/3.3.2/jandex-3.3.2.jar:/home/runner/.m2/repository/org/jboss/logging/jboss-logging/3.6.3.Final/jboss-logging-3.6.3.Final.jar:/home/runner/.m2/repository/org/eclipse/jgit/org.eclipse.jgit/7.8.0.202609011348-r/org.eclipse.jgit-7.8.0.202609011348-r.jar:/home/runner/.m2/repository/com/googlecode/javaewah/JavaEWAH/1.2.3/JavaEWAH-1.2.3.jar:/home/runner/.m2/repository/commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar:/home/runner/.m2/repository/io/github/carstenartur/jgit-storage-hibernate-core/0.11.3/jgit-storage-hibernate-core-0.11.3.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/taxonomy-knowledge-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-actuator/4.1.1/spring-boot-starter-actuator-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-micrometer-metrics/4.1.1/spring-boot-starter-micrometer-metrics-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-micrometer-metrics/4.1.1/spring-boot-micrometer-metrics-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-micrometer-observation/4.1.1/spring-boot-micrometer-observation-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-actuator-autoconfigure/4.1.1/spring-boot-actuator-autoconfigure-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-actuator/4.1.1/spring-boot-actuator-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-health/4.1.1/spring-boot-health-4.1.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-observation/1.17.1/micrometer-observation-1.17.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-commons/1.17.1/micrometer-commons-1.17.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-jakarta9/1.17.1/micrometer-jakarta9-1.17.1.jar:/home/runner/.m2/repository/io/micrometer/micrometer-core/1.17.1/micrometer-core-1.17.1.jar:/home/runner/.m2/repository/org/hdrhistogram/HdrHistogram/2.2.2/HdrHistogram-2.2.2.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-core/9.12.3/lucene-core-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-analysis-common/9.12.3/lucene-analysis-common-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queryparser/9.12.3/lucene-queryparser-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-queries/9.12.3/lucene-queries-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-sandbox/9.12.3/lucene-sandbox-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-facet/9.12.3/lucene-facet-9.12.3.jar:/home/runner/.m2/repository/org/hibernate/search/hibernate-search-backend-lucene/8.4.0.Final/hibernate-search-backend-lucene-8.4.0.Final.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-join/9.12.3/lucene-join-9.12.3.jar:/home/runner/.m2/repository/com/carrotsearch/hppc/0.10.0/hppc-0.10.0.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-highlighter/9.12.3/lucene-highlighter-9.12.3.jar:/home/runner/.m2/repository/org/apache/lucene/lucene-memory/9.12.3/lucene-memory-9.12.3.jar:/home/runner/.m2/repository/ai/djl/api/0.38.0/api-0.38.0.jar:/home/runner/.m2/repository/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar:/home/runner/.m2/repository/ai/djl/huggingface/tokenizers/0.38.0/tokenizers-0.38.0.jar:/home/runner/.m2/repository/ai/djl/onnxruntime/onnxruntime-engine/0.38.0/onnxruntime-engine-0.38.0.jar:/home/runner/.m2/repository/com/microsoft/onnxruntime/onnxruntime/1.21.1/onnxruntime-1.21.1.jar:/home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/taxonomy-architecture-1.5.1-SNAPSHOT.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-web/4.1.1/spring-boot-starter-web-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jackson/4.1.1/spring-boot-starter-jackson-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat/4.1.1/spring-boot-starter-tomcat-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-tomcat-runtime/4.1.1/spring-boot-starter-tomcat-runtime-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-web-server/4.1.1/spring-boot-web-server-4.1.1.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-core/11.0.25/tomcat-embed-core-11.0.25.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-websocket/11.0.25/tomcat-embed-websocket-11.0.25.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-tomcat/4.1.1/spring-boot-tomcat-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-http-converter/4.1.1/spring-boot-http-converter-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot/4.1.1/spring-boot-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-web/7.0.9/spring-web-7.0.9.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-webmvc/4.1.1/spring-boot-webmvc-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-servlet/4.1.1/spring-boot-servlet-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-webmvc/7.0.9/spring-webmvc-7.0.9.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-data-jpa/4.1.1/spring-boot-starter-data-jpa-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter/4.1.1/spring-boot-starter-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-logging/4.1.1/spring-boot-starter-logging-4.1.1.jar:/home/runner/.m2/repository/ch/qos/logback/logback-classic/1.5.38/logback-classic-1.5.38.jar:/home/runner/.m2/repository/ch/qos/logback/logback-core/1.5.38/logback-core-1.5.38.jar:/home/runner/.m2/repository/org/apache/logging/log4j/log4j-to-slf4j/2.25.5/log4j-to-slf4j-2.25.5.jar:/home/runner/.m2/repository/org/slf4j/jul-to-slf4j/2.0.18/jul-to-slf4j-2.0.18.jar:/home/runner/.m2/repository/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0.jar:/home/runner/.m2/repository/org/yaml/snakeyaml/2.6/snakeyaml-2.6.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-jdbc/4.1.1/spring-boot-starter-jdbc-4.1.1.jar:/home/runner/.m2/repository/com/zaxxer/HikariCP/7.0.2/HikariCP-7.0.2.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-jpa/4.1.1/spring-boot-data-jpa-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-data-commons/4.1.1/spring-boot-data-commons-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-persistence/4.1.1/spring-boot-persistence-4.1.1.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-commons/4.1.1/spring-data-commons-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-hibernate/4.1.1/spring-boot-hibernate-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jpa/4.1.1/spring-boot-jpa-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-orm/7.0.9/spring-orm-7.0.9.jar:/home/runner/.m2/repository/org/springframework/data/spring-data-jpa/4.1.1/spring-data-jpa-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-tx/7.0.9/spring-tx-7.0.9.jar:/home/runner/.m2/repository/org/springframework/spring-aspects/7.0.9/spring-aspects-7.0.9.jar:/home/runner/.m2/repository/org/aspectj/aspectjweaver/1.9.25.1/aspectjweaver-1.9.25.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jdbc/4.1.1/spring-boot-jdbc-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-sql/4.1.1/spring-boot-sql-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-transaction/4.1.1/spring-boot-transaction-4.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-jdbc/7.0.9/spring-jdbc-7.0.9.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-security/4.1.1/spring-boot-starter-security-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-security/4.1.1/spring-boot-security-4.1.1.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-config/7.1.1/spring-security-config-7.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-aop/7.0.9/spring-aop-7.0.9.jar:/home/runner/.m2/repository/org/springframework/spring-beans/7.0.9/spring-beans-7.0.9.jar:/home/runner/.m2/repository/org/springdoc/springdoc-openapi-starter-common/3.1.1/springdoc-openapi-starter-common-3.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/4.1.1/spring-boot-autoconfigure-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-validation/4.1.1/spring-boot-validation-4.1.1.jar:/home/runner/.m2/repository/org/apache/tomcat/embed/tomcat-embed-el/11.0.25/tomcat-embed-el-11.0.25.jar:/home/runner/.m2/repository/org/hibernate/validator/hibernate-validator/9.1.3.Final/hibernate-validator-9.1.3.Final.jar:/home/runner/.m2/repository/com/fasterxml/classmate/1.7.3/classmate-1.7.3.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-core-jakarta/2.2.55/swagger-core-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-annotations-jakarta/2.2.55/swagger-annotations-jakarta-2.2.55.jar:/home/runner/.m2/repository/io/swagger/core/v3/swagger-models-jakarta/2.2.55/swagger-models-jakarta-2.2.55.jar:/home/runner/.m2/repository/jakarta/validation/jakarta.validation-api/3.1.1/jakarta.validation-api-3.1.1.jar:/home/runner/.m2/repository/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.22.3/jackson-dataformat-yaml-2.22.3.jar:/home/runner/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.22.3/jackson-datatype-jsr310-2.22.3.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-jackson/4.1.1/spring-boot-jackson-4.1.1.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-databind/3.1.7/jackson-databind-3.1.7.jar:/home/runner/.m2/repository/tools/jackson/core/jackson-core/3.1.7/jackson-core-3.1.7.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-starter-test/4.1.1/spring-boot-starter-test-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test/4.1.1/spring-boot-test-4.1.1.jar:/home/runner/.m2/repository/org/springframework/boot/spring-boot-test-autoconfigure/4.1.1/spring-boot-test-autoconfigure-4.1.1.jar:/home/runner/.m2/repository/com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar:/home/runner/.m2/repository/jakarta/xml/bind/jakarta.xml.bind-api/4.0.5/jakarta.xml.bind-api-4.0.5.jar:/home/runner/.m2/repository/jakarta/activation/jakarta.activation-api/2.1.4/jakarta.activation-api-2.1.4.jar:/home/runner/.m2/repository/net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar:/home/runner/.m2/repository/net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar:/home/runner/.m2/repository/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar:/home/runner/.m2/repository/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.18.11/byte-buddy-1.18.11.jar:/home/runner/.m2/repository/org/awaitility/awaitility/4.3.0/awaitility-4.3.0.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest/3.0/hamcrest-3.0.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/5.23.0/mockito-core-5.23.0.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.11/byte-buddy-agent-1.18.11.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.3/objenesis-3.3.jar:/home/runner/.m2/repository/org/mockito/mockito-junit-jupiter/5.23.0/mockito-junit-jupiter-5.23.0.jar:/home/runner/.m2/repository/org/skyscreamer/jsonassert/1.5.3/jsonassert-1.5.3.jar:/home/runner/.m2/repository/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar:/home/runner/.m2/repository/org/springframework/spring-core/7.0.9/spring-core-7.0.9.jar:/home/runner/.m2/repository/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar:/home/runner/.m2/repository/org/springframework/spring-test/7.0.9/spring-test-7.0.9.jar:/home/runner/.m2/repository/org/xmlunit/xmlunit-core/2.11.0/xmlunit-core-2.11.0.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-test/7.1.1/spring-security-test-7.1.1.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-core/7.1.1/spring-security-core-7.1.1.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-crypto/7.1.1/spring-security-crypto-7.1.1.jar:/home/runner/.m2/repository/org/springframework/spring-context/7.0.9/spring-context-7.0.9.jar:/home/runner/.m2/repository/org/springframework/spring-expression/7.0.9/spring-expression-7.0.9.jar:/home/runner/.m2/repository/org/springframework/security/spring-security-web/7.1.1/spring-security-web-7.1.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5/1.5.1/archunit-junit5-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-api/1.5.1/archunit-junit5-api-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit/1.5.1/archunit-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-engine/1.5.1/archunit-junit5-engine-1.5.1.jar:/home/runner/.m2/repository/com/tngtech/archunit/archunit-junit5-engine-api/1.5.1/archunit-junit5-engine-api-1.5.1.jar:/home/runner/.m2/repository/org/hsqldb/hsqldb/2.7.3/hsqldb-2.7.3.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2026-08-18"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-21-jdk-amd64"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="taxonomy.test.browser.cache" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/selenium"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/surefire/surefirebooter-20261017165153128_975.jar"/>
+    <property name="taxonomy.ui.skip" value="true"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="21.0.12.1+1-LTS"/>
+    <property name="user.name" value="runner"/>
+    <property name="stdout.encoding" value="UTF-8"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="6.17.0-1022-azure"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="taxonomy.test.browser.version" value="149.0.7827.55"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="java.vendor.version" value="Temurin-21.0.12.1+1"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="21.0.12.1"/>
+    <property name="taxonomy.node.executable" value="/home/runner/work/Taxonomy/Taxonomy/target/test-runtime/frontend/node/node"/>
+    <property name="user.dir" value="/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="native.encoding" value="UTF-8"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="stderr.encoding" value="UTF-8"/>
+    <property name="java.vendor" value="Eclipse Adoptium"/>
+    <property name="java.vm.version" value="21.0.12.1+1-LTS"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="65.0"/>
+    <property name="runOnnxTests" value="true"/>
+  </properties>
+  <testcase name="terminalResultRemainsTerminalAndUsesNewDatabaseKeys" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.2">
+    <system-out><![CDATA[16:52:32.079 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.094 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.098 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-d3ce143d-b472-4960-80ee-aa5e200c194c;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.117 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.140 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.143 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.144 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.153 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.159 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-5af22ecd-e206-4de8-a1b1-e67bc023ce17;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.176 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.197 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.199 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.276 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.277 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreDoesNotInventCoverageForMixedLegacyAndModernEvidence" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.22">
+    <system-out><![CDATA[16:52:32.279 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.289 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.294 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-9366ba47-01fb-40c0-8641-b22cd6ff3455;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.314 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.335 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.338 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.338 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.348 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.353 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-3956e1ce-400e-428b-bb6d-f1eabd9b81b6;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.370 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.391 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.393 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.496 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.497 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="diagnosticsExportRestoreRetainsBoundedDetailUnresolvedStartAndReplayWithoutResuming" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.257">
+    <system-out><![CDATA[16:52:32.500 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.512 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.517 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-54b0736a-f4cf-453e-91ac-e8b87788ac57;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.536 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.564 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.569 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.570 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.582 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.588 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-fc4be294-e3e9-4d9e-a64b-a9c687e57d13;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.618 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.646 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.665 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.754 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.755 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="restoredHistoryUsesRemappedProjectAndRequirementSelectors" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.148">
+    <system-out><![CDATA[16:52:32.757 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.770 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.775 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-5457ba3b-d4f1-4816-b8e7-eac088124540;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.799 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.820 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.823 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.823 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.833 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.837 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-26da26c4-ad75-48a9-be17-c5f963b7fb27;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.855 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.875 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.878 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.902 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.903 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="restorePreservesExactProviderBindingAndRejectsUnavailableArtifactBeforeWrites" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.143">
+    <system-out><![CDATA[16:52:32.905 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.916 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.920 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-69d02fac-ba79-4a27-af5d-55bc72654f4e;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.938 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:32.957 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:32.960 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:32.961 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:32.971 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:32.976 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-bbce1162-1021-425e-8de9-1e2b27eb5b59;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:32.993 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.013 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.016 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.045 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.046 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="terminalScoreOnlyPreparationExportsAndRestoresWithoutAPlan" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.2">
+    <system-out><![CDATA[16:52:33.048 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.058 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.062 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-cfde37f3-0e79-4741-80cc-45ff9eed90f8;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.083 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.104 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.107 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.108 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.117 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.121 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-c34045e0-c220-468c-bf6d-4772a6617dae;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.140 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.161 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.163 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.245 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.246 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="restorePreservesExactNullableReasonLengthBeforeWriting(AnalysisReasonLength, AnalysisReasonLength, boolean)[1]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.165">
+    <system-out><![CDATA[16:52:33.269 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.280 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.284 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-44a6d688-c42b-4385-bf57-c721150203e3;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.304 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.325 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.328 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.329 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.339 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.343 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-6209ec3e-6d18-4f46-a150-fcb2d5b65314;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.363 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.385 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.388 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.424 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.425 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="restorePreservesExactNullableReasonLengthBeforeWriting(AnalysisReasonLength, AnalysisReasonLength, boolean)[2]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.149">
+    <system-out><![CDATA[16:52:33.428 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.437 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.442 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-8dd7d59b-9b3d-4661-b549-6233e6d0f68d;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.461 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.482 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.485 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.486 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.496 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.499 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-d435cf0d-ceb5-49ec-89ac-b39d81bb85d3;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.518 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.538 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.541 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.574 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.575 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="restorePreservesExactNullableReasonLengthBeforeWriting(AnalysisReasonLength, AnalysisReasonLength, boolean)[3]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.176">
+    <system-out><![CDATA[16:52:33.577 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.587 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.591 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-138c0f82-5239-4fd4-bcff-d41cff05aaf3;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.609 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.630 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.632 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.633 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.642 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.646 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-6419f11f-40cd-4a09-b702-d9ed5c63589a;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.676 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.706 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.709 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.750 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.751 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="restorePreservesExactNullableReasonLengthBeforeWriting(AnalysisReasonLength, AnalysisReasonLength, boolean)[4]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.246">
+    <system-out><![CDATA[16:52:33.753 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.768 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.773 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-b6420514-1dfe-41a6-8b5d-58a5361b7d61;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.794 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.821 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.824 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.825 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:33.838 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:33.842 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-bfe7b6c9-b874-4019-bafb-77da4a79e868;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:33.860 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:33.900 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:33.902 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.996 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:33.998 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="restorePreservesExactNullableReasonLengthBeforeWriting(AnalysisReasonLength, AnalysisReasonLength, boolean)[5]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.25">
+    <system-out><![CDATA[16:52:34.002 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.014 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.020 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-aa852074-8561-4dc1-814f-c97ab47a1c24;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.042 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.068 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.071 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.072 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.083 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.088 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-10f2a398-9c30-4171-a081-160e7b24866e;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.107 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.172 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.179 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.249 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.250 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRetainsCommittedRootAndFrozenInputWithoutDispatching" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.23">
+    <system-out><![CDATA[16:52:34.253 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.264 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.269 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-86bf8d3c-7ae2-4df3-86e0-a63328b906dc;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.295 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.322 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.325 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.326 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.335 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.340 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-0e96667c-5f74-4da6-a31b-cde5ed327d65;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.371 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.399 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.403 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.481 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.482 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRetainsModernCoverageAndUnassessedFrozenNodes(boolean)[1]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.211">
+    <system-out><![CDATA[16:52:34.485 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.500 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.505 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-d5063917-25dd-4590-aa5a-b24b3df12dfe;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.531 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.556 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.559 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.559 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.573 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.577 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-e6ea6e3a-e174-476d-aac0-f37aace3573d;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.595 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.615 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.618 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.693 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.694 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRetainsModernCoverageAndUnassessedFrozenNodes(boolean)[2]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.228">
+    <system-out><![CDATA[16:52:34.697 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.707 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.712 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-586fe244-f238-4b6f-819f-57635817572f;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.736 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.766 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.769 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.770 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.784 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.790 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-c674f9c4-d025-4ba6-a246-da9e9684003e;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.820 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.842 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.845 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.922 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.923 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="cooperativeStopExportsAndRestoresOriginalFailureProvenance" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.176">
+    <system-out><![CDATA[16:52:34.926 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:34.940 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:34.945 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-56199d3c-c53b-4b24-b7ac-491ae34f5908;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:34.964 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:34.989 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:34.992 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:34.993 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.004 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.008 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-3c76e491-7a27-495e-aa84-9e12a803e4b4;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.024 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.043 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.046 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.099 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.100 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRejectsDuplicateUnknownCoverageBeforeWriting" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.195">
+    <system-out><![CDATA[16:52:35.102 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.116 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.122 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-d78bd331-fa3e-4bcb-8347-fcf744cf99db;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.146 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.168 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.171 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.172 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.186 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.202 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-0b0ddda0-de93-48c7-a3e1-3c0aa69e44e3;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.232 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.254 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.257 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.296 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.297 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="callerRollbackRemovesWholeRestoredClosure" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.134">
+    <system-out><![CDATA[16:52:35.299 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.310 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.314 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-576d54c2-fd5a-47b7-af89-e2053d553357;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.331 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.349 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.352 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.353 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.362 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.366 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-2fcdd070-102b-4f3a-aac9-b5ad97cd5f7b;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.383 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.402 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.405 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.431 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.431 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="rejectsCrossRunEvidenceAndChangedRequirementBeforeWriting" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.136">
+    <system-out><![CDATA[16:52:35.434 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.443 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.447 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-6510456e-d14f-4071-8372-5dcad5369774;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.463 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.487 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.490 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.491 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.500 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.505 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-c81f8d3a-353c-46cf-9317-b1c7902e3d05;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.530 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.548 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.551 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.568 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.569 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRelationRestoreRetainsCommittedSearchEvidenceAndRemapsItsReferences" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.196">
+    <system-out><![CDATA[16:52:35.571 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.583 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.589 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-aab1acce-5f5a-4f1b-9e2c-25be0448f59c;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.607 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.625 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.627 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.628 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.636 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.640 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-6a6b44e4-0c91-4bad-9731-c2ae2ea89c47;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.662 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.685 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.688 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.764 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.765 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedScoreOnlyPreparationRetainsCommittedProvisionalEvidenceWithoutAPlan" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.171">
+    <system-out><![CDATA[16:52:35.767 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.776 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.780 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-46bc026d-dcd0-4aa5-a650-77cbb6180945;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.803 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.821 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.824 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.824 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.833 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.837 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-9d72b40d-cc4b-4498-9000-d41ac05fa6f7;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.856 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:35.875 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:35.877 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.935 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:35.936 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRejectsForeignFrozenCoverageBeforeWriting(String)[1]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.19">
+    <system-out><![CDATA[16:52:35.940 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:35.971 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:35.975 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-17331b63-3901-42c6-a6fd-38bf7347799f;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:35.995 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.021 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.023 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.025 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.035 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.039 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-0498fa2b-f78e-430a-8881-154c293129ac;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.057 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.081 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.084 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.128 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.129 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRejectsForeignFrozenCoverageBeforeWriting(String)[2]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.157">
+    <system-out><![CDATA[16:52:36.131 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.142 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.145 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-6d242c61-5ecb-4b2a-ac2d-d8ddd686f71c;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.164 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.187 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.190 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.191 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.205 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.210 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-8ac85322-22d1-48bb-a61c-c4d99d9b964f;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.229 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.248 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.250 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.286 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.286 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRejectsForeignFrozenCoverageBeforeWriting(String)[3]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.153">
+    <system-out><![CDATA[16:52:36.289 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.301 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.305 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-663db190-eb1b-4c5a-9bd1-5e5432ba3ce7;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.323 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.342 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.345 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.346 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.358 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.361 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-93f91338-8dff-46bb-ad0a-b4f37da45c02;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.379 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.399 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.402 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.439 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.440 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRejectsForeignFrozenCoverageBeforeWriting(String)[4]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.148">
+    <system-out><![CDATA[16:52:36.443 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.456 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.459 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-5d1bb45f-b3aa-4c99-9b7c-441e1230794c;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.477 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.499 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.502 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.503 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.513 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.517 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-cdf42422-65c5-4a84-b9cd-5c1ff746df00;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.534 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.554 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.556 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.589 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.589 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="interruptedRestoreRejectsForeignFrozenCoverageBeforeWriting(String)[5]" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.25">
+    <system-out><![CDATA[16:52:36.592 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.601 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.605 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-1b8bcab7-f95a-48fe-ba4d-e2c99db74de6;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.623 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.661 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.663 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.664 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.678 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.683 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-12cf873a-09a8-4f49-bc9d-1a3f34978d6d;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.714 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.740 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.742 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.838 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.840 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+  <testcase name="cancelledRunExportsAndRestoresCanonicalStoppedTasks" classname="com.taxonomy.analysis.cluster.ClusterAnalysisBackupRestoreTest" time="0.244">
+    <system-out><![CDATA[16:52:36.844 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.855 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.861 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-c508870c-6f2b-4c22-888e-741df76a1852;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.883 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.909 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.913 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:36.913 [main] INFO org.hibernate.orm.jpa -- HHH008540: Processing PersistenceUnitInfo [name: default]
+16:52:36.923 [main] INFO org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo -- No LoadTimeWeaver setup: ignoring JPA class transformer
+16:52:36.927 [main] INFO org.hibernate.orm.connections.pooling -- HHH10001005: Database info:
+	Database JDBC URL [jdbc:hsqldb:mem:cluster-d7b6657b-2bea-4c68-b952-11e3d4bbdf58;hsqldb.tx=mvcc]
+	Database driver: HSQL Database Engine Driver
+	Database dialect: HSQLDialect
+	Database version: 2.7.3
+	Default catalog/schema: PUBLIC/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+16:52:36.944 [main] INFO org.hibernate.search.version.orm -- HSEARCH000034: Hibernate Search version 8.4.0.Final
+16:52:36.968 [main] INFO org.hibernate.orm.core -- HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+16:52:36.972 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Initialized JPA EntityManagerFactory for persistence unit 'default'
+16:52:37.084 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+16:52:37.086 [main] INFO org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean -- Closing JPA EntityManagerFactory for persistence unit 'default'
+]]></system-out>
+  </testcase>
+</testsuite>

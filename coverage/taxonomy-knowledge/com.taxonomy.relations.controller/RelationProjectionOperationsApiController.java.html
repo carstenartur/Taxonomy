@@ -1,0 +1,350 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationProjectionOperationsApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">RelationProjectionOperationsApiController.java</span></div><h1>RelationProjectionOperationsApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.BranchProjectionSourceException;
+import com.taxonomy.relations.service.RelationProjectionOperationsService;
+import com.taxonomy.relations.service.RelationProjectionOperationsService.ProjectionStatus;
+import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildHeadConflictException;
+import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildOperation;
+import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildVerificationException;
+import com.taxonomy.relations.service.RelationProjectionOperationsService.RecoveryReconciliationPendingException;
+import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+
+/** Authorized operator API for rebuildable relation branch projections. */
+@RestController
+@RequestMapping(&quot;/api/architecture/relations/projection&quot;)
+@Tag(name = &quot;Relation projection operations&quot;)
+public class RelationProjectionOperationsApiController {
+
+    private final RelationProjectionOperationsService operationsService;
+    private final WorkspaceResolver workspaceResolver;
+    private final SystemRepositoryService repositoryService;
+    private final RepositoryMembershipService membershipService;
+
+    public RelationProjectionOperationsApiController(
+            RelationProjectionOperationsService operationsService,
+            WorkspaceResolver workspaceResolver,
+            SystemRepositoryService repositoryService,
+<span class="fc" id="L50">            RepositoryMembershipService membershipService) {</span>
+<span class="fc" id="L51">        this.operationsService = operationsService;</span>
+<span class="fc" id="L52">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L53">        this.repositoryService = repositoryService;</span>
+<span class="fc" id="L54">        this.membershipService = membershipService;</span>
+<span class="fc" id="L55">    }</span>
+
+    @Operation(summary = &quot;Inspect exact-branch projection readiness and recovery&quot;,
+            description = &quot;Inspects relation projection/index readiness against the current Git head in a writable repository context. Returns the head ETag when present and does not trigger a rebuild.&quot;)
+    @GetMapping(&quot;/readiness&quot;)
+    public ResponseEntity&lt;ProjectionOperationResponse&gt; readiness() {
+<span class="fc" id="L61">        RepositoryContext context = writableContext(</span>
+<span class="fc" id="L62">                workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L64">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+        }
+<span class="fc" id="L66">        ProjectionStatus status = operationsService.inspect(context);</span>
+<span class="fc" id="L67">        ResponseEntity.BodyBuilder response = ResponseEntity.ok();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (status.readiness().currentHeadCommit() != null) {</span>
+<span class="fc" id="L69">            response.header(</span>
+                    HttpHeaders.ETAG,
+<span class="fc" id="L71">                    GitHttpPrecondition.etag(</span>
+<span class="fc" id="L72">                            status.readiness().currentHeadCommit()));</span>
+        }
+<span class="fc" id="L74">        return response.body(ProjectionOperationResponse.status(</span>
+                context, status));
+    }
+
+    @Operation(summary = &quot;Rebuild an exact branch projection from Git&quot;,
+            description = &quot;Rebuilds the database relation projection from the exact expected Git branch head in a writable repository context. Requires a head precondition and rejects source movement; rebuilding is not a new semantic relation edit.&quot;)
+    @PostMapping(&quot;/rebuild&quot;)
+    public ResponseEntity&lt;ProjectionOperationResponse&gt; rebuild(
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
+            String ifNoneMatch) {
+        try {
+<span class="fc" id="L87">            RepositoryContext context = writableContext(</span>
+<span class="fc" id="L88">                    workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (context == null) {</span>
+<span class="fc" id="L90">                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+            }
+<span class="fc" id="L92">            String expectedHead = GitHttpPrecondition.expectedHead(</span>
+                    ifMatch, ifNoneMatch);
+<span class="fc" id="L94">            RebuildOperation operation = operationsService.rebuild(</span>
+                    context, expectedHead);
+<span class="fc" id="L96">            return ResponseEntity.ok()</span>
+<span class="fc" id="L97">                    .header(</span>
+                            HttpHeaders.ETAG,
+<span class="fc" id="L99">                            GitHttpPrecondition.etag(</span>
+<span class="fc" id="L100">                                    operation.rebuild()</span>
+<span class="fc" id="L101">                                            .authoritativeCommitId()))</span>
+<span class="fc" id="L102">                    .body(ProjectionOperationResponse.rebuilt(</span>
+                            context, operation));
+<span class="fc" id="L104">        } catch (GitHttpPrecondition.PreconditionRequiredException error) {</span>
+<span class="fc" id="L105">            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();</span>
+<span class="fc" id="L106">        } catch (BranchHeadConflictException error) {</span>
+<span class="fc" id="L107">            return preconditionFailed(</span>
+<span class="fc" id="L108">                    error.getExpectedHeadCommit(),</span>
+<span class="fc" id="L109">                    error.getActualHeadCommit());</span>
+<span class="fc" id="L110">        } catch (RebuildHeadConflictException error) {</span>
+<span class="fc" id="L111">            return preconditionFailed(</span>
+<span class="fc" id="L112">                    error.getExpectedHeadCommit(),</span>
+<span class="fc" id="L113">                    error.getActualHeadCommit());</span>
+<span class="fc" id="L114">        } catch (RebuildVerificationException error) {</span>
+<span class="fc" id="L115">            return verificationFailed(error);</span>
+<span class="fc" id="L116">        } catch (RecoveryReconciliationPendingException error) {</span>
+<span class="fc" id="L117">            String commit = error.getRebuild().authoritativeCommitId();</span>
+<span class="fc" id="L118">            return ResponseEntity.status(HttpStatus.ACCEPTED)</span>
+<span class="fc" id="L119">                    .header(HttpHeaders.ETAG, GitHttpPrecondition.etag(commit))</span>
+<span class="fc" id="L120">                    .body(ProjectionOperationResponse.reconciliationPending(</span>
+<span class="fc" id="L121">                            error.getRebuild().repositoryId(),</span>
+<span class="fc" id="L122">                            error.getRebuild().workspaceId(),</span>
+<span class="fc" id="L123">                            error.getRebuild().branch(),</span>
+                            commit,
+<span class="fc" id="L125">                            error.getRebuild().relationCount()));</span>
+<span class="fc" id="L126">        } catch (BranchProjectionSourceException error) {</span>
+<span class="fc" id="L127">            return ResponseEntity.status(HttpStatus.CONFLICT).build();</span>
+<span class="fc" id="L128">        } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L129">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L130">        } catch (IllegalStateException error) {</span>
+<span class="fc" id="L131">            return ResponseEntity.status(HttpStatus.CONFLICT).build();</span>
+<span class="fc" id="L132">        } catch (IOException error) {</span>
+<span class="fc" id="L133">            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();</span>
+        }
+    }
+
+    private static ResponseEntity&lt;ProjectionOperationResponse&gt;
+            preconditionFailed(
+                    String expectedHeadCommit,
+                    String actualHeadCommit) {
+<span class="fc" id="L141">        ResponseEntity.BodyBuilder response = ResponseEntity.status(</span>
+                HttpStatus.PRECONDITION_FAILED);
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (actualHeadCommit != null) {</span>
+<span class="fc" id="L144">            response.header(</span>
+                    HttpHeaders.ETAG,
+<span class="fc" id="L146">                    GitHttpPrecondition.etag(actualHeadCommit));</span>
+        }
+<span class="fc" id="L148">        return response.body(ProjectionOperationResponse.conflict(</span>
+                expectedHeadCommit, actualHeadCommit));
+    }
+
+    private static ResponseEntity&lt;ProjectionOperationResponse&gt;
+            verificationFailed(RebuildVerificationException error) {
+<span class="fc" id="L154">        ResponseEntity.BodyBuilder response = ResponseEntity.status(</span>
+                HttpStatus.CONFLICT);
+<span class="fc" id="L156">        String currentHead = error.getReadiness().currentHeadCommit();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (currentHead != null) {</span>
+<span class="fc" id="L158">            response.header(</span>
+                    HttpHeaders.ETAG,
+<span class="fc" id="L160">                    GitHttpPrecondition.etag(currentHead));</span>
+        }
+<span class="fc" id="L162">        return response.body(</span>
+<span class="fc" id="L163">                ProjectionOperationResponse.verificationFailed(error));</span>
+    }
+
+    /** Central projection operations require repository-maintainer authority. */
+    private RepositoryContext writableContext(RepositoryContext context) {
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        if (context.scope() == RepositoryScope.WORKSPACE</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                || context.scope() == RepositoryScope.FORK) {</span>
+<span class="fc" id="L170">            return context;</span>
+        }
+<span class="fc" id="L172">        SystemRepository repository = repositoryService.getRepository(</span>
+<span class="fc" id="L173">                context.repositoryId());</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (!isApplicationAdmin()</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">                &amp;&amp; !membershipService.canMaintain(</span>
+<span class="fc" id="L176">                        repository, context.username())) {</span>
+<span class="fc" id="L177">            return null;</span>
+        }
+<span class="fc" id="L179">        return new RepositoryContext(</span>
+<span class="fc" id="L180">                context.repositoryId(),</span>
+                null,
+<span class="fc" id="L182">                context.branch(),</span>
+<span class="fc" id="L183">                context.username(),</span>
+                RepositoryScope.CENTRAL_WRITE);
+    }
+
+    private static boolean isApplicationAdmin() {
+<span class="fc" id="L188">        Authentication authentication = SecurityContextHolder.getContext()</span>
+<span class="fc" id="L189">                .getAuthentication();</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        return authentication != null</span>
+<span class="fc" id="L191">                &amp;&amp; authentication.getAuthorities().stream()</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                .anyMatch(authority -&gt; &quot;ROLE_ADMIN&quot;.equals(</span>
+<span class="fc" id="L193">                        authority.getAuthority()));</span>
+    }
+
+<span class="fc" id="L196">    public record RecoveryResponse(</span>
+            Long id,
+            String authoritativeCommitId,
+            String previousHeadCommit,
+            String causationId,
+            String status,
+            int attemptCount,
+            String failureType,
+            String failureMessage,
+            Instant firstObservedAt,
+            Instant lastObservedAt) {
+
+        static RecoveryResponse from(RecoveryRecord recovery) {
+<span class="fc" id="L209">            return new RecoveryResponse(</span>
+<span class="fc" id="L210">                    recovery.id(),</span>
+<span class="fc" id="L211">                    recovery.authoritativeCommitId(),</span>
+<span class="fc" id="L212">                    recovery.previousHeadCommit(),</span>
+<span class="fc" id="L213">                    recovery.causationId(),</span>
+<span class="fc" id="L214">                    recovery.status().name(),</span>
+<span class="fc" id="L215">                    recovery.attemptCount(),</span>
+<span class="fc" id="L216">                    recovery.failureType(),</span>
+<span class="fc" id="L217">                    recovery.failureMessage(),</span>
+<span class="fc" id="L218">                    recovery.firstObservedAt(),</span>
+<span class="fc" id="L219">                    recovery.lastObservedAt());</span>
+        }
+    }
+
+    public record ProjectionOperationResponse(
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String operationStatus,
+            String readinessState,
+            String currentHeadCommit,
+            String projectedCommit,
+            int relationCount,
+            List&lt;RecoveryResponse&gt; pendingRecoveries,
+            Integer recoveredCount,
+            Integer supersededCount,
+            Integer remainingPendingCount,
+            String expectedHeadCommit,
+            String actualHeadCommit) {
+
+<span class="fc" id="L239">        public ProjectionOperationResponse {</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">            pendingRecoveries = pendingRecoveries == null</span>
+<span class="nc" id="L241">                    ? List.of()</span>
+<span class="fc" id="L242">                    : List.copyOf(pendingRecoveries);</span>
+<span class="fc" id="L243">        }</span>
+
+        static ProjectionOperationResponse status(
+                RepositoryContext context,
+                ProjectionStatus status) {
+<span class="fc" id="L248">            return new ProjectionOperationResponse(</span>
+<span class="fc" id="L249">                    context.repositoryId(),</span>
+<span class="fc" id="L250">                    context.workspaceId(),</span>
+<span class="fc" id="L251">                    context.branch(),</span>
+                    &quot;INSPECTED&quot;,
+<span class="fc" id="L253">                    status.readiness().state().name(),</span>
+<span class="fc" id="L254">                    status.readiness().currentHeadCommit(),</span>
+<span class="fc" id="L255">                    status.readiness().projectedCommit(),</span>
+<span class="fc" id="L256">                    status.readiness().rows().size(),</span>
+<span class="fc" id="L257">                    status.pendingRecoveries().stream()</span>
+<span class="fc" id="L258">                            .map(RecoveryResponse::from)</span>
+<span class="fc" id="L259">                            .toList(),</span>
+                    null,
+                    null,
+<span class="fc" id="L262">                    status.pendingRecoveries().size(),</span>
+                    null,
+                    null);
+        }
+
+        static ProjectionOperationResponse rebuilt(
+                RepositoryContext context,
+                RebuildOperation operation) {
+<span class="fc" id="L270">            return new ProjectionOperationResponse(</span>
+<span class="fc" id="L271">                    context.repositoryId(),</span>
+<span class="fc" id="L272">                    context.workspaceId(),</span>
+<span class="fc" id="L273">                    context.branch(),</span>
+                    &quot;REBUILT&quot;,
+<span class="fc" id="L275">                    operation.readiness().state().name(),</span>
+<span class="fc" id="L276">                    operation.readiness().currentHeadCommit(),</span>
+<span class="fc" id="L277">                    operation.readiness().projectedCommit(),</span>
+<span class="fc" id="L278">                    operation.rebuild().relationCount(),</span>
+<span class="fc" id="L279">                    List.of(),</span>
+<span class="fc" id="L280">                    operation.reconciliation().recoveredCount(),</span>
+<span class="fc" id="L281">                    operation.reconciliation().supersededCount(),</span>
+<span class="fc" id="L282">                    operation.reconciliation().remainingPendingCount(),</span>
+                    null,
+                    null);
+        }
+
+        static ProjectionOperationResponse verificationFailed(
+                RebuildVerificationException error) {
+<span class="fc" id="L289">            return new ProjectionOperationResponse(</span>
+<span class="fc" id="L290">                    error.getRebuild().repositoryId(),</span>
+<span class="fc" id="L291">                    error.getRebuild().workspaceId(),</span>
+<span class="fc" id="L292">                    error.getRebuild().branch(),</span>
+                    &quot;VERIFICATION_FAILED&quot;,
+<span class="fc" id="L294">                    error.getReadiness().state().name(),</span>
+<span class="fc" id="L295">                    error.getReadiness().currentHeadCommit(),</span>
+<span class="fc" id="L296">                    error.getReadiness().projectedCommit(),</span>
+<span class="fc" id="L297">                    error.getRebuild().relationCount(),</span>
+<span class="fc" id="L298">                    List.of(),</span>
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        static ProjectionOperationResponse reconciliationPending(
+                String repositoryId,
+                String workspaceId,
+                String branch,
+                String commit,
+                int relationCount) {
+<span class="fc" id="L312">            return new ProjectionOperationResponse(</span>
+                    repositoryId,
+                    workspaceId,
+                    branch,
+                    &quot;RECOVERY_RECONCILIATION_PENDING&quot;,
+                    null,
+                    commit,
+                    commit,
+                    relationCount,
+<span class="fc" id="L321">                    List.of(),</span>
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        static ProjectionOperationResponse conflict(
+                String expectedHeadCommit,
+                String actualHeadCommit) {
+<span class="fc" id="L332">            return new ProjectionOperationResponse(</span>
+                    null,
+                    null,
+                    null,
+                    &quot;PRECONDITION_FAILED&quot;,
+                    null,
+                    actualHeadCommit,
+                    null,
+                    0,
+<span class="fc" id="L341">                    List.of(),</span>
+                    null,
+                    null,
+                    null,
+                    expectedHeadCommit,
+                    actualHeadCommit);
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitReflogProvenanceRecord.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.model</a> &gt; <span class="el_source">GitReflogProvenanceRecord.java</span></div><h1>GitReflogProvenanceRecord.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.model;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** Immutable original Git-event evidence; names and addresses confer no target identity or rights. */
+@Entity
+@org.hibernate.annotations.Immutable
+@Table(name = &quot;workspace_git_reflog_provenance&quot;, uniqueConstraints = @UniqueConstraint(
+        name = &quot;uq_workspace_reflog_origin&quot;, columnNames = {&quot;repository_key&quot;, &quot;origin_id&quot;, &quot;event_ordinal&quot;}))
+public class GitReflogProvenanceRecord {
+    @Id @Column(name = &quot;id&quot;, nullable = false, length = 64) String id;
+    @Column(name = &quot;repository_key&quot;, nullable = false, length = 64) String repositoryKey;
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255) String repositoryId;
+    @Column(name = &quot;workspace_id&quot;, length = 255) String workspaceId;
+    @Column(name = &quot;storage_repository_name&quot;, nullable = false, length = 512) String storageRepositoryName;
+    @Column(name = &quot;origin_id&quot;, nullable = false, length = 64) String originId;
+    @Column(name = &quot;event_ordinal&quot;, nullable = false) int eventOrdinal;
+    @Column(name = &quot;body_version&quot;, nullable = false) int bodyVersion;
+    @Column(name = &quot;sha256&quot;, nullable = false, length = 64) String sha256;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;body&quot;, nullable = false) String body;
+<span class="fc" id="L23">    protected GitReflogProvenanceRecord() { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

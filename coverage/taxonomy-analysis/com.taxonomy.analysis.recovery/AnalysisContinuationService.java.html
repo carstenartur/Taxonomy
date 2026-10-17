@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisContinuationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisContinuationService.java</span></div><h1>AnalysisContinuationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import com.taxonomy.analysis.service.*;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.*;
+import com.taxonomy.workspace.service.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
+import java.util.Objects;
+
+@Service
+public class AnalysisContinuationService {
+    private final AnalysisContinuationStore store;
+    private final TaxonomyService catalogue;
+    private final LlmService llm;
+    private final WorkspaceManager workspaces;
+    private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.taxonomy.analysis.relations.RequirementRelationSearchService relations;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private LlmProviderConfig providers;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.taxonomy.analysis.cluster.ClusterAnalysisStore clusterStore;
+    public AnalysisContinuationService(AnalysisContinuationStore store, TaxonomyService catalogue,
+<span class="fc" id="L27">            LlmService llm, WorkspaceManager workspaces, ObjectMapper mapper) {</span>
+<span class="fc" id="L28">        this.store = store; this.catalogue = catalogue; this.llm = llm; this.workspaces = workspaces; this.mapper = mapper;</span>
+<span class="fc" id="L29">    }</span>
+    public Execution begin(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
+<span class="fc" id="L31">        authorize(username, scope);</span>
+<span class="fc" id="L32">        AnalysisRequest frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);</span>
+<span class="fc" id="L33">        frozen.setMaxArchitectureNodes(maxNodes);</span>
+<span class="fc" id="L34">        freezeReasonLength(frozen, scope);</span>
+<span class="fc" id="L35">        var tree = catalogue.getFullTree();</span>
+        try {
+<span class="fc" id="L37">            frozen.getAnalysisScope().validateRoots(tree.stream().map(TaxonomyNodeDto::getCode)</span>
+<span class="fc" id="L38">                    .collect(java.util.stream.Collectors.toSet()));</span>
+<span class="nc" id="L39">        } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L40">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);</span>
+<span class="fc" id="L41">        }</span>
+<span class="fc" id="L42">        return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree), null, null, null,</span>
+<span class="fc" id="L43">                frozen.getAnalysisReasonLength());</span>
+    }
+    public Execution beginDistributed(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
+<span class="fc" id="L46">        authorize(username, scope);</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (providers == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;Frozen provider authority is unavailable&quot;);</span>
+<span class="fc" id="L48">        var frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);</span>
+<span class="fc" id="L49">        frozen.setMaxArchitectureNodes(maxNodes);</span>
+<span class="fc" id="L50">        freezeReasonLength(frozen, scope);</span>
+<span class="fc" id="L51">        String requested = request.getProvider();</span>
+<span class="pc bpc" id="L52" title="2 of 4 branches missed.">        String provider = &quot;MOCK&quot;.equalsIgnoreCase(requested) || providers.isMockMode() ? &quot;MOCK&quot;</span>
+<span class="pc bpc" id="L53" title="2 of 4 branches missed.">                : requested == null || requested.isBlank() ? providers.getActiveProviderId().value() : requested.toUpperCase(java.util.Locale.ROOT);</span>
+<span class="fc" id="L54">        frozen.setProvider(provider);</span>
+<span class="fc" id="L55">        var tree = catalogue.getFullTree();</span>
+<span class="fc" id="L56">        try { frozen.getAnalysisScope().validateRoots(tree.stream().map(TaxonomyNodeDto::getCode).collect(java.util.stream.Collectors.toSet())); }</span>
+<span class="pc" id="L57">        catch (IllegalArgumentException invalid) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid); }</span>
+<span class="fc" id="L58">        var pluginBinding = providers.captureProviderBinding(provider);</span>
+<span class="fc" id="L59">        try (var ignored = providers.withRequestProvider(provider, pluginBinding);</span>
+<span class="fc" id="L60">             var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength())) {</span>
+<span class="fc" id="L61">            String signature = signature(frozen, tree);</span>
+<span class="fc" id="L62">            var claim = store.begin(frozen, scope, signature, tree);</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            var binding = claim.completedResult() == null ? new AnalysisContinuationBinding(claim.id(), claim.token(), signature,</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                    llm.recoveryPolicyFingerprint(provider), AnalysisCheckpointSession.digest(relations == null ? &quot;&quot; : relations.recoveryPolicyFingerprint())) : null;</span>
+<span class="fc" id="L65">            return new Execution(claim, binding, provider, pluginBinding, frozen.getAnalysisReasonLength());</span>
+        }
+    }
+
+    private void freezeReasonLength(AnalysisRequest request, WorkspaceContext scope) {
+<span class="fc" id="L70">        var original = store.originalRequest(request.getContinuationId(), scope);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (original.isPresent()) {</span>
+<span class="fc" id="L72">            var saved = original.get().getAnalysisReasonLength();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (request.getAnalysisReasonLength() != null</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                    &amp;&amp; request.getAnalysisReasonLength() != AnalysisReasonContext.effective(saved))</span>
+<span class="fc" id="L75">                throw new ResponseStatusException(HttpStatus.CONFLICT,</span>
+                        &quot;The analysis reason length belongs to the saved run; start a new analysis to change it&quot;);
+<span class="fc" id="L77">            request.setAnalysisReasonLength(saved);</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        } else request.setAnalysisReasonLength(request.getAnalysisReasonLength() != null</span>
+<span class="pc" id="L79">                ? request.getAnalysisReasonLength() : AnalysisReasonContext.effective(llm.resolveAnalysisReasonLength(null)));</span>
+<span class="fc" id="L80">    }</span>
+    public AnalysisContinuationStore.Snapshot read(String id, String username, WorkspaceContext scope) {
+<span class="nc" id="L82">        authorize(username, scope); return store.read(id, scope);</span>
+    }
+    public AnalysisContinuationStore.Snapshot cancel(String id, String username, WorkspaceContext scope) {
+<span class="fc" id="L85">        authorize(username, scope);</span>
+<span class="fc" id="L86">        var snapshot = store.read(id, scope);</span>
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">        if (snapshot.result() == null || snapshot.result().getTree() == null) {</span>
+<span class="nc" id="L88">            var tree = catalogue.getFullTree();</span>
+<span class="nc" id="L89">            snapshot = store.cancel(id, scope, tree, signature(snapshot.request(), tree));</span>
+<span class="pc" id="L90">        } else snapshot = store.cancel(id, scope);</span>
+<span class="fc" id="L91">        var cancelled = snapshot;</span>
+<span class="fc" id="L92">        String operation = store.boundOperation(id);</span>
+<span class="pc bpc" id="L93" title="2 of 4 branches missed.">        if (operation != null &amp;&amp; clusterStore != null) clusterStore.cancel(clusterStore.authorize(operation, username, scope));</span>
+<span class="fc" id="L94">        return cancelled;</span>
+    }
+    public LlmCallDetail detail(String id, String key, String username, WorkspaceContext scope) {
+<span class="nc" id="L97">        authorize(username, scope); return store.detail(id, key, scope);</span>
+    }
+    private String signature(AnalysisRequest request, java.util.List&lt;TaxonomyNodeDto&gt; tree) {
+<span class="fc" id="L100">        try (var reasons = AnalysisReasonContext.open(request.getAnalysisReasonLength())) {</span>
+<span class="fc" id="L101">        String legacy = AnalysisCheckpointSession.digest(&quot;resumable-scoring-v1&quot;, request.getBusinessText(),</span>
+<span class="fc" id="L102">                Boolean.toString(request.isIncludeArchitectureView()), String.valueOf(request.getMaxArchitectureNodes()),</span>
+<span class="fc" id="L103">                llm.recoveryPolicyFingerprint(request.getProvider()), mapper.writeValueAsString(tree),</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                relations == null ? &quot;&quot; : relations.recoveryPolicyFingerprint());</span>
+        // Preserve existing durable identities while freezing additional semantic inputs.
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (!request.getAnalysisScope().legacyFull()) legacy = AnalysisCheckpointSession.digest(legacy, &quot;analysis-scope-v1&quot;,</span>
+<span class="fc" id="L107">                mapper.writeValueAsString(request.getAnalysisScope()));</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        return request.getAnalysisReasonLength() == null ? legacy : AnalysisCheckpointSession.digest(legacy,</span>
+<span class="fc" id="L109">                AnalysisReasonContext.POLICY, request.getAnalysisReasonLength().value());</span>
+        }
+    }
+    private void authorize(String username, WorkspaceContext scope) {
+<span class="pc bpc" id="L113" title="3 of 6 branches missed.">        if (scope == null || !Objects.equals(username, scope.username()) || scope.workspaceId() == null)</span>
+<span class="nc" id="L114">            throw new ResponseStatusException(HttpStatus.FORBIDDEN, &quot;An owned workspace is required&quot;);</span>
+<span class="fc" id="L115">        var workspace = workspaces.getWorkspaceById(scope.workspaceId());</span>
+<span class="pc bpc" id="L116" title="3 of 6 branches missed.">        if (workspace == null || workspace.isArchived() || workspace.isShared()</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">                || !Objects.equals(username, workspace.getUsername()))</span>
+<span class="nc" id="L118">            throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Analysis workspace not found&quot;);</span>
+<span class="fc" id="L119">    }</span>
+    public final class Execution implements AutoCloseable {
+        private final AnalysisContinuationStore.Claim claim;
+        private final AnalysisCheckpointSession session;
+        private boolean completed;
+        private final AnalysisContinuationBinding distributedBinding;
+        private final String frozenProvider;
+        private final com.taxonomy.extension.api.plugin.PluginInvocation providerBinding;
+        private final AnalysisReasonLength frozenReasonLength;
+<span class="fc" id="L128">        Execution(AnalysisContinuationStore.Claim claim) { this(claim, null, null, null, null); }</span>
+        Execution(AnalysisContinuationStore.Claim claim, AnalysisContinuationBinding binding, String provider,
+<span class="fc" id="L130">                com.taxonomy.extension.api.plugin.PluginInvocation pluginBinding, AnalysisReasonLength reasonLength) {</span>
+<span class="fc" id="L131">            this.claim = claim; distributedBinding = binding; frozenProvider = provider; providerBinding = pluginBinding;</span>
+<span class="fc" id="L132">            frozenReasonLength = AnalysisReasonContext.effective(reasonLength);</span>
+<span class="fc bfc" id="L133" title="All 4 branches covered.">            session = claim.completedResult() != null || binding != null ? null : new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {</span>
+                public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question q) {
+<span class="nc" id="L135">                    return store.prepare(claim, q);</span>
+                }
+                public RelationSearchReport previousRelations() {
+<span class="nc" id="L138">                    return claim.previousRelations();</span>
+                }
+                public void supersedeEvidence(String kind, String provider, java.util.function.Predicate&lt;AnalysisCheckpointSession.Question&gt; covered) {
+<span class="nc" id="L141">                    store.supersedeEvidence(claim, kind, provider, covered, null);</span>
+<span class="nc" id="L142">                }</span>
+                public void finish(AnalysisCheckpointSession.Question q, String state, LlmCallDetail detail) {
+<span class="nc" id="L144">                    store.finish(claim, q, state, detail);</span>
+<span class="nc bnc" id="L145" title="All 4 branches missed.">                    if (&quot;SUCCESS&quot;.equals(state) &amp;&amp; &quot;PAUSED&quot;.equals(store.state(claim)))</span>
+<span class="nc" id="L146">                        throw new AnalysisStoppedException(AnalysisStoppedException.Reason.AWAITING_DECISION);</span>
+<span class="nc" id="L147">                }</span>
+                public void checkActive() {
+<span class="nc" id="L149">                    String state = store.state(claim);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                    if (&quot;CANCELLED&quot;.equals(state)) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">                    if (&quot;PAUSED&quot;.equals(state)) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.AWAITING_DECISION);</span>
+<span class="nc" id="L152">                }</span>
+            });
+<span class="fc" id="L154">        }</span>
+<span class="fc" id="L155">        public AnalysisContinuationBinding binding() { return distributedBinding; }</span>
+<span class="fc" id="L156">        public AnalysisReasonLength analysisReasonLength() { return frozenReasonLength; }</span>
+        public com.taxonomy.analysis.usecase.AnalyzeRequirementCommand bind(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand command) {
+<span class="fc" id="L158">            return new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand(command.businessText(), command.includeArchitectureView(),</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                    command.maxArchitectureNodes(), frozenProvider == null ? command.provider() : frozenProvider,</span>
+<span class="fc" id="L160">                    command.username(), command.workspaceContext(), command.provenance(),</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                    command.analysisScope(), providerBinding == null ? command.providerBinding() : providerBinding,</span>
+                    distributedBinding, frozenReasonLength);
+        }
+<span class="fc" id="L164">        public AnalysisResult replay() { return claim.completedResult(); }</span>
+        public AnalysisResult complete(AnalysisResult result) {
+<span class="fc" id="L166">            AnalysisResult completedResult = store.complete(claim, result, catalogue.getFullTree());</span>
+<span class="fc" id="L167">            completed = true; return completedResult;</span>
+        }
+        @Override public void close() {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (session != null) session.close();</span>
+<span class="fc bfc" id="L171" title="All 4 branches covered.">            if (!completed &amp;&amp; claim.completedResult() == null) {</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                String operation = distributedBinding == null ? null : store.boundOperation(claim.id());</span>
+<span class="pc bpc" id="L173" title="1 of 4 branches missed.">                if (operation == null || !store.owns(claim, operation)) store.interrupted(claim);</span>
+            }
+<span class="fc" id="L175">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

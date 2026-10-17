@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PluginDescriptor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.plugin</a> &gt; <span class="el_source">PluginDescriptor.java</span></div><h1>PluginDescriptor.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.plugin;
+
+import java.io.Serializable;
+import java.util.List;
+import java.util.Set;
+import java.util.Objects;
+
+/** SemVer ranges refer to the host SPI, independently of the product release version. */
+public record PluginDescriptor(PluginIdentity identity, String hostApiRange,
+        List&lt;PluginRequirement&gt; requires, Set&lt;String&gt; capabilities, PluginMode mode) implements Serializable {
+    public static final String HOST_API_VERSION = &quot;1.0.0&quot;;
+<span class="fc" id="L12">    public PluginDescriptor {</span>
+<span class="fc" id="L13">        Objects.requireNonNull(identity, &quot;identity&quot;);</span>
+<span class="fc" id="L14">        Objects.requireNonNull(mode, &quot;mode&quot;);</span>
+<span class="pc bpc" id="L15" title="2 of 4 branches missed.">        if (hostApiRange == null || hostApiRange.isBlank())</span>
+<span class="nc" id="L16">            throw new IllegalArgumentException(&quot;Host API version range is required&quot;);</span>
+<span class="fc" id="L17">        requires = List.copyOf(Objects.requireNonNull(requires, &quot;requires&quot;));</span>
+<span class="fc" id="L18">        capabilities = Set.copyOf(Objects.requireNonNull(capabilities, &quot;capabilities&quot;));</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">        if (requires.stream().map(PluginRequirement::id).distinct().count() != requires.size())</span>
+<span class="nc" id="L20">            throw new IllegalArgumentException(&quot;Duplicate plugin requirement&quot;);</span>
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">        if (requires.stream().anyMatch(r -&gt; r.id().equals(identity.id())))</span>
+<span class="nc" id="L22">            throw new IllegalArgumentException(&quot;Plugin cannot require itself&quot;);</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        for (String capability : capabilities) {</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">            if (!capability.matches(&quot;[a-z][a-z0-9.:-]{0,127}&quot;))</span>
+<span class="nc" id="L25">                throw new IllegalArgumentException(&quot;Invalid plugin capability&quot;);</span>
+<span class="fc" id="L26">        }</span>
+<span class="fc" id="L27">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

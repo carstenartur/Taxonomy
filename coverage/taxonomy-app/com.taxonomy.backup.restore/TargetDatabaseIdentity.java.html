@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TargetDatabaseIdentity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">TargetDatabaseIdentity.java</span></div><h1>TargetDatabaseIdentity.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.identity.StableIdentityHash;
+import javax.sql.DataSource;
+import java.io.*;
+import java.nio.file.*;
+import java.sql.*;
+
+/** Connection-witnessed identity. Public evidence contains no URL, username or credentials. */
+public record TargetDatabaseIdentity(SourceDatabaseFamily family, String destinationFingerprint,
+                                     String catalog, String schema) {
+    private static final String MEMORY_PREFIX = &quot;jdbc:hsqldb:mem:&quot;;
+    private static final String FILE_PREFIX = &quot;jdbc:hsqldb:file:&quot;;
+<span class="fc" id="L15">    public TargetDatabaseIdentity {</span>
+<span class="pc bpc" id="L16" title="3 of 6 branches missed.">        if (family == null || destinationFingerprint == null || !destinationFingerprint.matches(&quot;[0-9a-f]{64}&quot;))</span>
+<span class="nc" id="L17">            throw new IllegalArgumentException(&quot;Invalid target database identity&quot;);</span>
+<span class="fc" id="L18">        catalog = scope(catalog); schema = scope(schema);</span>
+<span class="fc" id="L19">    }</span>
+
+    public static TargetDatabaseIdentity inspect(DataSource database, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L23">            checkpoint.check();</span>
+<span class="fc" id="L24">            try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L25">                var identity = inspectConnection(connection); checkpoint.check(); return identity;</span>
+            }
+<span class="nc" id="L27">        } catch (InterruptedIOException cancelled) {</span>
+<span class="nc" id="L28">            Thread.currentThread().interrupt(); throw new InterruptedIOException(&quot;Restore target inspection was cancelled&quot;);</span>
+<span class="nc" id="L29">        } catch (IOException unavailable) {</span>
+<span class="nc" id="L30">            throw new IOException(&quot;Restore target identity is unavailable or unproven&quot;);</span>
+<span class="nc" id="L31">        } catch (SQLException | IllegalArgumentException unavailable) {</span>
+<span class="nc" id="L32">            throw new IOException(&quot;Restore target identity is unavailable or unproven&quot;);</span>
+        }
+    }
+
+    public static TargetDatabaseIdentity proveIsolated(DataSource active, DataSource candidate,
+                                                       BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L38">        var source = inspect(active, checkpoint); var target = inspect(candidate, checkpoint);</span>
+        // Initial local-HSQL support requires a different physical database. A changed default schema
+        // alone cannot prove that a JPA default_schema or qualified owner SQL avoids the active schema.
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (source.destinationFingerprint().equals(target.destinationFingerprint()))</span>
+<span class="fc" id="L42">            throw new IOException(&quot;Restore target is not isolated from the active database&quot;);</span>
+<span class="fc" id="L43">        return target;</span>
+    }
+
+    static TargetDatabaseIdentity inspectConnection(Connection connection) throws SQLException, IOException {
+<span class="fc" id="L47">        var metadata = connection.getMetaData();</span>
+<span class="fc" id="L48">        var family = SourceDatabaseFamily.fromProductName(metadata.getDatabaseProductName());</span>
+        // Only actual tested local HSQL destinations have a canonical identity proof here.
+        // Remote endpoints and other vendors require their own witnessed physical-identity adapters.
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (family != SourceDatabaseFamily.HSQLDB) throw new IOException(&quot;Restore target isolation is unproven for this database family&quot;);</span>
+<span class="fc" id="L52">        String url = metadata.getURL();</span>
+<span class="pc bpc" id="L53" title="3 of 6 branches missed.">        if (url == null || url.length() &gt; 4096 || url.chars().anyMatch(Character::isISOControl))</span>
+<span class="nc" id="L54">            throw new IOException(&quot;Restore target identity is unavailable or unproven&quot;);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        int parameters = url.indexOf(';'); String destination = parameters &lt; 0 ? url : url.substring(0, parameters);</span>
+        String prefix;
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (destination.regionMatches(true, 0, MEMORY_PREFIX, 0, MEMORY_PREFIX.length())) {</span>
+<span class="fc" id="L58">            prefix = MEMORY_PREFIX; String name = destination.substring(prefix.length());</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">            if (name.isBlank()) throw new IOException(&quot;Restore target identity is unavailable or unproven&quot;);</span>
+<span class="fc" id="L60">            destination = prefix + name.toLowerCase(java.util.Locale.ROOT);</span>
+<span class="pc bnc" id="L61" title="All 2 branches missed.">        } else if (destination.regionMatches(true, 0, FILE_PREFIX, 0, FILE_PREFIX.length())) {</span>
+<span class="nc" id="L62">            prefix = FILE_PREFIX; var path = Path.of(destination.substring(prefix.length())).toAbsolutePath().normalize();</span>
+<span class="nc bnc" id="L63" title="All 4 branches missed.">            if (path.getFileName() == null || path.getParent() == null)</span>
+<span class="nc" id="L64">                throw new IOException(&quot;Restore target identity is unavailable or unproven&quot;);</span>
+<span class="nc" id="L65">            destination = prefix + path.getParent().toRealPath().resolve(path.getFileName());</span>
+<span class="nc" id="L66">        } else throw new IOException(&quot;Restore target isolation is unproven for this database endpoint&quot;);</span>
+<span class="fc" id="L67">        return new TargetDatabaseIdentity(family, StableIdentityHash.sha256(destination), connection.getCatalog(), connection.getSchema());</span>
+    }
+
+    private static String scope(String value) {
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (value == null) return &quot;&quot;;</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">        if (value.length() &gt; 256 || value.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException(&quot;Invalid target scope&quot;);</span>
+<span class="fc" id="L73">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitHistoryObjects.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitHistoryObjects.java</span></div><h1>GitHistoryObjects.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import org.eclipse.jgit.errors.*;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.util.sha1.SHA1;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+
+/** Counts before parsing and streams object verification; no complete blob is retained. */
+final class GitHistoryObjects {
+<span class="fc" id="L18">    record Proof(int type, long length, String sha256) {</span>
+<span class="fc" id="L19">        Proof(int type, long length) { this(type, length, null); }</span>
+<span class="pc bpc" id="L20" title="3 of 6 branches missed.">        boolean sameHeader(Proof other) { return other != null &amp;&amp; type == other.type &amp;&amp; length == other.length; }</span>
+    }
+    private static final int BUFFER = 8_192;
+    private GitHistoryObjects() { }
+    static ObjectReader inventoryReader(Repository repository, GitHistoryCapture.Limits limits, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L25">        return new Reader(repository.newObjectReader(), limits, null, check);</span>
+    }
+    static ObjectReader capturedReader(Repository repository, GitHistoryCapture.Limits limits, Map&lt;ObjectId, Proof&gt; captured, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L28">        return new Reader(repository.newObjectReader(), limits, captured, check);</span>
+    }
+    static Proof verify(ObjectReader reader, AnyObjectId id, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L31">        check.check(); var loader = reader.open(id); var proof = new Proof(loader.getType(), loader.getSize());</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (proof.type() == Constants.OBJ_TREE) {</span>
+<span class="fc" id="L33">            var tree = new CanonicalTreeParser(); tree.reset(loader.getBytes(4 * 1_048_576));</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            while (!tree.eof()) {</span>
+<span class="fc" id="L35">                check.check();</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">                if (tree.getEntryFileMode().equals(FileMode.GITLINK)) throw failure(&quot;Git submodule content needs an explicit self-contained backup adapter&quot;);</span>
+<span class="fc" id="L37">                tree.next();</span>
+            }
+        }
+<span class="fc" id="L40">        return new Proof(proof.type(), proof.length(), copy(loader, id, OutputStream.nullOutputStream(), check));</span>
+    }
+    /** The receiver consumes a checked bounded stream; neither side materializes a large blob. */
+    static void insertVerified(Repository source, Map&lt;ObjectId, Proof&gt; expected, Repository target,
+                               BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L45">        try (var reader = source.newObjectReader(); var insert = target.newObjectInserter()) {</span>
+<span class="fc" id="L46">            reader.setStreamFileThreshold(BUFFER);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            for (var id : expected.keySet().stream().sorted(Comparator.comparing(ObjectId::name)).toList()) {</span>
+<span class="fc" id="L48">                checkpoint.check(); var proof = expected.get(id); var loader = reader.open(id, proof.type());</span>
+<span class="pc bpc" id="L49" title="3 of 6 branches missed.">                if (loader.getType() != proof.type() || loader.getSize() != proof.length() || proof.sha256() == null)</span>
+<span class="nc" id="L50">                    throw failure(&quot;Original Git object differs from its prepared header&quot;);</span>
+<span class="fc" id="L51">                try (var input = new VerifiedInput(loader.openStream(), id, proof, checkpoint)) {</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                    if (!insert.insert(proof.type(), proof.length(), input).equals(id))</span>
+<span class="nc" id="L53">                        throw failure(&quot;Restored Git object identity differs from the original&quot;);</span>
+<span class="fc" id="L54">                    input.complete();</span>
+                }
+<span class="fc" id="L56">            }</span>
+<span class="fc" id="L57">            checkpoint.check(); insert.flush(); checkpoint.check();</span>
+        }
+<span class="fc" id="L59">    }</span>
+    private static final class VerifiedInput extends InputStream {
+        private final InputStream source;
+        private final ObjectId id;
+        private final Proof proof;
+        private final BackupCheckpoint checkpoint;
+<span class="fc" id="L65">        private final SHA1 identity = SHA1.newInstance().setDetectCollision(true);</span>
+        private final MessageDigest content;
+        private long count;
+<span class="fc" id="L68">        VerifiedInput(InputStream source, ObjectId id, Proof proof, BackupCheckpoint checkpoint) {</span>
+<span class="fc" id="L69">            this.source = source; this.id = id; this.proof = proof; this.checkpoint = checkpoint;</span>
+<span class="fc" id="L70">            try { content = MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="pc" id="L71">            catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+<span class="fc" id="L72">            identity.update((Constants.typeString(proof.type()) + &quot; &quot; + proof.length() + &quot;\0&quot;).getBytes(StandardCharsets.US_ASCII));</span>
+<span class="fc" id="L73">        }</span>
+        @Override public int read() throws IOException {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">            var one = new byte[1]; return read(one, 0, 1) &lt; 0 ? -1 : Byte.toUnsignedInt(one[0]);</span>
+        }
+        @Override public int read(byte[] bytes, int offset, int length) throws IOException {
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            Objects.checkFromIndexSize(offset, length, bytes.length); if (length == 0) return 0;</span>
+<span class="fc" id="L79">            checkpoint.check(); int read = source.read(bytes, offset, Math.min(length, BUFFER));</span>
+<span class="pc bpc" id="L80" title="3 of 4 branches missed.">            if (read == 0) { int one = source.read(); if (one &lt; 0) return -1; bytes[offset] = (byte) one; read = 1; }</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            if (read &lt; 0) return -1;</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            if (read &gt; proof.length() - count) throw failure(&quot;Original Git object exceeds its prepared length&quot;);</span>
+<span class="fc" id="L83">            identity.update(bytes, offset, read); content.update(bytes, offset, read); count += read; checkpoint.check(); return read;</span>
+        }
+        void complete() throws IOException {
+<span class="pc bpc" id="L86" title="3 of 6 branches missed.">            if (count != proof.length() || read() != -1 || !identity.toObjectId().equals(id)</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                    || !HexFormat.of().formatHex(content.digest()).equals(proof.sha256()))</span>
+<span class="nc" id="L88">                throw failure(&quot;Original Git object differs from its prepared content&quot;);</span>
+<span class="fc" id="L89">            checkpoint.check();</span>
+<span class="fc" id="L90">        }</span>
+<span class="fc" id="L91">        @Override public void close() throws IOException { source.close(); }</span>
+    }
+    private static String copy(ObjectLoader loader, AnyObjectId id, OutputStream output, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L94">        check.check(); var sha = SHA1.newInstance().setDetectCollision(true);</span>
+        MessageDigest content;
+<span class="fc" id="L96">        try { content = MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="pc" id="L97">        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+<span class="fc" id="L98">        sha.update((Constants.typeString(loader.getType()) + &quot; &quot; + loader.getSize() + &quot;\0&quot;).getBytes(StandardCharsets.US_ASCII));</span>
+<span class="fc" id="L99">        var buffer = new byte[BUFFER]; var prefix = new byte[1_024]; int prefixLength = 0; long count = 0;</span>
+<span class="fc" id="L100">        try (var input = loader.openStream()) {</span>
+            for (;;) {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                check.check(); int read = input.read(buffer); if (read &lt; 0) break;</span>
+<span class="pc bpc" id="L103" title="3 of 4 branches missed.">                if (read == 0) { int one = input.read(); if (one &lt; 0) break; buffer[0] = (byte) one; read = 1; }</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                if (read &gt; loader.getSize() - count) throw failure(&quot;Git object length differs from captured evidence&quot;);</span>
+<span class="fc" id="L105">                int keep = Math.min(read, prefix.length - prefixLength);</span>
+<span class="fc" id="L106">                System.arraycopy(buffer, 0, prefix, prefixLength, keep); prefixLength += keep;</span>
+<span class="fc" id="L107">                output.write(buffer, 0, read); sha.update(buffer, 0, read); content.update(buffer, 0, read); count += read;</span>
+<span class="fc" id="L108">            }</span>
+        }
+<span class="pc bpc" id="L110" title="1 of 4 branches missed.">        if (count != loader.getSize() || !sha.toObjectId().equals(id)) throw failure(&quot;Git object identity differs from captured evidence&quot;);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (loader.getType() == Constants.OBJ_BLOB &amp;&amp; new String(prefix, 0, prefixLength, StandardCharsets.US_ASCII)</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                .split(&quot;\\r?\\n&quot;, 2)[0].equals(&quot;version https://git-lfs.github.com/spec/v1&quot;))</span>
+<span class="fc" id="L113">            throw failure(&quot;Git LFS content needs an explicit self-contained backup adapter&quot;);</span>
+<span class="fc" id="L114">        check.check(); return HexFormat.of().formatHex(content.digest());</span>
+    }
+    private static void requireContent(Proof expected, String actual) throws IOException {
+<span class="pc bpc" id="L117" title="2 of 6 branches missed.">        if (expected != null &amp;&amp; expected.sha256() != null &amp;&amp; !expected.sha256().equals(actual))</span>
+<span class="nc" id="L118">            throw failure(&quot;Git object content differs from captured evidence&quot;);</span>
+<span class="fc" id="L119">    }</span>
+    private static final class Reader extends ObjectReader {
+        private final ObjectReader delegate;
+        private final GitHistoryCapture.Limits limits;
+        private final Map&lt;ObjectId, Proof&gt; captured;
+        private final BackupCheckpoint check;
+<span class="fc" id="L125">        private final Map&lt;ObjectId, Proof&gt; seen = new HashMap&lt;&gt;();</span>
+        private long bytes;
+<span class="fc" id="L127">        private boolean active = true;</span>
+<span class="fc" id="L128">        Reader(ObjectReader delegate, GitHistoryCapture.Limits limits, Map&lt;ObjectId, Proof&gt; captured, BackupCheckpoint check) throws IOException {</span>
+<span class="fc" id="L129">            this.delegate = delegate; this.limits = limits; this.captured = captured; this.check = check;</span>
+<span class="fc" id="L130">            delegate.setStreamFileThreshold(BUFFER);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (!delegate.getShallowCommits().isEmpty()) { delegate.close(); throw failure(&quot;Shallow Git history is not a self-contained backup&quot;); }</span>
+<span class="fc" id="L132">        }</span>
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">        private void check() throws IOException { if (!active) throw failure(&quot;Git history reader is closed&quot;); check.check(); if (!active) throw failure(&quot;Git history reader is closed&quot;); }</span>
+        @Override public ObjectReader newReader() {
+<span class="nc" id="L135">            try { check(); return new Reader(delegate.newReader(), limits, captured, this::check); }</span>
+<span class="nc" id="L136">            catch (IOException problem) { throw new java.io.UncheckedIOException(problem); }</span>
+        }
+        @Override public Collection&lt;ObjectId&gt; resolve(AbbreviatedObjectId id) throws IOException {
+<span class="nc" id="L139">            check();</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">            if (captured == null) throw failure(&quot;History capture requires full object identities&quot;);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            return captured.keySet().stream().filter(key -&gt; id.prefixCompare(key) == 0).toList();</span>
+        }
+        @Override public ObjectLoader open(AnyObjectId id, int type) throws IOException {
+<span class="fc" id="L144">            check(); ObjectId objectId = id.copy();</span>
+<span class="fc bfc" id="L145" title="All 4 branches covered.">            if (captured != null &amp;&amp; !captured.containsKey(objectId)) throw failure(&quot;Git object is outside the captured history&quot;);</span>
+<span class="fc" id="L146">            var loader = delegate.open(objectId, type); var proof = new Proof(loader.getType(), loader.getSize());</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            var expected = captured == null ? null : captured.get(objectId);</span>
+<span class="pc bpc" id="L148" title="2 of 4 branches missed.">            if (proof.type() &lt; Constants.OBJ_COMMIT || proof.type() &gt; Constants.OBJ_TAG)</span>
+<span class="nc" id="L149">                throw failure(&quot;Git history has an unsupported object type&quot;);</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">            if (proof.length() &lt; 0 || proof.length() &gt; limits.maxObjectBytes()</span>
+<span class="pc bpc" id="L151" title="1 of 4 branches missed.">                    || proof.type() == Constants.OBJ_TREE &amp;&amp; proof.length() &gt; 4 * 1_048_576</span>
+<span class="pc bpc" id="L152" title="1 of 6 branches missed.">                    || (proof.type() == Constants.OBJ_COMMIT || proof.type() == Constants.OBJ_TAG) &amp;&amp; proof.length() &gt; 1_048_576)</span>
+<span class="fc" id="L153">                throw failure(&quot;Git history object byte limit exceeded&quot;);</span>
+<span class="pc bpc" id="L154" title="1 of 4 branches missed.">            if (captured != null &amp;&amp; !proof.sameHeader(expected)) throw failure(&quot;Git object is outside the captured history&quot;);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (!seen.containsKey(objectId)) {</span>
+<span class="fc bfc" id="L156" title="All 4 branches covered.">                if (seen.size() &gt;= limits.maxObjects() || proof.length() &gt; limits.maxTotalBytes() - bytes) throw failure(&quot;Git history object closure limit exceeded&quot;);</span>
+<span class="fc" id="L157">                seen.put(objectId, proof); bytes += proof.length();</span>
+            }
+            // Verify bounded metadata before RevWalk/PackWriter can follow any of its references.
+<span class="fc bfc" id="L160" title="All 2 branches covered.">            if (proof.type() != Constants.OBJ_BLOB) {</span>
+<span class="fc" id="L161">                var output = new ByteArrayOutputStream((int) proof.length());</span>
+<span class="fc" id="L162">                requireContent(expected, copy(loader, objectId, output, this::check));</span>
+<span class="fc" id="L163">                byte[] content = output.toByteArray(); new ObjectChecker().check(proof.type(), content);</span>
+<span class="fc" id="L164">                return new ObjectLoader.SmallObject(proof.type(), content);</span>
+            }
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (captured == null) return loader;</span>
+<span class="fc" id="L167">            return new ObjectLoader() {</span>
+<span class="nc" id="L168">                @Override public int getType() { return proof.type(); }</span>
+<span class="fc" id="L169">                @Override public long getSize() { return proof.length(); }</span>
+<span class="nc" id="L170">                @Override public boolean isLarge() { return true; }</span>
+<span class="nc" id="L171">                @Override public byte[] getCachedBytes() { throw new LargeObjectException(); }</span>
+<span class="nc" id="L172">                @Override public ObjectStream openStream() throws IOException { throw failure(&quot;Captured Git blobs require synchronous streaming&quot;); }</span>
+                @Override public void copyTo(OutputStream output) throws IOException {
+<span class="fc" id="L174">                    Reader.this.check(); requireContent(expected, copy(loader, objectId, output, Reader.this::check));</span>
+<span class="fc" id="L175">                }</span>
+            };
+        }
+<span class="fc" id="L178">        @Override public Set&lt;ObjectId&gt; getShallowCommits() throws IOException { check(); return Set.of(); }</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        @Override public void close() { if (active) { active = false; delegate.close(); } }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

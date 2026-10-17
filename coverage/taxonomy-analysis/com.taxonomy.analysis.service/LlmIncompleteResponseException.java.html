@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmIncompleteResponseException.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmIncompleteResponseException.java</span></div><h1>LlmIncompleteResponseException.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+/** A provider stopped before completing its answer; partial text is diagnostic data only. */
+public final class LlmIncompleteResponseException extends LlmProviderException {
+    private final String rawText;
+    private final String finishReason;
+
+    public LlmIncompleteResponseException(String rawText, String finishReason) {
+<span class="fc" id="L9">        super(Reason.REQUEST_REJECTED, message(normalize(finishReason)));</span>
+<span class="pc bpc" id="L10" title="1 of 2 branches missed.">        this.rawText = rawText == null ? &quot;&quot; : rawText;</span>
+<span class="fc" id="L11">        this.finishReason = normalize(finishReason);</span>
+<span class="fc" id="L12">    }</span>
+
+<span class="fc" id="L14">    public String rawText() { return rawText; }</span>
+<span class="fc" id="L15">    public String finishReason() { return finishReason; }</span>
+
+    private static String normalize(String reason) {
+<span class="pc bpc" id="L18" title="1 of 6 branches missed.">        return switch (reason == null ? &quot;&quot; : reason) {</span>
+<span class="fc" id="L19">            case &quot;length&quot;, &quot;max_output_tokens&quot; -&gt; &quot;length&quot;;</span>
+<span class="fc" id="L20">            case &quot;content_filter&quot; -&gt; &quot;content_filter&quot;;</span>
+<span class="fc" id="L21">            case &quot;error&quot;, &quot;failed&quot; -&gt; &quot;error&quot;;</span>
+<span class="fc" id="L22">            default -&gt; &quot;incomplete&quot;;</span>
+        };
+    }
+
+    private static String message(String reason) {
+<span class="fc bfc" id="L27" title="All 3 branches covered.">        return &quot;LLM_INCOMPLETE_RESPONSE (&quot; + reason + &quot;). &quot; + switch (reason) {</span>
+<span class="fc" id="L28">            case &quot;length&quot; -&gt; &quot;Reduce the batch size or increase the configured output token allowance.&quot;;</span>
+<span class="fc" id="L29">            case &quot;content_filter&quot; -&gt; &quot;The provider filtered its answer; review the submitted content.&quot;;</span>
+<span class="fc" id="L30">            default -&gt; &quot;The provider did not complete its answer; inspect the provider service status.&quot;;</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

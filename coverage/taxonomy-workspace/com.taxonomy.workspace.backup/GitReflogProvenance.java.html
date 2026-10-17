@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitReflogProvenance.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitReflogProvenance.java</span></div><h1>GitReflogProvenance.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import org.eclipse.jgit.lib.Repository;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.*;
+import java.time.Instant;
+import java.util.*;
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+
+/** Original imported events, distinct from the target repository's live operation audit. */
+public final class GitReflogProvenance {
+    private GitReflogProvenance() { }
+    public record Origin(String archiveSha256, BackupRepositoryKey repository, String archiveId) {
+<span class="fc" id="L17">        public Origin {</span>
+<span class="fc" id="L18">            Objects.requireNonNull(repository);</span>
+<span class="pc bpc" id="L19" title="3 of 6 branches missed.">            if (archiveSha256 == null || !archiveSha256.matches(&quot;[0-9a-f]{64}&quot;) || archiveId == null</span>
+<span class="pc bpc" id="L20" title="3 of 6 branches missed.">                    || !archiveId.matches(&quot;[A-Za-z0-9][A-Za-z0-9._-]{0,127}&quot;) || archiveId.equals(&quot;.&quot;) || archiveId.equals(&quot;..&quot;))</span>
+<span class="nc" id="L21">                throw new IllegalArgumentException(&quot;Invalid original Git event origin&quot;);</span>
+<span class="fc" id="L22">        }</span>
+    }
+    public record Event(Origin origin, int ordinal, GitHistoryCapture.Reflog entry) {
+<span class="fc" id="L25">        public Event {</span>
+<span class="fc" id="L26">            Objects.requireNonNull(origin); Objects.requireNonNull(entry);</span>
+<span class="pc bpc" id="L27" title="2 of 4 branches missed.">            if (ordinal &lt; 0 || ordinal &gt;= BackupLimits.MAX_ITEMS) throw new IllegalArgumentException(&quot;Invalid original Git event position&quot;);</span>
+<span class="fc" id="L28">        }</span>
+    }
+    public static List&lt;Event&gt; original(Origin origin, List&lt;GitHistoryCapture.Reflog&gt; entries) {
+<span class="fc" id="L31">        Objects.requireNonNull(origin);</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        if (entries.size() &gt; BackupLimits.MAX_ITEMS) throw new IllegalArgumentException(&quot;Too many original Git events&quot;);</span>
+<span class="fc" id="L33">        return java.util.stream.IntStream.range(0, entries.size()).mapToObj(index -&gt; new Event(origin, index, entries.get(index))).toList();</span>
+    }
+    static List&lt;Event&gt; canonical(List&lt;Event&gt; events, int maximum, BackupCheckpoint checkpoint) throws IOException {
+<span class="pc bpc" id="L36" title="2 of 6 branches missed.">        if (maximum &lt; 0 || maximum &gt; BackupLimits.MAX_ITEMS || events.size() &gt; maximum)</span>
+<span class="fc" id="L37">            throw failure(&quot;Original Git event limit exceeded&quot;);</span>
+<span class="fc" id="L38">        var groups = new TreeMap&lt;String, TreeMap&lt;Integer, Event&gt;&gt;(); var budget = new GitHistoryReflogs.Budget(maximum);</span>
+<span class="fc" id="L39">        long bytes = 0;</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        for (var event : events) {</span>
+<span class="fc" id="L41">            checkpoint.check(); Objects.requireNonNull(event); validate(event.entry()); budget.add(event.entry());</span>
+<span class="fc" id="L42">            int length = encoded(event).length;</span>
+<span class="pc bpc" id="L43" title="2 of 4 branches missed.">            if (length &gt; GitReflogProvenanceStore.MAX_EVENT_BYTES || length &gt; GitHistoryReflogs.MAX_TOTAL_BYTES - bytes)</span>
+<span class="nc" id="L44">                throw failure(&quot;Original Git event byte limit exceeded&quot;);</span>
+<span class="fc" id="L45">            bytes += length;</span>
+<span class="fc" id="L46">            var group = groups.computeIfAbsent(originId(event.origin()), ignored -&gt; new TreeMap&lt;&gt;());</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            if (group.put(event.ordinal(), event) != null) throw failure(&quot;Duplicate original Git event position&quot;);</span>
+<span class="fc" id="L48">        }</span>
+<span class="fc" id="L49">        var result = new ArrayList&lt;Event&gt;(events.size());</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (var group : groups.values()) {</span>
+<span class="fc" id="L51">            int next = 0; Origin origin = null;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            for (var event : group.values()) {</span>
+<span class="fc" id="L53">                checkpoint.check();</span>
+<span class="pc bpc" id="L54" title="1 of 6 branches missed.">                if (event.ordinal() != next++ || origin != null &amp;&amp; !origin.equals(event.origin()))</span>
+<span class="fc" id="L55">                    throw failure(&quot;Incomplete or inconsistent original Git event origin&quot;);</span>
+<span class="fc" id="L56">                origin = event.origin(); result.add(event);</span>
+<span class="fc" id="L57">            }</span>
+<span class="fc" id="L58">        }</span>
+<span class="fc" id="L59">        checkpoint.check(); return List.copyOf(result);</span>
+    }
+    private static void validate(GitHistoryCapture.Reflog entry) throws IOException {
+<span class="pc bpc" id="L62" title="2 of 8 branches missed.">        if (entry.ref() == null || !entry.ref().equals(&quot;HEAD&quot;) &amp;&amp; (!entry.ref().startsWith(&quot;refs/&quot;) || !Repository.isValidRefName(entry.ref()))</span>
+<span class="pc bpc" id="L63" title="3 of 6 branches missed.">                || entry.ref().length() &gt; 1_024 || entry.oldId() == null || !entry.oldId().matches(&quot;[0-9a-f]{40}&quot;)</span>
+<span class="pc bpc" id="L64" title="4 of 8 branches missed.">                || entry.newId() == null || !entry.newId().matches(&quot;[0-9a-f]{40}&quot;) || entry.name() == null || entry.email() == null</span>
+<span class="pc bpc" id="L65" title="2 of 6 branches missed.">                || entry.message() == null || entry.offsetMinutes() &lt; -18 * 60 || entry.offsetMinutes() &gt; 18 * 60</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">                || controls(entry.name()) || controls(entry.email())) throw failure(&quot;Invalid original Git event&quot;);</span>
+<span class="fc" id="L67">        try { Instant.ofEpochSecond(entry.epochSeconds()); }</span>
+<span class="fc" id="L68">        catch (RuntimeException invalid) { throw failure(&quot;Invalid original Git event time&quot;); }</span>
+<span class="fc" id="L69">    }</span>
+    private static boolean controls(String value) {
+<span class="fc bfc" id="L71" title="All 6 branches covered.">        return value.indexOf('\n') &gt;= 0 || value.indexOf('\r') &gt;= 0 || value.indexOf('\0') &gt;= 0;</span>
+    }
+<span class="fc" id="L73">    static byte[] encoded(Object value) throws IOException { return PortableRows.json().writeValueAsBytes(value); }</span>
+<span class="fc" id="L74">    static String originId(Origin origin) throws IOException { return digest(encoded(origin)); }</span>
+<span class="fc" id="L75">    static String repositoryKey(BackupRepositoryKey key) throws IOException { return digest(encoded(key)); }</span>
+    static String eventId(String repositoryKey, String origin, int ordinal) {
+<span class="fc" id="L77">        return digest((repositoryKey + &quot;\0&quot; + origin + &quot;\0&quot; + ordinal).getBytes(StandardCharsets.US_ASCII));</span>
+    }
+    static String digest(byte[] bytes) {
+<span class="fc" id="L80">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(bytes)); }</span>
+<span class="nc" id="L81">        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisAnalysisSettings.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisAnalysisSettings.java</span></div><h1>ArtemisAnalysisSettings.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+
+/**
+ * Validated, credential-free view of the Artemis transport configuration.
+ * Fails closed: an unknown transport mode, a missing broker URL or a plaintext
+ * TCP URL while TLS is required stop the application instead of silently
+ * falling back.
+ */
+public record ArtemisAnalysisSettings(String brokerUrl, boolean requireTls, long retryIntervalMs,
+                                      long callTimeoutMs) {
+
+    public static final String MODE_LOCAL = &quot;local&quot;;
+    public static final String MODE_ARTEMIS = &quot;artemis&quot;;
+
+<span class="fc" id="L23">    public ArtemisAnalysisSettings {</span>
+<span class="pc bpc" id="L24" title="1 of 4 branches missed.">        if (brokerUrl == null || brokerUrl.isBlank()) {</span>
+<span class="fc" id="L25">            throw new IllegalStateException(&quot;taxonomy.analysis.artemis.broker-url is required in artemis transport mode&quot;);</span>
+        }
+<span class="fc" id="L27">        brokerUrl = brokerUrl.trim();</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        for (URI connector : connectors(brokerUrl, requireTls)) {</span>
+<span class="fc" id="L29">            String scheme = connector.getScheme().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L30" title="All 6 branches covered.">            if (requireTls &amp;&amp; scheme.equals(&quot;tcp&quot;) &amp;&amp; !tlsEnabled(connector.getRawQuery())) {</span>
+<span class="fc" id="L31">                throw tlsRequired();</span>
+            }
+<span class="fc" id="L33">        }</span>
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">        if (retryIntervalMs &lt; 100 || retryIntervalMs &gt; 60_000) {</span>
+<span class="fc" id="L35">            throw new IllegalStateException(&quot;taxonomy.analysis.artemis.retry-interval-ms must be within 100..60000&quot;);</span>
+        }
+<span class="pc bpc" id="L37" title="2 of 4 branches missed.">        if (callTimeoutMs &lt; 1_000 || callTimeoutMs &gt; 300_000) {</span>
+<span class="nc" id="L38">            throw new IllegalStateException(&quot;taxonomy.analysis.artemis.call-timeout-ms must be within 1000..300000&quot;);</span>
+        }
+<span class="fc" id="L40">    }</span>
+
+    /** Validate the transport mode; returns {@code true} for Artemis. */
+    public static boolean artemisMode(String mode) {
+<span class="fc" id="L44">        String normalized = Objects.requireNonNullElse(mode, MODE_LOCAL).trim().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L45" title="All 3 branches covered.">        return switch (normalized) {</span>
+<span class="fc" id="L46">            case &quot;&quot;, MODE_LOCAL -&gt; false;</span>
+<span class="fc" id="L47">            case MODE_ARTEMIS -&gt; true;</span>
+<span class="fc" id="L48">            default -&gt; throw new IllegalStateException(</span>
+                    &quot;taxonomy.analysis.transport.mode must be 'local' or 'artemis'&quot;);
+        };
+    }
+
+    private static List&lt;URI&gt; connectors(String url, boolean requireTls) {
+<span class="fc" id="L54">        String endpoints = url;</span>
+        try {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (url.startsWith(&quot;(&quot;)) {</span>
+<span class="fc" id="L57">                int end = url.indexOf(')');</span>
+<span class="pc bpc" id="L58" title="2 of 6 branches missed.">                if (end &lt; 2 || end != url.lastIndexOf(')') || url.indexOf('(', 1) &gt;= 0) {</span>
+<span class="fc" id="L59">                    throw invalidUrl();</span>
+                }
+<span class="fc" id="L61">                endpoints = url.substring(1, end);</span>
+<span class="fc" id="L62">                String suffix = url.substring(end + 1);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                if (!suffix.isEmpty()) {</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                    if (!suffix.startsWith(&quot;?&quot;)) throw invalidUrl();</span>
+<span class="fc" id="L65">                    URI options = URI.create(&quot;tcp://validation&quot; + suffix);</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                    if (options.getRawFragment() != null) throw invalidUrl();</span>
+                    // Connection-wide options must not turn off an explicitly secured
+                    // connector. A global true still cannot secure an unconfigured one.
+<span class="fc bfc" id="L69" title="All 4 branches covered.">                    if (requireTls &amp;&amp; hasTlsOption(options.getRawQuery())</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                            &amp;&amp; !tlsEnabled(options.getRawQuery())) throw tlsRequired();</span>
+                }
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            } else if (url.indexOf(',') &gt;= 0) {</span>
+                // Artemis only expands comma-separated connectors inside parentheses.
+                // Otherwise the comma may be part of the first connector's TLS value.
+<span class="fc" id="L75">                throw invalidUrl();</span>
+            }
+<span class="fc" id="L77">            var connectors = new ArrayList&lt;URI&gt;();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            for (String endpoint : endpoints.split(&quot;,&quot;, -1)) {</span>
+<span class="fc" id="L79">                URI connector = URI.create(endpoint);</span>
+<span class="fc" id="L80">                String scheme = connector.getScheme();</span>
+<span class="fc bfc" id="L81" title="All 6 branches covered.">                if (scheme == null || (!scheme.equalsIgnoreCase(&quot;tcp&quot;) &amp;&amp; !scheme.equalsIgnoreCase(&quot;vm&quot;))</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">                        || connector.getHost() == null || connector.getRawFragment() != null) {</span>
+<span class="fc" id="L83">                    throw invalidUrl();</span>
+                }
+<span class="fc" id="L85">                connectors.add(connector);</span>
+            }
+<span class="fc" id="L87">            return List.copyOf(connectors);</span>
+<span class="nc" id="L88">        } catch (IllegalArgumentException invalid) {</span>
+            // URI/parser exceptions may contain user-info or credential query values.
+<span class="nc" id="L90">            throw invalidUrl();</span>
+        }
+    }
+
+    private static boolean hasTlsOption(String query) {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        return tlsValues(query).size() &gt; 0;</span>
+    }
+
+    private static boolean tlsEnabled(String query) {
+<span class="fc" id="L99">        List&lt;String&gt; values = tlsValues(query);</span>
+<span class="fc bfc" id="L100" title="All 4 branches covered.">        return values.size() == 1 &amp;&amp; values.getFirst().equals(&quot;true&quot;);</span>
+    }
+
+    private static List&lt;String&gt; tlsValues(String query) {
+<span class="fc" id="L104">        var values = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (query != null) {</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            for (String parameter : query.split(&quot;&amp;&quot;, -1)) {</span>
+<span class="fc" id="L107">                String[] pair = parameter.split(&quot;=&quot;, 2);</span>
+<span class="fc" id="L108">                String name = URLDecoder.decode(pair[0], StandardCharsets.UTF_8);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                if (name.equals(&quot;sslEnabled&quot;)) {</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                    values.add(pair.length == 2</span>
+<span class="pc" id="L111">                            ? URLDecoder.decode(pair[1], StandardCharsets.UTF_8) : &quot;&quot;);</span>
+                }
+            }
+        }
+<span class="fc" id="L115">        return values;</span>
+    }
+
+    private static IllegalStateException tlsRequired() {
+<span class="fc" id="L119">        return new IllegalStateException(&quot;taxonomy.analysis.artemis.broker-url must set sslEnabled=true &quot;</span>
+                + &quot;exactly once on every TCP connector &quot;
+                + &quot;(or set taxonomy.analysis.artemis.require-tls=false for an isolated network)&quot;);
+    }
+
+    private static IllegalStateException invalidUrl() {
+<span class="fc" id="L125">        return new IllegalStateException(&quot;taxonomy.analysis.artemis.broker-url must contain valid tcp:// or vm:// &quot;</span>
+                + &quot;connectors, optionally in a parenthesized failover list; fragments are not supported&quot;);
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L131">        return &quot;ArtemisAnalysisSettings[requireTls=&quot; + requireTls + &quot;, retryIntervalMs=&quot; + retryIntervalMs</span>
+                + &quot;, callTimeoutMs=&quot; + callTimeoutMs + &quot;]&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

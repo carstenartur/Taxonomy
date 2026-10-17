@@ -1,0 +1,1568 @@
+[INFO] Loading cache configuration from /home/runner/work/Taxonomy/Taxonomy/.mvn/maven-build-cache-config.xml
+[INFO] Using XX hash algorithm for cache
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] Taxonomy Architecture Analyzer                                     [pom]
+[INFO] Taxonomy Build and Release Tooling                                 [jar]
+[INFO] Taxonomy Domain                                                    [jar]
+[INFO] Taxonomy Reporting API                                             [jar]
+[INFO] Taxonomy DSL                                                       [jar]
+[INFO] Taxonomy Extension API                                             [jar]
+[INFO] Taxonomy Export                                                    [jar]
+[INFO] Taxonomy Extension Runtime                                         [jar]
+[INFO] Taxonomy Mermaid Plugin                                            [jar]
+[INFO] Taxonomy Workspace                                                 [jar]
+[INFO] Taxonomy Templates API                                             [jar]
+[INFO] Taxonomy Templates                                                 [jar]
+[INFO] Taxonomy Interoperability                                          [jar]
+[INFO] Taxonomy Knowledge                                                 [jar]
+[INFO] Taxonomy Architecture                                              [jar]
+[INFO] Taxonomy Reporting                                                 [jar]
+[INFO] Taxonomy Analysis                                                  [jar]
+[INFO] Taxonomy Portfolio                                                 [jar]
+[INFO] Taxonomy Application                                               [jar]
+[INFO] Taxonomy Aggregate Coverage                                        [pom]
+[INFO] Taxonomy Build Policy                                              [jar]
+[INFO] 
+[INFO] -----------------------< com.taxonomy:taxonomy >------------------------
+[INFO] Building Taxonomy Architecture Analyzer 1.5.1-SNAPSHOT            [1/21]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/target/jacoco.exec
+[INFO] 
+[INFO] --- exec:3.6.4:exec (download-pinned-embedding-model) @ taxonomy ---
+[INFO] skipping execute as per configuration
+[INFO] 
+[INFO] --- frontend:2.0.2:install-node-and-npm (install-pinned-node) @ taxonomy ---
+[INFO] Skipping execution.
+[INFO] 
+[INFO] --- frontend:2.0.2:npm (install-junit-javascript-driver-dependencies) @ taxonomy ---
+[INFO] Skipping execution.
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy ---
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (generate-aggregate-sbom) @ taxonomy ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] -------------------< com.taxonomy:taxonomy-tooling >--------------------
+[INFO] Building Taxonomy Build and Release Tooling 1.5.1-SNAPSHOT        [2/21]
+[INFO]   from taxonomy-tooling/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-tooling
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-tooling ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-tooling ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-tooling ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-tooling ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-tooling ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 25 source files with javac [debug parameters release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-tooling ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-tooling ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 71 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-tooling ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-tooling ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-tooling/target/taxonomy-tooling-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-tooling ---
+[INFO] 
+[INFO] --------------------< com.taxonomy:taxonomy-domain >--------------------
+[INFO] Building Taxonomy Domain 1.5.1-SNAPSHOT                           [3/21]
+[INFO]   from taxonomy-domain/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-domain
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-domain ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-domain ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-domain ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-domain ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-domain ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 167 source files with javac [debug parameters release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-domain ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-domain ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 34 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-domain ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-domain ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/taxonomy-domain-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-domain ---
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-reporting-api >-----------------
+[INFO] Building Taxonomy Reporting API 1.5.1-SNAPSHOT                    [4/21]
+[INFO]   from taxonomy-reporting-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-reporting-api
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-reporting-api ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-reporting-api-boundaries) @ taxonomy-reporting-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-reporting-api ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-reporting-api ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-reporting-api ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-reporting-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 8 source files with javac [debug parameters release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-reporting-api ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-reporting-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 3 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-reporting-api ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-reporting-api ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/taxonomy-reporting-api-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-reporting-api ---
+[INFO] 
+[INFO] ---------------------< com.taxonomy:taxonomy-dsl >----------------------
+[INFO] Building Taxonomy DSL 1.5.1-SNAPSHOT                              [5/21]
+[INFO]   from taxonomy-dsl/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-dsl
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-dsl ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (ban-taxonomy-app-dependency) @ taxonomy-dsl ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-dsl ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-dsl ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-dsl ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-dsl ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 54 source files with javac [debug parameters release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-dsl ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-dsl ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 26 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-dsl ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-dsl ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/taxonomy-dsl-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-dsl ---
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-extension-api >-----------------
+[INFO] Building Taxonomy Extension API 1.5.1-SNAPSHOT                    [6/21]
+[INFO]   from taxonomy-extension-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-extension-api
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-extension-api ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-extension-api-boundaries) @ taxonomy-extension-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-extension-api ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-extension-api ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-extension-api ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-extension-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 33 source files with javac [debug parameters release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-extension-api ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-extension-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 2 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-extension-api ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-extension-api ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/taxonomy-extension-api-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-extension-api ---
+[INFO] 
+[INFO] --------------------< com.taxonomy:taxonomy-export >--------------------
+[INFO] Building Taxonomy Export 1.5.1-SNAPSHOT                           [7/21]
+[INFO]   from taxonomy-export/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-export
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-export ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (ban-taxonomy-app-dependency) @ taxonomy-export ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-export ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-export ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-export ---
+[INFO] Copying 0 resource from src/main/resources to target/classes
+[INFO] Copying 35 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-export ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 90 source files with javac [debug parameters release 21] to target/classes
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/src/main/java/com/taxonomy/exchange/PlanningEnvelope.java: /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/src/main/java/com/taxonomy/exchange/PlanningEnvelope.java uses or overrides a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/src/main/java/com/taxonomy/exchange/PlanningEnvelope.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-export ---
+[INFO] Copying 17 resources from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-export ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 59 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/src/test/java/com/taxonomy/StructurizrInteroperabilityTest.java: /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/src/test/java/com/taxonomy/StructurizrInteroperabilityTest.java uses or overrides a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/src/test/java/com/taxonomy/StructurizrInteroperabilityTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-export ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-export ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/taxonomy-export-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-export ---
+[INFO] 
+[INFO] --------------< com.taxonomy:taxonomy-extension-runtime >---------------
+[INFO] Building Taxonomy Extension Runtime 1.5.1-SNAPSHOT                [8/21]
+[INFO]   from taxonomy-extension-runtime/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-extension-runtime
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-extension-runtime ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-extension-runtime ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-extension-runtime ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-extension-runtime ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-extension-runtime ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 7 source files with javac [debug parameters release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-extension-runtime ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-extension-runtime ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 5 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/src/test/java/com/taxonomy/extension/runtime/BuiltinArtifactIdentityTest.java: /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/src/test/java/com/taxonomy/extension/runtime/BuiltinArtifactIdentityTest.java uses or overrides a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/src/test/java/com/taxonomy/extension/runtime/BuiltinArtifactIdentityTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-extension-runtime ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-extension-runtime ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/taxonomy-extension-runtime-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-extension-runtime ---
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-mermaid-plugin >----------------
+[INFO] Building Taxonomy Mermaid Plugin 1.5.1-SNAPSHOT                   [9/21]
+[INFO]   from plugins/taxonomy-mermaid-plugin/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is INITIALIZED on project level for com.taxonomy:taxonomy-mermaid-plugin
+[INFO] Going to calculate checksum for project [groupId=com.taxonomy, artifactId=taxonomy-mermaid-plugin, version=1.5.1-SNAPSHOT]
+[INFO] Scanning plugins configurations to find input files. Probing is enabled, values will be checked for presence in file system
+[INFO] Found 4 input files. Project dir processing: 4, plugins: 3 millis
+[INFO] Going to calculate checksum for project [groupId=com.taxonomy, artifactId=taxonomy-domain, version=1.5.1-SNAPSHOT]
+[INFO] Scanning plugins configurations to find input files. Probing is enabled, values will be checked for presence in file system
+[INFO] Found 201 input files. Project dir processing: 5, plugins: 3 millis
+[INFO] Project inputs calculated in 14 ms. XX checksum [8d41431e83133427] calculated in 81 ms.
+[INFO] Going to calculate checksum for project [groupId=com.taxonomy, artifactId=taxonomy-extension-api, version=1.5.1-SNAPSHOT]
+[INFO] Scanning plugins configurations to find input files. Probing is enabled, values will be checked for presence in file system
+[INFO] Found 35 input files. Project dir processing: 1, plugins: 3 millis
+[INFO] Going to calculate checksum for project [groupId=com.taxonomy, artifactId=taxonomy-domain, version=1.5.1-SNAPSHOT]
+[INFO] Project inputs calculated in 8 ms. XX checksum [323a00b743bca1ef] calculated in 2 ms.
+[INFO] Going to calculate checksum for project [groupId=com.taxonomy, artifactId=taxonomy-export, version=1.5.1-SNAPSHOT]
+[INFO] Scanning plugins configurations to find input files. Probing is enabled, values will be checked for presence in file system
+[INFO] Found 201 input files. Project dir processing: 15, plugins: 2 millis
+[INFO] Going to calculate checksum for project [groupId=com.taxonomy, artifactId=taxonomy-domain, version=1.5.1-SNAPSHOT]
+[INFO] Going to calculate checksum for project [groupId=com.taxonomy, artifactId=taxonomy-extension-api, version=1.5.1-SNAPSHOT]
+[INFO] Project inputs calculated in 21 ms. XX checksum [0e307c6ffb704d84] calculated in 172 ms.
+[INFO] Project inputs calculated in 317 ms. XX checksum [56de3714d2c699eb] calculated in 1 ms.
+[INFO] Attempting to restore project com.taxonomy:taxonomy-mermaid-plugin from build cache
+[INFO] Local build was not found by checksum 56de3714d2c699eb for com.taxonomy:taxonomy-mermaid-plugin
+[INFO] Moved 1 pre-existing artifacts to staging directory to prevent caching stale files
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (default) @ taxonomy-mermaid-plugin ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/target/jacoco.exec
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ taxonomy-mermaid-plugin ---
+[INFO] Copying 1 resource from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ taxonomy-mermaid-plugin ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 2 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-mermaid-plugin ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/target/taxonomy-mermaid-plugin-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ taxonomy-mermaid-plugin ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ taxonomy-mermaid-plugin ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 1 source file with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ taxonomy-mermaid-plugin ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.taxonomy.plugins.mermaid.MermaidExportExtensionTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.213 s -- in com.taxonomy.plugins.mermaid.MermaidExportExtensionTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] Saved Build to local file: /home/runner/.m2/build-cache/v1.2/com.taxonomy/taxonomy-mermaid-plugin/56de3714d2c699eb/local/buildinfo.xml
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-workspace >-------------------
+[INFO] Building Taxonomy Workspace 1.5.1-SNAPSHOT                       [10/21]
+[INFO]   from taxonomy-workspace/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-workspace
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-workspace ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-workspace-boundary) @ taxonomy-workspace ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-workspace ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-workspace ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-workspace ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-workspace ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 128 source files with javac [debug parameters release 21] to target/classes
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-workspace ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-workspace ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 131 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/src/test/java/com/taxonomy/versioning/service/ConflictDetectionServiceTest.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/src/test/java/com/taxonomy/versioning/service/ConflictDetectionServiceTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- jar:3.5.1:test-jar (editor-persistence-test-fixture) @ taxonomy-workspace ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.1-SNAPSHOT-test-fixtures.jar
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-workspace ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-workspace ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/taxonomy-workspace-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-workspace ---
+[INFO] 
+[INFO] --- failsafe:3.5.6:integration-test (default) @ taxonomy-workspace ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.taxonomy.workspace.service.ExternalGitSyncServiceIT
+17:35:20.542 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'taxonomy-dsl' (test mode)
+17:35:20.588 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+17:35:20.751 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 4a35b79349ecf8b03a90cf210b424ccc9e1333fd (ref update: NEW)
+Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
+WARNING: A Java agent has been loaded dynamically (/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.11/byte-buddy-agent-1.18.11.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+17:35:21.994 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Pushing branch 'draft' to configured external Git remote
+17:35:25.398 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Push completed successfully for branch 'draft'
+17:35:25.742 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Fetching from configured external Git remote
+17:35:25.802 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External fetch completed with 1 tracking updates
+17:35:25.844 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'taxonomy-dsl' (test mode)
+17:35:25.845 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+17:35:25.846 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 2869af0117f5a4073b833ffb6f5925d045f872d7 (ref update: NEW)
+17:35:25.848 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Pushing branch 'draft' to configured external Git remote
+17:35:25.900 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Push completed successfully for branch 'draft'
+17:35:25.902 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Fetching from configured external Git remote
+17:35:25.907 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External fetch completed with 1 tracking updates
+17:35:25.907 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External sync found no remote shared branch 'absent'
+17:35:25.922 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'taxonomy-dsl' (test mode)
+17:35:25.922 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+17:35:25.924 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 2869af0117f5a4073b833ffb6f5925d045f872d7 (ref update: NEW)
+17:35:25.926 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Pushing branch 'draft' to configured external Git remote
+17:35:25.977 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Push completed successfully for branch 'draft'
+17:35:25.980 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 657a09b95c87fb3f0f6aca1f379cd8b3d58dda8a (ref update: FAST_FORWARD)
+17:35:25.981 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Fetching from configured external Git remote
+17:35:25.986 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External fetch completed with 1 tracking updates
+17:35:25.986 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External sync: local shared branch 'draft' is already up to date
+17:35:25.999 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'taxonomy-dsl' (test mode)
+17:35:25.999 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+17:35:26.005 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 2869af0117f5a4073b833ffb6f5925d045f872d7 (ref update: NEW)
+17:35:26.007 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Pushing branch 'draft' to configured external Git remote
+17:35:26.058 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Push completed successfully for branch 'draft'
+17:35:26.178 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Fetching from configured external Git remote
+17:35:26.226 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External fetch completed with 1 tracking updates
+17:35:26.230 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Fast-forward merge '__external_sync__/draft' into 'draft': 4c0f0f7079fe1f477f2b3da09a065fc6de26b3fb
+17:35:26.230 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External sync integrated remote branch into 'draft' at 4c0f0f7079fe1f477f2b3da09a065fc6de26b3fb
+17:35:26.246 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'taxonomy-dsl' (test mode)
+17:35:26.246 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+17:35:26.248 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 2b3ffbed9c3cef9f654d2d1d89aeda227a20836f (ref update: NEW)
+17:35:26.250 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Pushing branch 'draft' to configured external Git remote
+17:35:26.298 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Push completed successfully for branch 'draft'
+17:35:26.300 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Fetching from configured external Git remote
+17:35:26.304 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External fetch completed with 1 tracking updates
+17:35:26.305 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Created local shared branch 'draft' at fetched remote commit 2b3ffbed9c3cef9f654d2d1d89aeda227a20836f
+17:35:26.315 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'taxonomy-dsl' (test mode)
+17:35:26.315 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+17:35:26.316 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 2b3ffbed9c3cef9f654d2d1d89aeda227a20836f (ref update: NEW)
+17:35:26.317 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Pushing branch 'draft' to configured external Git remote
+17:35:26.368 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Push completed successfully for branch 'draft'
+17:35:26.489 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': ecb55fb6321500e4b6e286aed48c05f5bcffa6cf (ref update: FAST_FORWARD)
+17:35:26.491 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Pushing branch 'draft' to configured external Git remote
+17:35:26.503 [main] INFO com.taxonomy.workspace.storage.DslGitRepositoryFactory -- Creating in-memory DslGitRepository 'taxonomy-dsl' (test mode)
+17:35:26.503 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Initialised DslGitRepository (InMemoryRepository)
+17:35:26.504 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': 2b3ffbed9c3cef9f654d2d1d89aeda227a20836f (ref update: NEW)
+17:35:26.506 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Pushing branch 'draft' to configured external Git remote
+17:35:26.555 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Push completed successfully for branch 'draft'
+17:35:26.676 [main] INFO com.taxonomy.workspace.storage.DslGitRepository -- Committed DSL to branch 'draft': e065723f8c10d0be2eb3ceed54397767e9bcc4da (ref update: FAST_FORWARD)
+17:35:26.677 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- Fetching from configured external Git remote
+17:35:26.725 [main] INFO com.taxonomy.workspace.service.ExternalGitSyncService -- External fetch completed with 1 tracking updates
+17:35:26.757 [main] WARN com.taxonomy.workspace.storage.DslGitRepository -- Merge conflict: '__external_sync__/draft' into 'draft'
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.716 s -- in com.taxonomy.workspace.service.ExternalGitSyncServiceIT
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- failsafe:3.5.6:verify (default) @ taxonomy-workspace ---
+[INFO] 
+[INFO] ----------------< com.taxonomy:taxonomy-templates-api >-----------------
+[INFO] Building Taxonomy Templates API 1.5.1-SNAPSHOT                   [11/21]
+[INFO]   from taxonomy-templates-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-templates-api
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-templates-api ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-templates-api-boundary) @ taxonomy-templates-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-templates-api ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-templates-api/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-templates-api ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-templates-api ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-templates-api/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-templates-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-templates-api ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 16 source files with javac [debug parameters release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-templates-api ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-templates-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-templates-api ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-templates-api ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-templates-api ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-templates-api/target/taxonomy-templates-api-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-templates-api ---
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-templates >-------------------
+[INFO] Building Taxonomy Templates 1.5.1-SNAPSHOT                       [12/21]
+[INFO]   from taxonomy-templates/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-templates
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-templates ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-templates-boundary) @ taxonomy-templates ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-templates ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-templates/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-templates ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-templates ---
+[INFO] Copying 0 resource from src/main/resources to target/classes
+[INFO] Copying 1 resource from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-templates ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 20 source files with javac [debug parameters release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-templates ---
+[INFO] Copying 1 resource from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-templates ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 25 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-templates ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-templates ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-templates/target/taxonomy-templates-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-templates ---
+[INFO] 
+[INFO] -------------------< com.taxonomy:taxonomy-interop >--------------------
+[INFO] Building Taxonomy Interoperability 1.5.1-SNAPSHOT                [13/21]
+[INFO]   from taxonomy-interop/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-interop
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-interop ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-interop-boundary) @ taxonomy-interop ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-interop ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-interop ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-interop ---
+[INFO] Copying 0 resource from src/main/resources to target/classes
+[INFO] Copying 1 resource from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-interop ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 52 source files with javac [debug parameters release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-interop ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-interop ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 26 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/src/test/java/com/taxonomy/interop/IntegrationJournalTest.java: /home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/src/test/java/com/taxonomy/interop/IntegrationJournalTest.java uses or overrides a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/src/test/java/com/taxonomy/interop/IntegrationJournalTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-interop ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-interop ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/taxonomy-interop-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-interop ---
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-knowledge >-------------------
+[INFO] Building Taxonomy Knowledge 1.5.1-SNAPSHOT                       [14/21]
+[INFO]   from taxonomy-knowledge/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-knowledge
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-knowledge ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-knowledge-boundary) @ taxonomy-knowledge ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-knowledge ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-knowledge ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-knowledge ---
+[INFO] Copying 0 resource from src/main/resources to target/classes
+[INFO] Copying 3 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-knowledge ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 128 source files with javac [debug parameters release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-knowledge ---
+[INFO] Copying 3 resources from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-knowledge ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 123 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[WARNING] /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/test/java/com/taxonomy/relations/controller/RelationApiControllerRepositoryScopeTest.java:[176,30] createRelation(java.util.Map<java.lang.String,java.lang.String>) in com.taxonomy.relations.controller.RelationApiController has been deprecated and marked for removal
+[WARNING] /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/test/java/com/taxonomy/relations/controller/RelationApiControllerRepositoryScopeTest.java:[178,30] deleteRelation(java.lang.Long) in com.taxonomy.relations.controller.RelationApiController has been deprecated and marked for removal
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/test/java/com/taxonomy/catalog/snapshot/CatalogueSnapshotConsistencyTest.java: /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/test/java/com/taxonomy/catalog/snapshot/CatalogueSnapshotConsistencyTest.java uses or overrides a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/test/java/com/taxonomy/catalog/snapshot/CatalogueSnapshotConsistencyTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/test/java/com/taxonomy/catalog/model/PrimaryRepositorySeedRelationListenerTest.java: Some input files use unchecked or unsafe operations.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/src/test/java/com/taxonomy/catalog/model/PrimaryRepositorySeedRelationListenerTest.java: Recompile with -Xlint:unchecked for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-knowledge ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-knowledge ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/taxonomy-knowledge-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-knowledge ---
+[INFO] 
+[INFO] -----------------< com.taxonomy:taxonomy-architecture >-----------------
+[INFO] Building Taxonomy Architecture 1.5.1-SNAPSHOT                    [15/21]
+[INFO]   from taxonomy-architecture/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-architecture
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-architecture ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-architecture-boundary) @ taxonomy-architecture ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-architecture ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-architecture ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-architecture ---
+[INFO] Copying 0 resource from src/main/resources to target/classes
+[INFO] Copying 1 resource from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-architecture ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 53 source files with javac [debug parameters release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-architecture ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-architecture ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 21 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/src/test/java/com/taxonomy/architecture/service/DerivedMetadataCatalogueConsistencyTest.java: /home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/src/test/java/com/taxonomy/architecture/service/DerivedMetadataCatalogueConsistencyTest.java uses or overrides a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/src/test/java/com/taxonomy/architecture/service/DerivedMetadataCatalogueConsistencyTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-architecture ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-architecture ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/taxonomy-architecture-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-architecture ---
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-reporting >-------------------
+[INFO] Building Taxonomy Reporting 1.5.1-SNAPSHOT                       [16/21]
+[INFO]   from taxonomy-reporting/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-reporting
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-reporting ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-reporting-boundary) @ taxonomy-reporting ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-reporting ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-reporting ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-reporting ---
+[INFO] Copying 0 resource from src/main/resources to target/classes
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-reporting ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 38 source files with javac [debug parameters release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/src/main/java/com/taxonomy/reporting/render/document/WordDocumentWriter.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/src/main/java/com/taxonomy/reporting/render/document/WordDocumentWriter.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-reporting ---
+[INFO] Copying 1 resource from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-reporting ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 32 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/src/test/java/com/taxonomy/reporting/render/decision/DecisionRationaleTemplateRendererTest.java: /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/src/test/java/com/taxonomy/reporting/render/decision/DecisionRationaleTemplateRendererTest.java uses or overrides a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/src/test/java/com/taxonomy/reporting/render/decision/DecisionRationaleTemplateRendererTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-reporting ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-reporting ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/target/taxonomy-reporting-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-reporting ---
+[INFO] 
+[INFO] -------------------< com.taxonomy:taxonomy-analysis >-------------------
+[INFO] Building Taxonomy Analysis 1.5.1-SNAPSHOT                        [17/21]
+[INFO]   from taxonomy-analysis/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-analysis
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-analysis ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-analysis-boundary) @ taxonomy-analysis ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-analysis ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-analysis ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-analysis ---
+[INFO] Copying 0 resource from src/main/resources to target/classes
+[INFO] Copying 27 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-analysis ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 201 source files with javac [debug parameters release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/src/main/java/com/taxonomy/analysis/recovery/AnalysisContinuationStore.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/src/main/java/com/taxonomy/analysis/recovery/AnalysisContinuationStore.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-analysis ---
+[INFO] Copying 3 resources from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-analysis ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 200 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/src/test/java/com/taxonomy/analysis/cluster/FrozenClusterContinuationTest.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/src/test/java/com/taxonomy/analysis/cluster/FrozenClusterContinuationTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-analysis ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-analysis ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/taxonomy-analysis-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-analysis ---
+[INFO] 
+[INFO] ------------------< com.taxonomy:taxonomy-portfolio >-------------------
+[INFO] Building Taxonomy Portfolio 1.5.1-SNAPSHOT                       [18/21]
+[INFO]   from taxonomy-portfolio/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-portfolio
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-portfolio ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-portfolio-boundary) @ taxonomy-portfolio ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-portfolio ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/target/jacoco.exec
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-portfolio ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-portfolio ---
+[INFO] Copying 0 resource from src/main/resources to target/classes
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-portfolio ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 138 source files with javac [debug parameters release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/service/SolutionPortfolioService.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/service/SolutionPortfolioService.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-portfolio ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-portfolio ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 77 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/PortfolioGitMaterializationPreviewTest.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/PortfolioGitMaterializationPreviewTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/CopilotAutomationServiceCoverageTest.java: Some input files use unchecked or unsafe operations.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/CopilotAutomationServiceCoverageTest.java: Recompile with -Xlint:unchecked for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-portfolio ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-portfolio ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/target/taxonomy-portfolio-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-portfolio ---
+[INFO] 
+[INFO] ---------------------< com.taxonomy:taxonomy-app >----------------------
+[INFO] Building Taxonomy Application 1.5.1-SNAPSHOT                     [19/21]
+[INFO]   from taxonomy-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-app
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-app ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- git-commit-id:10.0.1:revision (default) @ taxonomy-app ---
+[INFO] dotGitDirectory '/home/runner/work/Taxonomy/Taxonomy/.git'
+[INFO] Collected git.build.user.name with value 
+[INFO] Collected git.build.user.email with value 
+[INFO] Using environment variable based branch name. GITHUB_REF = refs/heads/main (branch = main)
+[INFO] Collected git.branch with value main
+[INFO] Collected git.commit.id.describe with value v1.3.1-1011-g5d82494
+[INFO] Collected git.commit.id.describe-short with value v1.3.1-1011
+[INFO] Collected git.commit.id with value 5d82494a248a78a2a23254a48cfb21e1160764f0
+[INFO] Collected git.commit.id.abbrev with value 5d82494
+[INFO] Collected git.dirty with value false
+[INFO] Collected git.commit.user.name with value Carsten Hammer
+[INFO] Collected git.commit.user.email with value carsten.hammer@t-online.de
+[INFO] Collected git.commit.message.full with value Add configurable analysis explanation length (#1249)
+
+Capture the selected short, standard or detailed setting at analysis admission and preserve it through recovery, saved evidence and decision reports.
+[INFO] Collected git.commit.message.short with value Add configurable analysis explanation length (#1249)
+[INFO] Collected git.commit.time with value 2026-10-17T16:44:31Z
+[INFO] Collected git.commit.author.time with value 2026-10-17T16:44:31Z
+[INFO] Collected git.commit.committer.time with value 2026-10-17T16:44:31Z
+[INFO] Collected git.remote.origin.url with value https://github.com/carstenartur/Taxonomy
+[INFO] Collected git.tags with value 
+[INFO] Collected git.tag with value 
+[INFO] Collected git.closest.tag.name with value v1.3.1
+[INFO] Collected git.closest.tag.commit.count with value 1011
+[INFO] Collected git.total.commit.count with value 1864
+[INFO] Collected git.local.branch.ahead with value 0
+[INFO] Collected git.local.branch.behind with value 0
+[INFO] Collected git.build.time with value 2026-10-17T17:36:29Z
+[INFO] Collected git.build.version with value 1.5.1-SNAPSHOT
+[INFO] Collected git.build.host with value runnervm8k3b6
+[INFO] Collected git.build.number with value 9039.1
+[INFO] Collected git.build.number.unique with value 39050730469.9039.1
+[INFO] including property 'git.tags' in results
+[INFO] including property 'git.build.version' in results
+[INFO] including property 'git.branch' in results
+[INFO] including property 'git.build.host' in results
+[INFO] including property 'git.build.number' in results
+[INFO] including property 'git.commit.id' in results
+[INFO] including property 'git.commit.user.email' in results
+[INFO] including property 'git.build.number.unique' in results
+[INFO] including property 'git.local.branch.behind' in results
+[INFO] including property 'git.commit.author.time' in results
+[INFO] including property 'git.build.user.name' in results
+[INFO] including property 'git.dirty' in results
+[INFO] including property 'git.closest.tag.commit.count' in results
+[INFO] including property 'git.commit.user.name' in results
+[INFO] including property 'git.commit.id.abbrev' in results
+[INFO] including property 'git.commit.id.describe-short' in results
+[INFO] including property 'git.total.commit.count' in results
+[INFO] including property 'git.commit.id.describe' in results
+[INFO] including property 'git.build.user.email' in results
+[INFO] including property 'git.commit.message.short' in results
+[INFO] including property 'git.commit.committer.time' in results
+[INFO] including property 'git.tag' in results
+[INFO] including property 'git.closest.tag.name' in results
+[INFO] including property 'git.local.branch.ahead' in results
+[INFO] including property 'git.commit.time' in results
+[INFO] including property 'git.build.time' in results
+[INFO] including property 'git.commit.message.full' in results
+[INFO] including property 'git.remote.origin.url' in results
+[INFO] Reading existing properties file [/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/classes/git.properties] (for project Taxonomy Application)...
+[INFO] Properties file [/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/classes/git.properties] is up-to-date (for module Taxonomy Application)...
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent (prepare-agent) @ taxonomy-app ---
+[INFO] argLine set to -javaagent:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco.exec
+[INFO] 
+[INFO] --- spring-boot:4.1.1:build-info (default) @ taxonomy-app ---
+[INFO] 
+[INFO] --- license:2.7.1:add-third-party (generate-runtime-third-party-report) @ taxonomy-app ---
+[INFO] Writing third-party file to /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/generated-resources/runtime-licenses/THIRD-PARTY-RUNTIME.txt
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-app ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:copy-resources (copy-docs) @ taxonomy-app ---
+[INFO] Copying 484 resources from ../docs to target/classes/docs
+[INFO] 
+[INFO] --- resources:3.5.0:copy-resources (copy-legal) @ taxonomy-app ---
+[INFO] Copying 3 resources from .. to target/classes/static
+[INFO] Copying 0 resource from ../target to target/classes/static
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-app ---
+[INFO] Copying 12 resources from src/main/resources to target/classes
+[INFO] Copying 239 resources from src/main/resources to target/classes
+[INFO] Copying 1 resource from target/generated-resources/runtime-licenses to target/classes
+[INFO] 
+[INFO] --- dependency:3.11.0:copy (stage-standard-external-plugins) @ taxonomy-app ---
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 281 source files with javac [debug parameters release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[WARNING] /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/main/java/com/taxonomy/backup/restore/RestoreSchemaMigration.java:[62,88] org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy in org.hibernate.boot.model.naming has been deprecated and marked for removal
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-app ---
+[INFO] Copying 17 resources from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 598 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[WARNING] /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/test/java/com/taxonomy/backup/runtime/KnowledgeExportIT.java:[123,54] org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy in org.hibernate.boot.model.naming has been deprecated and marked for removal
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/test/java/com/taxonomy/AbstractDatabaseContainerIT.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/test/java/com/taxonomy/AbstractDatabaseContainerIT.java: Recompile with -Xlint:deprecation for details.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/test/java/com/taxonomy/composition/analysis/artemis/ArtemisProviderConcurrencyPermitsTest.java: /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/test/java/com/taxonomy/composition/analysis/artemis/ArtemisProviderConcurrencyPermitsTest.java uses unchecked or unsafe operations.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/src/test/java/com/taxonomy/composition/analysis/artemis/ArtemisProviderConcurrencyPermitsTest.java: Recompile with -Xlint:unchecked for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-app ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (product-demo-isolated) @ taxonomy-app ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (architecture-module-gate-ci-anchor) @ taxonomy-app ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- dependency:3.11.0:copy (stage-startup-features) @ taxonomy-app ---
+[INFO] 
+[INFO] --- antrun:3.2.0:run (checksum-standard-external-plugins) @ taxonomy-app ---
+[INFO] Executing tasks
+[INFO] Executed tasks
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-app ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/taxonomy-app-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-app ---
+[INFO] Layout: ZIP
+[INFO] Replacing main artifact /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/taxonomy-app-1.5.1-SNAPSHOT.jar with repackaged archive, adding nested dependencies in BOOT-INF/.
+[INFO] The original artifact has been renamed to /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/taxonomy-app-1.5.1-SNAPSHOT.jar.original
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (default) @ taxonomy-app ---
+[INFO] Layout: ZIP
+[INFO] Replacing main artifact /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/taxonomy-app-1.5.1-SNAPSHOT.jar with repackaged archive, adding nested dependencies in BOOT-INF/.
+[INFO] The original artifact has been renamed to /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/taxonomy-app-1.5.1-SNAPSHOT.jar.original
+[INFO] 
+[INFO] --- failsafe:3.5.6:integration-test (default) @ taxonomy-app ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jacoco:0.8.15:report (report) @ taxonomy-app ---
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco.exec
+[INFO] Analyzed bundle 'Taxonomy Application' with 517 classes
+[INFO] 
+[INFO] --- dependency:3.11.0:tree (write-packaged-dependency-policy-tree) @ taxonomy-app ---
+[INFO] Skipping plugin execution
+[INFO] 
+[INFO] --- dependency:3.11.0:tree (write-hibernate-search-alignment-tree) @ taxonomy-app ---
+[INFO] Skipping plugin execution
+[INFO] 
+[INFO] --- failsafe:3.5.6:verify (default) @ taxonomy-app ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] -------------------< com.taxonomy:taxonomy-coverage >-------------------
+[INFO] Building Taxonomy Aggregate Coverage 1.5.1-SNAPSHOT              [20/21]
+[INFO]   from taxonomy-coverage/pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-coverage
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-coverage ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-coverage ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-coverage ---
+[INFO] 
+[INFO] --- jacoco:0.8.15:merge (merge-app-test-shard-executions) @ taxonomy-coverage ---
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/browser/coverage.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/recovery/coverage.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/target/app-test-shards/core/coverage.exec
+[INFO] Writing merged execution data to /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco-shards-merged.exec
+[INFO] 
+[INFO] --- jacoco:0.8.15:report-aggregate (reactor-report) @ taxonomy-coverage ---
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/plugins/taxonomy-mermaid-plugin/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-runtime/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-reporting-api/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-analysis/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-portfolio/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-architecture/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-knowledge/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-interop/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-templates/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-workspace/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-domain/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-dsl/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-export/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-extension-api/target/jacoco.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco-shards-merged.exec
+[INFO] Loading execution data file /home/runner/work/Taxonomy/Taxonomy/taxonomy-app/target/jacoco.exec
+[INFO] Analyzed bundle 'taxonomy-templates-api' with 11 classes
+[INFO] Analyzed bundle 'taxonomy-mermaid-plugin' with 2 classes
+[INFO] Analyzed bundle 'taxonomy-extension-runtime' with 19 classes
+[INFO] Analyzed bundle 'taxonomy-reporting' with 50 classes
+[INFO] Analyzed bundle 'taxonomy-reporting-api' with 27 classes
+[INFO] Analyzed bundle 'taxonomy-analysis' with 384 classes
+[INFO] Analyzed bundle 'taxonomy-portfolio' with 289 classes
+[INFO] Analyzed bundle 'taxonomy-architecture' with 76 classes
+[INFO] Analyzed bundle 'taxonomy-knowledge' with 232 classes
+[INFO] Analyzed bundle 'taxonomy-interop' with 116 classes
+[INFO] Analyzed bundle 'taxonomy-templates' with 40 classes
+[INFO] Analyzed bundle 'taxonomy-workspace' with 253 classes
+[INFO] Analyzed bundle 'taxonomy-domain' with 230 classes
+[INFO] Analyzed bundle 'taxonomy-dsl' with 93 classes
+[INFO] Analyzed bundle 'taxonomy-export' with 127 classes
+[INFO] Analyzed bundle 'taxonomy-extension-api' with 92 classes
+[INFO] Analyzed bundle 'taxonomy-app' with 517 classes
+[INFO] 
+[INFO] --------------------< com.taxonomy:taxonomy-build >---------------------
+[INFO] Building Taxonomy Build Policy 1.5.1-SNAPSHOT                    [21/21]
+[INFO]   from taxonomy-build/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Cache is explicitly disabled on project level for com.taxonomy:taxonomy-build
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-packaged-dependency-hygiene) @ taxonomy-build ---
+[INFO] Rule 1: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- cyclonedx:2.9.3:makeAggregateBom (default) @ taxonomy-build ---
+[INFO] Skipping CycloneDX goal
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ taxonomy-build ---
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-build/src/main/resources
+[INFO] skip non existing resourceDirectory /home/runner/work/Taxonomy/Taxonomy/taxonomy-build/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ taxonomy-build ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ taxonomy-build ---
+[INFO] Copying 4 resources from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ taxonomy-build ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 86 source files with javac [debug parameters release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-build/src/test/java/com/taxonomy/build/CriticalCoveragePolicy.java: Some input files use or override a deprecated API.
+[INFO] /home/runner/work/Taxonomy/Taxonomy/taxonomy-build/src/test/java/com/taxonomy/build/CriticalCoveragePolicy.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ taxonomy-build ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (required-ArchitectureModuleGraphTest) @ taxonomy-build ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (required-ArchitectureModuleExtractionTest) @ taxonomy-build ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (required-PluginModuleBoundaryTest) @ taxonomy-build ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (required-ArchitectureSelectorSynchronizationTest) @ taxonomy-build ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- exec:3.6.4:exec (verify-complete-app-test-shard-inventory) @ taxonomy-build ---
+Application test inventory: Executed inventory: 491 source classes, 491 JUnit suites, 3754 cases in 3 isolated groups; 79 skipped cases and 6 profile-excluded classes.
+  group core: 459 reports, 3578 cases, 79 skipped, 1886.93s
+  group recovery: 20 reports, 84 cases, 0 skipped, 1957.93s
+  group browser: 13 reports, 92 cases, 0 skipped, 1353.303s
+  recovery: com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest 255.811s
+  recovery: com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest 235.911s
+  browser: com.taxonomy.PortfolioUiAcceptanceIT 205.255s
+  recovery: com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest 190.693s
+  browser: com.taxonomy.acceptance.ReformulationScenarioBrowserTest 184.031s
+  browser: com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest 156.46s
+  browser: com.taxonomy.portfolio.reformulation.ReformulationBrowserTest 135.47s
+  recovery: com.taxonomy.portfolio.reformulation.ReformulationProgressTest 131.272s
+  recovery: com.taxonomy.PortfolioVersioningRecoveryIT 119.605s
+  browser: com.taxonomy.CompleteCopilotSessionIT 115.805s
+[INFO] 
+[INFO] --- jar:3.5.1:jar (default-jar) @ taxonomy-build ---
+[INFO] Building jar: /home/runner/work/Taxonomy/Taxonomy/taxonomy-build/target/taxonomy-build-1.5.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:4.1.1:repackage (repackage) @ taxonomy-build ---
+[INFO] 
+[INFO] --- frontend:2.0.2:npm (install-pinned-browser-test-dependencies) @ taxonomy-build ---
+[INFO] Skipping execution.
+[INFO] 
+[INFO] --- frontend:2.0.2:npm (install-pinned-playwright-browsers) @ taxonomy-build ---
+[INFO] Skipping execution.
+[INFO] 
+[INFO] --- failsafe:3.5.6:integration-test (default) @ taxonomy-build ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- failsafe:3.5.6:integration-test (coverage-policy-only) @ taxonomy-build ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.taxonomy.build.ReactorCoveragePolicyIT
+Taxonomy reactor-wide JaCoCo coverage
+
+Source: /home/runner/work/Taxonomy/Taxonomy/taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+Policy: versioned multi-counter aggregate ratchet
+
+Per-module coverage:
+- taxonomy-analysis
+  - INSTRUCTION: 92.28% (72392/78447)
+  - LINE: 93.16% (10848/11645)
+  - BRANCH: 76.55% (6569/8581)
+  - METHOD: 94.80% (2261/2385)
+  - CLASS: 98.96% (380/384)
+- taxonomy-app
+  - INSTRUCTION: 89.77% (76403/85113)
+  - LINE: 91.68% (12129/13230)
+  - BRANCH: 70.14% (5864/8361)
+  - METHOD: 93.22% (2641/2833)
+  - CLASS: 97.87% (506/517)
+- taxonomy-architecture
+  - INSTRUCTION: 91.67% (14946/16304)
+  - LINE: 92.73% (3024/3261)
+  - BRANCH: 76.51% (1384/1809)
+  - METHOD: 94.01% (471/501)
+  - CLASS: 98.68% (75/76)
+- taxonomy-domain
+  - INSTRUCTION: 94.12% (12586/13372)
+  - LINE: 94.13% (2099/2230)
+  - BRANCH: 80.17% (853/1064)
+  - METHOD: 91.68% (1080/1178)
+  - CLASS: 98.70% (227/230)
+- taxonomy-dsl
+  - INSTRUCTION: 91.09% (14205/15595)
+  - LINE: 93.70% (2484/2651)
+  - BRANCH: 74.85% (1146/1531)
+  - METHOD: 94.54% (606/641)
+  - CLASS: 94.62% (88/93)
+- taxonomy-export
+  - INSTRUCTION: 93.74% (39022/41627)
+  - LINE: 95.89% (5744/5990)
+  - BRANCH: 79.26% (3454/4358)
+  - METHOD: 97.38% (891/915)
+  - CLASS: 100.00% (127/127)
+- taxonomy-extension-api
+  - INSTRUCTION: 91.32% (4041/4425)
+  - LINE: 90.83% (317/349)
+  - BRANCH: 69.10% (199/288)
+  - METHOD: 92.31% (144/156)
+  - CLASS: 95.65% (88/92)
+- taxonomy-extension-runtime
+  - INSTRUCTION: 85.95% (2765/3217)
+  - LINE: 89.81% (467/520)
+  - BRANCH: 74.08% (283/382)
+  - METHOD: 92.16% (94/102)
+  - CLASS: 94.74% (18/19)
+- taxonomy-interop
+  - INSTRUCTION: 91.80% (28863/31442)
+  - LINE: 92.95% (3257/3504)
+  - BRANCH: 75.80% (2757/3637)
+  - METHOD: 90.72% (733/808)
+  - CLASS: 95.69% (111/116)
+- taxonomy-knowledge
+  - INSTRUCTION: 91.86% (32494/35373)
+  - LINE: 92.45% (7112/7693)
+  - BRANCH: 78.13% (2472/3164)
+  - METHOD: 94.00% (1425/1516)
+  - CLASS: 99.14% (230/232)
+- taxonomy-mermaid-plugin
+  - INSTRUCTION: 100.00% (66/66)
+  - LINE: 100.00% (13/13)
+  - BRANCH: 75.00% (3/4)
+  - METHOD: 100.00% (7/7)
+  - CLASS: 100.00% (2/2)
+- taxonomy-portfolio
+  - INSTRUCTION: 94.95% (45559/47982)
+  - LINE: 95.73% (8356/8729)
+  - BRANCH: 78.26% (3395/4338)
+  - METHOD: 95.44% (1633/1711)
+  - CLASS: 98.62% (285/289)
+- taxonomy-reporting
+  - INSTRUCTION: 92.39% (22269/24103)
+  - LINE: 93.26% (3913/4196)
+  - BRANCH: 77.76% (1710/2199)
+  - METHOD: 94.71% (555/586)
+  - CLASS: 100.00% (50/50)
+- taxonomy-reporting-api
+  - INSTRUCTION: 96.34% (2583/2681)
+  - LINE: 96.10% (345/359)
+  - BRANCH: 76.44% (172/225)
+  - METHOD: 100.00% (62/62)
+  - CLASS: 100.00% (27/27)
+- taxonomy-templates
+  - INSTRUCTION: 88.62% (7807/8810)
+  - LINE: 88.32% (1732/1961)
+  - BRANCH: 71.63% (765/1068)
+  - METHOD: 95.17% (256/269)
+  - CLASS: 97.50% (39/40)
+- taxonomy-templates-api
+  - INSTRUCTION: 90.80% (296/326)
+  - LINE: 86.54% (45/52)
+  - BRANCH: 66.67% (20/30)
+  - METHOD: 87.50% (14/16)
+  - CLASS: 100.00% (11/11)
+- taxonomy-workspace
+  - INSTRUCTION: 91.65% (41492/45271)
+  - LINE: 92.77% (7839/8450)
+  - BRANCH: 75.98% (2986/3930)
+  - METHOD: 94.01% (1616/1719)
+  - CLASS: 99.60% (252/253)
+
+Aggregate coverage:
+- INSTRUCTION: 91.99% (417789/454154); required 81.00%; PASS
+- LINE: 93.17% (69724/74833); required 82.00%; PASS
+- BRANCH: 75.68% (34032/44969); required 64.00%; PASS
+- METHOD: 94.05% (14489/15405); required 85.00%; PASS
+- CLASS: 98.36% (2516/2558); required 92.00%; PASS
+Additional report groups: taxonomy-extension-runtime, taxonomy-mermaid-plugin, taxonomy-reporting, taxonomy-reporting-api, taxonomy-templates-api
+Result: PASS
+
+Taxonomy release-critical coverage
+
+Source: /home/runner/work/Taxonomy/Taxonomy/taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+Policy: critical package and changed-source ratchets
+
+Critical package coverage:
+- package:taxonomy-app:com/taxonomy/security/config
+  - LINE: 95.05% (653/687); required 79.00%; PASS
+  - BRANCH: 86.26% (295/342); required 66.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/service
+  - LINE: 92.51% (420/454); required 89.00%; PASS
+  - BRANCH: 78.86% (194/246); required 66.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/controller
+  - LINE: 97.01% (195/201); required 64.00%; PASS
+  - BRANCH: 91.04% (61/67); required 60.00%; PASS
+- package:taxonomy-app:com/taxonomy/security/keycloak
+  - LINE: 98.01% (148/151); required 75.00%; PASS
+  - BRANCH: 87.50% (42/48); required 67.00%; PASS
+- package:taxonomy-app:com/taxonomy/provenance/service
+  - LINE: 88.41% (572/647); required 86.00%; PASS
+  - BRANCH: 73.25% (241/329); required 69.00%; PASS
+- package:taxonomy-app:com/taxonomy/provenance/controller
+  - LINE: 98.61% (142/144); required 37.00%; PASS
+  - BRANCH: 98.15% (53/54); required 37.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/catalog/service/importer
+  - LINE: 96.55% (336/348); required 84.00%; PASS
+  - BRANCH: 83.27% (219/263); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/importer
+  - LINE: 98.02% (99/101); required 84.00%; PASS
+  - BRANCH: 100.00% (2/2); required 58.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/storage
+  - LINE: 90.93% (1033/1136); required 87.00%; PASS
+  - BRANCH: 77.75% (290/373); required 71.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/persistence
+  - LINE: 94.20% (471/500); required 87.00%; PASS
+  - BRANCH: 72.54% (206/284); required 71.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/versioning/controller
+  - LINE: 90.63% (445/491); required 81.00%; PASS
+  - BRANCH: 75.74% (103/136); required 58.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/relations/controller
+  - LINE: 94.33% (1032/1094); required 81.00%; PASS
+  - BRANCH: 84.24% (278/330); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/report
+  - LINE: 98.70% (227/230); required 81.00%; PASS
+  - BRANCH: 77.27% (153/198); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/dsl/controller
+  - LINE: 100.00% (119/119); required 81.00%; PASS
+  - BRANCH: 100.00% (10/10); required 58.00%; PASS
+- package:taxonomy-app:com/taxonomy/composition/dsl/service
+  - LINE: 100.00% (53/53); required 77.00%; PASS
+  - BRANCH: 100.00% (18/18); required 59.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/versioning/service
+  - LINE: 89.93% (1027/1142); required 77.00%; PASS
+  - BRANCH: 76.64% (233/304); required 59.00%; PASS
+- package:taxonomy-knowledge:com/taxonomy/relations/service
+  - LINE: 94.66% (2056/2172); required 77.00%; PASS
+  - BRANCH: 81.29% (491/604); required 59.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/controller
+  - LINE: 95.60% (522/546); required 77.00%; PASS
+  - BRANCH: 83.82% (114/136); required 70.00%; PASS
+- package:taxonomy-workspace:com/taxonomy/workspace/service
+  - LINE: 93.48% (1850/1979); required 82.00%; PASS
+  - BRANCH: 79.92% (772/966); required 58.00%; PASS
+- package:taxonomy-portfolio:com/taxonomy/portfolio/controller
+  - LINE: 97.18% (448/461); required 45.00%; PASS
+  - BRANCH: 85.82% (115/134); required 52.00%; PASS
+- package:taxonomy-portfolio:com/taxonomy/portfolio/service
+  - LINE: 94.37% (3908/4141); required 74.00%; PASS
+  - BRANCH: 78.74% (1370/1740); required 52.00%; PASS
+
+Changed critical source coverage:
+- Discovery: not a pull-request checkout; aggregate and package gates only; 0 file(s) are release-critical
+- No changed critical Java source requires a diff gate.
+Result: PASS
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.620 s -- in com.taxonomy.build.ReactorCoveragePolicyIT
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- failsafe:3.5.6:verify (default) @ taxonomy-build ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- failsafe:3.5.6:verify (coverage-policy-only) @ taxonomy-build ---
+[INFO] 
+[INFO] --- exec:3.6.4:exec (validate-original-reactor-junit-outcomes) @ taxonomy-build ---
+[INFO] skipping execute as per configuration
+[INFO] 
+[INFO] --- exec:3.6.4:exec (generate-sbom-companion) @ taxonomy-build ---
+[INFO] skipping execute as per configuration
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for Taxonomy Architecture Analyzer 1.5.1-SNAPSHOT:
+[INFO] 
+[INFO] Taxonomy Architecture Analyzer ..................... SUCCESS [  2.940 s]
+[INFO] Taxonomy Build and Release Tooling ................. SUCCESS [  4.843 s]
+[INFO] Taxonomy Domain .................................... SUCCESS [  1.366 s]
+[INFO] Taxonomy Reporting API ............................. SUCCESS [  1.067 s]
+[INFO] Taxonomy DSL ....................................... SUCCESS [  1.152 s]
+[INFO] Taxonomy Extension API ............................. SUCCESS [  0.368 s]
+[INFO] Taxonomy Export .................................... SUCCESS [ 19.573 s]
+[INFO] Taxonomy Extension Runtime ......................... SUCCESS [  1.321 s]
+[INFO] Taxonomy Mermaid Plugin ............................ SUCCESS [  4.132 s]
+[INFO] Taxonomy Workspace ................................. SUCCESS [ 33.870 s]
+[INFO] Taxonomy Templates API ............................. SUCCESS [  0.067 s]
+[INFO] Taxonomy Templates ................................. SUCCESS [  1.466 s]
+[INFO] Taxonomy Interoperability .......................... SUCCESS [  1.377 s]
+[INFO] Taxonomy Knowledge ................................. SUCCESS [  5.507 s]
+[INFO] Taxonomy Architecture .............................. SUCCESS [  1.238 s]
+[INFO] Taxonomy Reporting ................................. SUCCESS [  1.113 s]
+[INFO] Taxonomy Analysis .................................. SUCCESS [  7.192 s]
+[INFO] Taxonomy Portfolio ................................. SUCCESS [  2.635 s]
+[INFO] Taxonomy Application ............................... SUCCESS [01:04 min]
+[INFO] Taxonomy Aggregate Coverage ........................ SUCCESS [  3.682 s]
+[INFO] Taxonomy Build Policy .............................. SUCCESS [  6.800 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  02:46 min
+[INFO] Finished at: 2026-10-17T17:37:02Z
+[INFO] ------------------------------------------------------------------------

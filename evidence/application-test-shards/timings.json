@@ -1,0 +1,92 @@
+{
+  "commit": "5d82494a248a78a2a23254a48cfb21e1160764f0",
+  "sourceTree": "13f0a36e134d76fc5502757d236b48f5da2db89e",
+  "tests": {
+    "classes": 491,
+    "suites": 491,
+    "reports": 492,
+    "cases": 3754,
+    "skipped": 79,
+    "excludedClasses": 6
+  },
+  "coverage": [
+    "core",
+    "recovery",
+    "browser"
+  ],
+  "durationSeconds": 5198.163,
+  "slowSuites": [
+    {
+      "className": "com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest",
+      "group": "recovery",
+      "durationSeconds": 255.811
+    },
+    {
+      "className": "com.taxonomy.composition.analysis.artemis.WorkerRuntimeFootprintTest",
+      "group": "recovery",
+      "durationSeconds": 235.911
+    },
+    {
+      "className": "com.taxonomy.PortfolioUiAcceptanceIT",
+      "group": "browser",
+      "durationSeconds": 205.255
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest",
+      "group": "recovery",
+      "durationSeconds": 190.693
+    },
+    {
+      "className": "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
+      "group": "browser",
+      "durationSeconds": 184.031
+    },
+    {
+      "className": "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
+      "group": "browser",
+      "durationSeconds": 156.46
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
+      "group": "browser",
+      "durationSeconds": 135.47
+    },
+    {
+      "className": "com.taxonomy.portfolio.reformulation.ReformulationProgressTest",
+      "group": "recovery",
+      "durationSeconds": 131.272
+    },
+    {
+      "className": "com.taxonomy.PortfolioVersioningRecoveryIT",
+      "group": "recovery",
+      "durationSeconds": 119.605
+    },
+    {
+      "className": "com.taxonomy.CompleteCopilotSessionIT",
+      "group": "browser",
+      "durationSeconds": 115.805
+    }
+  ],
+  "groupDurations": {
+    "core": 1886.93,
+    "recovery": 1957.93,
+    "browser": 1353.303
+  },
+  "groupStatistics": {
+    "core": {
+      "reports": 459,
+      "cases": 3578,
+      "skipped": 79
+    },
+    "recovery": {
+      "reports": 20,
+      "cases": 84,
+      "skipped": 0
+    },
+    "browser": {
+      "reports": 13,
+      "cases": 92,
+      "skipped": 0
+    }
+  }
+}

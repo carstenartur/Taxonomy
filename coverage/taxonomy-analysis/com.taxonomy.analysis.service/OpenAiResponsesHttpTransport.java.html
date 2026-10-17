@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OpenAiResponsesHttpTransport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">OpenAiResponsesHttpTransport.java</span></div><h1>OpenAiResponsesHttpTransport.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import java.net.URI;
+import java.net.SocketTimeoutException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.io.ByteArrayOutputStream;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+
+/** Actual HTTP with bounded request/body buffering, total deadline and cooperative cancellation. */
+<span class="fc" id="L23">class OpenAiResponsesHttpTransport {</span>
+    ResponseEntity&lt;String&gt; exchange(String url, HttpHeaders headers, String body, int responseLimit, long timeoutMillis) {
+<span class="fc" id="L25">        byte[] request = body.getBytes(StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L26" title="4 of 10 branches missed.">        if (request.length &gt; OpenAiResponsesTokenContract.MAX_REQUEST_BYTES || responseLimit &lt; 1</span>
+                || responseLimit &gt; OpenAiResponsesTokenContract.MAX_GENERATION_RESPONSE_BYTES
+<span class="fc" id="L28">                || timeoutMillis &lt; 1 || timeoutMillis &gt; OpenAiResponsesTokenContract.MAX_OPERATION_MILLIS) throw rejected();</span>
+<span class="fc" id="L29">        AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L30">        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);</span>
+<span class="fc" id="L31">        var builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofMillis(timeoutMillis))</span>
+<span class="fc" id="L32">                .POST(HttpRequest.BodyPublishers.ofByteArray(request));</span>
+<span class="fc" id="L33">        headers.forEach((name, values) -&gt; values.forEach(value -&gt; builder.header(name, value)));</span>
+<span class="fc" id="L34">        var responseInfo = new AtomicReference&lt;HttpResponse.ResponseInfo&gt;();</span>
+        // A client belongs to this one physical attempt. Closing it also closes outstanding body
+        // subscriptions; no abandoned Count can keep a background transport alive after admission.
+<span class="fc" id="L37">        try (var client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)</span>
+<span class="fc" id="L38">                .version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofMillis(Math.min(timeoutMillis, 5000))).build()) {</span>
+<span class="fc" id="L39">            var future = client.sendAsync(builder.build(), info -&gt; {</span>
+<span class="fc" id="L40">                responseInfo.set(info); return new BoundedBody(responseLimit);</span>
+            });
+            try {
+                while (true) {
+<span class="fc" id="L44">                    AnalysisRunControl.checkpoint();</span>
+<span class="fc" id="L45">                    long remaining = deadline - System.nanoTime();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                    if (remaining &lt;= 0) throw timeout();</span>
+                    try {
+<span class="fc" id="L48">                        var response = future.get(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(50)), TimeUnit.NANOSECONDS);</span>
+<span class="fc" id="L49">                        return result(response.statusCode(), response.headers().map(), response.body());</span>
+<span class="fc" id="L50">                    } catch (TimeoutException pending) { /* poll only the scoped cancellation/deadline */ }</span>
+<span class="fc" id="L51">                }</span>
+<span class="fc" id="L52">            } catch (ExecutionException failure) {</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                if (failure.getCause() instanceof ResponseLimitException) {</span>
+<span class="fc" id="L54">                    var info = responseInfo.get();</span>
+                    // Even an oversized 429 remains an actual 429 with its bounded headers. Its
+                    // omitted body must not bypass shared cooldown or imply known provider usage.
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">                    if (info != null &amp;&amp; info.statusCode() &gt;= 400) return result(info.statusCode(), info.headers().map(), new byte[0]);</span>
+<span class="fc" id="L58">                    throw rejected();</span>
+                }
+<span class="nc bnc" id="L60" title="All 2 branches missed.">                if (failure.getCause() instanceof java.net.http.HttpTimeoutException) throw timeout();</span>
+<span class="nc" id="L61">                throw new ResourceAccessException(&quot;Responses transport unavailable&quot;);</span>
+<span class="nc" id="L62">            } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L63">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L64">                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);</span>
+            } finally {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                if (!future.isDone()) future.cancel(true);</span>
+<span class="fc" id="L67">                client.shutdownNow();</span>
+            }
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        }</span>
+    }
+    private static ResponseEntity&lt;String&gt; result(int status, java.util.Map&lt;String, List&lt;String&gt;&gt; values, byte[] body) {
+<span class="fc" id="L72">        var headers = new HttpHeaders(); values.forEach(headers::put);</span>
+<span class="fc" id="L73">        var code = HttpStatusCode.valueOf(status);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (code.is4xxClientError()) throw HttpClientErrorException.create(code, &quot;Responses request rejected&quot;, headers, body, StandardCharsets.UTF_8);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (code.is5xxServerError()) throw HttpServerErrorException.create(code, &quot;Responses request failed&quot;, headers, body, StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if (!code.is2xxSuccessful()) throw rejected();</span>
+<span class="fc" id="L77">        return new ResponseEntity&lt;&gt;(new String(body, StandardCharsets.UTF_8), headers, code);</span>
+    }
+    private static ResourceAccessException timeout() {
+<span class="fc" id="L80">        return new ResourceAccessException(&quot;Responses transport time limit exceeded&quot;, new SocketTimeoutException(&quot;Responses transport deadline&quot;));</span>
+    }
+    private static LlmProviderException rejected() {
+<span class="fc" id="L83">        return new LlmProviderException(LlmProviderException.Reason.REQUEST_REJECTED, &quot;Responses transport byte contract exceeded&quot;);</span>
+    }
+    private static final class ResponseLimitException extends RuntimeException { }
+    private static final class BoundedBody implements HttpResponse.BodySubscriber&lt;byte[]&gt; {
+        private final int limit;
+<span class="fc" id="L88">        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();</span>
+<span class="fc" id="L89">        private final CompletableFuture&lt;byte[]&gt; completed = new CompletableFuture&lt;&gt;();</span>
+        private Flow.Subscription subscription;
+<span class="fc" id="L91">        BoundedBody(int limit) { this.limit = limit; }</span>
+<span class="fc" id="L92">        public CompletionStage&lt;byte[]&gt; getBody() { return completed; }</span>
+<span class="fc" id="L93">        public void onSubscribe(Flow.Subscription incoming) { subscription = incoming; incoming.request(Long.MAX_VALUE); }</span>
+        public void onNext(List&lt;ByteBuffer&gt; incoming) {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            for (var buffer : incoming) {</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                if (buffer.remaining() &gt; limit - bytes.size()) {</span>
+<span class="fc" id="L97">                    subscription.cancel(); completed.completeExceptionally(new ResponseLimitException()); return;</span>
+                }
+<span class="fc" id="L99">                byte[] chunk = new byte[buffer.remaining()]; buffer.get(chunk); bytes.writeBytes(chunk);</span>
+<span class="fc" id="L100">            }</span>
+<span class="fc" id="L101">        }</span>
+<span class="fc" id="L102">        public void onError(Throwable failure) { completed.completeExceptionally(failure); }</span>
+<span class="fc" id="L103">        public void onComplete() { completed.complete(bytes.toByteArray()); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

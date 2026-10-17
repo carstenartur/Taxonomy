@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OracleHypothesisSessionColumnMigrator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">OracleHypothesisSessionColumnMigrator.java</span></div><h1>OracleHypothesisSessionColumnMigrator.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+
+/**
+ * Converts Oracle's historic national-character analysis-session identifier to
+ * the database character set before the portable hypothesis-scope migration.
+ *
+ * &lt;p&gt;{@code analysis_session_id} is a technical identifier (UUID/provider key),
+ * not localized content. Oracle refuses a {@code COALESCE} between NVARCHAR2 and
+ * the VARCHAR2 sentinel used by the cross-database scope contract. The migration
+ * copies values through {@code TO_CHAR}, which yields VARCHAR2, then resumes the
+ * normal portable migration. Its temporary-column states are explicitly
+ * resumable because Oracle DDL commits implicitly.&lt;/p&gt;
+ */
+final class OracleHypothesisSessionColumnMigrator {
+
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(</span>
+            OracleHypothesisSessionColumnMigrator.class);
+    private static final String TABLE = &quot;relation_hypothesis&quot;;
+    private static final String SOURCE_COLUMN = &quot;analysis_session_id&quot;;
+    private static final String TEMP_COLUMN = &quot;analysis_session_id_dbcs&quot;;
+    private static final String SESSION_INDEX = &quot;idx_hyp_session&quot;;
+
+    private final DataSource dataSource;
+
+<span class="fc" id="L43">    OracleHypothesisSessionColumnMigrator(DataSource dataSource) {</span>
+<span class="fc" id="L44">        this.dataSource = Objects.requireNonNull(dataSource, &quot;dataSource&quot;);</span>
+<span class="fc" id="L45">    }</span>
+
+    void migrate() {
+<span class="fc" id="L48">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            if (!isOracle(connection)) {</span>
+<span class="fc" id="L50">                return;</span>
+            }
+<span class="fc" id="L52">            TableRef table = findTable(connection, TABLE);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">            if (table == null) {</span>
+<span class="nc" id="L54">                return;</span>
+            }
+
+<span class="fc" id="L57">            ColumnRef source = findColumn(connection, table, SOURCE_COLUMN);</span>
+<span class="fc" id="L58">            ColumnRef temporary = findColumn(connection, table, TEMP_COLUMN);</span>
+
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (source == null) {</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                if (temporary != null) {</span>
+<span class="fc" id="L62">                    String targetName = canonicalIdentifier(</span>
+<span class="fc" id="L63">                            connection.getMetaData(), SOURCE_COLUMN);</span>
+<span class="fc" id="L64">                    renameColumn(connection, table, temporary.name(), targetName);</span>
+<span class="fc" id="L65">                    ensureSessionIndex(connection, table, targetName);</span>
+<span class="fc" id="L66">                    log.info(&quot;Completed interrupted Oracle hypothesis session-column rename&quot;);</span>
+                }
+<span class="fc" id="L68">                return;</span>
+            }
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if (!isNationalCharacterType(source.typeName())) {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                if (temporary != null) {</span>
+<span class="fc" id="L72">                    execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L73">                            + &quot; DROP COLUMN &quot; + quoted(connection, temporary.name()));</span>
+                }
+<span class="fc" id="L75">                ensureSessionIndex(connection, table, source.name());</span>
+<span class="fc" id="L76">                return;</span>
+            }
+
+            String temporaryName;
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (temporary == null) {</span>
+<span class="fc" id="L81">                temporaryName = canonicalIdentifier(</span>
+<span class="fc" id="L82">                        connection.getMetaData(), TEMP_COLUMN);</span>
+<span class="fc" id="L83">                execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L84">                        + &quot; ADD &quot; + quoted(connection, temporaryName)</span>
+<span class="fc" id="L85">                        + &quot; VARCHAR2(&quot; + Math.max(255, source.size()) + &quot;)&quot;);</span>
+            } else {
+<span class="fc" id="L87">                temporaryName = temporary.name();</span>
+            }
+
+            // A resumed temporary copy can predate a source update. Copy SQL NULL
+            // as well, otherwise a session cleared during interruption is revived.
+<span class="fc" id="L92">            execute(connection, &quot;UPDATE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L93">                    + &quot; SET &quot; + quoted(connection, temporaryName)</span>
+<span class="fc" id="L94">                    + &quot; = TO_CHAR(&quot; + quoted(connection, source.name()) + &quot;)&quot;);</span>
+
+<span class="fc" id="L96">            dropIndexesOrConstraintsReferencingSource(connection, table);</span>
+<span class="fc" id="L97">            execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L98">                    + &quot; DROP COLUMN &quot; + quoted(connection, source.name()));</span>
+<span class="fc" id="L99">            String targetName = canonicalIdentifier(</span>
+<span class="fc" id="L100">                    connection.getMetaData(), SOURCE_COLUMN);</span>
+<span class="fc" id="L101">            renameColumn(connection, table, temporaryName, targetName);</span>
+<span class="fc" id="L102">            ensureSessionIndex(connection, table, targetName);</span>
+<span class="fc" id="L103">            log.info(&quot;Converted Oracle relation_hypothesis.analysis_session_id from {} to VARCHAR2&quot;,</span>
+<span class="fc" id="L104">                    source.typeName());</span>
+<span class="pc bpc" id="L105" title="5 of 8 branches missed.">        } catch (SQLException error) {</span>
+<span class="fc" id="L106">            throw new IllegalStateException(</span>
+                    &quot;Unable to normalize Oracle hypothesis analysis-session column safely&quot;,
+                    error);
+<span class="fc" id="L109">        }</span>
+<span class="fc" id="L110">    }</span>
+
+    private void dropIndexesOrConstraintsReferencingSource(
+            Connection connection,
+            TableRef table) throws SQLException {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        for (IndexDefinition index : indexes(connection, table)) {</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (!index.columns().contains(SOURCE_COLUMN)) {</span>
+<span class="fc" id="L117">                continue;</span>
+            }
+            SQLException constraintFailure;
+            try {
+<span class="fc" id="L121">                execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L122">                        + &quot; DROP CONSTRAINT &quot; + quoted(connection, index.name()));</span>
+<span class="fc" id="L123">                continue;</span>
+<span class="fc" id="L124">            } catch (SQLException error) {</span>
+<span class="fc" id="L125">                constraintFailure = error;</span>
+            }
+            try {
+<span class="fc" id="L128">                execute(connection, &quot;DROP INDEX &quot;</span>
+<span class="fc" id="L129">                        + qualifiedIndex(connection, table, index.name()));</span>
+<span class="fc" id="L130">            } catch (SQLException indexFailure) {</span>
+<span class="fc" id="L131">                indexFailure.addSuppressed(constraintFailure);</span>
+<span class="fc" id="L132">                throw indexFailure;</span>
+<span class="fc" id="L133">            }</span>
+<span class="fc" id="L134">        }</span>
+<span class="fc" id="L135">    }</span>
+
+    private void ensureSessionIndex(
+            Connection connection,
+            TableRef table,
+            String sourceColumnName) throws SQLException {
+<span class="fc" id="L141">        boolean columnAlreadyIndexed = indexes(connection, table).stream()</span>
+<span class="fc" id="L142">                .anyMatch(index -&gt; index.columns().equals(List.of(SOURCE_COLUMN)));</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (columnAlreadyIndexed) {</span>
+<span class="fc" id="L144">            return;</span>
+        }
+<span class="fc" id="L146">        String indexName = canonicalIdentifier(</span>
+<span class="fc" id="L147">                connection.getMetaData(), SESSION_INDEX);</span>
+<span class="fc" id="L148">        execute(connection, &quot;CREATE INDEX &quot; + quoted(connection, indexName)</span>
+<span class="fc" id="L149">                + &quot; ON &quot; + qualified(connection, table)</span>
+<span class="fc" id="L150">                + &quot; (&quot; + quoted(connection, sourceColumnName) + &quot;)&quot;);</span>
+<span class="fc" id="L151">    }</span>
+
+    private List&lt;IndexDefinition&gt; indexes(
+            Connection connection,
+            TableRef table) throws SQLException {
+<span class="fc" id="L156">        Map&lt;String, Map&lt;Short, String&gt;&gt; byName = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L157">        try (ResultSet indexes = connection.getMetaData().getIndexInfo(</span>
+<span class="fc" id="L158">                table.catalog(), table.schema(), table.name(), false, false)) {</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            while (indexes.next()) {</span>
+<span class="fc" id="L160">                String name = indexes.getString(&quot;INDEX_NAME&quot;);</span>
+<span class="fc" id="L161">                String column = indexes.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="fc" id="L162">                short type = indexes.getShort(&quot;TYPE&quot;);</span>
+<span class="pc bpc" id="L163" title="3 of 6 branches missed.">                if (name == null || column == null</span>
+                        || type == DatabaseMetaData.tableIndexStatistic) {
+<span class="nc" id="L165">                    continue;</span>
+                }
+<span class="fc" id="L167">                short ordinal = indexes.getShort(&quot;ORDINAL_POSITION&quot;);</span>
+<span class="fc" id="L168">                byName.computeIfAbsent(name, ignored -&gt; new TreeMap&lt;&gt;())</span>
+<span class="fc" id="L169">                        .put(ordinal, column.toLowerCase(Locale.ROOT));</span>
+<span class="fc" id="L170">            }</span>
+        }
+<span class="fc" id="L172">        List&lt;IndexDefinition&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L173">        byName.forEach((name, columns) -&gt; result.add(</span>
+<span class="fc" id="L174">                new IndexDefinition(name, List.copyOf(columns.values()))));</span>
+<span class="fc" id="L175">        result.sort(Comparator.comparing(IndexDefinition::name));</span>
+<span class="fc" id="L176">        return result;</span>
+    }
+
+    private void renameColumn(
+            Connection connection,
+            TableRef table,
+            String from,
+            String to) throws SQLException {
+<span class="fc" id="L184">        execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+<span class="fc" id="L185">                + &quot; RENAME COLUMN &quot; + quoted(connection, from)</span>
+<span class="fc" id="L186">                + &quot; TO &quot; + quoted(connection, to));</span>
+<span class="fc" id="L187">    }</span>
+
+    private ColumnRef findColumn(
+            Connection connection,
+            TableRef table,
+            String logicalColumn) throws SQLException {
+<span class="fc" id="L193">        try (ResultSet columns = connection.getMetaData().getColumns(</span>
+<span class="fc" id="L194">                table.catalog(), table.schema(), table.name(), &quot;%&quot;)) {</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            while (columns.next()) {</span>
+<span class="fc" id="L196">                String name = columns.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalColumn)) {</span>
+<span class="fc" id="L198">                    return new ColumnRef(</span>
+                            name,
+<span class="fc" id="L200">                            columns.getString(&quot;TYPE_NAME&quot;),</span>
+<span class="fc" id="L201">                            columns.getInt(&quot;COLUMN_SIZE&quot;));</span>
+                }
+<span class="fc" id="L203">            }</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L205">        return null;</span>
+    }
+
+    private TableRef findTable(
+            Connection connection,
+            String logicalName) throws SQLException {
+<span class="fc" id="L211">        String preferredSchema = safeSchema(connection);</span>
+<span class="fc" id="L212">        List&lt;TableRef&gt; matches = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L213">        try (ResultSet tables = connection.getMetaData().getTables(</span>
+<span class="fc" id="L214">                connection.getCatalog(), null, &quot;%&quot;, new String[] {&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">            while (tables.next()) {</span>
+<span class="fc" id="L216">                String name = tables.getString(&quot;TABLE_NAME&quot;);</span>
+<span class="pc bpc" id="L217" title="2 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalName)) {</span>
+<span class="fc" id="L218">                    matches.add(new TableRef(</span>
+<span class="fc" id="L219">                            tables.getString(&quot;TABLE_CAT&quot;),</span>
+<span class="fc" id="L220">                            tables.getString(&quot;TABLE_SCHEM&quot;),</span>
+                            name));
+                }
+<span class="fc" id="L223">            }</span>
+        }
+<span class="fc" id="L225">        return matches.stream()</span>
+<span class="pc" id="L226">                .sorted(Comparator.comparing(table -&gt; preferredSchema != null</span>
+<span class="nc bnc" id="L227" title="All 4 branches missed.">                        &amp;&amp; preferredSchema.equalsIgnoreCase(table.schema()) ? 0 : 1))</span>
+<span class="fc" id="L228">                .findFirst()</span>
+<span class="fc" id="L229">                .orElse(null);</span>
+    }
+
+    private static boolean isOracle(Connection connection) throws SQLException {
+<span class="fc" id="L233">        return connection.getMetaData().getDatabaseProductName()</span>
+<span class="fc" id="L234">                .toLowerCase(Locale.ROOT)</span>
+<span class="fc" id="L235">                .contains(&quot;oracle&quot;);</span>
+    }
+
+    static boolean isNationalCharacterType(String typeName) {
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (typeName == null) {</span>
+<span class="fc" id="L240">            return false;</span>
+        }
+<span class="fc" id="L242">        String normalized = typeName.toUpperCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L243" title="All 4 branches covered.">        return normalized.contains(&quot;NVARCHAR&quot;) || normalized.equals(&quot;NCHAR&quot;);</span>
+    }
+
+    static String canonicalIdentifier(
+            DatabaseMetaData metadata,
+            String identifier) throws SQLException {
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        if (metadata.storesUpperCaseIdentifiers()) {</span>
+<span class="fc" id="L250">            return identifier.toUpperCase(Locale.ROOT);</span>
+        }
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">        if (metadata.storesLowerCaseIdentifiers()) {</span>
+<span class="nc" id="L253">            return identifier.toLowerCase(Locale.ROOT);</span>
+        }
+<span class="fc" id="L255">        return identifier;</span>
+    }
+
+    private void execute(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L259">        log.debug(&quot;Oracle hypothesis session-column migration SQL: {}&quot;, sql);</span>
+<span class="fc" id="L260">        try (Statement statement = connection.createStatement()) {</span>
+<span class="fc" id="L261">            statement.execute(sql);</span>
+        }
+<span class="fc" id="L263">    }</span>
+
+    private String qualified(Connection connection, TableRef table) throws SQLException {
+<span class="fc" id="L266">        String tableName = quoted(connection, table.name());</span>
+<span class="pc bpc" id="L267" title="2 of 4 branches missed.">        return table.schema() == null || table.schema().isBlank()</span>
+<span class="nc" id="L268">                ? tableName</span>
+<span class="fc" id="L269">                : quoted(connection, table.schema()) + &quot;.&quot; + tableName;</span>
+    }
+
+    private String qualifiedIndex(
+            Connection connection,
+            TableRef table,
+            String indexName) throws SQLException {
+<span class="fc" id="L276">        String quotedIndex = quoted(connection, indexName);</span>
+<span class="pc bpc" id="L277" title="2 of 4 branches missed.">        return table.schema() == null || table.schema().isBlank()</span>
+<span class="nc" id="L278">                ? quotedIndex</span>
+<span class="fc" id="L279">                : quoted(connection, table.schema()) + &quot;.&quot; + quotedIndex;</span>
+    }
+
+    private String quoted(Connection connection, String identifier) throws SQLException {
+<span class="fc" id="L283">        String quote = connection.getMetaData().getIdentifierQuoteString();</span>
+<span class="pc bpc" id="L284" title="2 of 4 branches missed.">        if (quote == null || quote.isBlank()) {</span>
+<span class="nc" id="L285">            return identifier;</span>
+        }
+<span class="fc" id="L287">        return quote + identifier.replace(quote, quote + quote) + quote;</span>
+    }
+
+    private String safeSchema(Connection connection) {
+        try {
+<span class="fc" id="L292">            return connection.getSchema();</span>
+<span class="nc" id="L293">        } catch (SQLException | AbstractMethodError ignored) {</span>
+<span class="nc" id="L294">            return null;</span>
+        }
+    }
+
+<span class="fc" id="L298">    private record TableRef(String catalog, String schema, String name) {</span>
+    }
+
+<span class="fc" id="L301">    private record ColumnRef(String name, String typeName, int size) {</span>
+    }
+
+<span class="fc" id="L304">    private record IndexDefinition(String name, List&lt;String&gt; columns) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitStandBundle.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitStandBundle.java</span></div><h1>GitStandBundle.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import org.eclipse.jgit.errors.*;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.storage.pack.PackConfig;
+import org.eclipse.jgit.transport.BundleWriter;
+import org.eclipse.jgit.util.Paths;
+import org.eclipse.jgit.util.sha1.SHA1;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.*;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** A self-contained, parentless Git representation of one projected stand. */
+public final class GitStandBundle {
+    public record Limits(int maxTreeBytes, int maxMetadataBytes) {
+<span class="fc" id="L23">        public Limits {</span>
+<span class="fc bfc" id="L24" title="All 8 branches covered.">            if (maxTreeBytes &lt; 1 || maxTreeBytes &gt; 4 * 1_048_576 || maxMetadataBytes &lt; 1 || maxMetadataBytes &gt; 16 * 1_048_576)</span>
+<span class="fc" id="L25">                throw new IllegalArgumentException(&quot;Invalid stand bundle metadata limits&quot;);</span>
+<span class="fc" id="L26">        }</span>
+<span class="fc" id="L27">        public static Limits defaults() { return new Limits(4 * 1_048_576, 16 * 1_048_576); }</span>
+    }
+    private final GitStandBackupSource.Stand stand;
+    private final BackupCheckpoint checkpoint;
+    private final Map&lt;ObjectId, ObjectData&gt; objects;
+    private final ObjectId head;
+
+<span class="fc" id="L34">    private GitStandBundle(GitStandBackupSource.Stand stand, BackupCheckpoint checkpoint, Map&lt;ObjectId, ObjectData&gt; objects, ObjectId head) {</span>
+<span class="fc" id="L35">        this.stand = stand; this.checkpoint = checkpoint; this.objects = Map.copyOf(objects); this.head = head;</span>
+<span class="fc" id="L36">    }</span>
+
+    /** The source view and its installation fence must remain live through the final write. */
+    public static GitStandBundle capture(GitStandBackupSource.Stand stand, Instant timestamp, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L40">        return capture(stand, timestamp, Limits.defaults(), checkpoint);</span>
+    }
+    public static GitStandBundle capture(GitStandBackupSource.Stand stand, Instant timestamp, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L44">            Objects.requireNonNull(timestamp); Objects.requireNonNull(limits);</span>
+<span class="fc" id="L45">            BackupCheckpoint check = () -&gt; stand.check(checkpoint); check.check();</span>
+<span class="fc" id="L46">            var builder = new Graph(limits, check); var root = new Directory();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            for (var file : stand.files()) {</span>
+<span class="fc" id="L48">                check.check(); var hash = digest(Constants.OBJ_BLOB, file.length());</span>
+<span class="fc" id="L49">                stand.copy(file, new OutputStream() {</span>
+<span class="nc" id="L50">                    @Override public void write(int b) { hash.update((byte) b); }</span>
+<span class="fc" id="L51">                    @Override public void write(byte[] bytes, int offset, int length) { hash.update(bytes, offset, length); }</span>
+                }, check);
+<span class="fc" id="L53">                ObjectId id = hash.toObjectId(); builder.add(id, new ObjectData(Constants.OBJ_BLOB, null, file));</span>
+<span class="fc" id="L54">                builder.addPath(root, file, id);</span>
+<span class="fc" id="L55">            }</span>
+<span class="fc" id="L56">            var commit = new CommitBuilder(); commit.setTreeId(builder.tree(root));</span>
+<span class="fc" id="L57">            var author = new PersonIdent(&quot;Taxonomy Export&quot;, &quot;backup@taxonomy.invalid&quot;, timestamp, ZoneOffset.UTC);</span>
+<span class="fc" id="L58">            commit.setAuthor(author); commit.setCommitter(author); commit.setMessage(&quot;Portable stand\n&quot;);</span>
+<span class="fc" id="L59">            ObjectId head = builder.metadata(Constants.OBJ_COMMIT, commit.build()); check.check();</span>
+<span class="fc" id="L60">            return new GitStandBundle(stand, checkpoint, builder.objects, head);</span>
+<span class="fc" id="L61">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+<span class="fc" id="L63">    public String head() { return head.name(); }</span>
+
+    /** JGit serializes only the private synthetic graph, directly into protected capture staging. */
+    public BackupEntry write(String path, ComponentSink sink) throws IOException {
+        try {
+<span class="fc" id="L68">            BackupCheckpoint check = () -&gt; { stand.check(checkpoint); stand.check(sink::checkpoint); }; check.check();</span>
+<span class="fc" id="L69">            return GitTreeCapture.writeGenerated(path, sink, output -&gt; {</span>
+<span class="fc" id="L70">                check.check();</span>
+<span class="fc" id="L71">                try (var reader = new Reader(check)) {</span>
+<span class="fc" id="L72">                    var config = new PackConfig(); config.setDeltaCompress(false); config.setReuseObjects(false);</span>
+<span class="fc" id="L73">                    config.setReuseDeltas(false); config.setBuildBitmaps(false); config.setThreads(1);</span>
+<span class="fc" id="L74">                    var writer = new BundleWriter(reader); writer.setPackConfig(config);</span>
+<span class="fc" id="L75">                    writer.include(&quot;refs/heads/stand&quot;, head); writer.include(&quot;HEAD&quot;, head);</span>
+<span class="fc" id="L76">                    writer.writeBundle(NullProgressMonitor.INSTANCE, output); check.check();</span>
+                }
+<span class="fc" id="L78">            });</span>
+<span class="fc" id="L79">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+
+    private final class Reader extends ObjectReader {
+        private final BackupCheckpoint checkpoint;
+<span class="fc" id="L84">        private boolean active = true;</span>
+<span class="fc" id="L85">        Reader(BackupCheckpoint checkpoint) { this.checkpoint = checkpoint; }</span>
+        private void check() throws IOException {
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (!active) throw failure(&quot;Synthetic Git reader is closed&quot;); checkpoint.check();</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            if (!active) throw failure(&quot;Synthetic Git reader is closed&quot;);</span>
+<span class="fc" id="L89">        }</span>
+<span class="nc" id="L90">        @Override public ObjectReader newReader() { return new Reader(() -&gt; { check(); }); }</span>
+        @Override public Collection&lt;ObjectId&gt; resolve(AbbreviatedObjectId id) throws IOException {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            check(); return objects.keySet().stream().filter(key -&gt; id.prefixCompare(key) == 0).toList();</span>
+        }
+        @Override public ObjectLoader open(AnyObjectId id, int type) throws IOException {
+<span class="fc" id="L95">            check(); var object = objects.get(id);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (object == null) throw new MissingObjectException(id.copy(), type);</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">            if (type != OBJ_ANY &amp;&amp; type != object.type()) throw new IncorrectObjectTypeException(id.copy(), type);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            if (object.bytes() != null) return new ObjectLoader.SmallObject(object.type(), object.bytes());</span>
+<span class="fc" id="L99">            return new ObjectLoader() {</span>
+<span class="nc" id="L100">                @Override public int getType() { return Constants.OBJ_BLOB; }</span>
+<span class="fc" id="L101">                @Override public long getSize() { return object.file().length(); }</span>
+<span class="nc" id="L102">                @Override public boolean isLarge() { return true; }</span>
+<span class="nc" id="L103">                @Override public byte[] getCachedBytes() { throw new LargeObjectException(); }</span>
+<span class="nc" id="L104">                @Override public ObjectStream openStream() throws IOException { throw failure(&quot;Synthetic Git blobs require synchronous streaming&quot;); }</span>
+                @Override public void copyTo(OutputStream output) throws IOException {
+<span class="fc" id="L106">                    check(); stand.copy(object.file(), output, Reader.this::check); check();</span>
+<span class="fc" id="L107">                }</span>
+            };
+        }
+<span class="fc" id="L110">        @Override public Set&lt;ObjectId&gt; getShallowCommits() throws IOException { check(); return Set.of(); }</span>
+<span class="fc" id="L111">        @Override public void close() { active = false; }</span>
+    }
+
+    private static SHA1 digest(int type, long length) {
+<span class="fc" id="L115">        var digest = SHA1.newInstance().setDetectCollision(true);</span>
+<span class="fc" id="L116">        digest.update((Constants.typeString(type) + &quot; &quot; + length + &quot;\0&quot;).getBytes(StandardCharsets.US_ASCII)); return digest;</span>
+    }
+<span class="fc" id="L118">    private record ObjectData(int type, byte[] bytes, GitStandBackupSource.File file) { }</span>
+<span class="fc" id="L119">    private static final class Directory { final Map&lt;String, TreeEntry&gt; entries = new HashMap&lt;&gt;(); int bytes; }</span>
+<span class="fc" id="L120">    private record TreeEntry(byte[] name, FileMode mode, Directory directory, ObjectId blob) { }</span>
+
+    private static final class Graph {
+<span class="fc" id="L123">        final Limits limits; final BackupCheckpoint checkpoint; final Map&lt;ObjectId, ObjectData&gt; objects = new HashMap&lt;&gt;(); int metadata;</span>
+<span class="fc" id="L124">        Graph(Limits limits, BackupCheckpoint checkpoint) { this.limits = limits; this.checkpoint = checkpoint; }</span>
+        void addPath(Directory root, GitStandBackupSource.File file, ObjectId blob) throws IOException {
+<span class="fc" id="L126">            var segments = file.path().split(&quot;/&quot;); var directory = root;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            for (int i = 0; i &lt; segments.length; i++) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                checkpoint.check(); String name = segments[i]; boolean last = i == segments.length - 1;</span>
+<span class="fc" id="L129">                var prior = directory.entries.get(name);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                if (prior == null) {</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                    byte[] encoded = name.getBytes(StandardCharsets.UTF_8); var mode = last ? FileMode.fromBits(file.mode()) : FileMode.TREE;</span>
+<span class="fc" id="L132">                    int size = TreeFormatter.entrySize(mode, encoded.length);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                    if (size &gt; limits.maxTreeBytes() - directory.bytes) throw failure(&quot;Stand bundle tree metadata limit exceeded&quot;);</span>
+<span class="fc" id="L134">                    reserve(size); directory.bytes += size;</span>
+<span class="fc bfc" id="L135" title="All 4 branches covered.">                    prior = new TreeEntry(encoded, mode, last ? null : new Directory(), last ? blob : null); directory.entries.put(name, prior);</span>
+                }
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                if (!last) directory = prior.directory();</span>
+            }
+<span class="fc" id="L139">        }</span>
+        ObjectId tree(Directory directory) throws IOException {
+<span class="fc" id="L141">            checkpoint.check(); var formatter = new TreeFormatter(directory.bytes);</span>
+<span class="fc" id="L142">            var entries = new ArrayList&lt;&gt;(directory.entries.values());</span>
+<span class="fc" id="L143">            entries.sort((a, b) -&gt; Paths.compare(a.name(), 0, a.name().length, a.mode().getBits(), b.name(), 0, b.name().length, b.mode().getBits()));</span>
+<span class="fc bfc" id="L144" title="All 4 branches covered.">            for (var entry : entries) { checkpoint.check(); formatter.append(entry.name(), entry.mode(), entry.directory() == null ? entry.blob() : tree(entry.directory())); }</span>
+<span class="fc" id="L145">            byte[] bytes = formatter.toByteArray(); var hash = digest(Constants.OBJ_TREE, bytes.length); hash.update(bytes); ObjectId id = hash.toObjectId();</span>
+<span class="fc" id="L146">            add(id, new ObjectData(Constants.OBJ_TREE, bytes, null)); return id;</span>
+        }
+        ObjectId metadata(int type, byte[] bytes) throws IOException {
+<span class="fc" id="L149">            reserve(bytes.length); var hash = digest(type, bytes.length); hash.update(bytes); ObjectId id = hash.toObjectId();</span>
+<span class="fc" id="L150">            add(id, new ObjectData(type, bytes, null)); return id;</span>
+        }
+        void reserve(int count) throws IOException {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            if (count &gt; limits.maxMetadataBytes() - metadata) throw failure(&quot;Stand bundle total metadata limit exceeded&quot;); metadata += count;</span>
+<span class="fc" id="L154">        }</span>
+        void add(ObjectId id, ObjectData data) throws IOException {
+<span class="fc" id="L156">            var previous = objects.putIfAbsent(id, data);</span>
+<span class="pc bpc" id="L157" title="2 of 6 branches missed.">            if (previous != null &amp;&amp; (previous.type() != data.type() || !Arrays.equals(previous.bytes(), data.bytes())</span>
+<span class="pc bpc" id="L158" title="3 of 6 branches missed.">                    || data.file() != null &amp;&amp; (previous.file().length() != data.file().length() || !previous.file().sha256().equals(data.file().sha256()))))</span>
+<span class="nc" id="L159">                throw failure(&quot;Synthetic Git object ID collision&quot;);</span>
+<span class="fc" id="L160">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

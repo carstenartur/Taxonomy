@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BoundedBackupMetadata.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.backup</a> &gt; <span class="el_source">BoundedBackupMetadata.java</span></div><h1>BoundedBackupMetadata.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.backup;
+
+import com.taxonomy.backup.*;
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.sql.*;
+import java.util.*;
+
+/** Existing metadata only: a limit+1 sentinel rejects an oversized inventory, never truncates it. */
+final class BoundedBackupMetadata {
+    private final DataSource database;
+<span class="fc" id="L13">    BoundedBackupMetadata(DataSource database) { this.database = Objects.requireNonNull(database); }</span>
+    @FunctionalInterface interface Mapper&lt;T&gt; { T read(ResultSet row) throws SQLException, IOException; }
+
+    &lt;T&gt; List&lt;T&gt; read(String sql, List&lt;String&gt; parameters, int limit, BackupCheckpoint checkpoint,
+                     Mapper&lt;T&gt; mapper) throws IOException {
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">        if (limit &lt; 0 || limit &gt; BackupLimits.MAX_ITEMS) throw new IllegalArgumentException(&quot;Invalid metadata inventory limit&quot;);</span>
+<span class="fc" id="L19">        checkpoint.check();</span>
+<span class="fc" id="L20">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L21">            connection.setReadOnly(true); connection.setAutoCommit(false);</span>
+<span class="fc" id="L22">            try (Rollback rollback = connection::rollback; var statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L23">                statement.setMaxRows(limit + 1); statement.setFetchSize(Math.min(200, limit + 1)); statement.setQueryTimeout(60);</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">                for (int i = 0; i &lt; parameters.size(); i++) statement.setString(i + 1, parameters.get(i));</span>
+<span class="fc" id="L25">                checkpoint.check();</span>
+<span class="fc" id="L26">                try (var rows = statement.executeQuery()) {</span>
+<span class="fc" id="L27">                    List&lt;T&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">                    while (rows.next()) {</span>
+<span class="fc" id="L29">                        checkpoint.check();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                        if (values.size() == limit) throw new IOException(&quot;Backup metadata inventory limit exceeded&quot;);</span>
+<span class="fc" id="L31">                        values.add(mapper.read(rows));</span>
+                    }
+<span class="fc" id="L33">                    checkpoint.check(); return List.copyOf(values);</span>
+                }
+            }
+<span class="fc" id="L36">        } catch (InterruptedIOException cancelled) {</span>
+<span class="fc" id="L37">            Thread.currentThread().interrupt(); throw new InterruptedIOException(&quot;Backup metadata inventory was cancelled&quot;);</span>
+<span class="nc" id="L38">        } catch (SQLException invalid) { throw new IOException(&quot;Backup metadata inventory is unavailable&quot;); }</span>
+    }
+    @FunctionalInterface private interface Rollback extends AutoCloseable { @Override void close() throws SQLException; }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

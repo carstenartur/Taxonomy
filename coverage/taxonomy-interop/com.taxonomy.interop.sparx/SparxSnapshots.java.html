@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxSnapshots.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.sparx</a> &gt; <span class="el_source">SparxSnapshots.java</span></div><h1>SparxSnapshots.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.sparx;
+
+import com.taxonomy.exchange.sparx.SparxMappingProfile;
+import com.taxonomy.exchange.sparx.SparxOslcAmCodec;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.interop.IntegrationProblem;
+
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Adds scoped identity metadata to canonical exchange values without trusting it as an authorization grant. */
+public final class SparxSnapshots {
+    private SparxSnapshots() {}
+<span class="fc bfc" id="L14" title="All 4 branches covered.">    public static boolean isSparx(String profile) { return SparxMappingProfile.PROFILE.equals(profile) || SparxOslcAmCodec.PROFILE.equals(profile); }</span>
+
+    public static ExchangeDocument identify(ExchangeDocument source, UUID connection) {
+<span class="fc" id="L17">        Set&lt;String&gt; identities = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L18">        List&lt;Artifact&gt; artifacts = source.artifacts().stream().map(a -&gt; {</span>
+<span class="fc" id="L19">            Map&lt;String, String&gt; tags = tags(a.attributes(), connection, a.id(), identities, source);</span>
+<span class="fc" id="L20">            Map&lt;String, String&gt; extension = new TreeMap&lt;&gt;(a.extensions()); extension.put(&quot;internalIdentity&quot;, tags.get(&quot;tag:taxonomy.id&quot;));</span>
+<span class="fc" id="L21">            return new Artifact(a.id(), a.kind(), a.type(), a.title(), a.text(), tags, extension);</span>
+<span class="fc" id="L22">        }).toList();</span>
+<span class="fc" id="L23">        List&lt;Relation&gt; relations = source.relations().stream().map(r -&gt; {</span>
+<span class="fc" id="L24">            Map&lt;String, String&gt; tags = tags(r.attributes(), connection, r.id(), identities, source);</span>
+<span class="fc" id="L25">            Map&lt;String, String&gt; extension = new TreeMap&lt;&gt;(r.extensions()); extension.put(&quot;internalIdentity&quot;, tags.get(&quot;tag:taxonomy.id&quot;));</span>
+<span class="fc" id="L26">            return new Relation(r.id(), r.type(), r.source(), r.target(), tags, extension);</span>
+<span class="fc" id="L27">        }).toList();</span>
+<span class="fc" id="L28">        return new ExchangeDocument(source.profile(), source.profileVersion(), source.externalVersion(), source.completeScope(), source.source(),</span>
+<span class="fc" id="L29">                artifacts, relations, source.placements(), source.metadata(), source.losses());</span>
+    }
+
+    private static Map&lt;String, String&gt; tags(Map&lt;String, String&gt; before, UUID connection, String externalId, Set&lt;String&gt; identities, ExchangeDocument source) {
+<span class="fc" id="L33">        Map&lt;String, String&gt; result = new TreeMap&lt;&gt;(before);</span>
+<span class="fc" id="L34">        String id = result.getOrDefault(&quot;tag:taxonomy.id&quot;, UUID.nameUUIDFromBytes((connection + &quot;\u0000&quot; + externalId).getBytes(StandardCharsets.UTF_8)).toString());</span>
+<span class="fc" id="L35">        String normalized = SparxMappingProfile.guid(id); id = normalized.substring(1, normalized.length() - 1).toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        if (!identities.add(id)) throw new IntegrationProblem(&quot;DUPLICATE_IDENTITY&quot;, 400, &quot;Two external objects claim the same Taxonomy identity&quot;);</span>
+<span class="fc" id="L37">        result.put(&quot;tag:taxonomy.id&quot;, id); result.put(&quot;tag:taxonomy.mappingProfile&quot;, source.profile() + &quot;@&quot; + source.profileVersion());</span>
+<span class="fc" id="L38">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UserManagementPageController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.controller</a> &gt; <span class="el_source">UserManagementPageController.java</span></div><h1>UserManagementPageController.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.controller;
+
+import com.taxonomy.security.config.LocalUserManagementAccess;
+import com.taxonomy.security.service.UserManagementService;
+import com.taxonomy.security.service.PasswordChangeService;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/** Opt-in, administrator-only HTML adapter over the existing local account service. */
+@Controller
+@RequestMapping(&quot;/admin/users&quot;)
+@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
+@Profile(LocalUserManagementAccess.PROFILE_EXPRESSION)
+@ConditionalOnProperty(name = LocalUserManagementAccess.PROPERTY,
+        havingValue = &quot;true&quot;, matchIfMissing = true)
+public class UserManagementPageController {
+    private static final int MIN_PASSWORD_LENGTH = PasswordChangeService.MINIMUM_PASSWORD_LENGTH;
+    private static final int MAX_PASSWORD_BYTES = 72;
+    private final UserManagementService users;
+    private final boolean temporaryPasswords;
+
+    public UserManagementPageController(UserManagementService users,
+<span class="fc" id="L46">            @Value(&quot;${taxonomy.security.require-password-change:false}&quot;) boolean temporaryPasswords) {</span>
+<span class="fc" id="L47">        this.users = users;</span>
+<span class="fc" id="L48">        this.temporaryPasswords = temporaryPasswords;</span>
+<span class="fc" id="L49">    }</span>
+
+    @ModelAttribute
+    public void pageContext(Model model, HttpServletResponse response, Authentication authentication) {
+<span class="fc" id="L53">        response.setHeader(&quot;Cache-Control&quot;, &quot;no-store&quot;);</span>
+<span class="fc" id="L54">        model.addAttribute(&quot;availableRoles&quot;, List.of(&quot;ROLE_USER&quot;, &quot;ROLE_ARCHITECT&quot;, &quot;ROLE_ADMIN&quot;));</span>
+<span class="fc" id="L55">        model.addAttribute(&quot;minimumPasswordLength&quot;, MIN_PASSWORD_LENGTH);</span>
+<span class="fc" id="L56">        model.addAttribute(&quot;temporaryPasswords&quot;, temporaryPasswords);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        model.addAttribute(&quot;currentUsername&quot;, authentication == null ? &quot;&quot; : authentication.getName());</span>
+<span class="fc" id="L58">    }</span>
+
+    @GetMapping
+    public String list(Model model) {
+<span class="fc" id="L62">        model.addAttribute(&quot;users&quot;, users.listUsers().stream()</span>
+<span class="pc" id="L63">                .sorted(Comparator.comparing(user -&gt; String.valueOf(user.get(&quot;username&quot;)),</span>
+<span class="fc" id="L64">                        String.CASE_INSENSITIVE_ORDER)).toList());</span>
+<span class="fc" id="L65">        return &quot;user-management&quot;;</span>
+    }
+
+    @GetMapping(&quot;/new&quot;)
+    public String newUser(Model model) {
+<span class="nc" id="L70">        model.addAttribute(&quot;form&quot;, UserManagementForm.empty());</span>
+<span class="nc" id="L71">        model.addAttribute(&quot;creating&quot;, true);</span>
+<span class="nc" id="L72">        return &quot;user-management-form&quot;;</span>
+    }
+
+    @GetMapping(&quot;/{id}&quot;)
+    public String edit(@PathVariable Long id, Model model) {
+<span class="fc" id="L77">        return editPage(id, model);</span>
+    }
+
+    @PostMapping
+    public String create(@Valid @ModelAttribute(&quot;form&quot;) UserManagementForm form, BindingResult errors,
+            @RequestParam(defaultValue = &quot;&quot;) String newPassword,
+            @RequestParam(defaultValue = &quot;&quot;) String confirmPassword,
+            Authentication authentication, Model model, HttpServletResponse response,
+            RedirectAttributes redirect, Locale locale) {
+<span class="fc" id="L86">        model.addAttribute(&quot;creating&quot;, true);</span>
+<span class="fc" id="L87">        String passwordError = passwordError(newPassword, confirmPassword);</span>
+<span class="fc bfc" id="L88" title="All 4 branches covered.">        if (errors.hasErrors() || passwordError != null) {</span>
+<span class="fc" id="L89">            return failure(model, response, HttpStatus.BAD_REQUEST,</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                    passwordError == null ? &quot;users.error.profile&quot; : passwordError, &quot;user-management-form&quot;);</span>
+        }
+<span class="fc" id="L92">        Map&lt;String, Object&gt; body = form.profile();</span>
+<span class="fc" id="L93">        body.put(&quot;username&quot;, form.username());</span>
+        // Keep the credential out of the profile map and all view/audit data.
+        try {
+<span class="fc" id="L96">            users.createUser(body, newPassword, authentication.getName());</span>
+<span class="fc" id="L97">            return redirect(redirect, locale, &quot;users.created&quot;, &quot;/admin/users&quot;);</span>
+<span class="fc" id="L98">        } catch (UserManagementService.ConflictException exception) {</span>
+<span class="fc" id="L99">            return failure(model, response, HttpStatus.CONFLICT, &quot;users.error.duplicate&quot;, &quot;user-management-form&quot;);</span>
+<span class="fc" id="L100">        } catch (UserManagementService.ValidationException exception) {</span>
+<span class="fc" id="L101">            return failure(model, response, HttpStatus.BAD_REQUEST, &quot;users.error.profile&quot;, &quot;user-management-form&quot;);</span>
+        }
+    }
+
+    @PostMapping(&quot;/{id}&quot;)
+    public String update(@PathVariable Long id,
+            @Valid @ModelAttribute(&quot;form&quot;) UserManagementForm form, BindingResult errors,
+            Authentication authentication, Model model, HttpServletResponse response,
+            RedirectAttributes redirect, Locale locale) {
+<span class="fc" id="L110">        model.addAttribute(&quot;account&quot;, account(id));</span>
+<span class="fc" id="L111">        model.addAttribute(&quot;creating&quot;, false);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (errors.hasErrors()) {</span>
+<span class="fc" id="L113">            return failure(model, response, HttpStatus.BAD_REQUEST, &quot;users.error.profile&quot;, &quot;user-management-form&quot;);</span>
+        }
+        try {
+            // Username and enabled are deliberately not accepted by this form.
+<span class="fc" id="L117">            users.updateUser(id, form.profile(), authentication.getName());</span>
+<span class="fc" id="L118">            return redirect(redirect, locale, &quot;users.saved&quot;, &quot;/admin/users/&quot; + id);</span>
+<span class="fc" id="L119">        } catch (UserManagementService.NotFoundException exception) {</span>
+<span class="fc" id="L120">            throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+<span class="fc" id="L121">        } catch (UserManagementService.ValidationException exception) {</span>
+<span class="fc" id="L122">            return failure(model, response, HttpStatus.BAD_REQUEST, &quot;users.error.lastAdmin&quot;, &quot;user-management-form&quot;);</span>
+        }
+    }
+
+    @PostMapping(&quot;/{id}/password&quot;)
+    public String resetPassword(@PathVariable Long id,
+            @RequestParam(defaultValue = &quot;&quot;) String newPassword,
+            @RequestParam(defaultValue = &quot;&quot;) String confirmPassword,
+            Authentication authentication, Model model, HttpServletResponse response,
+            RedirectAttributes redirect, Locale locale) {
+<span class="fc" id="L132">        String passwordError = passwordError(newPassword, confirmPassword);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (passwordError != null) {</span>
+<span class="fc" id="L134">            editPage(id, model);</span>
+<span class="fc" id="L135">            return failure(model, response, HttpStatus.BAD_REQUEST, passwordError, &quot;user-management-form&quot;);</span>
+        }
+        try {
+<span class="fc" id="L138">            users.changePassword(id, newPassword, authentication.getName());</span>
+<span class="fc" id="L139">            return redirect(redirect, locale, &quot;users.passwordChanged&quot;, &quot;/admin/users/&quot; + id);</span>
+<span class="fc" id="L140">        } catch (UserManagementService.NotFoundException exception) {</span>
+<span class="fc" id="L141">            throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+<span class="fc" id="L142">        } catch (UserManagementService.ValidationException exception) {</span>
+<span class="fc" id="L143">            editPage(id, model);</span>
+<span class="fc" id="L144">            return failure(model, response, HttpStatus.BAD_REQUEST, &quot;users.error.passwordLength&quot;, &quot;user-management-form&quot;);</span>
+        }
+    }
+
+    @GetMapping(&quot;/{id}/status&quot;)
+    public String confirmStatus(@PathVariable Long id, @RequestParam boolean enabled, Model model) {
+<span class="fc" id="L150">        model.addAttribute(&quot;account&quot;, account(id));</span>
+<span class="fc" id="L151">        model.addAttribute(&quot;enableAccount&quot;, enabled);</span>
+<span class="fc" id="L152">        return &quot;user-management-status&quot;;</span>
+    }
+
+    @PostMapping(&quot;/{id}/status&quot;)
+    public String changeStatus(@PathVariable Long id, @RequestParam boolean enabled,
+            Authentication authentication, Model model, HttpServletResponse response,
+            RedirectAttributes redirect, Locale locale) {
+        try {
+<span class="fc bfc" id="L160" title="All 2 branches covered.">            if (enabled) {</span>
+<span class="fc" id="L161">                users.updateUser(id, Map.of(&quot;enabled&quot;, true), authentication.getName());</span>
+            } else {
+<span class="fc" id="L163">                users.disableUser(id, authentication.getName());</span>
+            }
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            return redirect(redirect, locale, enabled ? &quot;users.enabled&quot; : &quot;users.disabled&quot;, &quot;/admin/users&quot;);</span>
+<span class="fc" id="L166">        } catch (UserManagementService.NotFoundException exception) {</span>
+<span class="fc" id="L167">            throw new ResponseStatusException(HttpStatus.NOT_FOUND);</span>
+<span class="fc" id="L168">        } catch (UserManagementService.ValidationException exception) {</span>
+<span class="fc" id="L169">            confirmStatus(id, enabled, model);</span>
+<span class="fc" id="L170">            return failure(model, response, HttpStatus.BAD_REQUEST, &quot;users.error.lastAdmin&quot;, &quot;user-management-status&quot;);</span>
+        }
+    }
+
+    private Map&lt;String, Object&gt; account(Long id) {
+<span class="fc" id="L175">        return users.getUser(id).orElseThrow(() -&gt; new ResponseStatusException(HttpStatus.NOT_FOUND));</span>
+    }
+
+    private String editPage(Long id, Model model) {
+<span class="fc" id="L179">        Map&lt;String, Object&gt; account = account(id);</span>
+<span class="fc" id="L180">        model.addAttribute(&quot;account&quot;, account);</span>
+<span class="fc" id="L181">        model.addAttribute(&quot;form&quot;, UserManagementForm.from(account));</span>
+<span class="fc" id="L182">        model.addAttribute(&quot;creating&quot;, false);</span>
+<span class="fc" id="L183">        return &quot;user-management-form&quot;;</span>
+    }
+
+    private static String passwordError(String password, String confirmation) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (!password.equals(confirmation)) {</span>
+<span class="fc" id="L188">            return &quot;users.error.passwordMismatch&quot;;</span>
+        }
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (password.length() &lt; MIN_PASSWORD_LENGTH</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                || password.getBytes(StandardCharsets.UTF_8).length &gt; MAX_PASSWORD_BYTES) {</span>
+<span class="fc" id="L192">            return &quot;users.error.passwordLength&quot;;</span>
+        }
+<span class="fc" id="L194">        return null;</span>
+    }
+
+    private static String failure(Model model, HttpServletResponse response, HttpStatus status,
+            String errorKey, String view) {
+<span class="fc" id="L199">        response.setStatus(status.value());</span>
+<span class="fc" id="L200">        model.addAttribute(&quot;errorKey&quot;, errorKey);</span>
+<span class="fc" id="L201">        return view;</span>
+    }
+
+    private static String redirect(RedirectAttributes redirect, Locale locale, String successKey, String path) {
+<span class="fc" id="L205">        redirect.addFlashAttribute(&quot;successKey&quot;, successKey);</span>
+<span class="fc" id="L206">        redirect.addAttribute(&quot;lang&quot;, locale.getLanguage());</span>
+<span class="fc" id="L207">        return &quot;redirect:&quot; + path;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

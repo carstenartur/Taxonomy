@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupJobLimits.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.jobs</a> &gt; <span class="el_source">BackupJobLimits.java</span></div><h1>BackupJobLimits.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.jobs;
+
+import java.time.Duration;
+
+public record BackupJobLimits(int heavyConcurrency, int currentConcurrency, int queueCapacity,
+                              Duration lease, Duration retention, long maxRetainedBytes, long maxTemporaryBytes) {
+    // 10 GiB capture + streaming protection overhead/manifest + 12 GiB archive.
+    public static final long TEMPORARY_BYTES_PER_JOB = 24L &lt;&lt; 30;
+    public BackupJobLimits(int heavy, int current, int queued, Duration lease, Duration retention, long retained) {
+<span class="fc" id="L10">        this(heavy, current, queued, lease, retention, retained, 72L &lt;&lt; 30);</span>
+<span class="fc" id="L11">    }</span>
+<span class="fc" id="L12">    public BackupJobLimits {</span>
+<span class="pc bpc" id="L13" title="7 of 14 branches missed.">        if (heavyConcurrency &lt; 1 || heavyConcurrency &gt; 8 || currentConcurrency &lt; 1 || currentConcurrency &gt; 32</span>
+<span class="pc bpc" id="L14" title="1 of 2 branches missed.">                || queueCapacity &lt; 1 || queueCapacity &gt; 1000 || lease == null || lease.compareTo(Duration.ofSeconds(1)) &lt; 0</span>
+<span class="pc bpc" id="L15" title="3 of 6 branches missed.">                || lease.compareTo(Duration.ofMinutes(30)) &gt; 0 || retention == null || retention.compareTo(Duration.ofMinutes(1)) &lt; 0</span>
+<span class="pc bpc" id="L16" title="3 of 6 branches missed.">                || retention.compareTo(Duration.ofDays(30)) &gt; 0 || maxRetainedBytes &lt; 1 || maxTemporaryBytes &lt; TEMPORARY_BYTES_PER_JOB)</span>
+<span class="nc" id="L17">            throw new IllegalArgumentException(&quot;Invalid backup job limits&quot;);</span>
+<span class="fc" id="L18">    }</span>
+<span class="fc" id="L19">    public static BackupJobLimits defaults() { return new BackupJobLimits(1, 2, 64, Duration.ofSeconds(30), Duration.ofHours(24), 64L &lt;&lt; 30); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
