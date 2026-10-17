@@ -100,6 +100,18 @@ class DecisionCompactReportTest {
         assertThat(panels.getFirst().a3()).isTrue();
         assertThat(panels.getFirst().nodeCodes()).hasSize(20);
     }
+    @Test void autoKeepsReadableA3ContinuationPagesForLongTrees() {
+        var tree = report(DecisionReportOptions.TreeLayout.AUTO, 65).scope().decisionTree();
+        var panels = new DecisionTreeFigureRenderer().render(tree, "en", DecisionReportOptions.TreeLayout.AUTO);
+        assertThat(panels.size()).isBetween(2, 4);
+        assertThat(panels).allSatisfy(panel -> {
+            assertThat(panel.a3()).as("long trees retain the larger continuation format").isTrue();
+            assertThat(panel.height()).isLessThanOrEqualTo(640);
+            assertThat(panel.fontSize()).isEqualTo(10);
+        });
+        assertThat(panels.stream().flatMap(panel -> panel.nodeCodes().stream()).toList())
+                .containsExactlyElementsOf(tree.rows().stream().map(DecisionTreeOverview.DecisionTreeRow::code).toList());
+    }
     @Test void strictSinglePageExplainsWhenTheWholeTreeCannotFit() {
         assertThatThrownBy(() -> new DecisionTreeFigureRenderer().render(report(DecisionReportOptions.TreeLayout.AUTO, 65)
                 .scope().decisionTree(), "en", DecisionReportOptions.TreeLayout.A4_LANDSCAPE))

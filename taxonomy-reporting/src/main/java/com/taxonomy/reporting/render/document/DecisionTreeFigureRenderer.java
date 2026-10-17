@@ -36,8 +36,10 @@ public final class DecisionTreeFigureRenderer {
             boolean a3 = layout == TreeLayout.A3_LANDSCAPE;
             List<Line> lines = layout(rows, language, a3 ? 1070 : 720);
             if (layout == TreeLayout.AUTO && totalHeight(lines) > 360) {
-                var larger = layout(rows, language, 1070);
-                if (totalHeight(larger) <= 640) { a3 = true; lines = larger; }
+                // Keep the wider, taller reading area for continuation pages too.
+                // Falling back to A4 for the longest roots creates avoidable sparse panels.
+                a3 = true;
+                lines = layout(rows, language, 1070);
             }
             int width = a3 ? 1070 : 720, budget = a3 ? 640 : 360;
             if (layout != TreeLayout.AUTO && totalHeight(lines) > budget) throw new WordReportLayoutException(

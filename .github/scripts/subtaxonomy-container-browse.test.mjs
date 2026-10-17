@@ -7,6 +7,7 @@ const sourcePath = '../../taxonomy-app/src/main/resources/static/js/';
 const sources = ['shared/taxonomy-utils.js', 'core/taxonomy-browse.js', 'core/taxonomy-scoring.js']
     .map(file => readFileSync(new URL(sourcePath + file, import.meta.url), 'utf8'));
 const searchSource = readFileSync(new URL(sourcePath + 'shared/taxonomy-search.js', import.meta.url), 'utf8');
+const onboardingSource = readFileSync(new URL(sourcePath + 'shared/taxonomy-onboarding.js', import.meta.url), 'utf8');
 
 // A bounded, deterministic catalogue fixture. The BP-1000 -> BP-1327 -> BP-1060
 // and BR-1000 -> BR-1228 edges come from the checked-in 25AUG2025 Excel catalogue;
@@ -188,6 +189,11 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
                 'window.TaxonomySearch = { revealNodeInTree: revealNodeInTree, '
                 + 'selectResultForTest: function (node) { resultState.nodes = [node]; navigateToResult(0, false, "select"); },'), context);
             return window.TaxonomySearch;
+        },
+        loadOnboarding() {
+            vm.runInContext(onboardingSource.replace('window.TaxonomyOnboarding = {',
+                'window.TaxonomyOnboarding = { reviewResultsForTest: performNextAction,'), context);
+            return window.TaxonomyOnboarding;
         },
         key(key) { document.activeElement.dispatchEvent({ type: 'keydown', key }); }
     };
@@ -491,10 +497,11 @@ test('incremental scores update the area heading and original row without changi
     assert.equal(JSON.stringify(data), before);
 });
 
-test('scoring expansion opens a collapsed heading and original path with the native button expanded state', () => {
+test('scoring expansion opens an initially collapsed heading and original path with the native button expanded state', () => {
     for (const view of ['list', 'tabs']) for (const method of ['expandNodeByCode', 'expandMatched']) {
         const h = harness({ view }), group = h.group('BP');
-        h.browse.setNodeExpanded(group, false);
+        // An automatic initial collapse is not an explicit reader preference.
+        h.browse.setNodeExpanded(group, false, true);
         assert.ok(h.row('BP-1060') === null, 'deep catalogue entries begin deferred');
         h.state.currentScores = freeze({ 'BP-1060': 48 });
         h.window.TaxonomyScoring[method](method === 'expandNodeByCode' ? 'BP-1060' : h.state.currentScores);
@@ -509,6 +516,62 @@ test('scoring expansion opens a collapsed heading and original path with the nat
         assert.equal(h.row('BP-1060').dataset.code, 'BP-1060');
         assert.ok(h.row('BP') === null);
         assert.equal(h.requests.length, 0, 'making an existing score path visible does not request more analysis');
+    }
+});
+
+test('automatic scoring expansion preserves an explicit closed heading through rerender', () => {
+    for (const view of ['list', 'tabs']) for (const method of ['expandNodeByCode', 'expandMatched']) {
+        const h = harness({ view }), group = h.group('BP');
+        h.browse.setNodeExpanded(group, false);
+        h.state.currentScores = freeze({ 'BP-1060': 48 });
+        h.window.TaxonomyScoring[method](method === 'expandNodeByCode' ? 'BP-1060' : h.state.currentScores);
+        assert.equal(group.querySelector('.tax-container-toggle').getAttribute('aria-expanded'), 'false', view + '/' + method);
+        assert.equal(h.state.browseExpansion.get('BP'), false);
+        assert.equal(h.row('BP-1060'), null, 'an explicitly closed path remains deferred');
+        h.browse.renderView(h.state.taxonomyData, h.state.currentScores);
+        assert.equal(h.group('BP').querySelector('.tax-container-toggle').getAttribute('aria-expanded'), 'false');
+        assert.equal(h.row('BP-1060'), null);
+        assert.equal(h.requests.length, 0);
+    }
+});
+
+test('explicit scored-node navigation can open a previously closed heading and original path', () => {
+    for (const view of ['list', 'tabs']) {
+        const h = harness({ view }), group = h.group('BP');
+        h.browse.setNodeExpanded(group, false);
+        h.state.currentScores = freeze({ 'BP-1060': 48 });
+        h.window.TaxonomyScoring.expandNodeByCode('BP-1060', true);
+        assert.equal(group.querySelector('.tax-container-toggle').getAttribute('aria-expanded'), 'true');
+        assert.equal(h.state.browseExpansion.get('BP'), true, 'explicit navigation replaces the older close choice');
+        for (const code of ['BP-1000', 'BP-1327']) {
+            assert.equal(h.row(code).getAttribute('aria-expanded'), 'true');
+        }
+        assert.equal(h.row('BP-1060').dataset.code, 'BP-1060');
+        assert.equal(h.requests.length, 0, 'revealing existing evidence never starts another assessment');
+    }
+});
+
+test('Review results reopens the best original match after Collapse All using real navigation modules', () => {
+    for (const view of ['list', 'tabs']) {
+        const data = freeze(catalogue()), before = JSON.stringify(data), h = harness({ view, data });
+        const scores = freeze({ 'BP-1060': 48 });
+        h.state.currentScores = scores;
+        h.browse.collapseAllForTest();
+        assert.equal(h.row('BP-1060'), null, 'the actual best match starts deferred');
+        const action = h.document.createElement('button');
+        action.id = 'taskNextAction'; action.dataset.action = 'review-results';
+        h.document.body.appendChild(action);
+        h.loadOnboarding().reviewResultsForTest();
+        assert.equal(h.group('BP').querySelector('.tax-container-toggle').getAttribute('aria-expanded'), 'true');
+        for (const code of ['BP-1000', 'BP-1327']) {
+            assert.equal(h.row(code).getAttribute('aria-expanded'), 'true');
+            assert.equal(h.row(code).querySelector(':scope > .tax-children').style.display, '');
+        }
+        assert.ok(h.document.activeElement === h.row('BP-1060'), 'the requested existing result becomes the visible focus target');
+        assert.equal(h.row('BP-1060').getAttribute('tabindex'), '0');
+        assert.ok(h.state.currentScores === scores);
+        assert.equal(JSON.stringify(data), before);
+        assert.equal(h.requests.length, 0, 'reviewing an existing assessment never requests another provider result');
     }
 });
 

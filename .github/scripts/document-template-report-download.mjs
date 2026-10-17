@@ -525,9 +525,16 @@ async function downloadDecisionReport(target, reportPath) {
   const dialog = target.locator('dialog.decision-export-dialog');
   await dialog.waitFor({ state: 'visible', timeout: 30_000 });
   await dialog.locator('[name="format"]').selectOption('docx');
-  // This acceptance test verifies the complete template-backed report, not the
-  // dialog's compact default or a contextually preselected single taxonomy.
+  const initialProfile = await dialog.locator('[name="profile"]').inputValue();
+  const initialLayout = await dialog.locator('[name="treeLayout"]').inputValue();
+  if (initialProfile !== 'STANDARD' || initialLayout !== 'AUTO') {
+    throw new Error(`Unexpected initial report presentation: ${initialProfile}/${initialLayout}`);
+  }
+  // Exercise complete template-backed output with independently chosen contents and layout.
   await dialog.locator('[name="profile"]').selectOption('FULL');
+  await dialog.locator('details > summary').click();
+  await dialog.locator('[name="contents"]').selectOption('FULL');
+  await dialog.locator('[name="treeLayout"]').selectOption('TABLE');
   const roots = dialog.locator('input[name="root"]:enabled');
   await roots.first().waitFor({ state: 'visible', timeout: 30_000 });
   for (const root of await roots.all()) await root.check();

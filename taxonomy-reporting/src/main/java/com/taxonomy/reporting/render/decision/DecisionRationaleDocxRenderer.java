@@ -193,7 +193,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
                 new DecisionTreeWordSectionRenderer().write(document, report.scope().decisionTree(), report.languageTag(), options.includes(DecisionReportOptions.Section.CHAPTERS), evidence.linkedReasonCodes());
             else new DecisionTreeLandscapeSection().write(document, report, !shortCompact || architecture, evidence.includesFullReasons());
         }
-        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) renderChapters(document, report, labels);
+        if (options.includes(DecisionReportOptions.Section.CHAPTERS)) renderChapters(document, report, labels, evidence);
         evidence.writeReasons(document, labels);
         if (options.includes(DecisionReportOptions.Section.SUMMARY) && options.profile() != DecisionReportOptions.Profile.COMPACT)
             renderExecutiveSummary(document, report, labels);
@@ -472,7 +472,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
     private void renderChapters(
             XWPFDocument document,
             DecisionRationaleReport report,
-            DecisionReportLabels labels) throws Exception {
+            DecisionReportLabels labels,
+            DecisionNodeEvidence evidence) throws Exception {
         addSectionHeading(document, "02", labels.decisionChapters());
         new WordDocumentWriter(document,labels).bookmark(document.getParagraphs().getLast(),"decision_chapters");
         addBodyParagraph(document, labels.german()
@@ -496,7 +497,6 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
                         caption, panel.description(), panel.width(), panel.height());
                 writer.caption(caption, true);
             }
-            var evidence = new DecisionNodeEvidence(report);
             var node = evidence.node(chapter.parentCode());
             if (report.scope().options().includes(DecisionReportOptions.Section.TREE) && node != null
                     && report.scope().decisionTree().rows().stream().anyMatch(row -> row.depth() == 0 && row.code().equals(node.root())))
@@ -506,7 +506,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             addRationaleBox(document, labels.decisionResult(), chapter.decisionSummary(), PALE_BLUE);
             addRationaleBox(document, labels.comparison(), chapter.comparativeRationale(), LIGHT_TEAL);
             addHeading(document, labels.alternatives() + " · " + chapter.parentCode(), 3, false);
-            addChildTable(document, chapter, labels, new DecisionNodeEvidence(report));
+            addChildTable(document, chapter, labels, evidence);
             if (!chapter.complete()) {
                 addWarningBox(document,
                         labels.german() ? "Unvollständige Entscheidung" : "Incomplete decision",
@@ -1048,7 +1048,9 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
 
     private void spacer(XWPFDocument document, int points) {
         XWPFParagraph paragraph = document.createParagraph();
-        paragraph.setSpacingAfter(points * 20);
+        paragraph.setSpacingBefore(0);
+        paragraph.setSpacingAfter(0);
+        paragraph.setSpacingBetween(points, org.apache.poi.xwpf.usermodel.LineSpacingRule.EXACT);
         paragraph.createRun().setText("");
     }
 
