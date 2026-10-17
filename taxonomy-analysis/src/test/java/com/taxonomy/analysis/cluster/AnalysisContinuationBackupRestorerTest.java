@@ -54,6 +54,27 @@ class AnalysisContinuationBackupRestorerTest {
         }
     }
 
+    @Test void supersededCorrectiveEvidenceRestoresWithoutAnOpenQuestionOrCompletedCall() {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            String id = UUID.randomUUID().toString();
+            var detail = new LlmCallDetail(); detail.setRawResponse("unchanged failed correction"); detail.setError("invalid quote");
+            var retired = new QuestionRecord(new SourceRecordId("analysis.question", SOURCE.value() + ":" + UNCERTAIN),
+                    SOURCE, UNCERTAIN, "e".repeat(64), "MOCK", "[\"IP\"]", JSON.writeValueAsString(detail),
+                    "corrective prompt", "SUPERSEDED", 1, 1);
+            new AnalysisContinuationBackupRestorer(db.em, db.transactions, JSON).restore(
+                    source("COMPLETED", ResumePolicy.REVIEW_REQUIRED), List.of(retired), id, TARGET);
+            var view = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON).read(id, TARGET));
+            assertThat(view.recovery().openQuestions()).isEmpty();
+            assertThat(view.recovery().completedCalls()).isZero();
+            tx(db).executeWithoutResult(status -> {
+                Object[] row = db.em.createQuery("select q.state,q.detailJson from AnalysisQuestionCheckpoint q where q.id=?1", Object[].class)
+                        .setParameter(1, id + ":" + UNCERTAIN).getSingleResult();
+                assertThat(row[0]).isEqualTo("SUPERSEDED");
+                assertThat(JSON.readValue(row[1].toString(), LlmCallDetail.class).getRawResponse()).isEqualTo(detail.getRawResponse());
+            });
+        }
+    }
+
     @Test void parentClosureAndQuestionUniquenessFailBeforeAnyOwnerWrites() {
         try (var db = new ClusterAnalysisStoreTest.Database()) {
             var importer = new AnalysisContinuationBackupRestorer(db.em,db.transactions,JSON); String id=UUID.randomUUID().toString();

@@ -27,6 +27,11 @@ public interface LlmGateway extends com.taxonomy.extension.api.llm.LlmTransport 
      */
     String sendHttpRequest(String prompt, String apiKey);
 
+    /** Providers without structured completion support retain their existing transport. */
+    default String sendHttpRequest(String prompt, String apiKey, LlmCompletionOptions options) {
+        return sendHttpRequest(prompt, apiKey);
+    }
+
     /**
      * Validates a fully assembled prompt without I/O, quota consumption or recording.
      * Production gateways override this at their existing final-budget boundary;

@@ -254,7 +254,7 @@ class ArtemisProductionExecutionTest {
             assertThat(FrozenCatalogueContext.current()).isNotNull();
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             prompts.add(invocation.getArgument(0)); return invocation.callRealMethod();
-        }).when(engine.llm).callLlmRaw(anyString());
+        }).when(engine.llm).callLlmRaw(anyString(), org.mockito.ArgumentMatchers.any(com.taxonomy.analysis.service.LlmCompletionOptions.class));
         return prompts;
     }
 

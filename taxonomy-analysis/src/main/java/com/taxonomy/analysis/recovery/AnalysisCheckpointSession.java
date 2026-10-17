@@ -18,6 +18,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         Checkpoint prepare(Question question);
         void finish(Question question, String state, LlmCallDetail detail);
         void checkActive();
+        default void supersedeEvidence(String kind, String provider, java.util.function.Predicate<Question> covered) { }
         default com.taxonomy.dto.RelationSearchReport previousRelations() { return null; }
     }
     private static final ThreadLocal<AnalysisCheckpointSession> CURRENT = new ThreadLocal<>();
@@ -39,18 +40,27 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     }
     public static boolean isRelationQuestion(String key) { return key != null && key.startsWith("R"); }
 
+    public static void supersedeEvidence(String kind, String provider, java.util.function.Predicate<Question> covered) {
+        var current = CURRENT.get();
+        if (current != null) current.store.supersedeEvidence(kind, provider, covered);
+    }
+
+    static Question evidenceQuestion(String kind, String provider, List<String> nodes, String input) {
+        // 252-bit namespace-separated identity fits the existing 64-character schema.
+        String key = "R" + digest(kind, provider, String.join("\n", nodes), input).substring(1);
+        return new Question(key, digest(provider, input), provider, nodes, input);
+    }
+
     /** Relation evidence uses the same scoped journal without fabricating node scores. */
     public static LlmCallDetail evaluateEvidence(String kind, String provider, List<String> nodes,
                                                 String input, Supplier<LlmCallDetail> operation) {
         var current = CURRENT.get();
         if (current == null) return operation.get();
         current.store.checkActive();
-        // 252-bit namespace-separated identity fits the existing 64-character schema.
-        String key = "R" + digest(kind, provider, String.join("\n", nodes), input).substring(1);
-        Question question = new Question(key, digest(provider, input), provider, nodes, input);
+        Question question = evidenceQuestion(kind, provider, nodes, input);
         Checkpoint saved = current.store.prepare(question);
         question = saved.question();
-        if ("SUCCESS".equals(saved.state()) || "CLARIFICATION".equals(saved.state())) return copy(saved.detail());
+        if (Set.of("SUCCESS", "CLARIFICATION", "DECOMPOSED").contains(saved.state())) return copy(saved.detail());
         if ("UNASSESSED".equals(saved.state())) return unassessed(saved.detail());
         if ("SKIPPED".equals(saved.state())) {
             var skipped = new LlmCallDetail(); skipped.setScores(Map.of()); skipped.setProvider(provider);
@@ -75,7 +85,10 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
             // Preserve it for strict protocol replay, without marking it a success.
             boolean clarification = result.getError() != null && result.getError().startsWith("RELATION_UNRESOLVED:")
                     && result.getRawResponse() != null && !result.getRawResponse().isBlank();
-            current.store.finish(question, clarification ? "CLARIFICATION" : "UNASSESSED", copy(result));
+            // A decomposed response is retained verbatim. Independently keyed corrective
+            // questions own the failed entries; replay reconstructs the same validated siblings.
+            boolean decomposed = result.getError() != null && result.getError().startsWith("RELATION_DECOMPOSED:");
+            current.store.finish(question, decomposed ? "DECOMPOSED" : clarification ? "CLARIFICATION" : "UNASSESSED", copy(result));
             current.store.checkActive(); // Storage/ownership failures remain blocking.
             return clarification ? copy(result) : unassessed(result);
         }

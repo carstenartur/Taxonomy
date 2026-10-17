@@ -105,8 +105,8 @@ class DemoScenarioCatalogueTest {
                 .hasMessageContaining("DEMO_SCENARIO_CATALOGUE_MISMATCH").hasMessageContaining("UA-1605 is not a catalogue child of UA-1253");
     }
 
-    /** Replayed relation assessments complete within the default hierarchical search budget. */
-    @Test void relationSearchCompletesWithinDefaultBudgetForEveryIteration() {
+    /** Small batches complete through continuation without increasing the per-run allowance. */
+    @Test void relationSearchContinuesWithinDefaultBudgetForEveryIteration() {
         var catalogue = new com.taxonomy.analysis.relations.RequirementRelationSearch.InputCatalogue() {
             @Override public com.taxonomy.dto.RelationSearchModel.Node find(String id) {
                 return Optional.ofNullable(NODES.get(id)).map(DemoScenarioCatalogueTest::scalar).orElse(null);
@@ -120,16 +120,46 @@ class DemoScenarioCatalogueTest {
             }
         };
         var options = new com.taxonomy.analysis.relations.RequirementRelationSearch.Options(
-                new com.taxonomy.dto.RelationSearchModel.Limits(24, 8, 10, 512), 32);
+                new com.taxonomy.dto.RelationSearchModel.Limits(24, 8, 3, 512), 32);
         for (var iteration : scenario.iterations().values()) {
             var book = new DemoReplyBook(scenario, iteration.name());
             String text = iteration.name().equals("R0") ? scenario.r0Text()
                     : scenario.r0Text() + "\n" + String.join("\n", scenario.r1RequiredPhrases());
-            var report = new com.taxonomy.analysis.relations.RequirementRelationSearch(catalogue,
-                    new com.taxonomy.relations.service.RelationCompatibilityMatrix(), book::reply, () -> { })
-                    .search(text, iteration.declaredScores(), options);
+            var saved = new LinkedHashMap<String, com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint>();
+            var previous = new java.util.concurrent.atomic.AtomicReference<com.taxonomy.dto.RelationSearchReport>();
+            var journal = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Store() {
+                public com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint prepare(
+                        com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question question) {
+                    var checkpoint = saved.get(question.key());
+                    return checkpoint == null || "READY".equals(checkpoint.state())
+                            ? new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint(question, "ATTEMPT", null) : checkpoint;
+                }
+                public void finish(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question question,
+                                   String state, com.taxonomy.dto.LlmCallDetail detail) {
+                    saved.put(question.key(), new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint(question, state, detail));
+                }
+                public void checkActive() { }
+                public com.taxonomy.dto.RelationSearchReport previousRelations() { return previous.get(); }
+            };
+            int calls = 0;
+            for (int pass = 0; pass < 16; pass++) {
+                var actualCalls = new java.util.concurrent.atomic.AtomicInteger();
+                try (var session = new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(journal)) {
+                    previous.set(new com.taxonomy.analysis.relations.RequirementRelationSearch(catalogue,
+                            new com.taxonomy.relations.service.RelationCompatibilityMatrix(), prompt -> {
+                        actualCalls.incrementAndGet(); return book.reply(prompt);
+                    }, () -> { }).search(text, iteration.declaredScores(), options));
+                }
+                assertThat(previous.get().totalCalls()).isEqualTo(actualCalls.get()).isLessThanOrEqualTo(24);
+                calls += actualCalls.get();
+                if (previous.get().isSearchExhausted()) break;
+                assertThat(actualCalls.get()).as("continuation must make progress").isPositive();
+                assertThat(previous.get().result().unfinished()).allSatisfy(unfinished ->
+                        assertThat(unfinished.reason()).isIn("CALL_BUDGET", "SOURCE_LIMIT"));
+            }
+            var report = previous.get();
             assertThat(report.isSearchExhausted()).as("%s: %s calls, warnings %s, stop %s, unfinished %s", iteration.name(),
-                    report.totalCalls(), report.warnings(), report.stopReason(), report.result().unfinished()).isTrue();
+                    calls, report.warnings(), report.stopReason(), report.result().unfinished()).isTrue();
             var edges = report.result().edges().stream()
                     .map(e -> e.sourceId() + " " + e.type() + " " + e.targetId()).toList();
             for (var relation : iteration.relations())

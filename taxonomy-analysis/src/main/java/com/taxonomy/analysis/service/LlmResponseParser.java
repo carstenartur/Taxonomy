@@ -73,7 +73,16 @@ public class LlmResponseParser {
             @SuppressWarnings("unchecked")
             Map<String, Object> message =
                     (Map<String, Object>) choices.get(0).get("message");
-            return (String) message.get("content");
+            String text = message == null ? null : (String) message.get("content");
+            Object finishReason = choices.get(0).get("finish_reason");
+            if (finishReason != null && !"stop".equals(finishReason)
+                    && !"".equals(finishReason)) {
+                throw new LlmIncompleteResponseException(text,
+                        finishReason instanceof String reason ? reason : "incomplete");
+            }
+            return text;
+        } catch (LlmIncompleteResponseException incomplete) {
+            throw incomplete;
         } catch (Exception e) {
             log.debug("Failed to extract text from OpenAI-compatible response", e);
             return null;

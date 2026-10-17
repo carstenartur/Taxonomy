@@ -24,4 +24,10 @@ class RecoveryCheckpointPersistenceTest {
     @Test void cancellationIsFreshAndBoundToTheExecutionClaim() {
         RecoveryCheckpointPersistenceProbe.stateIsFreshAndClaimBound();
     }
+    @Test void obsoleteRelationCorrectionsRemainBoundToTheirWorkerNamespace() {
+        RecoveryCheckpointPersistenceProbe.supersessionIsNamespaceBound();
+    }
+    @Test void supersedingCorrectionsRequiresTheCurrentUncancelledClaim() {
+        RecoveryCheckpointPersistenceProbe.supersessionIsClaimBound();
+    }
 }

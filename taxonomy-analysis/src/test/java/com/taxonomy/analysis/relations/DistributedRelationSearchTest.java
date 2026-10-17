@@ -117,7 +117,7 @@ class DistributedRelationSearchTest {
     }
 
     @Test
-    void preparationKeepsMixedRootSourceBatchAndContributionRoundRobinPrompts() {
+    void preparationSeparatesTaxonomySourceBatchesAndKeepsContributionRoundRobinPrompts() {
         var application = new Node("application", "UA", "Evidence viewer", "Fixture application", false);
         var catalogue = new RequirementRelationSearch.InputCatalogue() {
             public Node find(String id) { return id.equals(application.id()) ? application : catalogue().find(id); }
@@ -134,7 +134,7 @@ class DistributedRelationSearchTest {
         var actual = RelationSearchDistribution.combine(plan, execute(engine, plan, WRITE));
         assertEquivalent(expected, actual);
         assertThat(distributedPrompts).containsExactlyElementsOf(sequentialPrompts);
-        assertThat(plan.sourceCalls()).isEqualTo(1);
+        assertThat(plan.sourceCalls()).isEqualTo(2);
     }
 
     @Test

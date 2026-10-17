@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 import time
 from typing import Callable
 from urllib.error import HTTPError, URLError
@@ -49,6 +50,20 @@ def verify_report_totals(summary: dict, reports: list[tuple[str, str]]) -> None:
         raise ValueError(f"raw JUnit outcomes differ from summary: {totals}")
 
 
+def compatible_application_build(producer: str, publication: object) -> bool:
+    if not isinstance(publication, str) or not producer or not publication:
+        return False
+    # Preserve exact local build identities. Earlier attempts require a positive
+    # GitHub run/attempt identity; only the final publication is being repeated.
+    if producer == publication and not re.match(r"[0-9]+\.", producer):
+        return True
+    producer_id = re.fullmatch(r"([1-9][0-9]*)\.([1-9][0-9]*)", producer)
+    publication_id = re.fullmatch(r"([1-9][0-9]*)\.([1-9][0-9]*)", publication)
+    return bool(producer_id and publication_id
+                and producer_id.group(1) == publication_id.group(1)
+                and int(producer_id.group(2)) <= int(publication_id.group(2)))
+
+
 def verify_application_shards(root: Path, summary: dict) -> None:
     """Retain every source-bound original after merging independent lane outputs."""
     evidence = root / "evidence/application-test-shards"
@@ -61,6 +76,7 @@ def verify_application_shards(root: Path, summary: dict) -> None:
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError(f"application shard original digest differs: {path}")
 
+    cohort_build_id = None
     for shard in ("core", "browser", "recovery"):
         manifest_path = evidence / shard / "manifest.json"
         if not manifest_path.is_file():
@@ -68,10 +84,21 @@ def verify_application_shards(root: Path, summary: dict) -> None:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         expected_metadata = {
             "schemaVersion": 1, "shard": shard, "commit": summary["commit"],
-            "sourceTree": summary["sourceTree"], "buildId": f"{summary['buildId']}.{shard}",
+            "sourceTree": summary["sourceTree"],
         }
         if not isinstance(manifest, dict) or any(manifest.get(key) != value for key, value in expected_metadata.items()):
             raise ValueError(f"application shard source/build metadata differs: {shard}")
+        build_id = manifest.get("buildId")
+        suffix = f".{shard}"
+        if not isinstance(build_id, str) or not build_id.endswith(suffix):
+            raise ValueError(f"application shard source/build metadata differs: {shard}")
+        producer = build_id[:-len(suffix)]
+        if (not compatible_application_build(producer, summary["buildId"])
+                or cohort_build_id is not None and producer != cohort_build_id):
+            raise ValueError(f"application shard source/build metadata differs: {shard}")
+        # Keep the original producer identity and require one compiled cohort,
+        # even when the finalizer runs in a later attempt of the same workflow.
+        cohort_build_id = producer
         coverage = manifest.get("coverage")
         if not isinstance(coverage, dict) or coverage.get("path") != "coverage.exec":
             raise ValueError(f"application shard coverage metadata is invalid: {shard}")

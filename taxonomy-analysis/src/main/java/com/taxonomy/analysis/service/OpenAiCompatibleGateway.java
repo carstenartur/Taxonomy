@@ -29,6 +29,9 @@ public class OpenAiCompatibleGateway implements LlmGateway {
     private final LlmRecordReplayService recordReplayService;
     private final LlmRequestAdmission requestAdmission;
     private final OpenAiResponsesHttpTransport responsesTransport;
+    private boolean structuredOutputEnabled = true;
+    private int maximumOutputTokens = 4096;
+    private LlmProviderConfig.CustomOpenAiConfigurationStatus configuredCustomStatus;
 
     public OpenAiCompatibleGateway(LlmProvider provider,
                                     String url,
@@ -64,6 +67,13 @@ public class OpenAiCompatibleGateway implements LlmGateway {
     void configureRequestLimits(ProviderRequestLimiter.Limits limits) { requestAdmission.configure(limits); }
     void configureProviderPermits(ProviderConcurrencyPermits permits) { requestAdmission.configure(permits); }
     void configureProviderQuotas(ProviderRateQuotas quotas) { requestAdmission.configure(quotas); }
+    void configureCompletionLimits(boolean structuredOutputEnabled, int maximumOutputTokens) {
+        this.structuredOutputEnabled = structuredOutputEnabled;
+        this.maximumOutputTokens = maximumOutputTokens;
+    }
+    void configureCustomStatus(LlmProviderConfig.CustomOpenAiConfigurationStatus status) {
+        this.configuredCustomStatus = status;
+    }
 
     @Override public String providerName() { return provider.name(); }
 
@@ -78,6 +88,11 @@ public class OpenAiCompatibleGateway implements LlmGateway {
 
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
+        return sendHttpRequest(prompt, apiKey, null);
+    }
+
+    @Override
+    public String sendHttpRequest(String prompt, String apiKey, LlmCompletionOptions options) {
         AnalysisRunControl.checkpoint();
         String usageInvocation = LlmTransportMeter.newInvocation();
         if (recordReplayService != null && recordReplayService.isReplayMode()) {
@@ -98,7 +113,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
 
         var tokenBudget = requestAdmission.requiredTokenBudget();
         if (tokenBudget != null) {
-            return sendResponses(prompt, apiKey, usageInvocation, tokenBudget);
+            return sendResponses(prompt, apiKey, usageInvocation, tokenBudget, options);
         }
 
         Map<String, Object> body = new LinkedHashMap<>();
@@ -107,6 +122,16 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         message.put("content", prompt);
         body.put("model", model);
         body.put("messages", List.of(message));
+        if (options != null) {
+            body.put("max_tokens", provider == LlmProvider.CUSTOM_OPENAI
+                    ? Math.min(options.maxOutputTokens(), maximumOutputTokens) : options.maxOutputTokens());
+            body.put("temperature", 0);
+            if (options.schema() != null && (provider == LlmProvider.OPENAI
+                    || provider == LlmProvider.CUSTOM_OPENAI && structuredOutputEnabled)) {
+                body.put("response_format", Map.of("type", "json_schema", "json_schema", Map.of(
+                        "name", options.schemaName(), "strict", true, "schema", options.schema())));
+            }
+        }
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -210,8 +235,9 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         });
     }
 
-    private String sendResponses(String prompt, String apiKey, String invocation, ProviderRateQuotas.TokenBudget budget) {
-        var prepared = OpenAiResponsesTokenContract.prepare(provider, url, model, budget, prompt, objectMapper);
+    private String sendResponses(String prompt, String apiKey, String invocation, ProviderRateQuotas.TokenBudget budget,
+            LlmCompletionOptions options) {
+        var prepared = OpenAiResponsesTokenContract.prepare(provider, url, model, budget, prompt, objectMapper, options);
         var headers = new HttpHeaders(); headers.setContentType(MediaType.APPLICATION_JSON);
         if (apiKey != null && !apiKey.isBlank() && !LlmProviderConfig.CUSTOM_NO_AUTH_API_KEY.equals(apiKey)) headers.setBearerAuth(apiKey);
         var counted = sendResponsesEndpoint(invocation, budget, headers, prepared.countBody(), true);
@@ -270,7 +296,8 @@ public class OpenAiCompatibleGateway implements LlmGateway {
     private void validateConfiguration() {
         if (provider != LlmProvider.CUSTOM_OPENAI) return;
         LlmProviderConfig.CustomOpenAiConfigurationStatus status =
-                LlmProviderConfig.validateCustomOpenAiConfiguration(url, model);
+                configuredCustomStatus != null ? configuredCustomStatus
+                        : LlmProviderConfig.validateCustomOpenAiConfiguration(url, model);
         if (!status.valid()) {
             throw new LlmProviderException(LlmProviderException.Reason.CONFIGURATION, status.message());
         }

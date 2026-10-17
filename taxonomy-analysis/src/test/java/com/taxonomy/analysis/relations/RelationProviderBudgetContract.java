@@ -25,12 +25,13 @@ public final class RelationProviderBudgetContract {
                 @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
                 @Override public String getActiveProviderName() { return "Presentation label / " + provider; }
                 @Override public String callLlmRaw(String prompt) { calls[0]++; return "fixture response"; }
+                @Override public String callLlmRaw(String prompt, com.taxonomy.analysis.service.LlmCompletionOptions options) { return callLlmRaw(prompt); }
             };
             var subject = new RequirementRelationSearchService(null, null, llm, budget);
             var complete = RequirementRelationSearchService.class.getDeclaredMethod("complete", String.class);
             complete.setAccessible(true);
             try {
-                Object result = complete.invoke(subject, "small fixture prompt");
+                Object result = complete.invoke(subject, RelationSearchProtocol.sourcePrompt("fixture requirement", java.util.List.of(new com.taxonomy.dto.RelationSearchModel.Node("fixture", "UA", "Fixture", "A function", false)), java.util.Map.of()));
                 if (!"fixture response".equals(result) || calls[0] != 1) {
                     throw new AssertionError("Budget lookup did not reach the raw boundary exactly once: " + provider);
                 }

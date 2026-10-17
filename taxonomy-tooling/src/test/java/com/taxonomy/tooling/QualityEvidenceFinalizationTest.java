@@ -27,6 +27,7 @@ class QualityEvidenceFinalizationTest {
     private static final String DEDICATED = xml("dedicated-executed", false);
 
     @TempDir Path checkout;
+    private String publicationAttempt = "2";
 
     @Test
     void keepsBothOriginalReportsWhenDedicatedAndCorePathsCollide() throws Exception {
@@ -46,6 +47,47 @@ class QualityEvidenceFinalizationTest {
             assertThat(((Number) counts.get("reportFiles")).intValue()).isEqualTo(4);
             assertThat(checkout.resolve(QUALITY + "evidence/observability-performance/tests")).doesNotExist();
         }
+    }
+
+    @Test
+    void reusesTheUnchangedApplicationCohortWhenOnlyThePublicationJobIsRetried() throws Exception {
+        fixture();
+        applicationBuildId("123.1");
+
+        Result result = finalizeEvidence();
+
+        assertThat(result.exit()).as(result.output()).isZero();
+        assertThat(FlatJson.parseObject(read(QUALITY + "quality-summary.json")))
+                .containsEntry("buildId", "123.2");
+        for (String shard : List.of("core", "browser", "recovery")) {
+            assertThat(FlatJson.parseObject(read(QUALITY + "evidence/application-test-shards/" + shard + "/manifest.json")))
+                    .containsEntry("buildId", "123.1." + shard);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"124.1", "123.3", "123.0", "123.invalid", "123", "0123.1", "123.01"})
+    void refusesForeignFutureOrMalformedApplicationCohorts(String buildId) throws Exception {
+        fixture();
+        applicationBuildId(buildId);
+
+        Result result = finalizeEvidence();
+
+        assertThat(result.exit()).as(result.output()).isEqualTo(1);
+        assertThat(result.output()).contains("application shard");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "invalid", "01", ""})
+    void refusesMalformedPublicationAttempts(String attempt) throws Exception {
+        fixture();
+        publicationAttempt = attempt;
+        applicationBuildId("123.1");
+
+        Result result = finalizeEvidence();
+
+        assertThat(result.exit()).as(result.output()).isEqualTo(1);
+        assertThat(result.output()).contains("application shard");
     }
 
     @ParameterizedTest
@@ -118,6 +160,15 @@ class QualityEvidenceFinalizationTest {
         return run(List.of("bash", repositoryRoot().resolve(".github/scripts/finalize-quality-evidence.sh").toString()));
     }
 
+    private void applicationBuildId(String buildId) throws Exception {
+        for (String shard : List.of("core", "browser", "recovery")) {
+            String path = QUALITY + "evidence/application-test-shards/" + shard + "/manifest.json";
+            var manifest = new java.util.LinkedHashMap<>(FlatJson.parseObject(read(path)));
+            manifest.put("buildId", buildId + "." + shard);
+            put(path, FlatJson.pretty(manifest));
+        }
+    }
+
     private String tree() throws Exception {
         Result result = run(List.of("git", "rev-parse", "HEAD^{tree}"));
         assertThat(result.exit()).as(result.output()).isZero();
@@ -128,7 +179,7 @@ class QualityEvidenceFinalizationTest {
         Path log = Files.createTempFile(checkout, "process-", ".log");
         ProcessBuilder builder = new ProcessBuilder(new ArrayList<>(command)).directory(checkout.toFile())
                 .redirectErrorStream(true).redirectOutput(log.toFile());
-        builder.environment().putAll(Map.of("GITHUB_SHA", "HEAD", "GITHUB_RUN_ID", "123", "GITHUB_RUN_ATTEMPT", "2"));
+        builder.environment().putAll(Map.of("GITHUB_SHA", "HEAD", "GITHUB_RUN_ID", "123", "GITHUB_RUN_ATTEMPT", publicationAttempt));
         Process process = builder.start();
         try {
             assertThat(process.waitFor(45, TimeUnit.SECONDS)).as("bounded evidence fixture").isTrue();

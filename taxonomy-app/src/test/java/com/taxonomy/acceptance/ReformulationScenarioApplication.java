@@ -40,6 +40,8 @@ public final class ReformulationScenarioApplication {
                 "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--taxonomy.init.async=false", "--scenario.reformulation=true", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
                 "--taxonomy.analysis.relations.hierarchical.max-calls=" + RELATION_CALL_BUDGET,
+                "--taxonomy.analysis.relations.hierarchical.batch-size=10",
+                "--taxonomy.analysis.relations.hierarchical.max-prompt-characters=120000",
                 "--scenario.reformulation-case=" + (args[1].startsWith("authored-") ? args[1].substring(9) : "flood"),
                 "--custom.llm.url=" + ScenarioLlmConfiguration.URL, "--custom.llm.model=scenario-fixture",
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false")) {
