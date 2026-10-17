@@ -261,6 +261,7 @@ async function promotedNavigationTarget() {
     '/taxonomy/js/core/taxonomy-copilot-terminal-state.js',
     '/taxonomy/js/core/taxonomy-recovery-viewport.js',
     '/taxonomy/js/core/taxonomy-analysis-recovery.js',
+    '/taxonomy/js/core/taxonomy-relations-extension.js',
     '/taxonomy/js/core/taxonomy-operation-coordinator.js',
     '/taxonomy/js/core/taxonomy-analysis-session-ui.js',
     '/taxonomy/js/core/taxonomy-analysis-session-draft.js',

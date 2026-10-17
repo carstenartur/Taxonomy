@@ -14,7 +14,7 @@ function node() {
     querySelectorAll(){ return []; }, remove(){} };
 }
 function harness(language = 'en') {
-  const listeners = new Map(), storage = new Map(), timers = new Map(); let timer=0, pending, followups=0;
+  const listeners = new Map(), storage = new Map(), timers = new Map(); let timer=0, pending, rejectPending, followups=0;
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
@@ -33,7 +33,7 @@ function harness(language = 'en') {
       if(options.method==='POST') snapshot={...snapshot,recovery:{...snapshot.recovery,state:'CANCELLED'}};
       return {ok:true,json:async()=>snapshot};
     }},
-    TaxonomyScoring:{runAnalysis(options){analyses.push(options.continuation);return new Promise(resolve=>{pending=resolve;});}},
+    TaxonomyScoring:{runAnalysis(options){analyses.push(options.continuation);return new Promise((resolve,reject)=>{pending=resolve;rejectPending=reject;});}},
     TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderPartialCopilot:message=>panels.push(message)} };
   const document={getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
   const context={window,document,crypto:webcrypto,sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
@@ -42,7 +42,8 @@ function harness(language = 'en') {
   function complete(state='PAUSED') {
     const q={key:'question-a',nodes:['BP-1327','BP-1481'],error:'Invalid JSON',attempts:1,skipped:state==='COMPLETED_WITH_GAPS'||state==='STOPPED'};
     const result={recovery:{id:S.recoveryContext.id,version:7,state,completedCalls:2,openQuestions:state==='COMPLETED'?[]:[q]},
-      rawScores:{BP:100,'BP-1000':80},scores:{BP:100,'BP-1000':80},analysisCoverage:{failedOrBlockedNodes:state==='COMPLETED'?0:4,nodes:{}},status:state==='COMPLETED'?'SUCCESS':'PARTIAL'};
+      rawScores:{BP:100,'BP-1000':80},scores:{BP:100,'BP-1000':80},analysisCoverage:{failedOrBlockedNodes:state==='COMPLETED'?0:4,nodes:{}},status:state==='COMPLETED'?'SUCCESS':'PARTIAL',reasons:{BP:'Original reason'}};
+    S.currentRawScores=result.rawScores;S.currentEffectiveScores=result.scores;S.currentScores=result.scores;S.currentReasons=result.reasons;
     snapshot={request:S.recoveryContext.request,recovery:result.recovery,result};pending(result);return result;
   }
   function loadAnalysis() {
@@ -56,7 +57,7 @@ function harness(language = 'en') {
   return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,derivedRequests,
     followups:()=>followups,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
-    recovery:window.TaxonomyAnalysisRecovery};
+    reject: error=>rejectPending(error), recovery:window.TaxonomyAnalysisRecovery};
 }
 async function settle(){for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));}
 test('fresh Copilot opts into durable questions and prevents duplicate starts',async()=>{
@@ -307,3 +308,63 @@ test('durable Artemis question recovery uses progress events and explicit decisi
  assert.equal(h.analyses[1].continuationVersion,7);assert.equal(h.analyses[1].continuationQuestion,'question-a');
  h.complete('COMPLETED');await settle();assert.equal(h.timers.size,0);
 });
+
+test('normal managed analysis retains a durable node-only source without Copilot followups',async()=>{
+ const h=harness();
+ h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>false};
+ assert.equal(typeof h.recovery.startManagedAnalysis,'function','normal node-only analysis needs a durable managed start');
+ h.recovery.startManagedAnalysis();
+ assert.equal(h.analyses.length,1); assert.equal(h.analyses[0].resumable,true);
+ const sourceId=h.analyses[0].continuationId;
+ h.complete('COMPLETED'); await settle();
+ assert.equal(h.S.recoveryContext.id,sourceId); assert.equal(h.followups(),0);
+});
+
+test('explicit relations extension freezes the original requirement, source revision and selected evidence',async()=>{
+ const h=harness(); const selected={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};
+ h.window.TaxonomyAnalysisScope={read:()=>selected,restrictsGlobalAnalysis:()=>true};
+ h.recovery.startCopilot(); const sourceId=h.S.recoveryContext.id;
+ h.complete('COMPLETED');await settle();
+ assert.equal(typeof h.recovery.extendRelations,'function','completed node-only evidence needs an explicit extension action');
+ h.fields.providerSelect.value='GEMINI';
+ h.recovery.extendRelations();h.recovery.extendRelations();
+ assert.equal(h.analyses.length,2);
+ const extension=h.analyses[1];
+ assert.equal(extension.relationSourceContinuationId,sourceId);assert.equal(extension.relationSourceVersion,7);
+ assert.notEqual(extension.continuationId,sourceId);assert.equal(extension.businessText,'Hospital communications');
+ assert.equal(extension.provider,'CUSTOM_OPENAI');assert.equal(extension.analysisScope.mode,'FULL');
+ assert.deepEqual(Array.from(extension.analysisScope.taxonomyRoots),['CP']);
+ assert.equal(extension.rawScores,undefined);assert.equal(extension.scores,undefined);
+ h.complete('COMPLETED');await settle();assert.equal(h.followups(),0);
+});
+
+test('edited requirement cannot extend a retained node-only source',async()=>{
+ const h=harness();h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:[],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>true};
+ h.recovery.startCopilot();h.complete('COMPLETED');await settle();
+ assert.equal(typeof h.recovery.extendRelations,'function');
+ h.fields.businessText.value='Edited requirement';h.recovery.extendRelations();
+ assert.equal(h.analyses.length,1);
+});
+
+
+test('an explicitly rejected extension preserves the source context and explains the rejection',async()=>{
+ const h=harness();h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>true};
+ h.recovery.startCopilot();h.complete('COMPLETED');await settle();const sourceId=h.S.recoveryContext.id;
+ h.recovery.extendRelations();h.reject(Object.assign(new Error('Saved catalogue changed'),{httpStatus:409}));await settle();
+ assert.equal(h.S.recoveryContext.id,sourceId);assert.equal(h.S.analysisRecovery.state,'COMPLETED');
+ assert.match(h.ui.errorText,/Saved catalogue changed/);assert.equal(h.analyses.length,2);
+});
+
+for (const change of ['raw score','effective score','reason','new assessment']) {
+ test(`visible ${change} edits cannot be silently replaced by an older relations source`,async()=>{
+  const h=harness();h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:['BP'],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>true};
+  h.recovery.startCopilot();h.complete('COMPLETED');await settle();
+  if(change==='raw score')h.S.currentRawScores.BP=99;
+  else if(change==='effective score')h.S.currentScores.BP=99;
+  else if(change==='reason')h.S.currentReasons.BP='Manually revised explanation';
+  else h.S.currentRawScores['BP-new']=84;
+  const visible=JSON.stringify([h.S.currentRawScores,h.S.currentScores,h.S.currentReasons]);
+  h.recovery.extendRelations();await settle();
+  assert.equal(h.analyses.length,1);assert.equal(JSON.stringify([h.S.currentRawScores,h.S.currentScores,h.S.currentReasons]),visible);
+ });
+}

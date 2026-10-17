@@ -117,6 +117,7 @@ public final class PartialClusterFlowChecks {
         final ObjectMapper json = new ObjectMapper();
         final SessionFactory factory = new Configuration().addAnnotatedClass(ClusterAnalysisRun.class)
                 .addAnnotatedClass(ClusterAnalysisWork.class).addAnnotatedClass(ClusterAnalysisEvent.class)
+                .addAnnotatedClass(ClusterAnalysisInput.class)
                 .setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
                 .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:" + UUID.randomUUID())
                 .setProperty("hibernate.connection.username", "sa").setProperty("hibernate.connection.password", "")

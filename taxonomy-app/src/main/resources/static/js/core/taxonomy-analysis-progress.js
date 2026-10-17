@@ -326,7 +326,9 @@
     }
     function relationLabel(p) {
         return text('Relationsprüfung – Suchaufträge: ', 'Relationship search – tasks: ')
-            + countLabel(p.completedSearches, p.totalSearches)
+            + (p.totalSearches > 0 ? countLabel(p.completedSearches, p.totalSearches)
+                : p.step === 'FINISHED' ? text('Keine Suchaufträge erforderlich', 'No search tasks required')
+                    : text('Gesamter Suchumfang noch nicht bekannt', 'Total search work not yet known'))
             + ' · ' + p.unresolvedSearches + text(' ungeklärt', ' unresolved')
             + ' · ' + p.pendingSearches + text(' offen', ' pending');
     }
@@ -354,7 +356,6 @@
     function clusterRelationCounts(snapshot) {
         var tasks = (snapshot.cluster?.tasks || []).filter(function (task) { return task.taskType === 'RELATION_ANALYSIS'; });
         if (!tasks.length && snapshot.phase !== 'RELATIONS') return null;
-        if (snapshot.phase !== 'RELATIONS' && !tasks.some(function (task) { return task.running > 0 || task.queued > 0; })) return null;
         return tasks.reduce(function (total, task) {
             ['queued', 'running', 'completed', 'failed'].forEach(function (key) {
                 total[key] += Number.isSafeInteger(task[key]) && task[key] >= 0 ? task[key] : 0;
@@ -393,6 +394,51 @@
         if (value !== undefined) element.textContent = value;
         if (className) element.className = className;
         return element;
+    }
+    function nodeCoverage(p, compact) {
+        return p.assessed + (compact ? text(' bewertet · ', ' assessed · ') : text(' direkt bewertet · ', ' directly assessed · '))
+            + p.excluded + (compact ? text(' ausgeschlossen · ', ' excluded · ')
+                : text(' durch übergeordnete Entscheidung ausgeschlossen · ', ' excluded by parent decision · '))
+            + p.open + text(' offen', ' open');
+    }
+    function relationRemaining(p) {
+        return p.unresolved + text(' ungeklärt · ', ' unresolved · ')
+            + p.pending + text(' offen', ' pending');
+    }
+    function taskCounts(p) {
+        return p.queued + text(' wartend · ', ' queued · ')
+            + p.running + text(' aktiv · ', ' running · ')
+            + p.completed + text(' erledigt · ', ' complete · ')
+            + p.failed + text(' fehlgeschlagen', ' failed');
+    }
+    // Native progress semantics remain available independently of the visual theme.
+    // An absent value means the denominator is unknown, never a fabricated 100%.
+    function workMeter(container, kind, root, label, done, total, detail, empty, unknown, visibleDetail) {
+        var id = 'analysisWork-' + kind + (root ? '-' + encodeURIComponent(root) : '');
+        var known = Number.isSafeInteger(total) && total > 0
+            && Number.isSafeInteger(done) && done >= 0 && done <= total;
+        var count = known ? countLabel(done, total) : total === 0 && empty ? empty
+            : unknown || text('Gesamtumfang noch nicht bekannt', 'Total work not yet known');
+        var row = node('div', undefined, 'analysis-work-meter' + (known ? ' analysis-work-meter-known' : ''));
+        var header = node('div', undefined, 'analysis-work-meter-heading');
+        var caption = node('label', label, 'analysis-work-meter-label');
+        caption.id = id + '-label';
+        caption.setAttribute('for', id);
+        header.append(caption, node('span', known && root ? done + '/' + total : count, 'analysis-work-meter-count'));
+        var progress = node('progress', count, 'analysis-work-bar');
+        progress.id = id;
+        progress.setAttribute('data-progress-kind', kind);
+        if (root) progress.setAttribute('data-taxonomy-root', root);
+        progress.setAttribute('data-progress-state', known ? 'known' : total === 0 && empty ? 'empty' : 'unknown');
+        if (known) {
+            progress.setAttribute('max', String(total));
+            progress.setAttribute('value', String(done));
+        }
+        progress.setAttribute('aria-labelledby', caption.id);
+        progress.setAttribute('aria-valuetext', count + (detail ? ' · ' + detail : ''));
+        row.append(header, progress);
+        if (detail) row.append(node('div', visibleDetail === undefined ? detail : visibleDetail, 'analysis-work-meter-detail'));
+        container.append(row);
     }
     function diagnosticCopyButton(title, raw) {
         var button = node('button', text('Kopieren', 'Copy'),
@@ -494,78 +540,95 @@
         var state = node('div', text('Warte auf den Server …', 'Waiting for the server …'));
         var work = node('div', undefined, 'mt-2');
         work.id = 'analysisWorkProgress';
-        var expandedTaxonomies = false;
+        // The concise state above announces changes; individual bars remain readable
+        // without announcing the entire catalogue again on every progress event.
+        work.setAttribute('aria-live', 'off');
+        var expandedTaxonomies = true;
         var lastWorkSignature = null;
         function renderWork(snapshot) {
-            var signature = JSON.stringify([snapshot.nodeProgress, snapshot.relationProgress, snapshot.cluster, snapshot.phase]);
+            var signature = JSON.stringify([snapshot.nodeProgress, snapshot.relationProgress, snapshot.cluster,
+                snapshot.phase, snapshot.status, german()]);
             if (signature === lastWorkSignature) return;
             lastWorkSignature = signature;
             var oldDetails = document.getElementById('analysisTaxonomyProgressDetails');
             if (oldDetails) expandedTaxonomies = oldDetails.open;
             var focusedSummary = document.activeElement?.id === 'analysisTaxonomyProgressToggle';
             work.replaceChildren();
+            work.setAttribute('data-run-status', snapshot.status || '');
             var n = snapshot.nodeProgress, r = snapshot.relationProgress;
-            function bar(done, total) {
-                if (!(total > 0)) return;
-                var progress = node('progress', undefined, 'w-100');
-                progress.max = total; progress.value = done;
-                progress.setAttribute('aria-label', countLabel(done, total));
-                work.append(progress);
-            }
+            var outcome = { ERROR: ['Analyse fehlgeschlagen; unvollständiger Fortschritt bleibt erhalten.',
+                'Analysis failed; incomplete progress is retained.'],
+                CANCELLED: ['Analyse abgebrochen; unvollständiger Fortschritt bleibt erhalten.',
+                    'Analysis cancelled; incomplete progress is retained.'],
+                PARTIAL: ['Analyse unvollständig; erledigte und offene Arbeit bleibt sichtbar.',
+                    'Analysis incomplete; completed and open work remain visible.'] }[snapshot.status];
+            if (outcome) work.append(node('div', text(outcome[0], outcome[1]), 'analysis-work-outcome'));
             if (snapshot.cluster) {
-                work.append(node('div', text('Knotenbewertung (Teiltaxonomien): ', 'Node assessment (taxonomy roots): ')
-                    + countLabel(snapshot.cluster.completedRoots, snapshot.cluster.totalRoots), 'fw-bold'));
-                bar(snapshot.cluster.completedRoots, snapshot.cluster.totalRoots);
-                var rootBar = work.querySelector?.('progress');
-                if (rootBar) rootBar.setAttribute('aria-label', text('Knotenbewertung (Teiltaxonomien)', 'Node assessment (taxonomy roots)'));
-                if (clusterRelationCounts(snapshot) && !r) {
-                    work.append(node('div', workSummary(snapshot), 'fw-bold mt-2'));
-                    work.append(node('div', text(
-                        'Gezählt werden verteilte Suchaufträge, nicht gefundene Beziehungen. Weitere Suchaufträge können hinzukommen; ein Gesamtprozentwert wäre daher irreführend.',
-                        'These are distributed search tasks, not relationships found. More tasks may be added; an overall percentage would therefore be misleading.'), 'small'));
+                if (!n) {
+                    workMeter(work, 'cluster-nodes', '', text('Knotenbewertung (Teiltaxonomien)', 'Node assessment (taxonomy roots)'),
+                        snapshot.cluster.completedRoots, snapshot.cluster.totalRoots, '', null);
+                    work.append(node('div', text('Detaillierte Knotenabdeckung nicht verfügbar; angezeigt werden verteilte Auftragszustände.',
+                        'Detailed node coverage unavailable; showing distributed task states.'), 'analysis-work-note'));
                 }
+                var relations = clusterRelationCounts(snapshot);
+                if (relations && !r) {
+                    workMeter(work, 'cluster-relations', '', text('Relationsprüfung – Suchaufträge', 'Relationship search – tasks'),
+                        null, null, taskCounts(relations));
+                    var terminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
+                    work.append(node('div', terminal ? text(
+                        'Suchgesamtumfang nicht verfügbar. Auftragszustände ergeben keinen festen Suchgesamtumfang; sie zählen keine gefundenen Beziehungen.',
+                        'Search totals unavailable. Task states do not establish a fixed search total; they do not count relationships found.') : text(
+                        'Gezählt werden verteilte Suchaufträge, nicht gefundene Beziehungen. Weitere Suchaufträge können hinzukommen; ein Gesamtprozentwert wäre daher irreführend.',
+                        'These are distributed search tasks, not relationships found. More tasks may be added; an overall percentage would therefore be misleading.'), 'analysis-work-note'));
+                }
+                var clusterParts = node('div', undefined, 'analysis-taxonomy-progress');
                 (snapshot.cluster.tasks || []).forEach(function (task) {
-                    var family = task.taskType === 'RELATION_ANALYSIS'
+                    var relation = task.taskType === 'RELATION_ANALYSIS';
+                    if (relation ? r : n) return;
+                    var family = relation
                         ? text('Relationsprüfung', 'Relationship search') : text('Knotenbewertung', 'Node assessment');
-                    work.append(node('div', family + ' · ' + (task.root ? nodeLabel(task.root.code) : text('Vorbereitung', 'Preparation')) + ' · '
-                        + task.queued + text(' wartend · ', ' queued · ')
-                        + task.running + text(' aktiv · ', ' running · ')
-                        + task.completed + text(' erledigt', ' complete')
-                        + (task.failed ? ' · ' + task.failed + text(' fehlgeschlagen', ' failed') : ''), 'small'));
+                    var root = typeof task.root === 'string' ? task.root : task.root?.code;
+                    workMeter(clusterParts, relation ? 'cluster-relations' : 'cluster-nodes', root || 'preparation',
+                        family + ' · ' + (root ? nodeLabel(root) : text('Vorbereitung', 'Preparation')), null, null, taskCounts(task));
                 });
+                work.append(clusterParts);
             }
             if (n) {
-                work.append(node('div', text('Knotenbewertung: ', 'Node assessment: ')
-                    + countLabel(n.assessed + n.excluded, n.total), 'fw-bold'));
-                if (!r) bar(n.assessed + n.excluded, n.total);
-                work.append(node('div', n.assessed + text(' direkt bewertet · ', ' directly assessed · ')
-                    + n.excluded + text(' durch übergeordnete Entscheidung ausgeschlossen · ', ' excluded by parent decision · ')
-                    + n.open + text(' offen', ' open')));
+                workMeter(work, 'nodes', '', text('Knotenbewertung', 'Node assessment'), n.assessed + n.excluded, n.total,
+                    nodeCoverage(n), text('Keine Katalogknoten vorhanden', 'No catalogue nodes available'));
                 var details = node('details'); details.id = 'analysisTaxonomyProgressDetails'; details.open = expandedTaxonomies;
                 var summary = node('summary', text('Fortschritt je Teiltaxonomie', 'Progress by taxonomy'));
                 summary.id = 'analysisTaxonomyProgressToggle';
                 details.append(summary);
+                var parts = node('div', undefined, 'analysis-taxonomy-progress');
                 (n.taxonomies || []).forEach(function (part) {
-                    details.append(node('div', (german() ? part.nameDe || part.nameEn : part.nameEn) + ' (' + part.root + '): '
-                        + countLabel(part.assessed + part.excluded, part.total) + ' · ' + part.assessed
-                        + text(' bewertet · ', ' assessed · ') + part.excluded + text(' ausgeschlossen · ', ' excluded · ')
-                        + part.open + text(' offen', ' open'), 'small'));
+                    var name = german() ? part.nameDe || part.nameEn : part.nameEn || part.nameDe;
+                    workMeter(parts, 'nodes', part.root, name && name !== part.root ? name + ' (' + part.root + ')' : nodeLabel(part.root),
+                        part.assessed + part.excluded, part.total, nodeCoverage(part),
+                        text('Keine Katalogknoten vorhanden', 'No catalogue nodes available'), null, nodeCoverage(part, true));
                 });
+                details.append(parts);
                 details.addEventListener('toggle', function () { expandedTaxonomies = details.open; });
                 work.append(details);
             }
             if (r) {
-                work.append(node('div', relationLabel(r), 'fw-bold mt-2'));
-                bar(r.completedSearches, r.totalSearches);
+                var empty = r.step === 'FINISHED' ? text('Keine Suchaufträge erforderlich', 'No search tasks required') : null;
+                workMeter(work, 'relations', '', text('Relationsprüfung – Suchaufträge', 'Relationship search – tasks'),
+                    r.completedSearches, r.totalSearches, relationRemaining({ unresolved: r.unresolvedSearches, pending: r.pendingSearches }),
+                    empty, text('Gesamter Suchumfang noch nicht bekannt', 'Total search work not yet known'));
+                work.append(node('div', text('Fortschritt zählt Suchaufträge, nicht gefundene Beziehungen.',
+                    'Progress counts search tasks, not relationships found.'), 'analysis-work-note'));
                 work.append(node('div', r.assessedSources + text(' von ', ' of ') + r.totalSources
                     + text(' Ausgangsknoten geprüft · ', ' source contributions assessed · ')
-                    + r.verifiedRelations + text(' Relationsvorschläge bestätigt', ' relationship proposals verified')));
+                    + r.verifiedRelations + text(' geprüfte Relationsvorschläge', ' relationship proposals checked')));
                 if (r.current) work.append(node('div', currentRelation(r)));
+                var targets = node('div', undefined, 'analysis-taxonomy-progress');
                 (r.taxonomies || []).forEach(function (part) {
-                    work.append(node('div', nodeLabel(part.root) + ': ' + countLabel(part.completed, part.total)
-                        + ' · ' + part.unresolved + text(' ungeklärt · ', ' unresolved · ')
-                        + part.pending + text(' offen', ' pending'), 'small'));
+                    workMeter(targets, 'relations', part.root, text('Ziel: ', 'Target: ') + nodeLabel(part.root),
+                        part.completed, part.total, relationRemaining(part), empty,
+                        text('Gesamter Suchumfang noch nicht bekannt', 'Total search work not yet known'));
                 });
+                work.append(targets);
                 work.append(node('div', text('Aufrufbudget dieses Durchlaufs: ', 'Call budget for this execution: ')
                     + r.calls + ' / ' + r.maxCalls, 'small'));
                 if (r.step === 'PAUSED') work.append(node('div', text(
@@ -705,7 +768,7 @@
                 state.textContent = snapshot.status === 'QUEUED'
                     ? text('Auftrag angenommen; wartet auf freien Analyseplatz. Noch keine LLM-Anfrage gestartet.',
                         'Request accepted; waiting for an analysis slot. No LLM request started yet.')
-                    : snapshot.status + ' · ' + (snapshot.cluster ? workSummary(snapshot)
+                    : snapshot.status + ' · ' + (snapshot.cluster || snapshot.nodeProgress || snapshot.relationProgress ? workSummary(snapshot)
                         : snapshot.evaluatedNodes + text(' Knoten bewertet', ' nodes evaluated')) + ' · ' + elapsed + ' s · '
                     + text('letzter Arbeitsschritt vor ', 'last activity ') + quiet + ' s'
                     + (snapshot.node ? ' · ' + snapshot.node : '')

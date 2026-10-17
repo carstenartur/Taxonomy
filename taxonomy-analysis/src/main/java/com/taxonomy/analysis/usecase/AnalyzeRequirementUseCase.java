@@ -40,6 +40,9 @@ public class AnalyzeRequirementUseCase {
     private AnalysisProgressRegistry analysisProgressRegistry;
 
     @Autowired
+    private com.taxonomy.catalog.snapshot.CatalogueSnapshotService catalogueSnapshots;
+
+    @Autowired
     private com.taxonomy.analysis.relations.RequirementRelationSearchService requirementRelationSearch;
 
     private final LlmService llmService;
@@ -106,9 +109,10 @@ public class AnalyzeRequirementUseCase {
                                              boolean persistHypotheses) {
         long startedNanos = System.nanoTime();
         InProcessAnalysisOperation operation = null;
+        com.taxonomy.catalog.snapshot.FrozenCatalogueContext.Scope catalogueScope = null;
         try (var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(command.analysisReasonLength());
-             var mockScope = "MOCK".equalsIgnoreCase(command.provider())
-                ? llmService.withProviderBinding("MOCK", null) : null) {
+             var mockScope = command.retainedAnalysis() != null || command.providerBinding() != null || "MOCK".equalsIgnoreCase(command.provider())
+                ? llmService.withProviderBinding(command.provider(), command.providerBinding()) : null) {
             llmService.requireProviderAdmissible(command.provider(), command.provenance() != null);
             applyProviderOverride(command.provider());
             promptBudgetPolicy.requireWithinBudget(
@@ -117,13 +121,30 @@ public class AnalyzeRequirementUseCase {
             ViewContext viewContext = resolveViewContext(command);
             operation = InProcessAnalysisOperation.open(operationContext(command, viewContext), null);
 
-            AnalysisResult result = command.analysisScope().legacyFull()
+            if (command.retainedAnalysis() != null) {
+                var original = command.retainedAnalysis().getViewContext();
+                if (original == null || viewContext == null || !java.util.Objects.equals(original.basedOnCommit(), viewContext.basedOnCommit())
+                        || !java.util.Objects.equals(original.basedOnBranch(), viewContext.basedOnBranch()))
+                    throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                            "The original source changed before relation execution");
+                catalogueScope = bindRetainedCatalogue(command, viewContext);
+            }
+            AnalysisResult result = command.retainedAnalysis() != null
+                    ? new tools.jackson.databind.ObjectMapper().readValue(new tools.jackson.databind.ObjectMapper().writeValueAsString(command.retainedAnalysis()), AnalysisResult.class)
+                    : command.analysisScope().legacyFull()
                     ? llmService.analyzeWithBudget(command.businessText())
                     : llmService.analyzeWithBudget(command.businessText(), command.analysisScope());
             result.setAnalysisScope(command.analysisScope());
             result.setAnalysisReasonLength(command.analysisReasonLength());
+            if (command.retainedAnalysis() != null) {
+                AnalysisRunControl.planNodes(command.analysisScope().selectedTree(result.getTree()));
+                var retainedEvidence = new com.taxonomy.dto.LlmCallDetail();
+                retainedEvidence.setScores(result.getRawScores()); retainedEvidence.setProvider(result.getProvider());
+                // Publish accepted source coverage without fabricating a new provider attempt.
+                AnalysisRunControl.assessment(retainedEvidence);
+            }
             if (command.analysisScope().includesRelations()
-                    && (result.getErrorMessage() == null || !isCooperativeStop(result.getErrorMessage()))) {
+                    && (command.retainedAnalysis() != null || result.getErrorMessage() == null || !isCooperativeStop(result.getErrorMessage()))) {
                 try {
                     AnalysisRunControl.phase("RELATIONS", null);
                     runRelationTask(operation, command, result, persistHypotheses);
@@ -152,6 +173,7 @@ public class AnalyzeRequirementUseCase {
             return new AnalyzeRequirementResult(result);
         } finally {
             if (operation != null) operation.close();
+            if (catalogueScope != null) catalogueScope.close();
             llmService.clearRequestProvider();
         }
     }
@@ -159,6 +181,21 @@ public class AnalyzeRequirementUseCase {
     private AnalyzeRequirementCommand freezeReasonLength(AnalyzeRequirementCommand command) {
         return command.analysisReasonLength() != null ? command : command.withAnalysisReasonLength(
                 com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null)));
+    }
+
+    private com.taxonomy.catalog.snapshot.FrozenCatalogueContext.Scope bindRetainedCatalogue(
+            AnalyzeRequirementCommand command, ViewContext view) {
+        if (catalogueSnapshots == null) throw new IllegalStateException("Frozen relation catalogue is unavailable");
+        var workspace = command.workspaceContext();
+        var source = new com.taxonomy.catalog.snapshot.CatalogueSourceIdentity(workspace.repositoryId(),
+                workspace.workspaceId(), workspace.currentBranch(), view.basedOnCommit());
+        var roots = command.retainedAnalysis().getTree().stream().map(node -> node.getTaxonomyRoot() == null
+                ? node.getCode() : node.getTaxonomyRoot()).collect(java.util.stream.Collectors.toSet());
+        var frozen = catalogueSnapshots.captureRoots(source, roots);
+        if (!com.taxonomy.analysis.recovery.AnalysisContinuationCatalogue.matches(command.retainedAnalysis().getTree(), frozen))
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "The retained catalogue changed before relation execution");
+        return catalogueSnapshots.bind(source, roots, frozen);
     }
 
     /**
@@ -184,7 +221,7 @@ public class AnalyzeRequirementUseCase {
                 throw new IllegalStateException("Task requirement reference does not match the analysed requirement");
             }
             try {
-                enrichWithRelationHypotheses(command, result, persistHypotheses);
+                enrichWithRelationHypotheses(command, result, persistHypotheses && command.retainedAnalysis() == null);
             } catch (AnalysisStoppedException stop) {
                 stopped[0] = stop;
                 return operation.messages().completed(task, AnalysisTaskOutcome.STOPPED, 0, stop.reason().name());

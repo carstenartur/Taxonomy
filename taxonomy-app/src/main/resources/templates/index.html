@@ -305,6 +305,11 @@
                             <p id="analysisScopeTargets" class="small text-muted mt-2 mb-0" th:text="#{analysis.scope.targets}">Relation search uses the selected assessments as sources and searches all compatible taxonomies for targets. Node-only mode skips relations and the architecture view.</p>
                         </details>
                         <p id="analysisScopeEvidence" class="small mt-2 mb-0" hidden></p>
+                        <div id="analysisRelationsExtension" class="mt-2" hidden>
+                            <button id="extendAnalysisRelationsBtn" type="button" class="btn btn-sm btn-outline-primary"
+                                    aria-describedby="analysisRelationsExtensionHint"></button>
+                            <p id="analysisRelationsExtensionHint" class="small text-muted mt-1 mb-0" role="status"></p>
+                        </div>
                     </div>
                 </div>
 

@@ -142,6 +142,23 @@ class ArchitectureContextDependencyRatchetTest {
                 "com.taxonomy.analysis.service.LlmProviderConfig");
     }
 
+    @Test
+    void relationsOnlyExecutionReadsOnlyItsReviewedFrozenCatalogueBoundary() {
+        var useCase = new ClassFileImporter().importClasses(
+                com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase.class)
+                .get(com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase.class);
+        Set<String> targets = new TreeSet<>();
+        for (Dependency dependency : useCase.getDirectDependenciesFromSelf()) {
+            if (dependency.getTargetClass().getPackageName().equals("com.taxonomy.catalog.snapshot")) {
+                targets.add(dependency.getTargetClass().getName());
+            }
+        }
+        assertThat(targets).containsExactly(
+                "com.taxonomy.catalog.snapshot.CatalogueSnapshotService",
+                "com.taxonomy.catalog.snapshot.CatalogueSourceIdentity",
+                "com.taxonomy.catalog.snapshot.FrozenCatalogueContext$Scope");
+    }
+
     @ParameterizedTest(name = "{0}: {1}")
     @MethodSource("featureModuleRootSources")
     void rejectsRootPackageSourcesInFeatureModules(

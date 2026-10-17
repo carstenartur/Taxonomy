@@ -46,7 +46,13 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                            Long startedAt, Long finishedAt) { }
     public record Snapshot(String operationId, ClusterAnalysisState state, long revision,
                            int completedRoots, int totalRoots, int runningTasks, int queuedTasks,
-                           long createdAt, long updatedAt, List<TaskView> tasks, AnalysisResult result) { }
+                           long createdAt, long updatedAt, List<TaskView> tasks, AnalysisResult result, ClusterAnalysisProgress.View progress) {
+        public Snapshot(String operationId, ClusterAnalysisState state, long revision, int completedRoots, int totalRoots,
+                        int runningTasks, int queuedTasks, long createdAt, long updatedAt, List<TaskView> tasks, AnalysisResult result) {
+            this(operationId, state, revision, completedRoots, totalRoots, runningTasks, queuedTasks, createdAt, updatedAt,
+                    tasks, result, ClusterAnalysisProgress.View.EMPTY);
+        }
+    }
     /** The same bounded score preview for individual and recovery-list views. */
     public record ScorePreview(int evaluatedNodes, Map<String, Double> rawScores) {
         private static final int MAX_PREVIEW_SCORES = 8192;
@@ -147,6 +153,12 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             throw new IllegalStateException("Diagnostic admission is no longer owned by this delivery");
         return run;
     }
+    ClusterAnalysisWork diagnosticWork(AnalysisTaskMessage task) { return requireWork(task); }
+    RootCatalogueSnapshot progressRoot(AnalysisTaskMessage task) {
+        return task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS
+                ? ClusterAnalysisProgress.frozen(shard(context(task.envelope()), task.routingRoot()), mapper,
+                        context(task.envelope()), task.routingRoot().code()) : null;
+    }
     int diagnosticDelivery(AnalysisTaskMessage task) { return requireWork(task).attempts; }
     boolean diagnosticTask(AnalysisOperationContext context, String taskId) {
         var work = em.find(ClusterAnalysisWork.class, key(taskId));
@@ -225,14 +237,25 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             List<AnalysisTaskMessage> tasks = new ArrayList<>();
             for (int i = 0; i < graph.tasks().size(); i++) {
                 var task = messages.task(graph.tasks().get(i));
-                addWork(task, i, null); tasks.add(task);
+                addWork(task, i, null);
+                if (command.retainedAnalysis() == null) tasks.add(task);
+                else {
+                    var work = requireWork(task);
+                    var retained = retainedRoot(command.retainedAnalysis(), task.routingRoot().code());
+                    work.resultJson = json(retained); work.settled = true;
+                    work.state = "SUCCESS".equals(retained.getStatus()) ? "COMPLETED" : "PARTIAL";
+                    work.finishedAt = run.createdAt; run.completedRoots++;
+                }
             }
             inputs.forEach((root, value) -> {
                 var input = new ClusterAnalysisInput(); input.id = key(run.id + ":input:" + root);
                 input.operationId = run.id; input.root = root.code(); input.inputJson = value; em.persist(input);
             });
             appendEvent(run, AnalysisProgressPhase.PLANNED);
-            dispatch.dispatch(tasks);
+            if (command.retainedAnalysis() != null) {
+                advanceRelations(run);
+                appendEvent(run, AnalysisProgressPhase.TASK_COMPLETED);
+            } else dispatch.dispatch(tasks);
         });
     }
 
@@ -391,7 +414,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         if (binding == null) return result;
         var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);
         if (!continuations.owns(claim, run.id)) return result;
-        return cancelled ? continuations.cancel(binding.id(), command.workspaceContext()).result()
+        return cancelled ? continuations.cancel(binding.id(), command.workspaceContext(), result.getRelationSearchReport()).result()
                 : continuations.complete(claim, result, result.getTree());
     }
 
@@ -458,13 +481,30 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
 
     public Snapshot snapshot(AnalysisOperationContext context) {
         return tx.execute(status -> {
-            var run = requireRun(context.operationId(), false); requireAuthority(run, context);
-            var tasks = works(run.id).stream().map(w -> new TaskView(w.taskId, w.taskType, w.root, w.state,
+            // Keep the revision and all per-task observations coherent with worker updates.
+            var run = requireRun(context.operationId(), true); requireAuthority(run, context);
+            var work = works(run.id);
+            var roots = new HashMap<String, RootCatalogueSnapshot>();
+            boolean restored = run.state.terminal() && work.stream().allMatch(task -> task.attempts == 0 && task.startedAt == null);
+            com.taxonomy.catalog.snapshot.CatalogueSourceIdentity frozenSource = null;
+            for (var input : em.createQuery("select i from ClusterAnalysisInput i where i.operationId=:id", ClusterAnalysisInput.class)
+                    .setParameter("id", run.id).getResultList()) {
+                var root = ClusterAnalysisProgress.frozen(input.inputJson, mapper, context, input.root, restored);
+                if (root != null) {
+                    if (frozenSource != null && !frozenSource.equals(root.source())) throw new IllegalStateException("Conflicting frozen progress sources");
+                    frozenSource = root.source(); roots.put(input.root, root);
+                }
+            }
+            var command = read(run.commandJson, AnalyzeRequirementCommand.class);
+            var retained = command.retainedAnalysis() == null ? null : command.retainedAnalysis().getRelationSearchReport();
+            var progress = ClusterAnalysisProgress.combine(context, run.state, work, roots,
+                    command.analysisScope().includesRelations() ? run.relationPlanJson : null, retained, mapper);
+            var tasks = work.stream().map(w -> new TaskView(w.taskId, w.taskType, w.root, w.state,
                     w.attempts, w.startedAt, w.finishedAt)).toList();
             return new Snapshot(run.id, run.state, run.revision, run.completedRoots, run.totalRoots,
                     (int) tasks.stream().filter(t -> t.state().equals("RUNNING")).count(),
                     (int) tasks.stream().filter(t -> t.state().equals("QUEUED")).count(), run.createdAt, run.updatedAt,
-                    tasks, run.resultJson == null ? null : read(run.resultJson, AnalysisResult.class));
+                    tasks, run.resultJson == null ? null : read(run.resultJson, AnalysisResult.class), progress);
         });
     }
 
@@ -689,14 +729,40 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 .map(w -> read(w.resultJson, RelationSearchDistribution.WorkResult.class)).toList();
     }
 
+    /** Retained prerequisites are durable evidence, never broker-dispatched scoring work. */
+    private AnalysisResult retainedRoot(AnalysisResult retained, String root) {
+        var tree = retained.getTree().stream().filter(node -> root.equals(node.getCode())).toList();
+        if (tree.isEmpty()) throw new IllegalArgumentException("Retained source catalogue root is absent");
+        var codes = new HashSet<String>();
+        java.util.function.Consumer<TaxonomyNodeDto> collect = new java.util.function.Consumer<>() {
+            public void accept(TaxonomyNodeDto node) { codes.add(node.getCode()); if (node.getChildren() != null) node.getChildren().forEach(this); }
+        };
+        tree.forEach(collect);
+        var raw = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
+        retained.getRawScores().forEach((code, score) -> { if (codes.contains(code)) raw.put(code, score); });
+        retained.getReasons().forEach((code, reason) -> { if (codes.contains(code)) reasons.put(code, reason); });
+        var result = new AnalysisResult(raw, tree); result.setReasons(reasons); result.setProvider(retained.getProvider());
+        result.setAnalysisScope(new AnalysisScope(Set.of(root), AnalysisMode.TAXONOMIES_ONLY));
+        var missing = new LinkedHashMap<String, String>();
+        if (retained.getAnalysisCoverage() != null) retained.getAnalysisCoverage().nodes().forEach((code, assessment) -> {
+            if (codes.contains(code) && assessment.state() == AnalysisCoverage.State.UNKNOWN) missing.put(code, assessment.reason());
+        });
+        result.setAnalysisCoverage(AnalysisCoverage.derive(tree, raw, result.getScores(), missing, null));
+        result.setStatus(result.getAnalysisCoverage().hasOpenEvaluations() ? "PARTIAL" : "SUCCESS");
+        return result;
+    }
+
     private AnalysisResult aggregate(ClusterAnalysisRun run) {
         var scores = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>();
         List<TaxonomyNodeDto> tree = new ArrayList<>(); List<String> warnings = new ArrayList<>();
         List<TaxonomyDiscrepancy> discrepancies = new ArrayList<>(); List<ProductCoverageGap> gaps = new ArrayList<>();
         var coverage = new ClusterAnalysisCoverage();
-        String provider = null;
+        var retained = read(run.commandJson, AnalyzeRequirementCommand.class).retainedAnalysis();
+        String provider = retained == null ? null : retained.getProvider();
+        if (retained != null) warnings.addAll(retained.getWarnings());
         for (var work : works(run.id)) {
+            if (retained != null) break;
             if (!work.taskType.equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) continue;
             if (work.resultJson == null) {
                 coverage.add(work.root, null);
@@ -716,14 +782,17 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             if (!"SUCCESS".equals(result.getStatus())) warnings.add(work.root + ": "
                     + Objects.toString(result.getErrorMessage(), "partial assessment"));
         }
-        var result = new AnalysisResult(scores, tree); result.setReasons(reasons); result.setScoreSemanticsContext(contexts);
+        var result = retained == null ? new AnalysisResult(scores, tree) : read(json(retained), AnalysisResult.class);
+        if (retained == null) { result.setReasons(reasons); result.setScoreSemanticsContext(contexts); }
         var context = read(run.contextJson, AnalysisOperationContext.class);
-        result.setAnalysisCoverage(coverage.combine(context.authority(),
+        if (retained == null) result.setAnalysisCoverage(coverage.combine(context.authority(),
                 root -> read(shard(context, TaxonomyShardRoot.of(root)), RootCatalogueSnapshot.class)));
         for (var work : works(run.id)) if (work.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name()) && work.failureReason != null)
             warnings.add(work.failureReason + ": relation work incomplete; no negative finding");
         if (run.relationPlanJson != null) {
-            var report = RelationSearchDistribution.combine(read(run.relationPlanJson, RelationSearchDistribution.Plan.class), relationResults(run.id));
+            var report = RelationSearchDistribution.retainAcceptedRelations(
+                    RelationSearchDistribution.combine(read(run.relationPlanJson, RelationSearchDistribution.Plan.class), relationResults(run.id)),
+                    retained == null ? null : retained.getRelationSearchReport());
             result.setRelationSearchReport(report); result.setProvisionalRelations(List.of());
             if (!report.isSearchExhausted()) {
                 String summary = "RELATION_SEARCH_PARTIAL: " + report.totalCalls() + "/" + report.maxCalls()
@@ -739,8 +808,9 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                     .flatMap(work -> read(work.resultJson, ClusterRelationComputation.ScoreOnly.class).hypotheses().stream())
                     .toList());
         }
-        result.setWarnings(warnings); result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps);
-        result.setProvider(provider); result.setStatus(warnings.isEmpty() ? "SUCCESS" : "PARTIAL");
+        result.setWarnings(warnings);
+        if (retained == null) { result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps); }
+        result.setProvider(provider); result.setStatus(warnings.isEmpty() && (retained == null || "SUCCESS".equals(retained.getStatus())) ? "SUCCESS" : "PARTIAL");
         result.setAnalysisOperationId(run.id);
         result.setAnalysisProviderId(read(run.commandJson, AnalyzeRequirementCommand.class).provider());
         result.setAnalysisScope(read(run.commandJson, AnalyzeRequirementCommand.class).analysisScope());
@@ -807,6 +877,8 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
     private static void validateInput(AnalysisOperationContext context, AnalyzeRequirementCommand command,
                                       Map<TaxonomyShardRoot, String> shards) {
         Objects.requireNonNull(context); Objects.requireNonNull(command); Objects.requireNonNull(shards);
+        if (command.retainedAnalysis() != null && (command.continuationBinding() == null || !command.analysisScope().includesRelations()))
+            throw new IllegalArgumentException("Retained relation input requires explicit continuation authority");
         var workspace = Objects.requireNonNull(command.workspaceContext());
         // Bind the immutable source identity before evaluating caller-supplied input.
         var authority = context.authority();

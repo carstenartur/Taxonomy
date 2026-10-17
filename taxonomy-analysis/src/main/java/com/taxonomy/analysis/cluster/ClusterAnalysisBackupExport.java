@@ -85,9 +85,13 @@ public final class ClusterAnalysisBackupExport {
                         if (!rootWork.computeIfAbsent(run.id, ignored -> new HashSet<>()).add(root)) throw new IOException("Duplicate cluster root work");
                         if (r.getBoolean("settled")) completed.merge(run.id, 1, Integer::sum);
                     }
+                    String progress = text(r, "progress_json");
+                    try { ClusterAnalysisBackupRestorer.validateProgress(ClusterAnalysisProgress.read(progress, mapper), run.revision,
+                            r.getInt("delivery_attempts"), text(r, "state"), task); }
+                    catch (IllegalArgumentException invalid) { throw new IOException("Cluster worker progress is inconsistent", invalid); }
                     return new ClusterAnalysisBackupRecords.Work(PortableRows.reference(r, "analysis.cluster-work", "id"), reference(run.id), taskId, type,
                             root, r.getInt("ordinal_number"), messageJson, text(r, "input_json"), text(r, "result_json"), text(r, "failure_reason"),
-                            text(r, "state"), r.getBoolean("settled"), r.getInt("delivery_attempts"), number(r, "started_at"), number(r, "finished_at"));
+                            text(r, "state"), r.getBoolean("settled"), r.getInt("delivery_attempts"), number(r, "started_at"), number(r, "finished_at"), progress);
                 });
         rows.writeBatches(sink, "analysis", "cluster-inputs", profile,
                 children("i", "analysis_cluster_input", "root_code", included), r -> {

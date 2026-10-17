@@ -292,8 +292,10 @@ test('ordered loader readiness includes the last module asynchronous initializat
   assert.equal(typeof h.window.TaxonomyAnalysisSessionReady?.then, 'function');
   let settled = false;
   const ready = h.window.TaxonomyAnalysisSessionReady.then(value => { settled = true; return value; });
-  for (let index = 0; index < 13; index++) {
-    if (index === 12) h.window.TaxonomyAnalysisSession = { whenInitialized: () => initialization.promise };
+  for (let index = 0; index < h.scripts.length; index++) {
+    if (h.scripts[index].src.endsWith('/taxonomy-analysis-session-projects.js')) {
+      h.window.TaxonomyAnalysisSession = { whenInitialized: () => initialization.promise };
+    }
     h.scripts[index].dispatchEvent(new Event('load'));
   }
   await Promise.resolve(); assert.equal(settled, false);

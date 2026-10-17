@@ -80,9 +80,78 @@ public final class ClusterAnalysisDiagnostics {
         private final String execution = UUID.randomUUID().toString();
         private final Deque<Long> active = new ArrayDeque<>();
         private int ordinal;
-        private Session(AnalysisTaskMessage task, int delivery) { this.task = task; this.delivery = delivery; }
+        private final Set<String> catalogue;
+        private Session(AnalysisTaskMessage task, int delivery) {
+            this.task = task; this.delivery = delivery;
+            var work = store.diagnosticWork(task);
+            var previous = ClusterAnalysisProgress.read(work.progressJson, json);
+            if (previous != null && previous.delivery() >= delivery)
+                throw new IllegalStateException("Worker progress is already owned by this delivery");
+            var root = store.progressRoot(task);
+            catalogue = root == null ? Set.of() : root.nodes().stream().map(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.Node::code)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            var scores = previous == null ? Map.<String, Double>of() : previous.scores();
+            work.progressJson = json.writeValueAsString(new ClusterAnalysisProgress.Worker(execution, delivery,
+                    store.diagnosticAuthority(task, delivery).revision, null, null, scores, null));
+        }
         @Override public String operationId() { return task.envelope().operationId(); }
-        @Override public void phase(String phase, String node) { }
+        @Override public void phase(String phase, String node) {
+            progress(current -> current.phase(Objects.requireNonNull(phase), node));
+        }
+        @Override public void assessment(LlmCallDetail detail) { assessment(detail, true); }
+        private void assessment(LlmCallDetail detail, boolean requireCurrent) {
+            Objects.requireNonNull(detail);
+            if (task.taskType() != AnalysisTaskType.SUBTAXONOMY_ANALYSIS) return;
+            progress(current -> {
+                if (detail.getError() != null && !detail.getError().isBlank() || detail.getScores() == null) return current;
+                var scores = new LinkedHashMap<>(current.scores());
+                detail.getScores().forEach((code, value) -> {
+                    if (catalogue.contains(code) && value != null && Double.isFinite(value) && value >= 0 && value <= 100)
+                        scores.put(code, value);
+                });
+                return current.scores(scores);
+            }, requireCurrent);
+        }
+        @Override public void relations(com.taxonomy.dto.RelationSearchProgress value) {
+            if (task.taskType() != AnalysisTaskType.RELATION_ANALYSIS)
+                throw new IllegalStateException("Relation progress requires a relation task");
+            progress(current -> {
+                ClusterAnalysisProgress.validateRelations(value);
+                var work = store.diagnosticWork(task);
+                if (work.inputJson != null) {
+                    var grant = json.readValue(work.inputJson, com.taxonomy.analysis.relations.RelationSearchDistribution.Work.class);
+                    if (value.maxCalls() != grant.maxCalls() || value.calls() > grant.maxCalls()
+                            || value.taxonomies().stream().anyMatch(root -> !root.root().equals(grant.targetRoot().code())))
+                        throw new IllegalArgumentException("Relation progress differs from its admitted grant");
+                    var plan = store.relationPlan(ClusterAnalysisStore.context(task.envelope()));
+                    var item = plan.items().get(grant.ordinal());
+                    var source = plan.sources().get(item.sourceIndex()).node().id();
+                    if (value.current() != null && (!source.equals(value.current().sourceId())
+                            || !grant.targetRoot().code().equals(value.current().targetRoot())
+                            || !item.type().equals(value.current().type()) || item.direction() != value.current().direction()))
+                        throw new IllegalArgumentException("Foreign current relation search");
+                }
+                return current.relations(value);
+            });
+        }
+        private void progress(java.util.function.UnaryOperator<ClusterAnalysisProgress.Worker> update) { progress(update, true); }
+        private void progress(java.util.function.UnaryOperator<ClusterAnalysisProgress.Worker> update, boolean requireCurrent) {
+            tx.executeWithoutResult(status -> {
+                var run = store.diagnosticAuthority(task, requireCurrent ? delivery : null); var work = store.diagnosticWork(task);
+                var previous = ClusterAnalysisProgress.read(work.progressJson, json);
+                if (run.state.terminal() || !"RUNNING".equals(work.state) || work.attempts != delivery
+                        || work.resultJson != null || work.failureReason != null || previous == null
+                        || !execution.equals(previous.execution()) || delivery != previous.delivery()) {
+                    if (!requireCurrent) return; // Late diagnostic responses remain historical evidence only.
+                    throw new IllegalStateException("Worker progress delivery was superseded");
+                }
+                var next = Objects.requireNonNull(update.apply(previous));
+                if (previous.equals(next)) return;
+                String encoded = json.writeValueAsString(next.at(run.revision + 1));
+                if (encoded.length() > ClusterAnalysisProgress.MAX_JSON) throw new IllegalArgumentException("Worker progress exceeds operation bound");
+                work.progressJson = encoded; store.diagnosticChanged(run); em.flush();
+            });
+        }
         @Override public long started(String provider, String node) {
             int logicalOrdinal = ++ordinal;
             long number = tx.execute(status -> {
@@ -107,6 +176,9 @@ public final class ClusterAnalysisDiagnostics {
         }
         @Override public void completed(long callId, LlmCallDetail detail, long durationMillis) {
             finish(callId, detail, durationMillis, detail.getError() == null || detail.getError().isBlank() ? "COMPLETED" : "FAILED", detail.getError());
+            // Ordinary scoring reports parsed evidence here; checkpoint replay also
+            // invokes assessment(). Frozen identities deduplicate both paths.
+            assessment(detail, false);
         }
         @Override public void failed(long callId, String failure, long durationMillis) { finish(callId, null, durationMillis, "FAILED", failure); }
         @Override public void stopped(AnalysisStoppedException.Reason reason) {

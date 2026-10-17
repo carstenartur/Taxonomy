@@ -75,6 +75,52 @@ class AnalyzeRequirementUseCaseTest {
     }
 
     @Test
+    void relationsExtensionUsesRetainedScoresAndNeverRunsNodeScoring() {
+        var sourceNode = node("BP", null, "Business Processes", 0);
+        sourceNode.setAnalysisRole("CATEGORY"); sourceNode.setClassificationConfidence(1d);
+        var original = new AnalysisResult(Map.of("BP", 20d), List.of(sourceNode)); original.setStatus("SUCCESS");
+        original.setReasons(Map.of("BP", "Original explanation.\nKeep it exactly."));
+        var view = new ViewContext("commit", "draft", null, false, false, false);
+        original.setViewContext(view);
+        var command = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice",
+                new WorkspaceContext("alice", "alice-ws", "draft"), null,
+                new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.FULL)).withRetainedAnalysis(original);
+        when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(view);
+        var snapshots = org.mockito.Mockito.mock(com.taxonomy.catalog.snapshot.CatalogueSnapshotService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(useCase, "catalogueSnapshots", snapshots);
+        when(snapshots.captureRoots(any(), any())).thenAnswer(call -> {
+            var n = new com.taxonomy.catalog.model.TaxonomyNode(); n.setCode("BP"); n.setTaxonomyRoot("BP"); n.setNameEn("Business Processes"); n.setLevel(0);
+            var unused = new com.taxonomy.catalog.provenance.CatalogueSourceJournal.InputReference(com.taxonomy.catalog.provenance.CatalogueSourceJournal.Use.NOT_RETAINED, null, 0);
+            var provenance = new com.taxonomy.catalog.provenance.CatalogueSourceJournal.Snapshot("00000000-0000-0000-0000-000000000001", java.time.Instant.EPOCH,
+                    unused, new com.taxonomy.catalog.provenance.CatalogueSourceJournal.InputReference(com.taxonomy.catalog.provenance.CatalogueSourceJournal.Use.NOT_USED, null, 0), unused);
+            return List.of(new com.taxonomy.catalog.snapshot.RootCatalogueSnapshot(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.SCHEMA_VERSION, call.getArgument(0), "BP",
+                    List.of(com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.Node.capture(n,
+                    new com.taxonomy.catalog.service.CatalogueOverlayService.NodeMetadata("CATEGORY", List.of(), 1, false, null), false)),
+                    new com.taxonomy.catalog.service.CatalogueOverlayService.OverlayMetadata(false, "fixture", null, null, null, 0), provenance));
+        });
+        var progress = new com.taxonomy.analysis.service.AnalysisProgressRegistry(new org.springframework.core.env.StandardEnvironment());
+        String operationId = java.util.UUID.randomUUID().toString();
+        when(analysisRelationGenerator.generate(original.getScores())).thenAnswer(call -> {
+            var snapshot = progress.snapshot(operationId, "alice", command.workspaceContext());
+            assertThat(snapshot.nodeProgress()).as("Retained source coverage is visible during relation work").isNotNull();
+            assertThat(snapshot.nodeProgress().assessed()).isEqualTo(1);
+            assertThat(snapshot.nodeProgress().open()).isZero();
+            assertThat(snapshot.calls()).as("Seeding source coverage does not fabricate provider calls").isEmpty();
+            assertThat(snapshot.phase()).isEqualTo("RELATIONS");
+            return List.of();
+        });
+        AnalysisResult extended;
+        try (var run = progress.open(operationId, "alice", command.workspaceContext(), null)) {
+            extended = useCase.analyze(command).analysisResult();
+        }
+        assertThat(extended.getRawScores()).containsExactlyEntriesOf(original.getRawScores());
+        assertThat(extended.getReasons()).containsExactlyEntriesOf(original.getReasons());
+        verify(llmService, never()).analyzeWithBudget(any());
+        verify(llmService, never()).analyzeWithBudget(any(), any());
+        verify(analysisRelationGenerator).generate(original.getScores());
+    }
+
+    @Test
     void taxonomyOnlyScopeSkipsRelationsAndProjectsRetainedArchitecture() {
         var scope = new AnalysisScope(java.util.Set.of("BP"), AnalysisMode.TAXONOMIES_ONLY);
         var command = new AnalyzeRequirementCommand("requirement", true, 20, null, "alice",
