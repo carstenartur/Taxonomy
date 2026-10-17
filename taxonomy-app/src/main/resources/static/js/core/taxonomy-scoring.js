@@ -608,6 +608,11 @@
             return;
         }
 
+        if (!options.continuation && requestedScope?.mode === 'TAXONOMIES_ONLY'
+                && window.TaxonomyAnalysisRecovery?.startManagedAnalysis) {
+            return window.TaxonomyAnalysisRecovery.startManagedAnalysis();
+        }
+
         recoverySelection++;
         console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
         const analysisStart = new Date();

@@ -157,7 +157,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40");
     }
 
     @Test
@@ -232,7 +232,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
@@ -425,7 +425,7 @@ class TaxonomySchemaPostgresMigrationIT {
                 "analysis_cluster_run", List.of("id", "username", "scope_key", "project_id", "requirement_id", "context_json", "command_json", "view_json", "result_json",
                         "relation_plan_json", "state", "total_roots", "completed_roots", "event_revision", "created_at", "updated_at", "row_version"),
                 "analysis_cluster_work", List.of("id", "operation_id", "task_id", "task_type", "root_code", "ordinal_number",
-                        "message_json", "input_json", "result_json", "failure_reason", "state", "settled", "delivery_attempts", "started_at", "finished_at"),
+                        "message_json", "input_json", "result_json", "progress_json", "failure_reason", "state", "settled", "delivery_attempts", "started_at", "finished_at"),
                 "analysis_cluster_input", List.of("id", "operation_id", "root_code", "input_json"),
                 "analysis_cluster_event", List.of("id", "operation_id", "event_revision", "event_json"),
                 "analysis_cluster_call", List.of("id", "operation_id", "task_id", "call_number", "execution_id", "logical_ordinal",

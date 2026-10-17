@@ -58,7 +58,7 @@ See [Project portfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) and the
 ## Select scope and interpret progress
 
 For automatic analysis and Copilot, choose the taxonomy roots and either the
-full mode or **Taxonomies only**. The choice is frozen with the run and retained
+full mode or **Node assessment only**. The choice is frozen with the run and retained
 through compatible retry/continuation and JSON exchange. Changing the controls
 for a future run does not reinterpret an earlier result.
 
@@ -66,6 +66,18 @@ Selected roots limit scoring and relationship sources. In full mode, compatible
 relationship targets in other taxonomies can still be searched. Taxonomies-only
 mode does not perform relationship discovery or relationship-dependent architecture
 derivation; it must not be presented as a completed full architecture analysis.
+
+After a saved **Node assessment only** run, **Add relationship search** adds the relationships while retaining the existing scores and explanations. This step uses the original requirement, taxonomy and provider selection. It remains available in the same workspace after reload. Changed inputs, edited or independently extended assessments and explanations, and older imports without a matching saved run receive an explanation; start a new node assessment in that case. A paused relationship search or one completed with open assessments can be continued through those assessments.
+
+The analysis status initially expands the bars for each taxonomy; the list can be collapsed. Relationship search has its own total bar and a bar for each target taxonomy. No fixed percentage is shown until the work scope is known.
+
+| Display | Meaning |
+|---|---|
+| Node assessment | Directly assessed nodes and descendants excluded by a valid parent decision count as complete; open nodes remain visible. |
+| Relationship search | Completed search tasks are counted against the planned scope. Unresolved and pending tasks remain separate. |
+| Relationships found | The number of search results; this is not a measure of work progress or human approval. |
+
+Cancellation or failure does not fill the remaining bars. **Hide** closes the display while work continues. Reopen it through **Settings → Analysis status**.
 
 Directly assessed nodes, descendants excluded by a valid zero assessment, open
 nodes and unselected nodes are different. A budget stop, a failed answer or an
@@ -268,7 +280,7 @@ Tips for good requirements:
 ### Standard Analysis
 
 1. Type your requirement in the textarea.
-2. Select the taxonomy roots and full or **Taxonomies only** mode as described above. Leave **Interactive Mode** unchecked for an automatic hierarchical run.
+2. Select the taxonomy roots and full or **Node assessment only** mode as described above. Leave **Interactive Mode** unchecked for an automatic hierarchical run.
 3. Click the **Analyze with AI** button.
 4. Progress appears in the inline analysis status. The taxonomy tree in the left panel starts showing colour-coded score bars as results arrive.
 5. When analysis is complete, the inline analysis status shows a summary and the export buttons become available.

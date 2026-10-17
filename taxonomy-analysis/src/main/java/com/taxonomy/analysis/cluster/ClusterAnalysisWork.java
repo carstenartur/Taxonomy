@@ -18,6 +18,7 @@ public class ClusterAnalysisWork {
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "message_json", nullable = false) String messageJson;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "input_json") String inputJson;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "result_json") String resultJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "progress_json") String progressJson;
     @Column(name = "failure_reason", length = 64) String failureReason;
     @Column(nullable = false, length = 32) String state;
     @Column(nullable = false) boolean settled;

@@ -16,6 +16,55 @@
             && context.request.businessText === input()
             && generation === (C.runtime.analysisGeneration || 0) && !C.runtime.invalidating);
     }
+    // Presentation compatibility only. The server independently loads and authorizes the durable evidence.
+    function evidenceChecksum(value) {
+        // Keep persisted baselines bounded even for long explanations. These independent
+        // integer checksums are presentation metadata, never server evidence or authorization.
+        var hashes = [0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35];
+        var primes = [0x01000193, 0x27d4eb2f, 0x165667b1, 0x5bd1e995];
+        for (var at = 0; at < value.length; at++) {
+            var code = value.charCodeAt(at);
+            for (var lane = 0; lane < hashes.length; lane++) hashes[lane] = Math.imul(hashes[lane] ^ code, primes[lane]);
+        }
+        return 'v1:' + value.length + ':' + hashes.map(function (hash) {
+            return (hash >>> 0).toString(16).padStart(8, '0');
+        }).join('');
+    }
+    function nodeEvidence(raw, effective, displayed, reasons) {
+        return evidenceChecksum(JSON.stringify([raw || {}, effective || {}, displayed || {}, reasons || {}].map(function (values) {
+            return Object.keys(values).sort().map(function (key) { return [key, values[key]]; });
+        })));
+    }
+    function resultNodeEvidence(result) {
+        var effective = result.effectiveScores || result.scores || {};
+        return nodeEvidence(result.rawScores || result.scores, effective, result.scores || effective, result.reasons);
+    }
+    function currentNodeEvidence() {
+        var effective = S.currentEffectiveScores || S.currentScores || {};
+        return nodeEvidence(S.currentRawScores, effective, S.currentScores || effective, S.currentReasons);
+    }
+    function evidenceScope(context) {
+        var request = context.request, scope = request.analysisScope;
+        return evidenceChecksum(JSON.stringify([context.id, context.workspaceId, request.businessText,
+            scope?.mode || null, (scope?.taxonomyRoots || []).slice().sort()]));
+    }
+    function acceptedNodeEvidence(context) {
+        var baseline = context?.nodeEvidenceBaseline;
+        return baseline && baseline.scope === evidenceScope(context) && Number.isSafeInteger(baseline.version)
+            && typeof baseline.evidence === 'string' ? baseline : null;
+    }
+    function rememberNodeEvidence(result, context) {
+        if (result.recovery?.id !== context.id || !Number.isSafeInteger(result.recovery?.version)) return;
+        // recoveryContext is already saved/restored by the versioned draft lifecycle.
+        // Retain the last accepted server evidence separately from editable score/reason maps.
+        context.nodeEvidenceBaseline = { scope: evidenceScope(context), version: result.recovery.version,
+            evidence: resultNodeEvidence(result) };
+    }
+    function nodeEvidenceMatches(context) {
+        var baseline = acceptedNodeEvidence(context);
+        return Boolean(baseline && S.analysisRecovery?.id === context.id && baseline.version === S.analysisRecovery.version
+            && baseline.evidence === currentNodeEvidence());
+    }
     function stopped() { return S.analysisRecovery?.state === 'CANCELLED' || current()?.followupState === 'CANCELLED'; }
     function setBusy(value) {
         busy = value;
@@ -100,9 +149,20 @@
         ui.update(message(), busy, Boolean(r && (['RUNNING', 'PAUSED', 'STOPPED'].includes(r.state)
             || current()?.followupState === 'RUNNING' || current()?.followupState === 'PAUSED')));
         renderCoverage();
+        if (typeof document.dispatchEvent === 'function') document.dispatchEvent(new CustomEvent('taxonomy:analysis-recovery-updated'));
     }
     function hydrate(result, context) {
         if (!result || !inScope(context)) return;
+        var baseline = acceptedNodeEvidence(context);
+        var completedSource = context.request.analysisScope?.mode === 'TAXONOMIES_ONLY'
+            && ['COMPLETED', 'COMPLETED_WITH_GAPS'].includes(result.recovery?.state);
+        if (completedSource && S.lastAnalyzedText === context.request.businessText
+                && (baseline ? baseline.evidence !== currentNodeEvidence() : currentNodeEvidence() !== resultNodeEvidence(result))) {
+            // Refreshing a journal must not erase manual edits or independent assessment additions.
+            // Legacy drafts without a baseline can only establish one from an exact evidence match.
+            return;
+        }
+        rememberNodeEvidence(result, context);
         S.analysisRecovery = result.recovery || S.analysisRecovery;
         context.pauseReason = ['PAUSED', 'STOPPED'].includes(S.analysisRecovery?.state) ? result.errorMessage : null;
         S.analysisCoverage = result.analysisCoverage || null;
@@ -148,12 +208,16 @@
         try {
             var snapshot = await request(c, '');
             if (!inScope(c)) return;
+            if (snapshot.recovery?.id && snapshot.recovery.id !== c.id) throw new Error(text(
+                'Die Antwort gehört zu einer anderen Analyse.', 'The response belongs to another analysis.'));
+            c.confirmed = true;
             S.analysisRecovery = snapshot.recovery;
             if (snapshot.clusterOperationId) { c.distributed = true; c.operationId = snapshot.clusterOperationId; }
             c.observationError = null;
             // Refresh may report a RUNNING new attempt plus an older paused result. Never hydrate it.
             if (!busy && snapshot.recovery.state !== 'RUNNING') hydrate(snapshot.result, c);
             c.request = snapshot.request;
+            if (snapshot.request.relationSourceContinuationId) c.noFollowups = true;
             update();
             if (snapshot.recovery.state === 'RUNNING') scheduleRead();
             else if (!busy) { await save(); if (snapshot.recovery.state === 'PAUSED' && !ui.isDismissed()) open(); }
@@ -212,17 +276,19 @@
             restoreArchitecture();
             if (!result?.recovery) throw new Error(text('Keine bestätigte Fortsetzungsantwort.', 'No confirmed continuation response.'));
             S.analysisRecovery = result.recovery; S.analysisCoverage = result.analysisCoverage;
+            rememberNodeEvidence(result, c);
             S.lastAnalysisStatus = result.status || 'UNKNOWN';
             c.observationError = null;
             c.pauseReason = ['PAUSED', 'STOPPED'].includes(result.recovery.state) ? result.errorMessage : null;
             setBusy(false); update(); await save();
             if (['PAUSED', 'STOPPED'].includes(result.recovery.state)) open();
             else if (result.recovery.state === 'COMPLETED' || result.recovery.state === 'COMPLETED_WITH_GAPS') {
-                await followups();
+                if (!c.noFollowups) await followups();
             }
+            return result;
         } catch (error) {
             if (!inScope(c)) return;
-            setBusy(false); c.observationError = error.message;
+            setBusy(false); c.observationError = error.message; c.rejectionStatus = error.httpStatus || null; c.rejectionMessage = error.message;
             // A rejected write may never have started. Keep its identity; do not fabricate a new run.
             await refresh(); if (!inScope(c)) return; open(); ui.error(error.message);
         } finally {
@@ -481,9 +547,9 @@
             }
         });
     }
-    function startCopilot() {
+    function startAnalysis(manual) {
         if (busy || decisionBusy) return;
-        if (inScope(current()) && S.analysisRecovery) { open(); return; }
+        if (!manual && inScope(current()) && S.analysisRecovery) { open(); return; }
         if (!input()) { window.TaxonomyBrowse?.showStatus('warning', text('Bitte eine Anforderung eingeben.', 'Enter a requirement.')); return; }
         var ready = window.TaxonomyAnalysisSession?.state?.();
         if (!ready?.ready || !ready.workspaceId || !crypto?.randomUUID) {
@@ -493,14 +559,40 @@
         try { scope = window.TaxonomyAnalysisScope?.read(); }
         catch (invalidScope) { window.TaxonomyBrowse?.showStatus('warning', invalidScope.message); return; }
         generation = C.runtime.analysisGeneration || 0;
-        S.recoveryContext = { id: crypto.randomUUID(), workspaceId: ready.workspaceId,
+        S.recoveryContext = { id: crypto.randomUUID(), workspaceId: ready.workspaceId, noFollowups: Boolean(manual),
             request: { businessText: input(), includeArchitectureView: scope?.mode !== 'TAXONOMIES_ONLY', analysisScope: scope,
                 provider: document.getElementById('providerSelect')?.value || null }, followups: {} };
         S.currentRelationSearchReport = null;
         S.analysisRecovery = { id: current().id, version: 0, state: 'NEW', completedCalls: 0, openQuestions: [] };
         // This newly allocated identity owns no previous scores or derived evidence.
         // A repeated START for an existing operation must retain its accepted results.
-        run('START', null, true);
+        return run('START', null, true);
+    }
+    function startCopilot() { return startAnalysis(false); }
+    function startManagedAnalysis() { return startAnalysis(true); }
+    function extendRelations() {
+        var source = current(), recovery = S.analysisRecovery, sourceStatus = S.lastAnalysisStatus;
+        if (busy || decisionBusy || !inScope(source) || !crypto?.randomUUID
+                || source.request.analysisScope?.mode !== 'TAXONOMIES_ONLY'
+                || !['COMPLETED', 'COMPLETED_WITH_GAPS'].includes(recovery?.state)
+                || !Number.isSafeInteger(recovery.version) || !nodeEvidenceMatches(source)) return;
+        var request = Object.assign({}, source.request, {
+            analysisScope: { taxonomyRoots: (source.request.analysisScope.taxonomyRoots || []).slice(), mode: 'FULL' },
+            includeArchitectureView: true, relationSourceContinuationId: source.id, relationSourceVersion: recovery.version
+        });
+        S.recoveryContext = { id: crypto.randomUUID(), workspaceId: source.workspaceId,
+            request: request, noFollowups: true, followups: {} };
+        S.analysisRecovery = { id: current().id, version: 0, state: 'NEW', completedCalls: 0, openQuestions: [] };
+        var target = current();
+        return Promise.resolve(run('START', null, false)).then(async function (result) {
+            if (!result && current() === target && !target.confirmed && [400, 403, 404, 409, 413, 422].includes(target.rejectionStatus)) {
+                clearTimeout(poll); poll = null;
+                S.recoveryContext = source; S.analysisRecovery = recovery; S.lastAnalysisStatus = sourceStatus;
+                setBusy(false); remember(); update();
+                ui.error(target.rejectionMessage); await save();
+            }
+            return result;
+        });
     }
     async function restore() {
         if (busy || reading || !window.TaxonomyAnalysisSession?.state?.().ready) return;
@@ -514,7 +606,10 @@
             var snapshot = await request(context, '');
             if (context.workspaceId !== C.runtime.workspaceId || (input() && input() !== snapshot.request.businessText)) return;
             var field = document.getElementById('businessText'); if (field && !input()) field.value = snapshot.request.businessText;
-            context.request = snapshot.request; S.recoveryContext = context;
+            context.request = snapshot.request;
+            context.noFollowups = Boolean(snapshot.request.relationSourceContinuationId)
+                || snapshot.request.analysisScope?.mode === 'TAXONOMIES_ONLY';
+            S.recoveryContext = context;
             S.analysisRecovery = snapshot.recovery;
             if (snapshot.recovery.state !== 'RUNNING') hydrate(snapshot.result, context);
             update(); await save();
@@ -554,7 +649,8 @@
         update();
     });
     window.TaxonomyAnalysisSessionReady?.then(restore);
-    window.TaxonomyAnalysisRecovery = { startCopilot: startCopilot, stage: stage, open: open,
+    window.TaxonomyAnalysisRecovery = { startCopilot: startCopilot, startManagedAnalysis: startManagedAnalysis,
+        extendRelations: extendRelations, nodeEvidenceMatches: nodeEvidenceMatches, stage: stage, open: open,
         refresh: refresh, cancel: cancel, renderCoverage: renderCoverage, partialResultMessage: partialResultMessage,
         isManaged: function () { return inScope(current()); },
         hasOpenEvaluations: function () { return Boolean(S.analysisCoverage?.failedOrBlockedNodes)

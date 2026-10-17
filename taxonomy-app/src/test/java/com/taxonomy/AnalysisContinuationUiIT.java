@@ -23,6 +23,8 @@ class AnalysisContinuationUiIT {
     static HttpServer server; static BrowserSession session; static RemoteWebDriver browser;
     static final AtomicInteger writes = new AtomicInteger(), reads = new AtomicInteger();
     static final AtomicReference<String> decision = new AtomicReference<>();
+    static final java.util.List<String> relationWrites = new java.util.concurrent.CopyOnWriteArrayList<>();
+    static final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
     @BeforeAll static void start() throws Exception {
         server = HttpServer.create(new InetSocketAddress("0.0.0.0", 0), 0); server.createContext("/", AnalysisContinuationUiIT::serve); server.start();
         session = BrowserSession.open(server.getAddress().getPort(), Path.of("target/continuation-ui-evidence/downloads")); browser = session.driver();
@@ -48,8 +50,81 @@ class AnalysisContinuationUiIT {
         assertThat(browser.executeScript("return window.__TaxonomyAnalysisSessionContext.S.analysisRecovery.state"))
                 .isEqualTo(expectedState);
     }
+    @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings = {"de", "en"})
+    void normalNodeOnlyAnalysisCanExplicitlyAddRelationsWithoutChangingRetainedScores(String language) {
+        relationWrites.clear();
+        browser.get(session.origin() + "/relations-fixture?lang=" + language);
+        var wait = new WebDriverWait(browser, Duration.ofSeconds(15));
+        browser.findElement(By.id("analyzeBtn")).click();
+        wait.until(driver -> relationWrites.size() == 1 && driver.findElement(By.id("extendAnalysisRelationsBtn")).isEnabled());
+        var source = mapper.readTree(relationWrites.getFirst());
+        assertThat(source.path("resumable").asBoolean()).isTrue();
+        assertThat(source.path("analysisScope").path("mode").asString()).isEqualTo("TAXONOMIES_ONLY");
+        String original = (String) browser.executeScript("return JSON.stringify([TaxonomyState.currentRawScores,TaxonomyState.currentReasons])");
+        for (String edit : java.util.List.of("TaxonomyState.currentRawScores.CP=99;", "TaxonomyState.currentReasons.CP='Manually revised explanation';",
+                "TaxonomyState.currentRawScores['CP-new']=84;")) {
+            browser.executeScript(edit + "document.dispatchEvent(new Event('taxonomy:view-rendered'));");
+            assertThat(browser.findElement(By.id("extendAnalysisRelationsBtn")).isEnabled()).isFalse();
+            assertThat(browser.findElement(By.id("analysisRelationsExtensionHint")).getText()).contains(language.equals("de") ? "bearbeitet" : "edited");
+            browser.executeScript("TaxonomyAnalysisRecovery.extendRelations();");
+            assertThat(relationWrites).hasSize(1);
+            browser.executeScript("const original=JSON.parse(arguments[0]);TaxonomyState.currentRawScores=original[0];TaxonomyState.currentReasons=original[1];document.dispatchEvent(new Event('taxonomy:view-rendered'));", original);
+            assertThat(browser.findElement(By.id("extendAnalysisRelationsBtn")).isEnabled()).isTrue();
+        }
+        browser.findElement(By.id("businessText")).sendKeys(" changed");
+        assertThat(browser.findElement(By.id("extendAnalysisRelationsBtn")).isEnabled()).isFalse();
+        assertThat(browser.findElement(By.id("analysisRelationsExtensionHint")).getText()).contains(language.equals("de") ? "geändert" : "changed");
+        browser.executeScript("const field=document.getElementById('businessText');field.value='retained relations fixture';field.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('providerSelect').value='GEMINI';");
+        var action = browser.findElement(By.id("extendAnalysisRelationsBtn"));
+        assertThat(action.getText()).isEqualTo(language.equals("de") ? "Relationssuche ergänzen" : "Add relationship search");
+        action.sendKeys(org.openqa.selenium.Keys.ENTER);
+        wait.until(driver -> relationWrites.size() == 2 && "FULL".equals(browser.executeScript("return TaxonomyState.lastAnalysisScope?.mode")));
+        var extension = mapper.readTree(relationWrites.get(1));
+        assertThat(extension.path("relationSourceContinuationId").asString()).isEqualTo(source.path("continuationId").asString());
+        assertThat(extension.path("relationSourceVersion").asLong()).isEqualTo(7);
+        assertThat(extension.path("continuationId").asString()).isNotEqualTo(source.path("continuationId").asString());
+        assertThat(extension.path("provider").asString()).isEqualTo("MOCK");
+        assertThat(extension.has("rawScores") || extension.has("scores")).isFalse();
+        assertThat(browser.executeScript("return JSON.stringify([TaxonomyState.currentRawScores,TaxonomyState.currentReasons])")).isEqualTo(original);
+        assertThat(browser.executeScript("return window.fixtureFollowups")).isEqualTo(0L);
+        assertThat(relationWrites).hasSize(2);
+    }
+
+    @Test void legacyNodeOnlyEvidenceExplainsWhyRelationsCannotBeAdded() {
+        relationWrites.clear(); browser.get(session.origin() + "/relations-fixture?lang=en");
+        browser.executeScript("TaxonomyState.lastAnalysisScope={taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'};TaxonomyState.currentRawScores={CP:71.125};TaxonomyRelationsExtension.render();");
+        assertThat(browser.findElement(By.id("extendAnalysisRelationsBtn")).isEnabled()).isFalse();
+        assertThat(browser.findElement(By.id("analysisRelationsExtensionHint")).getText()).contains("no retained execution source");
+        assertThat(relationWrites).isEmpty();
+    }
+
     static void serve(HttpExchange exchange) throws java.io.IOException {
         String path = exchange.getRequestURI().getPath();
+        if (path.equals("/relations-fixture")) {
+            String language = exchange.getRequestURI().getQuery().endsWith("en") ? "en" : "de";
+            String template = new ClassPathResource("templates/index.html").getContentAsString(StandardCharsets.UTF_8);
+            var control = java.util.regex.Pattern.compile("<div id=\"analysisRelationsExtension\"[\\s\\S]*?</div>").matcher(template);
+            if (!control.find()) throw new java.io.IOException("Product relations extension control is missing");
+            send(exchange, "text/html", """
+                <!doctype html><html lang="%s"><head><meta charset="utf-8"></head><body>
+                <input id="businessText" value="retained relations fixture"><input type="checkbox" id="includeArchitectureView">
+                <select id="providerSelect"><option>MOCK</option><option>GEMINI</option></select>
+                <button id="analyzeBtn" onclick="TaxonomyScoring.runAnalysis()">Analyze</button><button id="copilotBtn">Copilot</button>
+                <div id="taxonomyTree"></div><div id="statusArea"></div>%s
+                <script>
+                window.TaxonomyI18n={t:key=>key,getLocale:()=>'%s'};window.TaxonomyUtils={escapeHtml:value=>String(value??'')};
+                window.TaxonomyState={taxonomyData:[{code:'CP',taxonomyRoot:'CP',nameEn:'Capabilities',children:[]}],currentRawScores:{},currentScoreDetails:{},currentReasons:{},currentView:'list'};
+                window.__TaxonomyAnalysisSessionContext={S:TaxonomyState,runtime:{workspaceId:'workspace-a',analysisGeneration:0},language:()=>'%s'};
+                window.TaxonomyAnalysisSession={state:()=>({ready:true,workspaceId:'workspace-a'}),saveNow:async()=>true};
+                window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'}),acceptResult:scope=>{TaxonomyState.lastAnalysisScope=scope;},restrictsGlobalAnalysis:()=>true};
+                window.TaxonomyBrowse={renderView:()=>document.dispatchEvent(new Event('taxonomy:view-rendered')),clearStatus:()=>{},showStatus:()=>{}};
+                window.TaxonomyAnalysisProgress={start:()=>({acceptsResult:()=>true,finish:()=>{}})};
+                window.fixtureFollowups=0;window.TaxonomyAnalysis={runCopilotFlow:async()=>{window.fixtureFollowups++;},renderPartialCopilot:()=>{}};
+                window.TaxonomyAnalysisSessionApi={request:async(url,options)=>fetch(url,options)};
+                </script><script src="/scoring.js"></script><script src="/viewport.js"></script><script src="/recovery.js"></script><script src="/extension.js"></script>
+                </body></html>
+                """.formatted(language, control.group(), language, language)); return;
+        }
         if (path.equals("/fixture")) {
             String language = exchange.getRequestURI().getQuery().endsWith("en") ? "en" : "de";
             send(exchange, "text/html", """
@@ -69,10 +144,26 @@ class AnalysisContinuationUiIT {
             send(exchange, "text/css", new ClassPathResource("static/css/taxonomy-analysis-recovery.css").getContentAsString(StandardCharsets.UTF_8)); return;
         }
         String script = path.equals("/viewport.js") ? "static/js/core/taxonomy-recovery-viewport.js"
-                : path.equals("/recovery.js") ? "static/js/core/taxonomy-analysis-recovery.js" : null;
+                : path.equals("/recovery.js") ? "static/js/core/taxonomy-analysis-recovery.js"
+                : path.equals("/scoring.js") ? "static/js/core/taxonomy-scoring.js"
+                : path.equals("/extension.js") ? "static/js/core/taxonomy-relations-extension.js" : null;
         if (script != null) { send(exchange, "application/javascript", new ClassPathResource(script).getContentAsString(StandardCharsets.UTF_8)); return; }
         if (path.equals("/api/analyze") && exchange.getRequestMethod().equals("POST")) {
-            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8); decision.set(body); writes.incrementAndGet();
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            var input = mapper.readTree(body);
+            if ("retained relations fixture".equals(input.path("businessText").asString())) {
+                relationWrites.add(body);
+                boolean extension = input.hasNonNull("relationSourceContinuationId");
+                var result = new java.util.LinkedHashMap<String,Object>();
+                result.put("rawScores", java.util.Map.of("CP",71.125)); result.put("scores",java.util.Map.of("CP",71.125));
+                result.put("reasons", java.util.Map.of("CP","Original explanation.\nUnchanged."));
+                result.put("status","SUCCESS");result.put("provider","MOCK");result.put("analysisProviderId","MOCK");
+                result.put("analysisScope",java.util.Map.of("taxonomyRoots",java.util.List.of("CP"),"mode",extension?"FULL":"TAXONOMIES_ONLY"));
+                result.put("recovery",java.util.Map.of("id",input.path("continuationId").asString(),"version",7,"state","COMPLETED","completedCalls",1,"openQuestions",java.util.List.of()));
+                result.put("analysisCoverage",java.util.Map.of("failedOrBlockedNodes",0,"nodes",java.util.Map.of()));
+                send(exchange,"application/json",mapper.writeValueAsString(result));return;
+            }
+            decision.set(body); writes.incrementAndGet();
             boolean skip = body.contains("\"continuationAction\":\"SKIP\"");
             send(exchange, "application/json", "{\"status\":\"" + (skip ? "PARTIAL" : "SUCCESS") + "\",\"recovery\":{\"id\":\"" + ID + "\",\"version\":8,\"state\":\"" + (skip ? "COMPLETED_WITH_GAPS" : "COMPLETED") + "\",\"openQuestions\":[]}}"); return;
         }

@@ -100,6 +100,31 @@ class AnalysisFollowUpProviderTest {
         verifyNoInteractions(transport);
     }
 
+    @Test void serverMockModeReturnsTheEffectiveProviderForLaterBrowserRequests() throws Exception {
+        ReflectionTestUtils.setField(providers, "llmMock", true);
+        when(analyze.analyze(any(AnalyzeRequirementCommand.class)))
+                .thenReturn(new AnalyzeRequirementResult(new com.taxonomy.dto.AnalysisResult(java.util.Map.of(), List.of())));
+        var response = mvc.perform(post("/api/analyze").contentType("application/json")
+                .content("{\"businessText\":\"requirement\",\"provider\":\"OPENAI\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.analysisProviderId").value("MOCK"))
+                .andReturn().getResponse();
+        var provider = new ObjectMapper().readTree(response.getContentAsString()).path("analysisProviderId").asString();
+        var id = response.getHeader("X-Analysis-Operation-Id");
+        ReflectionTestUtils.setField(providers, "llmMock", false);
+        ReflectionTestUtils.setField(providers, "llmProviderConfig", "GEMINI");
+        mvc.perform(get("/api/analyze-node").param("parentCode", "BP").param("businessText", "requirement")
+                .param("operationId", id).param("provider", provider))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.provider").value("Mock"))
+                .andExpect(jsonPath("$.error").doesNotExist());
+        mvc.perform(post("/api/justify-leaf").contentType("application/json")
+                .content(new ObjectMapper().writeValueAsString(java.util.Map.of("nodeCode", "BP-C", "businessText", "requirement",
+                        "operationId", id, "provider", provider))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.justification", containsString("supports the requirement")));
+        org.assertj.core.api.Assertions.assertThat(providers.isMockMode()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(providers.getActiveProviderId()).isEqualTo(LlmProvider.GEMINI.id());
+        verifyNoInteractions(transport);
+    }
+
     @Test void resultAndLaterInteractiveStepsRetainTheAdmittedReasonLength() throws Exception {
         var configured = new java.util.concurrent.atomic.AtomicReference<>("detailed");
         AnalysisRuntimeSettings settings = new AnalysisRuntimeSettings() {

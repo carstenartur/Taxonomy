@@ -16,6 +16,7 @@
         '/js/core/taxonomy-copilot-terminal-state.js',
         '/js/core/taxonomy-recovery-viewport.js',
         '/js/core/taxonomy-analysis-recovery.js',
+        '/js/core/taxonomy-relations-extension.js',
         '/js/core/taxonomy-operation-coordinator.js',
         '/js/core/taxonomy-analysis-session-ui.js',
         '/js/core/taxonomy-analysis-session-draft.js',

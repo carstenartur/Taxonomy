@@ -16,7 +16,8 @@ public record AnalyzeRequirementCommand(
         AnalysisScope analysisScope,
         com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
         com.taxonomy.analysis.recovery.AnalysisContinuationBinding continuationBinding,
-        AnalysisReasonLength analysisReasonLength) {
+        AnalysisReasonLength analysisReasonLength,
+        com.taxonomy.dto.AnalysisResult retainedAnalysis) {
 
     public AnalyzeRequirementCommand {
         analysisScope = AnalysisScope.orDefault(analysisScope);
@@ -25,7 +26,20 @@ public record AnalyzeRequirementCommand(
     /** Admission fills a missing mode; older persisted commands retain their absent provenance. */
     public AnalyzeRequirementCommand withAnalysisReasonLength(AnalysisReasonLength value) {
         return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,
-                username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding, value);
+                username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding, value, retainedAnalysis);
+    }
+
+    public AnalyzeRequirementCommand withRetainedAnalysis(com.taxonomy.dto.AnalysisResult retained) {
+        return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,
+                username, workspaceContext, provenance, analysisScope, providerBinding, continuationBinding, analysisReasonLength, retained);
+    }
+
+    public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView, int maxArchitectureNodes,
+            String provider, String username, WorkspaceContext workspaceContext, AnalysisProvenance provenance,
+            AnalysisScope analysisScope, com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
+            com.taxonomy.analysis.recovery.AnalysisContinuationBinding continuationBinding, AnalysisReasonLength reasonLength) {
+        this(businessText, includeArchitectureView, maxArchitectureNodes, provider, username, workspaceContext,
+                provenance, analysisScope, providerBinding, continuationBinding, reasonLength, null);
     }
 
     public AnalyzeRequirementCommand(String businessText, boolean includeArchitectureView, int maxArchitectureNodes,
@@ -45,7 +59,7 @@ public record AnalyzeRequirementCommand(
 
     public AnalyzeRequirementCommand withContinuationBinding(com.taxonomy.analysis.recovery.AnalysisContinuationBinding binding) {
         return new AnalyzeRequirementCommand(businessText, includeArchitectureView, maxArchitectureNodes, provider,
-                username, workspaceContext, provenance, analysisScope, providerBinding, binding, analysisReasonLength);
+                username, workspaceContext, provenance, analysisScope, providerBinding, binding, analysisReasonLength, retainedAnalysis);
     }
 
     /** Old persisted commands have no plugin binding and remain readable for built-in providers only. */

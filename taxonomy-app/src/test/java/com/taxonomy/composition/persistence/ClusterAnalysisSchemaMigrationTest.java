@@ -29,12 +29,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Executes V32 SQL on HSQL's PostgreSQL syntax mode and checks its explicit mapping contract.
  * PostgreSQL installation/upgrade remains covered by TaxonomySchemaPostgresMigrationIT. */
 class ClusterAnalysisSchemaMigrationTest {
+    private static final String PROGRESS = "db/migration/taxonomy/postgresql/V40__cluster_worker_progress.sql";
     private static final String DIAGNOSTICS = "db/migration/taxonomy/postgresql/V35__cluster_call_diagnostics.sql";
     private static final String MIGRATION = "db/migration/taxonomy/postgresql/V32__ClusterAnalysis.sql";
 
     @Test void migratedSchemaMatchesAllClusterEntityMappings() throws Exception {
         var database = migrate();
-        String sql = new ClassPathResource(MIGRATION).getContentAsString(java.nio.charset.StandardCharsets.UTF_8) + new ClassPathResource(DIAGNOSTICS).getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        String sql = new ClassPathResource(MIGRATION).getContentAsString(java.nio.charset.StandardCharsets.UTF_8) + new ClassPathResource(DIAGNOSTICS).getContentAsString(java.nio.charset.StandardCharsets.UTF_8)
+                + new ClassPathResource(PROGRESS).getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         for (Class<?> entity : Set.of(ClusterAnalysisRun.class, ClusterAnalysisWork.class, ClusterAnalysisInput.class, ClusterAnalysisEvent.class, ClusterAnalysisCall.class, ClusterAnalysisAttempt.class)) {
             String table = entity.getAnnotation(Table.class).name();
             var definition = java.util.regex.Pattern.compile("CREATE TABLE " + table + " \\((.*?)\\n\\);", java.util.regex.Pattern.DOTALL).matcher(sql);
@@ -44,6 +46,8 @@ class ClusterAnalysisSchemaMigrationTest {
                 String normalized = line.strip().replaceAll(",$", "");
                 if (!normalized.startsWith("CONSTRAINT ")) actual.put(normalized.substring(0, normalized.indexOf(' ')), normalized);
             }
+            var additions = java.util.regex.Pattern.compile("ALTER TABLE " + table + " ADD COLUMN ([a-z_]+) ([A-Z]+);", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(sql);
+            while (additions.find()) actual.put(additions.group(1), additions.group(1) + " " + additions.group(2).toUpperCase(Locale.ROOT));
             var expected = new HashSet<String>();
             for (var field : entity.getDeclaredFields()) {
                 var column = field.getAnnotation(Column.class);
@@ -78,6 +82,8 @@ class ClusterAnalysisSchemaMigrationTest {
         String payload = "{\"snapshot\":\"" + "evidence".repeat(20_000) + "\"}";
         jdbc.update("insert into analysis_cluster_run(id,username,scope_key,context_json,command_json,relation_plan_json,state,total_roots,completed_roots,event_revision,created_at,updated_at) values('run','owner',?,?,? ,?,'RUNNING',2,0,0,1,1)", "a".repeat(64), payload, payload, payload);
         jdbc.update("insert into analysis_cluster_work(id,operation_id,task_id,task_type,ordinal_number,message_json,input_json,result_json,failure_reason,state,settled,delivery_attempts) values('work','run','task','SUBTAXONOMY',0,?,?,?,'RESTORE_INTERRUPTED','FAILED',true,1)", payload, payload, payload);
+        jdbc.update("update analysis_cluster_work set progress_json=?", payload);
+        assertThat(jdbc.queryForObject("select progress_json from analysis_cluster_work", String.class)).isEqualTo(payload);
         jdbc.update("insert into analysis_cluster_input(id,operation_id,root_code,input_json) values('input','run','CP',?)", payload);
         jdbc.update("insert into analysis_cluster_event(id,operation_id,event_revision,event_json) values('event','run',1,?)", payload);
         assertThat(jdbc.queryForObject("select relation_plan_json from analysis_cluster_run", String.class)).isEqualTo(payload);
@@ -99,6 +105,7 @@ class ClusterAnalysisSchemaMigrationTest {
             connection.createStatement().execute("SET DATABASE SQL SYNTAX PGS TRUE");
             ScriptUtils.executeSqlScript(connection, migration);
             ScriptUtils.executeSqlScript(connection, new ClassPathResource(DIAGNOSTICS));
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource(PROGRESS));
         }
         return database;
     }

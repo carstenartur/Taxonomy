@@ -27,12 +27,16 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
     private final Set<Intent> finished = new HashSet<>();
     private final Set<Edge> verified = new HashSet<>();
     private final int sources, maximum;
+    private final boolean publish;
     private int calls, completed, unresolved;
     private Step step = Step.SOURCES;
     private Current current;
 
     RelationWorkPlan(List<Node> sources, List<Node> roots, RelationCompatibilityMatrix rules, int maximum) {
-        this.sources = sources.size(); this.maximum = maximum;
+        this(sources, roots, rules, maximum, true);
+    }
+    RelationWorkPlan(List<Node> sources, List<Node> roots, RelationCompatibilityMatrix rules, int maximum, boolean publish) {
+        this.sources = sources.size(); this.maximum = maximum; this.publish = publish;
         for (Node source : sources) for (Node root : roots) {
             boolean compatible = Arrays.stream(RelationType.values()).anyMatch(type ->
                     rules.allowedTargetRoots(source.root(), type).contains(root.root())
@@ -124,5 +128,5 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
         if (next == State.COMPLETED) { completed++; value.counts.completed++; }
         if (next == State.UNRESOLVED) { unresolved++; value.counts.unresolved++; }
     }
-    private void publish() { AnalysisRunControl.relations(snapshot()); }
+    private void publish() { if (publish) AnalysisRunControl.relations(snapshot()); }
 }

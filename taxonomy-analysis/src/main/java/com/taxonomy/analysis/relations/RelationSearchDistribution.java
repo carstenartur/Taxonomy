@@ -122,7 +122,7 @@ public final class RelationSearchDistribution {
     public static RelationSearchReport combine(Plan plan, List<WorkResult> persisted) {
         Schedule schedule = schedule(plan, persisted);
         var progress = new RelationWorkPlan(plan.sourceNodes(), plan.targetRoots(),
-                new RelationCompatibilityMatrix(), plan.options().limits().maxCalls());
+                new RelationCompatibilityMatrix(), plan.options().limits().maxCalls(), false);
         plan.sources().forEach(progress::assessed);
         progress.expect(plan.items().stream().map(i -> intent(plan, i)).toList());
         Set<Edge> edges = new LinkedHashSet<>();
@@ -165,6 +165,26 @@ public final class RelationSearchDistribution {
                 plan.sources(), new Result(List.copyOf(edges), unfinished, trace, engineCalls, visited, duration),
                 calls, plan.options().limits().maxCalls(), duration, plan.warnings(), stop,
                 progress.snapshot(), progress.tasks());
+    }
+
+    /** Carry accepted findings across attempts without crediting the current plan for prior work or calls. */
+    public static RelationSearchReport retainAcceptedRelations(RelationSearchReport current, RelationSearchReport retained) {
+        if (current == null) return retained;
+        if (retained == null) return current;
+        if (!current.originalSha256().equals(retained.originalSha256()))
+            throw new IllegalArgumentException("Saved relation evidence belongs to another requirement");
+        var edges = new LinkedHashSet<Edge>();
+        retained.result().edges().stream().filter(edge -> edge.evidence().outcome() == Outcome.VERIFIED).forEach(edges::add);
+        edges.addAll(current.result().edges());
+        var result = current.result();
+        var progress = current.progress();
+        if (progress != null) progress = new com.taxonomy.dto.RelationSearchProgress(progress.totalSources(), progress.assessedSources(),
+                progress.totalSearches(), progress.completedSearches(), progress.unresolvedSearches(), progress.pendingSearches(),
+                progress.calls(), progress.maxCalls(), (int) edges.stream().filter(edge -> edge.evidence().outcome() == Outcome.VERIFIED).count(),
+                progress.step(), progress.current(), progress.taxonomies());
+        return new RelationSearchReport(current.schemaVersion(), current.originalSha256(), current.policy(), current.sources(),
+                new Result(List.copyOf(edges), result.unfinished(), result.trace(), result.calls(), result.visitedBatches(), result.durationMillis()),
+                current.totalCalls(), current.maxCalls(), current.durationMillis(), current.warnings(), current.stopReason(), progress, current.tasks());
     }
 
     static Intent intent(Plan plan, Item item) {

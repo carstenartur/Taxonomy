@@ -73,6 +73,61 @@ class ClusterAnalysisBackupRestoreTest {
         }
     }
 
+    @Test void exportedLiveCoverageRemainsObservableAfterInterruptedRestoreWithoutAWorkerClaim() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("live-progress-source"); source.admitFrozen(original);
+            var task = source.task(CP); var input = source.store.start(task);
+            var worker = source.store.diagnostics(task, input.deliveryAttempt());
+            var detail = new com.taxonomy.dto.LlmCallDetail(); detail.setScores(Map.of("CP", 70)); worker.assessment(detail);
+            var archive = exportedArchive(source); var restored = targetContext("live-progress-restored");
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
+            try (var observer = new DurableClusterAnalysisObservation(target.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE)) {
+                var snapshot = observer.snapshot(restored.operationId(), "bob", targetCommand().workspaceContext()).orElseThrow().snapshot();
+                assertNotNull(snapshot.nodeProgress()); assertEquals(1, snapshot.nodeProgress().assessed());
+                assertEquals(2, snapshot.nodeProgress().open()); assertEquals("CANCELLED", snapshot.status());
+                assertEquals("FINISHED", snapshot.phase()); assertTrue(snapshot.rawScores().isEmpty());
+            }
+            assertTrue(target.sent.isEmpty());
+            var targetTask = archive(target, restored.operationId()).work().getFirst();
+            var message = (AnalysisTaskMessage) new com.taxonomy.analysis.dag.json.AnalysisMessageCodec()
+                    .decode(targetTask.messageJson().getBytes(StandardCharsets.UTF_8));
+            assertFalse(target.store.start(message).executable());
+            assertThrows(IllegalStateException.class, () -> target.store.diagnostics(message, input.deliveryAttempt()));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"revision", "delivery", "foreignNode", "foreignTaskType"})
+    void invalidArchivedProgressCannotClaimNewCoverageOrWorkerAuthority(String mismatch) throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("invalid-progress-source"); source.admitFrozen(original);
+            var task = source.task(CP); var input = source.store.start(task);
+            var worker = source.store.diagnostics(task, input.deliveryAttempt());
+            var detail = new com.taxonomy.dto.LlmCallDetail(); detail.setScores(Map.of("CP", 70)); worker.assessment(detail);
+            var archive = exportedArchive(source); var first = archive.work().getFirst();
+            var progress = (tools.jackson.databind.node.ObjectNode) JSON.readTree(first.progressJson());
+            switch (mismatch) {
+                case "revision" -> progress.put("revision", archive.run().revision() + 1);
+                case "delivery" -> progress.put("delivery", first.attempts() + 1);
+                case "foreignNode" -> ((tools.jackson.databind.node.ObjectNode) progress.get("scores")).put("foreign-node", 90);
+                case "foreignTaskType" -> progress.set("relations", JSON.valueToTree(new com.taxonomy.dto.RelationSearchProgress(
+                        0, 0, 0, 0, 0, 0, 0, 24, 0, com.taxonomy.dto.RelationSearchProgress.Step.SOURCES, null, List.of())));
+                default -> throw new AssertionError(mismatch);
+            }
+            var altered = new Work(first.sourceId(), first.run(), first.taskId(), first.taskType(), first.root(), first.ordinal(),
+                    first.messageJson(), first.inputJson(), first.resultJson(), first.failureReason(), first.sourceState(),
+                    first.settled(), first.attempts(), first.startedAt(), first.finishedAt(), JSON.writeValueAsString(progress));
+            var work = new ArrayList<>(archive.work()); work.set(0, altered);
+            var invalid = new Archive(archive.run(), work, archive.inputs(), archive.events(), archive.calls(), archive.attempts());
+            assertThrows(IllegalArgumentException.class, () -> new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON)
+                    .restore(invalid, targetContext("invalid-progress-target"), targetCommand()));
+            long restoredRuns = new TransactionTemplate(target.transactions).execute(status -> target.em
+                    .createQuery("select count(r) from ClusterAnalysisRun r", Long.class).getSingleResult());
+            assertEquals(0L, restoredRuns);
+            assertTrue(target.sent.isEmpty());
+        }
+    }
+
     @Test void diagnosticsExportRestoreRetainsBoundedDetailUnresolvedStartAndReplayWithoutResuming() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("diagnostic-source"); source.admit(original); var task = source.task(CP); source.store.start(task);
@@ -353,6 +408,183 @@ class ClusterAnalysisBackupRestoreTest {
         }
     }
 
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void interruptedExtensionRestoreKeepsCanonicalNodeEvidenceAndOnlyCurrentSearchAccounting(boolean previousAcceptedRelations) throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var captured = captureRelationsExtension(source, previousAcceptedRelations);
+            var retained = captured.command().retainedAnalysis();
+            var offered = JSON.readValue(JSON.writeValueAsString(retained), AnalysisResult.class);
+            var reverseReasons = new LinkedHashMap<String, String>();
+            var reasonEntries = new ArrayList<>(retained.getReasons().entrySet()); Collections.reverse(reasonEntries);
+            reasonEntries.forEach(entry -> reverseReasons.put(entry.getKey(), entry.getValue()));
+            offered.setReasons(reverseReasons); // The same authority may be reconstructed with a different map order.
+            assertNotEquals(new ArrayList<>(retained.getReasons().keySet()), new ArrayList<>(offered.getReasons().keySet()));
+            var requested = remappedExtensionCommand(captured.command(), offered);
+            var restored = targetContext("restored-extension");
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(captured.archive(), restored, requested);
+            var snapshot = target.store.snapshot(restored); var result = snapshot.result();
+            assertEquals(retained.getWarnings(), result.getWarnings().stream().filter(warning -> !warning.startsWith("RESTORE_INTERRUPTED:")).toList(),
+                    "Relations work and interrupted restoration cannot discard original node warnings");
+            assertEquals(retained.getDiscrepancies(), result.getDiscrepancies());
+            assertEquals(retained.getProductCoverageGaps(), result.getProductCoverageGaps());
+            assertEquals(retained.getRawScores(), result.getRawScores()); assertEquals(retained.getScores(), result.getScores());
+            assertEquals(retained.getReasons(), result.getReasons()); assertEquals(retained.getAnalysisCoverage(), result.getAnalysisCoverage());
+            assertEquals(JSON.valueToTree(retained.getTree()), JSON.valueToTree(result.getTree()));
+            assertEquals(retained.getScoreSemanticsFingerprintSha256(), result.getScoreSemanticsFingerprintSha256());
+            var report = result.getRelationSearchReport(); assertNotNull(report);
+            assertEquals(2, report.totalCalls(), "Earlier accepted exchanges cannot overwrite the current plan's call accounting");
+            assertEquals(1, report.progress().completedSearches()); assertEquals(1, report.progress().pendingSearches());
+            assertEquals(0, report.progress().unresolvedSearches());
+            assertEquals(previousAcceptedRelations ? 1 : 0, report.result().edges().size());
+            assertEquals(previousAcceptedRelations ? 1 : 0, report.progress().verifiedRelations());
+            assertEquals(report.progress(), snapshot.progress().relations(), "Reloaded telemetry must expose the retained evidence and current work accounting");
+            assertFalse(report.isSearchExhausted()); assertEquals("PARTIAL", result.getStatus());
+            if (previousAcceptedRelations) {
+                assertEquals("SUCCESS", retained.getArchitectureView().getAnalysisStatus());
+                assertEquals(7, retained.getArchitectureView().getRelationSearchReport().totalCalls());
+                var view = result.getArchitectureView(); assertNotNull(view);
+                assertAll("Restored architecture view reflects the current interrupted relation work",
+                        () -> assertEquals(report, view.getRelationSearchReport()),
+                        () -> assertEquals(result.getStatus(), view.getAnalysisStatus()));
+            }
+            assertEquals(ClusterAnalysisState.CANCELLED, snapshot.state());
+            assertTrue(result.getWarnings().stream().anyMatch(warning -> warning.startsWith("RESTORE_INTERRUPTED:")));
+            assertEquals(captured.archive().inputs().stream().map(Input::inputJson).sorted().toList(),
+                    archive(target, restored.operationId()).inputs().stream().map(Input::inputJson).sorted().toList(),
+                    "Historical frozen inputs retain their original source identity");
+            assertNull(target.store.command(restored).continuationBinding());
+            for (var work : archive(target, restored.operationId()).work()) {
+                var task = (AnalysisTaskMessage) new com.taxonomy.analysis.dag.json.AnalysisMessageCodec()
+                        .decode(work.messageJson().getBytes(StandardCharsets.UTF_8));
+                assertFalse(target.store.start(task).executable(), "Restored source and relation tasks are historical evidence only");
+            }
+            assertEquals(List.of(restored), target.store.recent("bob", requested.workspaceContext(), null, null));
+            assertThrows(SecurityException.class, () -> target.store.authorize(restored.operationId(), "alice", requested.workspaceContext()));
+            assertNoOperationalState(target);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"drop", "scores", "reasons", "tree", "coverage", "warnings", "discrepancies", "gaps"})
+    void restoreRejectsDroppedOrAlteredRetainedNodeAuthorityBeforeWriting(String alteration) throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var captured = captureRelationsExtension(source, false);
+            var changed = JSON.readValue(JSON.writeValueAsString(captured.command().retainedAnalysis()), AnalysisResult.class);
+            switch (alteration) {
+                case "drop" -> changed = null;
+                case "scores" -> changed.setRawScores(Map.of("CP", 99d, "IP", 0d));
+                case "reasons" -> changed.setReasons(Map.of("CP", "Changed explanation"));
+                case "tree" -> changed.getTree().getFirst().setNameEn("Changed catalogue label");
+                case "coverage" -> changed.setAnalysisCoverage(null);
+                case "warnings" -> changed.setWarnings(List.of());
+                case "discrepancies" -> changed.setDiscrepancies(List.of());
+                case "gaps" -> changed.setProductCoverageGaps(List.of());
+                default -> throw new AssertionError(alteration);
+            }
+            var requested = remappedExtensionCommand(captured.command(), changed);
+            var failure = assertThrows(IllegalArgumentException.class, () -> new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON)
+                    .restore(captured.archive(), targetContext("altered-extension"), requested));
+            assertEquals("Restore cannot change the captured analysis request", failure.getMessage());
+            assertRestoredClosureEmpty(target); assertNoOperationalState(target);
+        }
+    }
+
+    private record ExtensionCapture(Archive archive, AnalyzeRequirementCommand command) { }
+    private static ExtensionCapture captureRelationsExtension(Database db, boolean previousAcceptedRelations) throws Exception {
+        var proxy = new org.springframework.aop.framework.ProxyFactory(new com.taxonomy.analysis.recovery.AnalysisContinuationStore(db.em, JSON));
+        proxy.setProxyTargetClass(true);
+        proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(db.transactions,
+                new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        var saved = (com.taxonomy.analysis.recovery.AnalysisContinuationStore) proxy.getProxy();
+        var store = new ClusterAnalysisStore(db.em, db.transactions, JSON, db.dispatch, saved);
+        var context = context("source-extension"); var base = command("requirement");
+        var roots = TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(root -> DurableClusterAnalysisExecutionTest.root(
+                DurableClusterAnalysisExecutionTest.source(context), root.code())).toList();
+        var tree = roots.stream().map(root -> {
+            var node = root.nodes().getFirst(); var dto = new com.taxonomy.dto.TaxonomyNodeDto();
+            dto.setCode(node.code()); dto.setTaxonomyRoot(node.taxonomyRoot()); dto.setNameEn(node.nameEn());
+            dto.setLevel(node.level()); dto.setSortOrder(node.sortOrder()); dto.setAnalysisRole(node.metadata().analysisRole());
+            dto.setSecondaryClassificationCodes(node.metadata().secondaryClassificationCodes());
+            dto.setClassificationConfidence(node.metadata().confidence()); dto.setClassificationReviewRequired(node.metadata().reviewRequired());
+            return dto;
+        }).toList();
+        var request = new com.taxonomy.dto.AnalysisRequest("requirement"); request.setProvider("MOCK"); request.setMaxArchitectureNodes(20);
+        request.setAnalysisScope(base.analysisScope()); request.setContinuationId(UUID.randomUUID().toString());
+        var sourceClaim = saved.begin(request, base.workspaceContext(), "a".repeat(64), tree);
+        var original = new AnalysisResult(Map.of("CP", 77.125, "IP", 0d), tree); original.setStatus("PARTIAL"); original.setProvider("MOCK");
+        original.setReasons(Map.of("CP", "Retained original explanation — ä.", "IP", "Retained zero-score explanation."));
+        original.setWarnings(List.of("NODE_WARNING: retain the original assessment note"));
+        original.setDiscrepancies(List.of(new com.taxonomy.dto.TaxonomyDiscrepancy("CP", 77.125, 88.75)));
+        original.setProductCoverageGaps(List.of(new com.taxonomy.dto.ProductCoverageGap("IP", "Original product family", 42d,
+                List.of("catalogued-candidate"), "Original product coverage gap")));
+        saved.complete(sourceClaim, original, tree);
+        var sourceSnapshot = saved.read(request.getContinuationId(), base.workspaceContext());
+        var extension = JSON.readValue(JSON.writeValueAsString(request), com.taxonomy.dto.AnalysisRequest.class);
+        extension.setContinuationId(UUID.randomUUID().toString()); extension.setRelationSourceContinuationId(request.getContinuationId());
+        extension.setRelationSourceVersion(sourceSnapshot.recovery().version());
+        extension.setAnalysisScope(new com.taxonomy.dto.AnalysisScope(base.analysisScope().taxonomyRoots(), com.taxonomy.dto.AnalysisMode.FULL));
+        var claim = saved.begin(extension, base.workspaceContext(), "b".repeat(64), tree);
+        var command = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice", base.workspaceContext(), null,
+                extension.getAnalysisScope(), null, new com.taxonomy.analysis.recovery.AnalysisContinuationBinding(claim.id(), claim.token(),
+                "b".repeat(64), "c".repeat(64), "d".repeat(64))).withRetainedAnalysis(claim.retainedAnalysis());
+        var targets = new LinkedHashMap<TaxonomyShardRoot, String>(); roots.forEach(root -> targets.put(TaxonomyShardRoot.of(root.rootCode()), JSON.writeValueAsString(root)));
+        var sources = new LinkedHashMap<TaxonomyShardRoot, String>();
+        targets.forEach((root, value) -> { if (extension.getAnalysisScope().selects(root.code())) sources.put(root, value); });
+        store.admit(context, command, null, sources, targets);
+        assertEquals(command.retainedAnalysis().getWarnings(), store.rootResults(context).getWarnings(), "The live aggregate retains the canonical notes");
+        var preparation = (RelationAnalysisTask) db.sent.getFirst(); var input = store.start(preparation);
+        var worker = store.diagnostics(preparation, input.deliveryAttempt());
+        worker.relations(new com.taxonomy.dto.RelationSearchProgress(1, 1, 2, 0, 0, 2, 1, 10, 0,
+                com.taxonomy.dto.RelationSearchProgress.Step.SOURCES,
+                new com.taxonomy.dto.RelationSearchProgress.Current("CP", "", "", null, 0, List.of("CP")),
+                List.of(new com.taxonomy.dto.RelationSearchProgress.Taxonomy("CR", 1, 0, 0, 1),
+                        new com.taxonomy.dto.RelationSearchProgress.Taxonomy("IP", 1, 0, 0, 1))));
+        var node = new com.taxonomy.dto.RelationSearchModel.Node("CP", "CP", "Capability", "", false);
+        var contribution = new com.taxonomy.dto.RelationSearchModel.Contribution(node, "requirement", "requirement", "");
+        var source = new com.taxonomy.dto.RelationSearchModel.SourceAssessment(node, List.of(contribution), "", "");
+        var target = new com.taxonomy.dto.RelationSearchModel.Node("CR", "CR", "Frozen CR", "", true);
+        var plan = new RelationSearchDistribution.Plan(1, context.operationId() + ":relations", context.requirement().textSha256(),
+                preparation.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList(),
+                new com.taxonomy.analysis.relations.RequirementRelationSearch.Options(new com.taxonomy.dto.RelationSearchModel.Limits(10, 8, 10, 128), 16),
+                List.of(node), List.of(target, new com.taxonomy.dto.RelationSearchModel.Node("IP", "IP", "Frozen IP", "", true)), List.of(source),
+                List.of(new RelationSearchDistribution.Item(0, 0, 0, "REALIZES", com.taxonomy.dto.RelationSearchModel.Direction.OUTGOING, TaxonomyShardRoot.of("CR"), 1),
+                        new RelationSearchDistribution.Item(1, 0, 0, "REQUIRES", com.taxonomy.dto.RelationSearchModel.Direction.OUTGOING, IP, 1)),
+                1, 0, List.of(), "", true);
+        var prepared = ClusterRelationCoordinatorTest.completion(context, preparation);
+        db.completions.commit(new PreparedAnalysisCompletion<>(prepared, () -> store.persistRelationPlan(preparation, plan))); store.accept(prepared);
+        var task = (RelationAnalysisTask) db.sent.stream().filter(value -> value.taskId().relationWorkOrdinal().orElse(-1) == 0).findFirst().orElseThrow();
+        var grant = JSON.readValue(store.start(task).taskInput(), RelationSearchDistribution.Work.class);
+        var effect = new RelationSearchDistribution.WorkResult(grant,
+                new com.taxonomy.dto.RelationSearchModel.Result(List.of(), List.of(), List.of(), 1, 1, 10), 1, "");
+        var completed = ClusterRelationCoordinatorTest.completion(context, task);
+        db.completions.commit(new PreparedAnalysisCompletion<>(completed, () -> store.persistRelationResult(task, effect))); store.accept(completed);
+        var archive = exportedArchive(db);
+        if (previousAcceptedRelations) {
+            var retained = JSON.readValue(JSON.writeValueAsString(command.retainedAnalysis()), AnalysisResult.class);
+            var decision = new com.taxonomy.dto.RelationSearchModel.Decision("CR", com.taxonomy.dto.RelationSearchModel.Outcome.VERIFIED,
+                    "requirement", "requirement", com.taxonomy.dto.RelationSearchModel.Necessity.REQUIRED, "", "", "Earlier verified relation", "");
+            var edge = new com.taxonomy.dto.RelationSearchModel.Edge(contribution, target, "REALIZES",
+                    com.taxonomy.dto.RelationSearchModel.Direction.OUTGOING, decision);
+            retained.setRelationSearchReport(new com.taxonomy.dto.RelationSearchReport(2, context.requirement().textSha256(), "prior-attempt",
+                    List.of(source), new com.taxonomy.dto.RelationSearchModel.Result(List.of(edge), List.of(), List.of(), 7, 7, 70),
+                    7, 10, 70, List.of(), "CALL_BUDGET"));
+            var view = new com.taxonomy.dto.RequirementArchitectureView();
+            view.setRelationSearchReport(retained.getRelationSearchReport()); view.setAnalysisStatus("SUCCESS");
+            retained.setArchitectureView(view);
+            command = command.withRetainedAnalysis(retained);
+            var run = archive.run();
+            archive = new Archive(new Run(run.sourceId(), run.principalScope(), run.context(), JSON.writeValueAsString(command), run.viewJson(),
+                    run.resultJson(), run.relationPlanJson(), run.sourceState(), run.resumePolicy(), run.totalRoots(), run.completedRoots(),
+                    run.revision(), run.createdAt(), run.updatedAt()), archive.work(), archive.inputs(), archive.events(), archive.calls(), archive.attempts());
+        }
+        return new ExtensionCapture(archive, command);
+    }
+    private static AnalyzeRequirementCommand remappedExtensionCommand(AnalyzeRequirementCommand captured, AnalysisResult retained) {
+        var target = targetCommand();
+        return new AnalyzeRequirementCommand(captured.businessText(), captured.includeArchitectureView(), captured.maxArchitectureNodes(),
+                captured.provider(), target.username(), target.workspaceContext(), captured.provenance(), captured.analysisScope(),
+                captured.providerBinding(), null, captured.analysisReasonLength()).withRetainedAnalysis(retained);
+    }
+
     @Test void interruptedRelationRestoreRetainsCommittedSearchEvidenceAndRemapsItsReferences() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("source-relations"); ClusterRelationCoordinatorTest.admit(source, original);
@@ -436,7 +668,7 @@ class ClusterAnalysisBackupRestoreTest {
                     r.totalRoots, r.completedRoots, r.revision, r.createdAt, r.updatedAt);
             var work = database.em.createQuery("select w from ClusterAnalysisWork w where w.operationId=:id order by w.ordinal", ClusterAnalysisWork.class).setParameter("id", id).getResultList().stream()
                     .map(w -> new Work(new SourceRecordId("analysis.cluster-work", w.id), reference, w.taskId, w.taskType, w.root, w.ordinal,
-                            w.messageJson, w.inputJson, w.resultJson, w.failureReason, w.state, w.settled, w.attempts, w.startedAt, w.finishedAt)).toList();
+                            w.messageJson, w.inputJson, w.resultJson, w.failureReason, w.state, w.settled, w.attempts, w.startedAt, w.finishedAt, w.progressJson)).toList();
             var inputs = database.em.createQuery("select i from ClusterAnalysisInput i where i.operationId=:id", ClusterAnalysisInput.class).setParameter("id", id).getResultList().stream()
                     .map(i -> new Input(new SourceRecordId("analysis.cluster-input", i.id), reference, i.root, i.inputJson)).toList();
             var events = database.em.createQuery("select e from ClusterAnalysisEvent e where e.operationId=:id order by e.revision", ClusterAnalysisEvent.class).setParameter("id", id).getResultList().stream()

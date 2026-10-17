@@ -257,16 +257,17 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
             case FINALIZING -> "FINALIZING";
             case COMPLETED, PARTIAL, CANCELLED -> "FINISHED";
         };
+        if (!terminal && durable.progress().phase() != null) phase = durable.progress().phase();
         var requirement = context.requirement();
         var provenance = requirement.projectId() == null && requirement.requirementId() == null && requirement.snapshotId() == null
                 ? null : new AnalysisProvenance(requirement.projectId(), requirement.requirementId(), requirement.snapshotId(), null);
-        var snapshot = new AnalysisProgressRegistry.Snapshot(context.operationId(), status, phase, null,
+        var snapshot = new AnalysisProgressRegistry.Snapshot(context.operationId(), status, phase, durable.progress().node(),
                 durable.state() == ClusterAnalysisState.CANCELLED ? "CANCELLED" : null,
                 durable.revision(), durable.createdAt(), durable.updatedAt(), now, scores.evaluatedNodes(), scores.scoresTruncated(),
                 scores.rawScores(), diagnostics.calls(), diagnostics.omitted(), null, "EXTERNAL_OR_UNKNOWN", "EXTERNAL_OR_UNKNOWN", provenance,
                 terminal ? durable.updatedAt() : null, Math.max(0, end - durable.createdAt()), executionStart,
                 Math.max(0, (executionStart == null ? end : executionStart) - durable.createdAt()),
-                executionStart == null ? 0 : Math.max(0, end - executionStart), null, null);
+                executionStart == null ? 0 : Math.max(0, end - executionStart), durable.progress().nodes(), durable.progress().relations());
         return new ClusterAnalysisView(snapshot, ClusterAnalysisView.Transport.ARTEMIS,
                 new ClusterAnalysisView.ObservationScope(authority.workspaceId(), authority.repositoryId(),
                         authority.branch(), authority.sourceCommit()),
