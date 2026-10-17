@@ -428,6 +428,19 @@
         content.insertBefore(entry, content.firstChild);
     }
 
+    // A single setting describes the reasons only while every contributing batch
+    // records that same setting. Do not relabel older or mixed interactive evidence.
+    function acceptAnalysisReasonLength(result, replace) {
+        var value = ['short', 'standard', 'detailed'].includes(result?.analysisReasonLength)
+            ? result.analysisReasonLength : null;
+        if (replace || Object.keys(S.currentReasons || {}).length === 0) {
+            S.lastAnalysisReasonLength = value;
+        } else if (Object.keys(result?.reasons || {}).length > 0
+                && S.lastAnalysisReasonLength !== value) {
+            S.lastAnalysisReasonLength = null;
+        }
+    }
+
     function applyAnalysisResult(result, settings) {
         var text = settings.text, requestedScope = settings.requestedScope, provider = settings.provider;
         var options = settings.options || {}, analysisStart = settings.analysisStart || new Date();
@@ -438,6 +451,7 @@
         S.lastAnalysisScope = result.analysisScope || requestedScope || null;
         window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
         S.analysisRecovery = result.recovery || null;
+        acceptAnalysisReasonLength(result, true);
         S.currentReasons = result.reasons || {};
         S.currentDiscrepancies = result.discrepancies || [];
         S.currentProductCoverageGaps = result.productCoverageGaps || [];
@@ -627,6 +641,7 @@
         S.analysisProviderId = null;
         S.analysisOperationId = null;
         S.lastAnalysisScope = null;
+        S.lastAnalysisReasonLength = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         window._currentProvisionalRelations = [];
         S.lastAnalysisDurationMillis = null;
@@ -788,6 +803,7 @@
         S.evaluatedNodes = new Set(); S.pendingProposalNodeCode = null;
         S.analysisCoverage = null; S.analysisRecovery = null; S.recoveryContext = null;
         S.lastAnalysisScope = saved.analysisScope; S.lastAnalysisProvider = saved.provider;
+        S.lastAnalysisReasonLength = saved.analysisReasonLength || null;
         S.analysisProviderId = saved.provider || null;
         S.analysisOperationId = operationId;
         S.storedBusinessText = saved.businessText; S.lastAnalyzedText = null;
@@ -821,6 +837,7 @@
 
         // Reset interactive state
         S.lastAnalysisScope = null;
+        S.lastAnalysisReasonLength = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
@@ -883,6 +900,7 @@
         S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
         S.lastAnalysisDurationMillis = null;
+        S.lastAnalysisReasonLength = null;
         S.lastAnalysisStatus = 'IN_PROGRESS';
         S.storedBusinessText = text;
         document.getElementById('businessText').classList.remove('stale-results');
@@ -941,6 +959,7 @@
             var effectiveScores = effectiveIncrementalScores(changedScores, S.currentScoreDetails);
             Object.assign(S.currentEffectiveScores, effectiveScores);
             Object.assign(S.currentScores, effectiveScores);
+            acceptAnalysisReasonLength(data, false);
             if (data.reasons) { Object.assign(S.currentReasons, data.reasons); }
             if (data.provider) { S.lastAnalysisProvider = data.provider; }
             if (data.scoreSemanticsVersion) {
@@ -997,6 +1016,8 @@
                 scoreSemanticsWarnings: data.scoreSemanticsWarnings,
                 analysisDurationMillis: data.analysisDurationMillis
             });
+            acceptAnalysisReasonLength(data, false);
+            if (data.reasons) Object.assign(S.currentReasons, data.reasons);
             syncVisibleScoreNodes();
             S.currentDiscrepancies = data.discrepancies || [];
             S.currentProductCoverageGaps = data.productCoverageGaps || [];
@@ -1033,6 +1054,7 @@
                     eventSource.close();
                     setAnalyzing(false);
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
+                    acceptAnalysisReasonLength(data, false);
                     if (data.reasons) Object.assign(S.currentReasons, data.reasons);
                     if (data.scoreSemanticsUnavailable) {
                         // A failed server-side projection supplies raw evidence only. Rebuild
@@ -2290,6 +2312,7 @@
         renderArchitectureView: renderArchitectureView,
         relationSearchReportFrom: relationSearchReportFrom,
         acceptRelationSearchReport: acceptRelationSearchReport,
+        acceptAnalysisReasonLength: acceptAnalysisReasonLength,
         clearDerivedAnalysisView: clearDerivedAnalysisView,
         renderIndependentRelationSearchReport: renderIndependentRelationSearchReport,
         renderSuggestedRelations: renderSuggestedRelations,

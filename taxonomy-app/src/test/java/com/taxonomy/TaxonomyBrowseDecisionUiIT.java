@@ -6,6 +6,7 @@ import com.taxonomy.testsupport.BrowserSession;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -82,6 +83,176 @@ class TaxonomyBrowseDecisionUiIT {
         browser.executeScript("TaxonomyScoring.clearDerivedAnalysisView();");
         assertThat(browser.executeScript("return TaxonomyState.currentView")).isEqualTo("tabs");
         assertThat(browser.findElement(By.id("tax-tab-BP")).getDomAttribute("aria-selected")).isEqualTo("true");
+    }
+
+    @Test void recordedReasonLengthSurvivesDraftReloadAndBothExportRequests() {
+        loadReasonEvidenceScripts();
+        @SuppressWarnings("unchecked")
+        var payload = (Map<String, Object>) browser.executeScript("""
+            TaxonomyScoring.fixtureApplyAnalysisResult({scores:{'fixture-leaf':42},
+                reasons:{'fixture-leaf':'The saved decision reason.'},status:'SUCCESS',provider:'MOCK',
+                analysisReasonLength:'detailed'}, {text:'fixture requirement'});
+            return __TaxonomyAnalysisSessionContext.currentPayload();
+            """);
+        assertThat(payload.get("analysisReasonLength")).isEqualTo("detailed");
+        open();
+        loadReasonEvidenceScripts();
+        browser.executeScript("__TaxonomyAnalysisSessionContext.applyDraft({version:4,payload:arguments[0]});", payload);
+        assertThat(browser.executeScript("return TaxonomyState.lastAnalysisReasonLength")).isEqualTo("detailed");
+        assertThat(browser.executeScript("return TaxonomyState.currentReasons['fixture-leaf']"))
+                .isEqualTo("The saved decision reason.");
+        assertThat(capturedReasonLengthExports()).containsEntry("scores", "detailed").containsEntry("decision", "detailed");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> capturedReasonLengthExports() {
+        return (Map<String, Object>) browser.executeAsyncScript("""
+            const done=arguments[arguments.length-1], requests={};
+            const fetchBefore=window.fetch;
+            window.fetch=async (url, options)=>{
+                requests.scores=JSON.parse(options.body);
+                return new Response(JSON.stringify(requests.scores),{status:200,headers:{'Content-Type':'application/json'}});
+            };
+            window.TaxonomyDecisionExport={open:dialog=>{requests.report=dialog;}};
+            TaxonomyExport.exportJson(TaxonomyState.currentScores,TaxonomyState.currentReasons,'fixture requirement','MOCK');
+            TaxonomyBrowse.fixtureHandleExport('exportDecisionReportDocx');
+            window.TaxonomyApiClient={requestBlob:async(url,options)=>{
+                requests.decision=JSON.parse(options.body); throw new Error('fixture stops before download');
+            }};
+            requests.report.submit({format:'docx',options:{}}).catch(()=>{}).finally(()=>{
+                window.fetch=fetchBefore;
+                done({scores:requests.scores.analysisReasonLength,decision:requests.decision.analysisReasonLength});
+            });
+            """);
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void individualManualReasonEditsClearProvenanceInDraftAndExports(boolean accessibleDialog) {
+        loadReasonEvidenceScripts();
+        browser.executeScript("""
+            const S=TaxonomyState;
+            S.interactiveMode=true;S.storedBusinessText='fixture requirement';
+            S.lastAnalysisProvider='fixture-provider';S.analysisProviderId='fixture-provider';
+            S.analysisOperationId='fixture-operation';
+            window.fetch=async()=>({ok:true,json:async()=>({scores:{'fixture-parent':50},
+                reasons:{'fixture-parent':'Original generated reason'},analysisReasonLength:'detailed',
+                analysisProviderId:'fixture-provider',analysisOperationId:'fixture-operation'})});
+            TaxonomyBrowse.renderView(S.taxonomyData,null);
+            document.querySelector('[data-taxonomy-container="CP"] .tax-container-toggle').click();
+            """);
+        var pencil = By.cssSelector("[data-code='fixture-parent'] > .tax-manual-btn");
+        new WebDriverWait(browser, Duration.ofSeconds(10)).until(d -> !browser.findElements(pencil).isEmpty());
+        assertThat(browser.executeScript("return TaxonomyState.lastAnalysisReasonLength")).isEqualTo("detailed");
+        if (accessibleDialog) browser.executeScript("TaxonomyUtils.fixtureInstallManualScoreDialog();");
+        browser.findElement(pencil).click();
+        if (accessibleDialog) {
+            var input = browser.findElement(By.id("taxonomyAccessibleDialogInput"));
+            input.sendKeys("65");
+            browser.findElement(By.id("taxonomyAccessibleDialogConfirm")).click();
+        } else {
+            var prompt = browser.switchTo().alert();
+            prompt.sendKeys("65");
+            prompt.accept();
+        }
+        new WebDriverWait(browser, Duration.ofSeconds(10)).until(d -> Boolean.TRUE.equals(browser.executeScript(
+                "return TaxonomyState.currentReasons['fixture-parent'] !== 'Original generated reason'")));
+        assertThat(browser.executeScript("return TaxonomyState.currentScores['fixture-parent']")).isEqualTo(65L);
+        assertThat(browser.executeScript("return TaxonomyState.lastAnalysisReasonLength")).isNull();
+        browser.executeScript("""
+            TaxonomyScoring.acceptAnalysisReasonLength({analysisReasonLength:'detailed',
+                reasons:{'fixture-leaf':'Later generated reason'}},false);
+            Object.assign(TaxonomyState.currentReasons,{'fixture-leaf':'Later generated reason'});
+            """);
+        assertThat(browser.executeScript("return __TaxonomyAnalysisSessionContext.currentPayload().analysisReasonLength")).isNull();
+        assertThat(capturedReasonLengthExports()).containsEntry("scores", null).containsEntry("decision", null);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"complete,detailed,false", "error,detailed,false", "complete,detailed,true", "error,detailed,true",
+            "complete,,false", "error,,false"})
+    void terminalOnlyStreamingRetainsRecordedReasonsWithoutRelabelingLegacyContributions(
+            String terminal, String recordedLength, boolean earlierUnrecordedReasons) {
+        loadReasonEvidenceScripts();
+        browser.executeScript("""
+            window.EventSource=class {
+                constructor(){this.handlers={};window.fixtureStream=this;}
+                addEventListener(type,handler){this.handlers[type]=handler;}
+                close(){this.closed=true;}
+                emit(type,payload){this.handlers[type]({data:JSON.stringify(payload)});}
+            };
+            TaxonomyState.lastAnalysisReasonLength='short';
+            TaxonomyScoring.runStreamingAnalysis();
+            fixtureStream.emit('phase',{message:'Processing',analysisReasonLength:'detailed'});
+            if(arguments[2]) fixtureStream.emit('scores',{scores:{'fixture-zero':0},
+                reasons:{'fixture-zero':'Earlier reason without recorded setting'}});
+            const scores={'fixture-leaf':42},reasons={'fixture-leaf':'Frozen terminal reason'};
+            if(arguments[2]) scores['fixture-zero']=0;
+            const payload={totalScores:scores,partialScores:scores,rawScores:scores,effectiveScores:scores,
+                reasons,status:arguments[0]==='complete'?'SUCCESS':'PARTIAL',errorMessage:'Fixture partial result'};
+            if(arguments[1]!==null)payload.analysisReasonLength=arguments[1];
+            fixtureStream.emit(arguments[0],payload);
+            """, terminal, recordedLength, earlierUnrecordedReasons);
+        assertThat(browser.executeScript("return TaxonomyState.currentReasons['fixture-leaf']")).isEqualTo("Frozen terminal reason");
+        assertThat(browser.executeScript("return TaxonomyState.currentScores['fixture-leaf']")).isEqualTo(42L);
+        String expected = earlierUnrecordedReasons ? null : recordedLength;
+        assertThat(browser.executeScript("return TaxonomyState.lastAnalysisReasonLength")).isEqualTo(expected);
+        assertThat(browser.executeScript("return __TaxonomyAnalysisSessionContext.currentPayload().analysisReasonLength")).isEqualTo(expected);
+        assertThat(capturedReasonLengthExports()).containsEntry("scores", expected).containsEntry("decision", expected);
+        if (earlierUnrecordedReasons) assertThat(browser.executeScript("return TaxonomyState.currentReasons['fixture-zero']"))
+                .isEqualTo("Earlier reason without recorded setting");
+    }
+
+    @Test void legacyDraftAndManualScoresClearAFormerGenerationSetting() {
+        loadReasonEvidenceScripts();
+        @SuppressWarnings("unchecked")
+        var values = (Map<String, Object>) browser.executeScript("""
+            const C=__TaxonomyAnalysisSessionContext,S=TaxonomyState;
+            S.lastAnalysisReasonLength='detailed';
+            C.applyDraft({version:1,payload:{draftState:'ACTIVE',businessText:'fixture requirement',
+                lastAnalyzedText:'fixture requirement',scores:{'fixture-leaf':42},reasons:{'fixture-leaf':'Old reason'}}});
+            const legacy=S.lastAnalysisReasonLength;
+            S.lastAnalysisReasonLength='detailed';
+            TaxonomyBrowse.fixtureEnterManualScoringMode();
+            const manual=S.lastAnalysisReasonLength;
+            S.lastAnalysisReasonLength='detailed';
+            C.applyDraft({version:2,payload:{draftState:'EMPTY',analysisReasonLength:'detailed'}});
+            return {legacy:legacy,manual:manual,empty:S.lastAnalysisReasonLength};
+            """);
+        assertThat(values).containsOnlyKeys("legacy", "manual", "empty");
+        assertThat(values.values()).containsOnlyNulls();
+    }
+
+    @Test void combiningReasonsFromDifferentRunsDoesNotClaimOneGenerationSetting() {
+        @SuppressWarnings("unchecked")
+        var values = (Map<String, Object>) browser.executeScript("""
+            const S=TaxonomyState,accept=TaxonomyScoring.acceptAnalysisReasonLength;
+            accept({analysisReasonLength:'detailed',reasons:{a:'First reason'}},true);
+            S.currentReasons={a:'First reason'};
+            accept({analysisReasonLength:'detailed',reasons:{b:'Second reason'}},false);
+            const same=S.lastAnalysisReasonLength;
+            Object.assign(S.currentReasons,{b:'Second reason'});
+            accept({analysisReasonLength:'short',reasons:{c:'Third reason'}},false);
+            const mixed=S.lastAnalysisReasonLength;
+            Object.assign(S.currentReasons,{c:'Third reason'});
+            accept({analysisReasonLength:'detailed',reasons:{d:'Fourth reason'}},false);
+            return {same,mixed,later:S.lastAnalysisReasonLength};
+            """);
+        assertThat(values).containsEntry("same", "detailed")
+                .containsEntry("mixed", null).containsEntry("later", null);
+    }
+
+    private void loadReasonEvidenceScripts() {
+        var failure = browser.executeAsyncScript("""
+            const done=arguments[arguments.length-1];
+            (async()=>{
+                for(const src of ['/js/core/taxonomy-analysis-session-core.js',
+                    '/js/core/taxonomy-analysis-session-draft.js','/js/shared/taxonomy-export.js']) {
+                    await new Promise((resolve,reject)=>{const script=document.createElement('script');
+                        script.src=src;script.onload=resolve;script.onerror=reject;document.head.appendChild(script);});
+                }
+            })().then(()=>done(null),e=>done(String(e)));
+            """);
+        assertThat(failure).isNull();
     }
 
     @Test void manuallyOpenedActualBranchSurvivesUnrelatedRerender() {
@@ -273,7 +444,7 @@ class TaxonomyBrowseDecisionUiIT {
                 <!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/css/taxonomy-ergonomics.css"></head><body>
                 <div id="taxonomyTree"></div><div id="statusArea"></div>%s<input id="businessText" value="fixture requirement">
                 <script>
-                window.TaxonomyI18n={t:(key,...args)=>key+(args.length?': '+args.join(' | '):'')};
+                window.TaxonomyI18n={t:(key,...args)=>key+(args.length?': '+args.join(' | '):''),getLocale:()=> 'en'};
                 const nativeAdd=document.addEventListener.bind(document);
                 document.addEventListener=function(type,...args){if(type!=='DOMContentLoaded')nativeAdd(type,...args)};
                 </script>
@@ -296,7 +467,13 @@ class TaxonomyBrowseDecisionUiIT {
                 // Expose private product handlers only in this test-served copy; no runtime test hooks.
                 String marker="window.TaxonomyBrowse = {";
                 if (!source.contains(marker)) throw new IOException("Browse fixture export marker is missing");
-                source=source.replace(marker,marker+" fixtureExpandAll: expandAll, fixtureCollapseAll: collapseAll,");
+                source=source.replace(marker,marker+" fixtureExpandAll: expandAll, fixtureCollapseAll: collapseAll, fixtureHandleExport: handleExport, fixtureEnterManualScoringMode: enterManualScoringMode,");
+            }
+            if (path.endsWith("/taxonomy-scoring.js")) {
+                source=source.replace("window.TaxonomyScoring = {", "window.TaxonomyScoring = { fixtureApplyAnalysisResult: applyAnalysisResult,");
+            }
+            if (path.endsWith("/taxonomy-utils.js")) {
+                source=source.replace("escapeHtml: escapeHtml,", "fixtureInstallManualScoreDialog: installManualScoreDialog, escapeHtml: escapeHtml,");
             }
             send(exchange,path.endsWith(".css")?"text/css":"application/javascript",source);
             return;

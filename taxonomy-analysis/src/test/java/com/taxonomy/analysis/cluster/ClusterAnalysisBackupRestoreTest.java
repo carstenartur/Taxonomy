@@ -8,12 +8,14 @@ import com.taxonomy.backup.*;
 import com.taxonomy.catalog.snapshot.CatalogueSourceIdentity;
 import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.AnalysisCoverage;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
@@ -30,6 +32,46 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClusterAnalysisBackupRestoreTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    @ParameterizedTest
+    @CsvSource(value = {
+            "DETAILED, SHORT, false",
+            "DETAILED, <null>, false",
+            "<null>, STANDARD, false",
+            "DETAILED, DETAILED, true",
+            "<null>, <null>, true"
+    }, nullValues = "<null>")
+    void restorePreservesExactNullableReasonLengthBeforeWriting(AnalysisReasonLength captured,
+                                                               AnalysisReasonLength requested,
+                                                               boolean accepted) throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("reason-length-source");
+            source.store.admit(original, command("requirement").withAnalysisReasonLength(captured), null,
+                    Map.of(CP, "{\"root\":\"CP\"}", IP, "{\"root\":\"IP\"}"));
+            source.store.accept(source.complete(source.task(CP), result("CP", 70)));
+            source.store.start(source.task(IP));
+            var archive = exportedArchive(source);
+            var restored = targetContext("reason-length-restored");
+            var requestedCommand = targetCommand().withAnalysisReasonLength(requested);
+            var restorer = new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON);
+
+            if (accepted) {
+                restorer.restore(archive, restored, requestedCommand);
+                var result = target.store.snapshot(restored).result();
+                assertEquals(captured, target.store.command(restored).analysisReasonLength());
+                assertEquals(captured, result.getAnalysisReasonLength(),
+                        "Restored committed evidence must retain the recorded value, including legacy absence");
+                assertEquals(Map.of("CP", 70d), result.getRawScores());
+                assertEquals(ClusterAnalysisState.CANCELLED, target.store.snapshot(restored).state());
+            } else {
+                var failure = assertThrows(IllegalArgumentException.class,
+                        () -> restorer.restore(archive, restored, requestedCommand));
+                assertEquals("Restore cannot change the captured analysis request", failure.getMessage());
+                assertRestoredClosureEmpty(target);
+            }
+            assertNoOperationalState(target);
+        }
+    }
 
     @Test void diagnosticsExportRestoreRetainsBoundedDetailUnresolvedStartAndReplayWithoutResuming() throws Exception {
         try (var source = new Database(); var target = new Database()) {

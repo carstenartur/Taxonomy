@@ -26,6 +26,29 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Actual persisted relationships, including historical and foreign records with the same business keys. */
 class PortfolioRecordsExportIT {
+    @ParameterizedTest @ValueSource(strings = {"SHORT", "STANDARD", "DETAILED"})
+    void portableJobPreservesItsRecordedReasonLength(String length) throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            fixture.jdbc.update("update req_analysis_job set analysis_reason_length=?", length);
+            var contents = new Contents();
+            new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.CURRENT_STATE,
+                    new BackupScope.Workspace("repo-a", "private-a")), contents);
+            assertThat(one(contents, "analysis-job").path("analysisReasonLength").asText())
+                    .isEqualTo(length.toLowerCase(java.util.Locale.ROOT));
+        }
+    }
+
+    @Test void legacyPortableJobDoesNotInventRecordedReasonLength() throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            var contents = new Contents();
+            new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.CURRENT_STATE,
+                    new BackupScope.Workspace("repo-a", "private-a")), contents);
+            assertThat(one(contents, "analysis-job").path("analysisReasonLength").isNull()).isTrue();
+        }
+    }
+
     @Test void portableJobsRetainTheExactProviderArtifactAndConfiguration() throws Exception {
         try(var fixture=new Fixture()) {
             graph(fixture,"repo-a","private-a","ALICE");

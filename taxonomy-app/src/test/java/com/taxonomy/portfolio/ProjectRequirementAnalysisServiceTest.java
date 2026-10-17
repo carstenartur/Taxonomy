@@ -7,6 +7,7 @@ import com.taxonomy.architecture.service.ArchitectureGapService;
 import com.taxonomy.architecture.service.ArchitecturePatternService;
 import com.taxonomy.architecture.service.ArchitectureRecommendationService;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.NodeOrigin;
@@ -48,6 +49,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -64,6 +66,12 @@ class ProjectRequirementAnalysisServiceTest {
 
     @Autowired
     private ProjectRequirementAnalysisService analysisService;
+
+    @Autowired
+    private com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService persistenceService;
+
+    @Autowired
+    private com.taxonomy.preferences.PreferencesService preferences;
 
     @MockitoBean
     private AnalyzeRequirementUseCase analyzeRequirementUseCase;
@@ -136,6 +144,76 @@ class ProjectRequirementAnalysisServiceTest {
                         assertThat(mapping.directScore()).isEqualTo(80);
                         assertThat(mapping.mappingOrigin().name()).isEqualTo("DIRECT");
                     });
+        }
+    }
+
+    @Test
+    void queuedJobAndFailedRetryKeepAdmittedReasonLengthAfterPreferenceChangesAndSnapshotReload() throws Exception {
+        String previous = preferences.getString("analysis.reason-length", "standard");
+        WorkspaceContext context = context("frozen-reasons");
+        ProjectView project = createProject(context);
+        RequirementView requirement = createRequirement(project.id(), context, "REQ-001", "Frozen reason requirement");
+        try {
+            preferences.update(Map.of("analysis.reason-length", "detailed"), "test");
+            var admitted = persistenceService.createOrReuseJob(project.id(), List.of(requirement.id()),
+                    "MOCK", 25, "frozen-reasons", context.username(), context);
+            assertThat(admitted.analysisReasonLength()).isEqualTo(AnalysisReasonLength.DETAILED);
+            preferences.update(Map.of("analysis.reason-length", "short"), "test");
+            doAnswer(invocation -> {
+                AnalyzeRequirementCommand command = invocation.getArgument(0);
+                assertThat(command.analysisReasonLength()).isEqualTo(AnalysisReasonLength.DETAILED);
+                throw new IllegalStateException("simulated first-attempt provider failure");
+            }).when(analyzeRequirementUseCase).analyze(any(AnalyzeRequirementCommand.class));
+
+            var failed = analysisService.analyzeProject(project.id(),
+                    new AnalyzeProjectRequest(List.of(requirement.id()), false, "MOCK", 25, "frozen-reasons"),
+                    context.username(), context);
+            assertThat(failed.id()).isEqualTo(admitted.id());
+            assertThat(failed.status()).isEqualTo(AnalysisStatus.FAILED);
+            assertThat(failed.items()).singleElement().satisfies(item -> {
+                assertThat(item.status()).isEqualTo(AnalysisStatus.FAILED);
+                assertThat(item.attempt()).isEqualTo(1);
+                assertThat(item.snapshotId()).isNull();
+                assertThat(item.errorMessage()).contains("simulated first-attempt provider failure");
+            });
+            assertThat(analysisService.getJob(failed.id(), project.id(), context.username(), context)
+                    .analysisReasonLength()).isEqualTo(AnalysisReasonLength.DETAILED);
+            assertThat(analysisService.listSnapshots(project.id(), requirement.id(), context.username(), context))
+                    .isEmpty();
+
+            preferences.update(Map.of("analysis.reason-length", "standard"), "test");
+            doAnswer(invocation -> {
+                AnalyzeRequirementCommand command = invocation.getArgument(0);
+                assertThat(command.analysisReasonLength()).isEqualTo(AnalysisReasonLength.DETAILED);
+                var result = successfulAnalysis(command);
+                result.setAnalysisReasonLength(command.analysisReasonLength());
+                result.setReasons(Map.of("CP-1010", "This recorded requirement supports the scored capability."));
+                return new AnalyzeRequirementResult(result);
+            }).when(analyzeRequirementUseCase).analyze(any(AnalyzeRequirementCommand.class));
+            var completed = analysisService.retryFailed(
+                    failed.id(), project.id(), context.username(), context);
+            assertThat(completed.id()).isEqualTo(admitted.id());
+            assertThat(completed.status()).isEqualTo(AnalysisStatus.SUCCESS);
+            assertThat(completed.analysisReasonLength()).isEqualTo(AnalysisReasonLength.DETAILED);
+            assertThat(completed.items()).singleElement().satisfies(item -> {
+                assertThat(item.requirementId()).isEqualTo(requirement.id());
+                assertThat(item.status()).isEqualTo(AnalysisStatus.SUCCESS);
+                assertThat(item.attempt()).isEqualTo(2);
+                assertThat(item.snapshotId()).isNotBlank();
+            });
+            var snapshot = analysisService.getSnapshot(project.id(), completed.items().getFirst().snapshotId(),
+                    context.username(), context).analysis();
+            assertThat(snapshot.getAnalysisReasonLength()).isEqualTo(AnalysisReasonLength.DETAILED);
+            assertThat(snapshot.getReasons()).containsEntry("CP-1010", "This recorded requirement supports the scored capability.");
+            assertThat(analysisService.listSnapshots(project.id(), requirement.id(), context.username(), context))
+                    .hasSize(1);
+            verify(analyzeRequirementUseCase, times(2)).analyze(any(AnalyzeRequirementCommand.class));
+            var next = persistenceService.createOrReuseJob(project.id(), List.of(requirement.id()),
+                    "MOCK", 25, "new-standard-job", context.username(), context);
+            assertThat(next.id()).isNotEqualTo(admitted.id());
+            assertThat(next.analysisReasonLength()).isEqualTo(AnalysisReasonLength.STANDARD);
+        } finally {
+            preferences.update(Map.of("analysis.reason-length", previous), "test");
         }
     }
 

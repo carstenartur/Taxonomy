@@ -100,6 +100,33 @@ class AnalysisFollowUpProviderTest {
         verifyNoInteractions(transport);
     }
 
+    @Test void resultAndLaterInteractiveStepsRetainTheAdmittedReasonLength() throws Exception {
+        var configured = new java.util.concurrent.atomic.AtomicReference<>("detailed");
+        AnalysisRuntimeSettings settings = new AnalysisRuntimeSettings() {
+            @Override public int getInt(String key, int fallback) { return fallback; }
+            @Override public String getString(String key, String fallback) { return configured.get(); }
+        };
+        ReflectionTestUtils.setField(controller, "analysisRuntimeSettings", settings);
+        when(analyze.analyze(any(AnalyzeRequirementCommand.class))).thenAnswer(call -> {
+            org.junit.jupiter.api.Assertions.assertEquals(com.taxonomy.dto.AnalysisReasonLength.DETAILED,
+                    call.getArgument(0, AnalyzeRequirementCommand.class).analysisReasonLength());
+            return new AnalyzeRequirementResult(new com.taxonomy.dto.AnalysisResult(java.util.Map.of(), List.of()));
+        });
+        var response = mvc.perform(post("/api/analyze").contentType("application/json")
+                .content("{\"businessText\":\"requirement\",\"provider\":\"MOCK\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.analysisReasonLength").value("detailed"))
+                .andReturn().getResponse();
+        configured.set("short");
+        mvc.perform(get("/api/analyze-node").param("parentCode", "BP").param("businessText", "requirement")
+                .param("operationId", response.getHeader("X-Analysis-Operation-Id")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.analysisReasonLength").value("detailed"));
+        mvc.perform(get("/api/analyze-node").param("parentCode", "BP").param("businessText", "requirement")
+                .param("provider", "MOCK"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.analysisReasonLength").value("short"));
+        org.junit.jupiter.api.Assertions.assertNull(AnalysisReasonContext.current());
+        verifyNoInteractions(transport);
+    }
+
     @Test void operationIdsCannotSwitchOwnerSourceRequirementOrProvider() throws Exception {
         String id = java.util.UUID.randomUUID().toString();
         followUps.remember(id, "LOCAL_ONNX", "requirement", "alice", workspace);

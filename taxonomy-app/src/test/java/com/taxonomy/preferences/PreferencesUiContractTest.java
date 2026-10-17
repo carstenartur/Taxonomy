@@ -27,6 +27,11 @@ class PreferencesUiContractTest {
                 .contains("data-pref-key=\"llm.rpm\"")
                 .contains("data-pref-key=\"llm.timeout.seconds\"")
                 .contains("data-pref-key=\"rate-limit.per-minute\"")
+                .contains("data-pref-key=\"analysis.reason-length\"")
+                .contains("aria-describedby=\"pref-analysis-reason-length-help\"")
+                .contains("<option value=\"short\" th:text=\"#{preferences.analysis.reasonlength.short}\"")
+                .contains("<option value=\"standard\" selected th:text=\"#{preferences.analysis.reasonlength.standard}\"")
+                .contains("<option value=\"detailed\" th:text=\"#{preferences.analysis.reasonlength.detailed}\"")
                 .contains("data-pref-key=\"limits.max-business-text\"")
                 .contains("data-pref-key=\"limits.max-architecture-nodes\"")
                 .contains("data-pref-key=\"diagram.policy\"")
@@ -76,6 +81,11 @@ class PreferencesUiContractTest {
 
         for (String key : new String[]{
                 "preferences.session.info=",
+                "preferences.analysis.reasonlength=",
+                "preferences.analysis.reasonlength.short=",
+                "preferences.analysis.reasonlength.standard=",
+                "preferences.analysis.reasonlength.detailed=",
+                "preferences.analysis.reasonlength.help=",
                 "preferences.repository.info=",
                 "preferences.load.failed=",
                 "preferences.no.changes=",

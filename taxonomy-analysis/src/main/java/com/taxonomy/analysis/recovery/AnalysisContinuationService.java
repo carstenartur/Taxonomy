@@ -31,6 +31,7 @@ public class AnalysisContinuationService {
         authorize(username, scope);
         AnalysisRequest frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);
         frozen.setMaxArchitectureNodes(maxNodes);
+        freezeReasonLength(frozen, scope);
         var tree = catalogue.getFullTree();
         try {
             frozen.getAnalysisScope().validateRoots(tree.stream().map(TaxonomyNodeDto::getCode)
@@ -38,13 +39,15 @@ public class AnalysisContinuationService {
         } catch (IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
         }
-        return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree));
+        return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree), null, null, null,
+                frozen.getAnalysisReasonLength());
     }
     public Execution beginDistributed(AnalysisRequest request, String username, WorkspaceContext scope, int maxNodes) {
         authorize(username, scope);
         if (providers == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Frozen provider authority is unavailable");
         var frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);
         frozen.setMaxArchitectureNodes(maxNodes);
+        freezeReasonLength(frozen, scope);
         String requested = request.getProvider();
         String provider = "MOCK".equalsIgnoreCase(requested) || providers.isMockMode() ? "MOCK"
                 : requested == null || requested.isBlank() ? providers.getActiveProviderId().value() : requested.toUpperCase(java.util.Locale.ROOT);
@@ -53,13 +56,27 @@ public class AnalysisContinuationService {
         try { frozen.getAnalysisScope().validateRoots(tree.stream().map(TaxonomyNodeDto::getCode).collect(java.util.stream.Collectors.toSet())); }
         catch (IllegalArgumentException invalid) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid); }
         var pluginBinding = providers.captureProviderBinding(provider);
-        try (var ignored = providers.withRequestProvider(provider, pluginBinding)) {
+        try (var ignored = providers.withRequestProvider(provider, pluginBinding);
+             var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength())) {
             String signature = signature(frozen, tree);
             var claim = store.begin(frozen, scope, signature, tree);
             var binding = claim.completedResult() == null ? new AnalysisContinuationBinding(claim.id(), claim.token(), signature,
                     llm.recoveryPolicyFingerprint(provider), AnalysisCheckpointSession.digest(relations == null ? "" : relations.recoveryPolicyFingerprint())) : null;
-            return new Execution(claim, binding, provider, pluginBinding);
+            return new Execution(claim, binding, provider, pluginBinding, frozen.getAnalysisReasonLength());
         }
+    }
+
+    private void freezeReasonLength(AnalysisRequest request, WorkspaceContext scope) {
+        var original = store.originalRequest(request.getContinuationId(), scope);
+        if (original.isPresent()) {
+            var saved = original.get().getAnalysisReasonLength();
+            if (request.getAnalysisReasonLength() != null
+                    && request.getAnalysisReasonLength() != AnalysisReasonContext.effective(saved))
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "The analysis reason length belongs to the saved run; start a new analysis to change it");
+            request.setAnalysisReasonLength(saved);
+        } else request.setAnalysisReasonLength(request.getAnalysisReasonLength() != null
+                ? request.getAnalysisReasonLength() : AnalysisReasonContext.effective(llm.resolveAnalysisReasonLength(null)));
     }
     public AnalysisContinuationStore.Snapshot read(String id, String username, WorkspaceContext scope) {
         authorize(username, scope); return store.read(id, scope);
@@ -80,14 +97,17 @@ public class AnalysisContinuationService {
         authorize(username, scope); return store.detail(id, key, scope);
     }
     private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree) {
+        try (var reasons = AnalysisReasonContext.open(request.getAnalysisReasonLength())) {
         String legacy = AnalysisCheckpointSession.digest("resumable-scoring-v1", request.getBusinessText(),
                 Boolean.toString(request.isIncludeArchitectureView()), String.valueOf(request.getMaxArchitectureNodes()),
                 llm.recoveryPolicyFingerprint(request.getProvider()), mapper.writeValueAsString(tree),
                 relations == null ? "" : relations.recoveryPolicyFingerprint());
         // Preserve existing durable identities while freezing additional semantic inputs.
-        return request.getAnalysisScope().legacyFull() ? legacy
-                : AnalysisCheckpointSession.digest(legacy, "analysis-scope-v1",
-                        mapper.writeValueAsString(request.getAnalysisScope()));
+        if (!request.getAnalysisScope().legacyFull()) legacy = AnalysisCheckpointSession.digest(legacy, "analysis-scope-v1",
+                mapper.writeValueAsString(request.getAnalysisScope()));
+        return request.getAnalysisReasonLength() == null ? legacy : AnalysisCheckpointSession.digest(legacy,
+                AnalysisReasonContext.POLICY, request.getAnalysisReasonLength().value());
+        }
     }
     private void authorize(String username, WorkspaceContext scope) {
         if (scope == null || !Objects.equals(username, scope.username()) || scope.workspaceId() == null)
@@ -104,10 +124,12 @@ public class AnalysisContinuationService {
         private final AnalysisContinuationBinding distributedBinding;
         private final String frozenProvider;
         private final com.taxonomy.extension.api.plugin.PluginInvocation providerBinding;
-        Execution(AnalysisContinuationStore.Claim claim) { this(claim, null, null, null); }
+        private final AnalysisReasonLength frozenReasonLength;
+        Execution(AnalysisContinuationStore.Claim claim) { this(claim, null, null, null, null); }
         Execution(AnalysisContinuationStore.Claim claim, AnalysisContinuationBinding binding, String provider,
-                com.taxonomy.extension.api.plugin.PluginInvocation pluginBinding) {
+                com.taxonomy.extension.api.plugin.PluginInvocation pluginBinding, AnalysisReasonLength reasonLength) {
             this.claim = claim; distributedBinding = binding; frozenProvider = provider; providerBinding = pluginBinding;
+            frozenReasonLength = AnalysisReasonContext.effective(reasonLength);
             session = claim.completedResult() != null || binding != null ? null : new AnalysisCheckpointSession(new AnalysisCheckpointSession.Store() {
                 public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question q) {
                     return store.prepare(claim, q);
@@ -128,10 +150,13 @@ public class AnalysisContinuationService {
             });
         }
         public AnalysisContinuationBinding binding() { return distributedBinding; }
+        public AnalysisReasonLength analysisReasonLength() { return frozenReasonLength; }
         public com.taxonomy.analysis.usecase.AnalyzeRequirementCommand bind(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand command) {
             return new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand(command.businessText(), command.includeArchitectureView(),
-                    command.maxArchitectureNodes(), frozenProvider, command.username(), command.workspaceContext(), command.provenance(),
-                    command.analysisScope(), providerBinding, distributedBinding);
+                    command.maxArchitectureNodes(), frozenProvider == null ? command.provider() : frozenProvider,
+                    command.username(), command.workspaceContext(), command.provenance(),
+                    command.analysisScope(), providerBinding == null ? command.providerBinding() : providerBinding,
+                    distributedBinding, frozenReasonLength);
         }
         public AnalysisResult replay() { return claim.completedResult(); }
         public AnalysisResult complete(AnalysisResult result) {

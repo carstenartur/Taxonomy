@@ -2,6 +2,11 @@ package com.taxonomy.dto;
 
 public class AnalysisRequest {
 
+    /** Omitted on a new request: capture the runtime preference once at admission. */
+    private AnalysisReasonLength analysisReasonLength;
+    public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }
+    public void setAnalysisReasonLength(AnalysisReasonLength value) { analysisReasonLength = value; }
+
     private AnalysisScope analysisScope = AnalysisScope.full();
     public AnalysisScope getAnalysisScope() { return analysisScope; }
     public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }

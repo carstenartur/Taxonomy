@@ -125,7 +125,8 @@ public class DecisionRationaleSnapshotReportService {
                 analysis.getTree(),
                 provenance,
                 scoreDetails, analysis.getAnalysisDurationMillis()).withRecordedReasons(analysis.getReasons())
-                .withScope(jsonCodec.readField(snapshot.getAnalysisPayload(), "analysisScope", com.taxonomy.dto.AnalysisScope.class), analysis.getAnalysisCoverage());
+                .withScope(jsonCodec.readField(snapshot.getAnalysisPayload(), "analysisScope", com.taxonomy.dto.AnalysisScope.class), analysis.getAnalysisCoverage())
+                .withAnalysisReasonLength(analysis.getAnalysisReasonLength());
         DecisionRationaleReport report = options == null
                 ? reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale)
                 : reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale, options);

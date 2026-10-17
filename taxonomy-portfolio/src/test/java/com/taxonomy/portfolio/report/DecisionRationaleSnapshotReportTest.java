@@ -84,6 +84,7 @@ class DecisionRationaleSnapshotReportTest {
                 "main", "commit-a", AnalysisStatus.SUCCESS);
         AnalysisResult analysis = reportableAnalysis();
         analysis.setProvider("ANALYSIS_PROVIDER");
+        analysis.setAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
         analysis.setAnalysisScope(new com.taxonomy.dto.AnalysisScope(java.util.Set.of("CP"), com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY));
         analysis.setAnalysisCoverage(com.taxonomy.dto.AnalysisCoverage.derive(analysis.getTree(), analysis.getScores(), analysis.getScores(), Map.of()));
         when(jsonCodec.readField("analysis-json", "analysisScope", com.taxonomy.dto.AnalysisScope.class)).thenReturn(analysis.getAnalysisScope());
@@ -118,6 +119,7 @@ class DecisionRationaleSnapshotReportTest {
 
         DecisionAnalysisInput input = inputCaptor.getValue();
         assertThat(input.analysisScope()).isEqualTo(analysis.getAnalysisScope());
+        assertThat(input.analysisReasonLength()).isEqualTo(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
         assertThat(input.analysisCoverage()).isEqualTo(analysis.getAnalysisCoverage());
         assertThat(input.businessText()).isEqualTo("immutable requirement");
         assertThat(input.provider()).isEqualTo("MOCK");

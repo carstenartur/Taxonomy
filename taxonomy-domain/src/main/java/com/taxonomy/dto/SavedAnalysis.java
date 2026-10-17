@@ -22,6 +22,11 @@ import java.util.Map;
  */
 public class SavedAnalysis {
 
+    /** Frozen generation preference; absent for manual and legacy evidence. */
+    private AnalysisReasonLength analysisReasonLength;
+    public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }
+    public void setAnalysisReasonLength(AnalysisReasonLength value) { analysisReasonLength = value; }
+
     /** Optional follow-up locator; authority is revalidated by the operation owner on every use. */
     private String analysisOperationId;
     private String analysisProviderId;

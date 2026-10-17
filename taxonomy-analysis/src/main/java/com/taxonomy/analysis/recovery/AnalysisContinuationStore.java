@@ -29,6 +29,16 @@ public class AnalysisContinuationStore {
         public Snapshot(AnalysisRecoveryView recovery, AnalysisResult result, AnalysisRequest request) { this(recovery, result, request, null); }
     }
 
+    /** Immutable admitted input; reading it neither resumes nor changes an existing run. */
+    @Transactional(readOnly = true)
+    public Optional<AnalysisRequest> originalRequest(String id, WorkspaceContext scope) {
+        requireScope(scope);
+        var run = em.find(AnalysisContinuationRun.class, requireId(id));
+        if (run == null) return Optional.empty();
+        authorize(run, scope);
+        return Optional.of(mapper.readValue(run.requestJson, AnalysisRequest.class));
+    }
+
     @Transactional
     public Claim begin(AnalysisRequest request, WorkspaceContext scope, String signature, List<TaxonomyNodeDto> tree) {
         requireScope(scope);
@@ -46,6 +56,7 @@ public class AnalysisContinuationStore {
             // reconstruct typed evidence without a worker or a potentially changed catalogue.
             var seed = new AnalysisResult(Map.of(), tree);
             seed.setAnalysisScope(request.getAnalysisScope());
+            seed.setAnalysisReasonLength(request.getAnalysisReasonLength());
             seed.setStatus("IN_PROGRESS"); seed.setProvider(request.getProvider());
             writeResult(run, seed);
             em.persist(run);
@@ -121,7 +132,9 @@ public class AnalysisContinuationStore {
                 || !Objects.equals(request.getProvider(), command.provider())
                 || request.isIncludeArchitectureView() != command.includeArchitectureView()
                 || !Objects.equals(request.getMaxArchitectureNodes(), command.maxArchitectureNodes())
-                || !Objects.equals(request.getAnalysisScope(), command.analysisScope()))
+                || !Objects.equals(request.getAnalysisScope(), command.analysisScope())
+                || com.taxonomy.analysis.service.AnalysisReasonContext.effective(request.getAnalysisReasonLength())
+                    != com.taxonomy.analysis.service.AnalysisReasonContext.effective(command.analysisReasonLength()))
             throw conflict("Distributed command differs from the saved requirement");
         if (!AnalysisContinuationCatalogue.matches(readResult(run).getTree(), roots))
             throw conflict("Catalogue changed between continuation capture and distributed admission");
@@ -299,6 +312,7 @@ public class AnalysisContinuationStore {
         AnalysisRequest frozenRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
         AnalysisScope analysisScope = frozenRequest.getAnalysisScope();
         result.setAnalysisScope(analysisScope);
+        result.setAnalysisReasonLength(frozenRequest.getAnalysisReasonLength());
         if (previous != null && result.getRelationSearchReport() == null)
             result.setRelationSearchReport(previous.getRelationSearchReport());
         for (var question : questions(run)) if ("ATTEMPT".equals(question.state)) {
@@ -398,6 +412,7 @@ public class AnalysisContinuationStore {
                 if (fallbackTree == null || !Objects.equals(signature, run.inputHash))
                     throw conflict("The original catalogue snapshot is unavailable; restore its matching context before deciding");
                 result = new AnalysisResult(Map.of(), fallbackTree);
+                result.setAnalysisReasonLength(mapper.readValue(run.requestJson, AnalysisRequest.class).getAnalysisReasonLength());
             }
             var raw = new LinkedHashMap<>(result.getRawScores());
             var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());

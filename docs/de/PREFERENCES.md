@@ -10,6 +10,7 @@ Das Einstellungssystem bietet **zur Laufzeit konfigurierbare Optionen** für den
 - [Verwendung der Web-Oberfläche](#verwendung-der-web-oberfläche)
 - [Verfügbare Einstellungen](#verfügbare-einstellungen)
 - [LLM-Konfiguration](#llm-konfiguration)
+- [Begründungsumfang der Analyse](#begründungsumfang-der-analyse)
 - [Repository- und Altschlüssel](#repository--und-altschlüssel)
 - [Größenbeschränkungen](#größenbeschränkungen)
 - [Diagramm-Konfiguration](#diagramm-konfiguration)
@@ -89,7 +90,7 @@ Der Tab **Einstellungen** in der Navigationsleiste bietet eine grafische Oberfl�
 
 Die Einstellungsseite hat drei Karten:
 
-1. **🤖 LLM-Konfiguration** — Anfragerate, Timeout und eingehendes LLM-Kontingent.
+1. **🤖 LLM-Konfiguration** — Anfragerate, Timeout, eingehendes LLM-Kontingent und Begründungsumfang.
 2. **📈 Größenbeschränkungen** — Maximale Ad-hoc-Geschäftstextlänge und Standardwert für Architekturknoten.
 3. **Diagramm-Konfiguration** — Auswahlrichtlinie für Architekturdiagramme.
 
@@ -122,12 +123,35 @@ Klicken Sie auf **↩️ Reset to Defaults**, um alle Einstellungen auf die Wert
 | `llm.rpm` | int | `5` | ☁️ System | Maximale API-Anfragen pro Minute (ausgehende LLM-Drosselung) |
 | `llm.timeout.seconds` | int | `30` | ☁️ System | HTTP-Lese-Timeout für LLM-API-Aufrufe |
 | `rate-limit.per-minute` | int | `10` | ☁️ System | Eingehendes LLM-Kontingent je authentifizierter Identität und Minute (`0` deaktiviert) |
+| `analysis.reason-length` | string | `"standard"` | ☁️ System | Umfang der Begründungen neu gestarteter Analysen: `short`, `standard` oder `detailed` |
 
 Die Einstellung `llm.rpm` steuert die gleitende Fensterdrosselung für ausgehende LLM-API-Aufrufe. Das System verwaltet eine FIFO-Warteschlange von Zeitstempeln und lässt den Thread warten, wenn das Ratenlimit überschritten würde. Eine Toleranz von 50 ms wird für Taktabweichungen hinzugefügt.
 
 Die Einstellung `llm.timeout.seconds` aktualisiert dynamisch das Lese-Timeout des `RestTemplate`, ohne die Anwendung neu starten zu müssen.
 
 Das eingehende Kontingent `rate-limit.per-minute` wird erst nach Authentifizierung und Autorisierung geprüft und gilt je stabiler authentifizierter Identität. Lokale Konten werden über ihren kanonischen authentifizierten Benutzernamen zugeordnet; Browser-OIDC und Bearer-JWT desselben Keycloak-Kontos teilen die unveränderliche Issuer/Subject-Identität (`iss`/`sub`). Forwarding-Header, Peer-Adressen und der veränderliche Claim `preferred_username` erzeugen keine Kontingentidentitäten; abgewiesene Aufrufe belegen oder verbrauchen keinen Kontingentzähler. Genau `0` deaktiviert diesen Begrenzer; negative Werte wirken fehlersicher als ein zugelassener Aufruf pro Minute. Inaktive Identitäten laufen ab, die In-Memory-Menge ist begrenzt, und HTTP-`429`-Antworten enthalten `Retry-After` sowie `Cache-Control: no-store`. Die Zähler gelten je laufender Anwendungsinstanz; bei mehreren Replikaten ist ein verteilter äußerer Begrenzer nötig oder das vervielfachte Gesamtkontingent muss eingeplant werden.
+
+### Begründungsumfang der Analyse
+
+Unter **Einstellungen → LLM-Konfiguration → Begründungsumfang** wählen Sie, wie ausführlich das Modell seine Bewertungen erläutern soll. Klicken Sie anschließend auf **Speichern**. Die Einstellung gilt systemweit für neu angenommene Analyseläufe.
+
+| Auswahl | Zielumfang je Entscheidung | Inhalt |
+|---|---|---|
+| **Kurz** (`short`) | Ein prägnanter Satz | Anforderungsbezug und wichtigster Grund für die Bewertung |
+| **Standard** (`standard`) | Ein bis zwei Sätze | Die bisherige knappe Erläuterung der Bewertung |
+| **Ausführlich** (`detailed`) | Drei bis fünf gehaltvolle Sätze | Bezug zur Anforderung, ausschlaggebende Kriterien und Erklärung der Bewertung; entscheidungsrelevante Unsicherheiten oder fehlende Angaben, soweit vorhanden |
+
+Die Länge ist eine Vorgabe für die Textgenerierung; einzelne Antworten können davon abweichen. Die ausführliche Stufe fordert zusätzliche sachliche Erläuterungen und kann mehr Zeit und Modellkapazität benötigen. Sie ergänzt keine erfundenen Anforderungsdetails und verändert keine bereits gespeicherten Begründungen. Die vorgegebenen Regeln für Bewertungen und Relevanz bleiben erhalten.
+
+Der gewählte Umfang wird bei Annahme eines Analyselaufs festgehalten. Wartende, laufende und wiederaufgenommene Vorgänge behalten diese Auswahl auch nach einer Einstellungsänderung. Neue Ergebnisse speichern sie zusammen mit den Analyseinformationen; ältere und manuelle Ergebnisse ohne diese Angabe bleiben als solche erhalten. Um vorhandene Entscheidungen ausführlicher begründen zu lassen, wählen Sie **Ausführlich** und starten Sie eine neue Analyse. Der Word-Export übernimmt die gespeicherten Begründungen und erzeugt keine neuen Modellantworten.
+
+Die Laufzeiteinstellung lässt sich auch mit `PUT /api/preferences` ändern:
+
+```json
+{"analysis.reason-length": "detailed"}
+```
+
+Nur die drei angegebenen Stringwerte sind erlaubt. Ungültige Werte werden mit HTTP `400` abgewiesen, bevor Änderungen gespeichert werden. `TAXONOMY_ANALYSIS_REASON_LENGTH` beziehungsweise `taxonomy.analysis.reason-length` setzt den Deployment-Standard; ohne Vorgabe gilt `standard`. Eine ältere Preferences-Datei ohne diesen Schlüssel erhält den effektiven Standardwert, ohne allein durch das Lesen einen neuen Historieneintrag zu erzeugen.
 
 ### Repository- und Altschlüssel
 

@@ -271,6 +271,7 @@
             analysisStatus: window.TaxonomyState?.lastAnalysisStatus || 'UNKNOWN',
             analysisCoverage: window.TaxonomyState?.analysisCoverage || null,
             analysisScope: window.TaxonomyState?.lastAnalysisScope || null,
+            analysisReasonLength: window.TaxonomyState?.lastAnalysisReasonLength || null,
             rawScores: window.TaxonomyState?.currentRawScores || null,
             analysisOperationId: window.TaxonomyState?.analysisOperationId || null,
             analysisProviderId: window.TaxonomyState?.analysisProviderId || null

@@ -63,6 +63,8 @@ public class PreferencesController {
             String author = authentication != null ? authentication.getName() : "unknown";
             preferencesService.update(changes, author);
             return ResponseEntity.ok(preferencesService.getAll());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IOException e) {
             log.error("Failed to persist preferences update", e);
             return ResponseEntity.internalServerError().build();

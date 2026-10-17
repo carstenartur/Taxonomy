@@ -54,6 +54,7 @@ class ApplicationConfigurationExportIT {
         JsonNode settings = document.path("settings");
         assertThat(settings.path("preferenceDefaults").path("llmRequestsPerMinute").asInt()).isEqualTo(13);
         assertThat(settings.path("preferenceDefaults").path("projectName").asText()).isEqualTo("Configured project");
+        assertThat(settings.path("preferenceDefaults").path("analysisReasonLength").asText()).isEqualTo("standard");
         assertThat(settings.path("productAnalysis").path("batchSize").asInt()).isEqualTo(10);
         assertThat(settings.path("portfolio").path("maximumImportCharacters").asInt()).isEqualTo(500000);
         assertThat(settings.path("documents").path("maximumUploadBytes").asLong()).isEqualTo(4294967296L);
@@ -89,6 +90,7 @@ class ApplicationConfigurationExportIT {
         JsonNode document = JSON.readTree(export(new MockEnvironment(), BackupProfile.INSTALLATION_CURRENT).entries.get(PATH));
         JsonNode settings = document.path("settings");
         assertThat(settings.path("preferenceDefaults").path("llmRequestsPerMinute").isNull()).isTrue();
+        assertThat(settings.path("preferenceDefaults").path("analysisReasonLength").isNull()).isTrue();
         assertThat(settings.path("documents").path("maximumUploadBytes").isNull()).isTrue();
         assertThat(settings.path("documents").path("minimumDocxInflateRatio").isNull()).isTrue();
         assertThat(settings.path("features").path("multiRepositoryApi").isNull()).isTrue();
@@ -99,6 +101,7 @@ class ApplicationConfigurationExportIT {
     @ParameterizedTest
     @CsvSource({
             "taxonomy.llm.rpm,INTERNAL-SECRET", "taxonomy.llm.rpm,2147483648",
+            "taxonomy.analysis.reason-length,INTERNAL-SECRET", "taxonomy.analysis.reason-length,' '",
             "taxonomy.limits.document.max-upload-bytes,9223372036854775808",
             "taxonomy.features.multi-repository-api.enabled,INTERNAL-SECRET",
             "taxonomy.features.multi-repository-api.enabled,' '",
@@ -209,6 +212,16 @@ class ApplicationConfigurationExportIT {
         environment.setProperty("TAXONOMY_DSL_PROJECT_NAME", "Explicit value");
         JsonNode overridden = JSON.readTree(export(environment, BackupProfile.INSTALLATION_CURRENT).entries.get(PATH));
         assertThat(overridden.path("settings").path("preferenceDefaults").path("projectName").asText()).isEqualTo("Explicit value");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"short", "standard", "detailed"})
+    void capturesTheDocumentedReasonLengthDeploymentOverride(String value) throws Exception {
+        var environment = new MockEnvironment().withProperty("TAXONOMY_ANALYSIS_REASON_LENGTH", value);
+        environment.getPropertySources().addLast(new PropertiesPropertySource("application-defaults",
+                PropertiesLoaderUtils.loadProperties(new ClassPathResource("application.properties"))));
+        var document = JSON.readTree(export(environment, BackupProfile.INSTALLATION_CURRENT).entries.get(PATH));
+        assertThat(document.path("settings").path("preferenceDefaults").path("analysisReasonLength").asText()).isEqualTo(value);
     }
 
     @Test void usesSpringConversionForValidDeployedScalarValues() throws Exception {

@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.cluster;
 
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -41,5 +42,10 @@ public interface ClusterAnalysisObservation {
     RecoveryInput request(String operationId, String owner, WorkspaceContext scope);
 
     record RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,
-                         ClusterAnalysisView.ObservationScope scope) { }
+                         ClusterAnalysisView.ObservationScope scope, AnalysisReasonLength analysisReasonLength) {
+        public RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,
+                             ClusterAnalysisView.ObservationScope scope) {
+            this(operationId, businessText, provider, analysisScope, scope, null);
+        }
+    }
 }

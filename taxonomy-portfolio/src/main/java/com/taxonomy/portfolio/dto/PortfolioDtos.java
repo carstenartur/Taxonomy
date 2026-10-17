@@ -222,7 +222,17 @@ public final class PortfolioDtos {
             int failedItems,
             String errorSummary,
             List<AnalysisJobItemView> items,
-            com.taxonomy.extension.api.plugin.PluginInvocation providerBinding) {
+            com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
+            com.taxonomy.dto.AnalysisReasonLength analysisReasonLength) {
+        public AnalysisJobView(String id, Long projectId, AnalysisStatus status, String idempotencyKey,
+                String provider, int maxArchitectureNodes, String requestedBy, String workspaceId,
+                Instant createdAt, Instant startedAt, Instant completedAt, int totalItems, int successfulItems,
+                int partialItems, int failedItems, String errorSummary, List<AnalysisJobItemView> items,
+                com.taxonomy.extension.api.plugin.PluginInvocation providerBinding) {
+            this(id, projectId, status, idempotencyKey, provider, maxArchitectureNodes, requestedBy, workspaceId,
+                    createdAt, startedAt, completedAt, totalItems, successfulItems, partialItems, failedItems,
+                    errorSummary, items, providerBinding, null);
+        }
         public AnalysisJobView(String id, Long projectId, AnalysisStatus status, String idempotencyKey,
                 String provider, int maxArchitectureNodes, String requestedBy, String workspaceId,
                 Instant createdAt, Instant startedAt, Instant completedAt, int totalItems, int successfulItems,

@@ -857,7 +857,9 @@ The dialog starts with **Standard**, short contents and **Automatic (landscape)*
 
 Under **More options**, select individual sections. Contents can cover the main sections, show detailed entries or be omitted. The saved-architecture section is disabled for a taxonomies-only analysis. Available source references, status and warnings remain visible in a short report.
 
-The Word report begins with an overview of every selected taxonomy: area relevance, assessment status, a principal decision path and its recorded reason. Areas without positive matches or completed assessments also appear. Tree figures show numeric scores and relevance bars. A clickable node key beside each figure leads to the complete reason, with a return link to its tree. Decision chapters and reasons precede exhaustive architecture and provenance material.
+The Word report begins with an overview of every selected taxonomy: area relevance, assessment status, a principal decision path and its recorded reason. Areas without positive matches or completed assessments also appear. Connected tree figures then show parent-child relationships, numeric scores and relevance bars. For printed pages, nodes are arranged vertically with indentation for each taxonomy; this differs from the spatial layout of the shared browser view. A clickable node key below each figure leads to the complete reason, with a return link to its tree. Decision chapters and reasons precede exhaustive architecture and provenance material.
+
+Export uses the recorded reasons. To request fuller reasons, select **Preferences → LLM Configuration → Explanation Length → Detailed** before starting a new analysis. The report profiles **Compact**, **Standard** and **Full** control which sections are included; they do not generate additional model responses.
 
 ![More export options: short contents, A4 landscape and individual report sections](../images/decision-export-options-en.png)
 
@@ -1782,16 +1784,18 @@ The Preferences page is organized into three sections:
 
 | Section | Settings | Scope |
 |---|---|---|
-| **🤖 LLM Configuration** | RPM limit, timeout, rate limit, min relevance score | ☁️ System-wide |
-| **📂 JGit / DSL Configuration** | Default branch, project name, auto-save, remote Git URL/token, push-on-commit | ☁️ System-wide |
-| **📈 Size Limits** | Max business text, max architecture nodes, max export nodes | ☁️ System-wide |
+| **🤖 LLM Configuration** | RPM limit, timeout, rate limit, reason length | ☁️ System-wide |
+| **📈 Size Limits** | Max business text, default architecture-node count | ☁️ System-wide |
+| **Diagram Configuration** | Architecture diagram selection policy | ☁️ System-wide |
 
 **How to change a preference:**
 
 1. Navigate to the **⚙️ Preferences** tab.
 2. Modify the desired setting in the appropriate section.
-3. Click **💾 Save** — changes take effect immediately.
+3. Click **💾 Save** — the change applies to subsequent operations.
 4. A success message confirms the save; the change is recorded in the audit trail.
+
+**Reason length:** **Short** requests one sentence per decision, **Standard** one or two, and **Detailed** three to five substantive sentences explaining requirement relevance, assessment criteria and material uncertainty where applicable. Already admitted and resumed analyses retain their selected length. Existing texts remain unchanged; fuller new reasons require a new analysis. See [Analysis reason length](PREFERENCES.md#analysis-reason-length) for the precise instructions and REST API.
 
 **Audit trail:** Expand the **📋 Preferences Change History** section at the bottom to see who changed what and when. Each change is persisted as a Git commit in the separate `taxonomy-preferences` repository.
 

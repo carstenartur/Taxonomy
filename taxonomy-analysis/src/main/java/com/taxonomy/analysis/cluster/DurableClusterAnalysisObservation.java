@@ -108,7 +108,7 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
         var authority = context.authority();
         return new RecoveryInput(operationId, command.businessText(), command.provider(), command.analysisScope(),
                 new ClusterAnalysisView.ObservationScope(authority.workspaceId(), authority.repositoryId(),
-                        authority.branch(), authority.sourceCommit()));
+                        authority.branch(), authority.sourceCommit()), command.analysisReasonLength());
     }
 
     @Override public synchronized SseEmitter events(String operationId, String owner, WorkspaceContext scope,

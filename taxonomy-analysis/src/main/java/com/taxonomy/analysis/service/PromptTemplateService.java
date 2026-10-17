@@ -151,7 +151,7 @@ public class PromptTemplateService {
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", name,
                 "{{PARENT_SCORE}}", com.taxonomy.dto.AnalysisPercentages.canonical(parentScore),
-                "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")) + numericContract() + "The scores must sum to " + com.taxonomy.dto.AnalysisPercentages.canonical(parentScore) + ". Preserve a positive child below 1%; for a 1% budget, two equal children have 0.5 each.\n";
+                "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")) + numericContract() + "The scores must sum to " + com.taxonomy.dto.AnalysisPercentages.canonical(parentScore) + ". Preserve a positive child below 1%; for a 1% budget, two equal children have 0.5 each.\n" + reasonContract();
     }
 
     /** Evaluates one catalogue root independently, without a child allocation budget. */
@@ -161,7 +161,7 @@ public class PromptTemplateService {
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode),
-                "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n";
+                "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n" + reasonContract();
     }
 
     /**
@@ -202,7 +202,21 @@ public class PromptTemplateService {
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{NODE_LIST}}", nodeList,
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "",
-                "{{MIN_SCORE}}", String.valueOf(minimumScore))) + numericContract() + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n";
+                "{{MIN_SCORE}}", String.valueOf(minimumScore))) + numericContract() + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n" + reasonContract();
+    }
+
+    private static String reasonContract() {
+        var length = AnalysisReasonContext.effective(AnalysisReasonContext.current());
+        String scope = switch (length) {
+            case SHORT -> "Write one concise sentence per decision, at most 35 words, naming the decisive match or mismatch.";
+            case STANDARD -> "Write 1–2 sentences per decision, at most 60 words, connecting the requirement to the decisive catalogue criterion and assigned relevance.";
+            case DETAILED -> "Write 3–5 substantive sentences per decision, at most 100 words. Identify the relevant requirement facts, explain how the catalogue criterion fits or fails to fit them, and justify the assigned weight or suitability. Mention a material limitation or uncertainty only when the supplied evidence supports it.";
+        };
+        return "\nMandatory decision reason policy (" + AnalysisReasonContext.POLICY + "): " + length.value() + ".\n"
+                + "This policy governs every decision reason and overrides different length instructions or shorter illustrative examples above. "
+                + scope + " Base the explanation only on supplied requirement and catalogue evidence; do not invent facts, fill gaps with assumptions, or add repetitive filler. "
+                + "An explicit zero needs a concrete reason for the mismatch; missing evidence is not proof of irrelevance. "
+                + "Keep all requested keys, numeric scoring rules and the required response format.\n";
     }
 
     private static String numericContract() {
@@ -224,11 +238,11 @@ public class PromptTemplateService {
      */
     public String renderLeafJustificationPrompt(String businessText, String leafCode,
                                                 String pathDescription, String crossRefs) {
-        String template = defaults.getOrDefault("justify-leaf", "");
+        String template = overrides.getOrDefault("justify-leaf", defaults.getOrDefault("justify-leaf", ""));
         if (template.isBlank()) {
             // Fallback inline template if the file is missing
             template = "You are an expert in C3 taxonomy classification.\n"
-                    + "Explain in 3-5 sentences why the taxonomy path ending at {{LEAF_CODE}} "
+                    + "Explain why the taxonomy path ending at {{LEAF_CODE}} "
                     + "best matches the following business requirement.\n\n"
                     + "Business Requirement: {{BUSINESS_TEXT}}\n\n"
                     + "Selected path (root → leaf) with scores:\n{{PATH_DESCRIPTION}}\n"
@@ -241,7 +255,7 @@ public class PromptTemplateService {
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{LEAF_CODE}}", leafCode,
                 "{{PATH_DESCRIPTION}}", pathDescription,
-                "{{CROSS_REFERENCES}}", crossRefs));
+                "{{CROSS_REFERENCES}}", crossRefs)) + reasonContract();
     }
 
     /**

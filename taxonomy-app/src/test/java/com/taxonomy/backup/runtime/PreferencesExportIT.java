@@ -3,6 +3,7 @@ package com.taxonomy.backup.runtime;
 import com.taxonomy.backup.*;
 
 import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.preferences.backup.PreferencesBackupContributor;
 import com.taxonomy.preferences.storage.PreferencesGitRepository;
 import org.eclipse.jgit.lib.*;
@@ -20,12 +21,40 @@ import static org.assertj.core.api.Assertions.*;
 class PreferencesExportIT {
     private static final String PATH = "data/application/preferences.json";
 
+    @Test void reasonLengthRemainsTypedThroughPortableExportAndDeserialization() throws Exception {
+        for (var length : AnalysisReasonLength.values()) {
+            try (var repository = new PreferencesGitRepository()) {
+                repository.commit("{\"analysis.reason-length\":\"" + length.value() + "\"}", "tester", "Selected extent");
+                var output = new Contents();
+                new PreferencesBackupContributor(repository).write(
+                        snapshot(BackupProfile.INSTALLATION_CURRENT, new BackupScope.Installation()), output);
+                var document = PortableRows.json().readTree(output.entries.get(PATH));
+                var restored = PortableRows.json().treeToValue(document.path("settings"), PreferencesBackupContributor.Settings.class);
+                assertThat(PortableRows.json().valueToTree(restored).path("analysisReasonLength").asText())
+                        .isEqualTo(length.value());
+            }
+        }
+    }
+
+    @Test void olderPreferenceBackupsLeaveTheNewValueUnspecifiedForTargetReview() throws Exception {
+        try (var repository = new PreferencesGitRepository()) {
+            repository.commit("{\"llm.rpm\":7}", "legacy", "Legacy settings");
+            var output = new Contents();
+            new PreferencesBackupContributor(repository).write(
+                    snapshot(BackupProfile.INSTALLATION_CURRENT, new BackupScope.Installation()), output);
+            var document = PortableRows.json().readTree(output.entries.get(PATH));
+            assertThat(document.path("settings").path("analysisReasonLength").isNull()).isTrue();
+        }
+        var legacy = PortableRows.json().readValue("{\"llmRequestsPerMinute\":7}", PreferencesBackupContributor.Settings.class);
+        assertThat(PortableRows.json().valueToTree(legacy).path("analysisReasonLength").isNull()).isTrue();
+    }
+
     @Test void installationCurrentExportsTypedSettingsWithoutPriorValuesOrCredentials() throws Exception {
         try (var repository = new PreferencesGitRepository()) {
             repository.commit("{\"dsl.project-name\":\"OLD-PRIVATE-NAME\",\"dsl.remote.token\":\"OLD-TOKEN\"}", "old-author", "OLD-MESSAGE");
             String current = """
                     {"llm.rpm":"12","llm.timeout.seconds":60,"rate-limit.per-minute":20,
-                     "analysis.min-relevance-score":70,"dsl.default-branch":"draft","dsl.project-name":"Aktueller Stand",
+                     "analysis.min-relevance-score":70,"analysis.reason-length":"detailed","dsl.default-branch":"draft","dsl.project-name":"Aktueller Stand",
                      "dsl.auto-save.interval-seconds":5,"limits.max-business-text":6000,
                      "limits.max-architecture-nodes":70,"limits.max-export-nodes":300,"diagram.policy":"defaultImpact",
                      "dsl.remote.url":"https://user:URL-PASSWORD@git.example/private?token=QUERY-SECRET",
@@ -42,6 +71,7 @@ class PreferencesExportIT {
             assertThat(document.path("sourceCommit").asText()).isEqualTo(head);
             assertThat(document.path("settings").path("llmRequestsPerMinute").asInt()).isEqualTo(12);
             assertThat(document.path("settings").path("maximumBusinessText").asInt()).isEqualTo(6000);
+            assertThat(document.path("settings").path("analysisReasonLength").asText()).isEqualTo("detailed");
             assertThat(document.path("settings").path("projectName").asText()).isEqualTo("Aktueller Stand");
             assertThat(document.path("remote").path("configured").asBoolean()).isTrue();
             assertThat(document.path("remote").path("credentialPresent").asBoolean()).isTrue();
@@ -108,7 +138,9 @@ class PreferencesExportIT {
         for (String json : List.of("[]", "null", "{\"llm.rpm\":1,\"llm.rpm\":2}", "{} {}",
                 "{\"custom.secret\":\"MUST-NOT-LEAK\"}", "{\"llm.rpm\":\"MUST-NOT-LEAK\"}",
                 "{\"llm.rpm\":2147483648}", "{\"dsl.project-name\":{\"hidden\":\"MUST-NOT-LEAK\"}}",
-                "{\"dsl.remote.push-on-commit\":\"invalid\"}", "{\"dsl.remote.token\":{\"hidden\":\"MUST-NOT-LEAK\"}}")) {
+                "{\"dsl.remote.push-on-commit\":\"invalid\"}", "{\"dsl.remote.token\":{\"hidden\":\"MUST-NOT-LEAK\"}}",
+                "{\"analysis.reason-length\":\"MUST-NOT-LEAK\"}", "{\"analysis.reason-length\":17}",
+                "{\"analysis.reason-length\":\"\"}")) {
             try (var repository = new PreferencesGitRepository()) {
                 repository.commit(json, "alice", "input");
                 var output = new Contents();

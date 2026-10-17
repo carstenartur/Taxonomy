@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.taxonomy.backup.*;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.preferences.storage.PreferencesGitRepository;
 import org.eclipse.jgit.lib.*;
@@ -26,7 +27,7 @@ public final class PreferencesBackupContributor implements BackupDataContributor
     private static final int MAX_GIT_METADATA_BYTES = 65_536;
     private static final String ENTRY = "data/application/preferences.json";
     private static final Set<String> KEYS = Set.of("llm.rpm", "llm.timeout.seconds", "rate-limit.per-minute",
-            "analysis.min-relevance-score", "dsl.default-branch", "dsl.project-name", "dsl.auto-save.interval-seconds",
+            "analysis.min-relevance-score", "analysis.reason-length", "dsl.default-branch", "dsl.project-name", "dsl.auto-save.interval-seconds",
             "limits.max-business-text", "limits.max-architecture-nodes", "limits.max-export-nodes", "diagram.policy",
             "dsl.remote.url", "dsl.remote.token", "dsl.remote.push-on-commit");
     private static final List<String> EXCLUDED_FIELDS = List.of("dsl.remote.url", "dsl.remote.token");
@@ -104,6 +105,7 @@ public final class PreferencesBackupContributor implements BackupDataContributor
             }
             var settings = new Settings(integer(document, "llm.rpm"), integer(document, "llm.timeout.seconds"),
                     integer(document, "rate-limit.per-minute"), integer(document, "analysis.min-relevance-score"),
+                    reasonLength(document),
                     text(document, "dsl.default-branch"), text(document, "dsl.project-name"), integer(document, "dsl.auto-save.interval-seconds"),
                     integer(document, "limits.max-business-text"), integer(document, "limits.max-architecture-nodes"),
                     integer(document, "limits.max-export-nodes"), text(document, "diagram.policy"));
@@ -135,6 +137,12 @@ public final class PreferencesBackupContributor implements BackupDataContributor
             return Boolean.valueOf(value.textValue());
         throw new IOException("Invalid boolean preference");
     }
+    private static AnalysisReasonLength reasonLength(JsonNode document) throws IOException {
+        String value = text(document, "analysis.reason-length");
+        if (value == null) return null;
+        if (value.isBlank()) throw new IOException("Invalid reason-length preference");
+        return AnalysisReasonLength.fromValue(value);
+    }
     private static boolean present(JsonNode document, String key) throws IOException {
         JsonNode value = document.path(key);
         if (value.isMissingNode() || value.isNull()) return false;
@@ -148,7 +156,8 @@ public final class PreferencesBackupContributor implements BackupDataContributor
     public enum Selection { CURRENT_STATE, UNINITIALIZED, OUTSIDE_SCOPE }
     public enum RestorePolicy { MANUAL_REVIEW_REQUIRED }
     public record Settings(Integer llmRequestsPerMinute, Integer llmTimeoutSeconds, Integer rateLimitPerMinute,
-                           Integer analysisMinimumRelevanceScore, String defaultBranch, String projectName,
+                           Integer analysisMinimumRelevanceScore, AnalysisReasonLength analysisReasonLength,
+                           String defaultBranch, String projectName,
                            Integer autoSaveIntervalSeconds, Integer maximumBusinessText, Integer maximumArchitectureNodes,
                            Integer maximumExportNodes, String diagramPolicy) { }
     public record RemoteConfiguration(boolean configured, boolean credentialPresent, Boolean sourcePushOnCommit) { }

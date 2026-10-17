@@ -334,6 +334,7 @@
             analysisDurationMillis: S.lastAnalysisDurationMillis,
             analysisCoverage: S.analysisCoverage || null,
             analysisScope: S.lastAnalysisScope || null,
+            analysisReasonLength: S.lastAnalysisReasonLength || null,
             analysisRecovery: S.analysisRecovery || null,
             recoveryContext: S.recoveryContext || null,
             storedBusinessText: S.storedBusinessText,

@@ -13,6 +13,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class DecisionRationaleDocxLayoutTest {
     @Test
+    void wordSourceNoticeUsesOnlyExplicitlyRecordedReasonLength() throws Exception {
+        var base = DecisionRationaleTemplateRendererTest.report();
+        var recorded = base.withScope(base.scope().withAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.DETAILED));
+        var renderer = new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer());
+        for (var report : List.of(base, recorded)) {
+            try (var document = new XWPFDocument(new java.io.ByteArrayInputStream(renderer.render(report)))) {
+                String text = new XWPFWordExtractor(document).getText();
+                String notice = new DecisionReportLabels(report.languageTag()).german()
+                        ? "Vorgabe für Begründungen: Ausführlich" : "Requested explanation length: Detailed";
+                if (report == recorded) assertThat(text).contains(notice);
+                else assertThat(text).doesNotContain(notice, "Requested explanation length:", "Vorgabe für Begründungen:");
+            }
+        }
+    }
+
+    @Test
     void overviewIncludesEveryRootAndLinksToCompleteReasonsEvenWithoutAppendix() throws Exception {
         var base = DecisionCompactReportTest.report(com.taxonomy.reporting.api.decision.DecisionReportOptions.TreeLayout.AUTO, 4);
         var rows = new java.util.ArrayList<>(base.scope().decisionTree().rows());

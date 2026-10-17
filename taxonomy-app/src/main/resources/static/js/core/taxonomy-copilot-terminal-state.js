@@ -176,6 +176,7 @@
         if (!target || !hasScores(C.S.currentScores)) return;
         C.S.lastAnalysisDurationMillis = null;
         C.S.lastAnalysisProvider = 'MANUAL';
+        C.S.lastAnalysisReasonLength = null;
         C.S.lastAnalysisStatus = 'SUCCESS';
         document.dispatchEvent(new CustomEvent('taxonomy:analysis-evidence-imported'));
     });

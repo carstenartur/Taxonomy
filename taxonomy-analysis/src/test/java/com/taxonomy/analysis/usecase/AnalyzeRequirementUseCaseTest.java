@@ -130,6 +130,7 @@ class AnalyzeRequirementUseCaseTest {
 
         verify(repositoryStateService).getViewContext("alice", "main", selected);
         verify(repositoryStateService, never()).resolveWorkspaceBranch(any());
+        verify(llmService).resolveAnalysisReasonLength(null);
         verify(llmService).requireProviderAdmissible(org.mockito.ArgumentMatchers.any(), anyBoolean());
         verifyNoMoreInteractions(llmService);
     }

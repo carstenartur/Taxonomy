@@ -8,6 +8,11 @@ import java.util.Objects;
 
 public class AnalysisResult {
 
+    /** Frozen generation preference; null for historical or otherwise unrecorded evidence. */
+    private AnalysisReasonLength analysisReasonLength;
+    public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }
+    public void setAnalysisReasonLength(AnalysisReasonLength value) { analysisReasonLength = value; }
+
     private AnalysisScope analysisScope = AnalysisScope.full();
     public AnalysisScope getAnalysisScope() { return analysisScope; }
     public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }

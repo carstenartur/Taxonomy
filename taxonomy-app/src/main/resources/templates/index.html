@@ -1392,6 +1392,17 @@
                                 <input type="number" class="form-control" id="pref-rate-limit"
                                        data-pref-key="rate-limit.per-minute" min="0" max="1000"/>
                             </div>
+                            <div class="col-md-6">
+                                <label for="pref-analysis-reason-length" class="form-label" th:text="#{preferences.analysis.reasonlength}">Explanation Length</label>
+                                <select class="form-select" id="pref-analysis-reason-length"
+                                        data-pref-key="analysis.reason-length" required
+                                        aria-describedby="pref-analysis-reason-length-help">
+                                    <option value="short" th:text="#{preferences.analysis.reasonlength.short}">Short</option>
+                                    <option value="standard" selected th:text="#{preferences.analysis.reasonlength.standard}">Standard</option>
+                                    <option value="detailed" th:text="#{preferences.analysis.reasonlength.detailed}">Detailed</option>
+                                </select>
+                                <div class="form-text" id="pref-analysis-reason-length-help" th:text="#{preferences.analysis.reasonlength.help}">For new analyses: Short uses one sentence, Standard 1–2, and Detailed 3–5 with requirement references, decisive criteria and material uncertainties where applicable. Detailed explanations may take longer.</div>
+                            </div>
                         </div>
                     </div>
                 </div>

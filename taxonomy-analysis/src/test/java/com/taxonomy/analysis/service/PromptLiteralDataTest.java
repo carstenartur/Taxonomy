@@ -18,14 +18,14 @@ class PromptLiteralDataTest {
     void scoringReplacesOnlyOriginalTemplateTokensIncludingRepeatedOnes() {
         service.setTemplate("BR", "{{BUSINESS_TEXT}}|{{NODE_LIST}}|{{PARENT_SCORE}}|{{EXPECTED_KEYS}}|{{BUSINESS_TEXT}}|{{UNKNOWN}}");
         String prompt = service.renderPrompt("BR", DATA, DATA, 70, "BR");
-        assertEquals(DATA + "|" + DATA + "|70|BR|" + DATA + "|{{UNKNOWN}}" + scoreContract(70), prompt);
+        assertEquals(DATA + "|" + DATA + "|70|BR|" + DATA + "|{{UNKNOWN}}" + scoreContract(70), withoutReasonPolicy(prompt));
     }
 
     @Test
     void optionalExpectedKeysRemainEmptyWithoutInterpretingData() {
         service.setTemplate("CP", "{{NODE_LIST}}|{{EXPECTED_KEYS}}|{{TAXONOMY_NAME}}");
         String prompt = service.renderPrompt("CP", "requirement", DATA, 100, null);
-        assertEquals(DATA + "||Capabilities" + scoreContract(100), prompt);
+        assertEquals(DATA + "||Capabilities" + scoreContract(100), withoutReasonPolicy(prompt));
     }
 
     @Test
@@ -34,7 +34,7 @@ class PromptLiteralDataTest {
         String prompt = service.renderProductPrompt(DATA, DATA, "IP", 30);
         assertEquals(DATA + "|" + DATA + "|IP|30" + NUMERIC_CONTRACT
                 + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n",
-                prompt);
+                withoutReasonPolicy(prompt));
     }
 
     @Test
@@ -56,5 +56,13 @@ class PromptLiteralDataTest {
     private static String scoreContract(int parentScore) {
         return NUMERIC_CONTRACT + "The scores must sum to " + parentScore
                 + ". Preserve a positive child below 1%; for a 1% budget, two equal children have 0.5 each.\n";
+    }
+
+    private static String withoutReasonPolicy(String prompt) {
+        String marker = "\nMandatory decision reason policy (reason-length-v1): ";
+        int start = prompt.indexOf(marker);
+        assertTrue(start >= 0, "The separately verified reason contract must follow the untouched literal template data");
+        assertEquals(start, prompt.lastIndexOf(marker));
+        return prompt.substring(0, start);
     }
 }

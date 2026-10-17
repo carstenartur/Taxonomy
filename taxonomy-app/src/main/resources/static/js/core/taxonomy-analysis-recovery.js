@@ -107,6 +107,7 @@
         context.pauseReason = ['PAUSED', 'STOPPED'].includes(S.analysisRecovery?.state) ? result.errorMessage : null;
         S.analysisCoverage = result.analysisCoverage || null;
         S.lastAnalysisScope = result.analysisScope || context.request.analysisScope || null;
+        S.lastAnalysisReasonLength = result.analysisReasonLength || null;
         window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
         if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
         S.currentRawScores = result.rawScores || {};

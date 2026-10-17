@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.usecase;
 
 import java.util.Map;
+import com.taxonomy.dto.AnalysisReasonLength;
 
 /** Stable response contract for one interactive child-node evaluation. */
 public record AnalyzeNodeChildrenResult(
@@ -12,7 +13,8 @@ public record AnalyzeNodeChildrenResult(
         long durationMs,
         String error,
         String analysisOperationId,
-        String analysisProviderId) {
+        String analysisProviderId,
+        AnalysisReasonLength analysisReasonLength) {
 
     public AnalyzeNodeChildrenResult {
         scores = scores == null ? Map.of() : Map.copyOf(scores);
@@ -23,13 +25,25 @@ public record AnalyzeNodeChildrenResult(
     }
 
     public AnalyzeNodeChildrenResult(Map<String, Double> scores, Map<String, String> reasons, String prompt,
+                                     String rawResponse, String provider, long durationMs, String error,
+                                     String analysisOperationId, String analysisProviderId) {
+        this(scores, reasons, prompt, rawResponse, provider, durationMs, error,
+                analysisOperationId, analysisProviderId, null);
+    }
+
+    public AnalyzeNodeChildrenResult withAnalysisReasonLength(AnalysisReasonLength length) {
+        return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
+                analysisOperationId, analysisProviderId, length);
+    }
+
+    public AnalyzeNodeChildrenResult(Map<String, Double> scores, Map<String, String> reasons, String prompt,
                                      String rawResponse, String provider, long durationMs, String error) {
         this(scores, reasons, prompt, rawResponse, provider, durationMs, error, null, null);
     }
 
     public AnalyzeNodeChildrenResult withFollowUpContext(String operationId, String providerId) {
         return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
-                operationId, providerId);
+                operationId, providerId, analysisReasonLength);
     }
 
     public static AnalyzeNodeChildrenResult empty() {

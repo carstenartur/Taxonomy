@@ -225,6 +225,7 @@
         S.currentScores = null;
         S.analysisCoverage = null;
         S.lastAnalysisScope = null;
+        S.lastAnalysisReasonLength = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.analysisRecovery = null;
         S.recoveryContext = null;
@@ -282,6 +283,7 @@
             S.currentScores = S.currentEffectiveScores;
             S.analysisCoverage = payload.analysisCoverage || null;
             S.lastAnalysisScope = payload.analysisScope || null;
+            S.lastAnalysisReasonLength = payload.analysisReasonLength || null;
             S.analysisRecovery = payload.analysisRecovery || null;
             S.recoveryContext = payload.recoveryContext || null;
             S.lastAnalysisProvider = payload.lastAnalysisProvider || null;

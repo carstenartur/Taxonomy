@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.taxonomy.reporting.api.document.DecisionTreeOverview;
 import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.AnalysisScope;
+import com.taxonomy.dto.AnalysisReasonLength;
 import java.util.*;
 
 /** Recorded source scope and an independent, reproducible report selection. */
@@ -11,7 +12,8 @@ public record DecisionReportScope(AnalysisScope analysisScope, AnalysisCoverage 
         List<Root> availableRoots, Set<String> reportRoots,
         @JsonIgnore Set<String> selectedNodeCodes, DecisionTreeOverview decisionTree,
         DecisionReportOptions options, boolean analysisComplete, boolean selectionComplete,
-        @JsonIgnore String scoreSemanticsFingerprint, Map<String, String> recordedReasons) {
+        @JsonIgnore String scoreSemanticsFingerprint, Map<String, String> recordedReasons,
+        AnalysisReasonLength analysisReasonLength) {
     public record Root(String code, String title, boolean inAnalysisScope) {}
 
     public DecisionReportScope {
@@ -30,6 +32,15 @@ public record DecisionReportScope(AnalysisScope analysisScope, AnalysisCoverage 
     public DecisionReportScope(AnalysisScope analysisScope, AnalysisCoverage analysisCoverage,
             List<Root> availableRoots, Set<String> reportRoots, Set<String> selectedNodeCodes,
             DecisionTreeOverview decisionTree, DecisionReportOptions options,
+            boolean analysisComplete, boolean selectionComplete, String scoreSemanticsFingerprint,
+            Map<String, String> recordedReasons) {
+        this(analysisScope, analysisCoverage, availableRoots, reportRoots, selectedNodeCodes, decisionTree,
+                options, analysisComplete, selectionComplete, scoreSemanticsFingerprint, recordedReasons, null);
+    }
+
+    public DecisionReportScope(AnalysisScope analysisScope, AnalysisCoverage analysisCoverage,
+            List<Root> availableRoots, Set<String> reportRoots, Set<String> selectedNodeCodes,
+            DecisionTreeOverview decisionTree, DecisionReportOptions options,
             boolean analysisComplete, boolean selectionComplete) {
         this(analysisScope, analysisCoverage, availableRoots, reportRoots, selectedNodeCodes, decisionTree,
                 options, analysisComplete, selectionComplete, null, Map.of());
@@ -37,12 +48,18 @@ public record DecisionReportScope(AnalysisScope analysisScope, AnalysisCoverage 
 
     public DecisionReportScope withScoreSemanticsFingerprint(String fingerprint) {
         return new DecisionReportScope(analysisScope, analysisCoverage, availableRoots, reportRoots,
-                selectedNodeCodes, decisionTree, options, analysisComplete, selectionComplete, fingerprint, recordedReasons);
+                selectedNodeCodes, decisionTree, options, analysisComplete, selectionComplete, fingerprint, recordedReasons, analysisReasonLength);
     }
 
     public DecisionReportScope withRecordedReasons(Map<String, String> reasons) {
         return new DecisionReportScope(analysisScope, analysisCoverage, availableRoots, reportRoots,
-                selectedNodeCodes, decisionTree, options, analysisComplete, selectionComplete, scoreSemanticsFingerprint, reasons);
+                selectedNodeCodes, decisionTree, options, analysisComplete, selectionComplete, scoreSemanticsFingerprint, reasons, analysisReasonLength);
+    }
+
+    public DecisionReportScope withAnalysisReasonLength(AnalysisReasonLength length) {
+        return new DecisionReportScope(analysisScope, analysisCoverage, availableRoots, reportRoots,
+                selectedNodeCodes, decisionTree, options, analysisComplete, selectionComplete,
+                scoreSemanticsFingerprint, recordedReasons, length);
     }
 
     public static DecisionReportScope legacy(List<DecisionRationaleReport.DecisionChapter> chapters) {
@@ -54,6 +71,6 @@ public record DecisionReportScope(AnalysisScope analysisScope, AnalysisCoverage 
     public DecisionReportScope withCoverage(AnalysisCoverage coverage) {
         return new DecisionReportScope(analysisScope, coverage, availableRoots, reportRoots, selectedNodeCodes,
                 decisionTree, options, analysisComplete && (coverage == null || !coverage.hasOpenEvaluations()),
-                selectionComplete, scoreSemanticsFingerprint, recordedReasons);
+                selectionComplete, scoreSemanticsFingerprint, recordedReasons, analysisReasonLength);
     }
 }

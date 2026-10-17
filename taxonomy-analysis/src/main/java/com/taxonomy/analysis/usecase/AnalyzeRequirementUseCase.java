@@ -74,6 +74,7 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
+        command = freezeReasonLength(command);
         if (clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()) {
             ViewContext view = resolveViewContext(command);
             return analyze(command, operationContext(command, view), view);
@@ -94,6 +95,7 @@ public class AnalyzeRequirementUseCase {
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command, AnalysisOperationContext context,
                                              ViewContext view) {
         if (clusterExecution == null) throw new IllegalStateException("Cluster execution is not configured");
+        command = freezeReasonLength(command);
         llmService.requireProviderAdmissible(command.provider(), command.provenance() != null);
         promptBudgetPolicy.requireWithinBudget(command.businessText(), command.provider());
         // Root scoring, relation work and rendering have already been persisted when this returns.
@@ -104,7 +106,8 @@ public class AnalyzeRequirementUseCase {
                                              boolean persistHypotheses) {
         long startedNanos = System.nanoTime();
         InProcessAnalysisOperation operation = null;
-        try (var mockScope = "MOCK".equalsIgnoreCase(command.provider())
+        try (var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(command.analysisReasonLength());
+             var mockScope = "MOCK".equalsIgnoreCase(command.provider())
                 ? llmService.withProviderBinding("MOCK", null) : null) {
             llmService.requireProviderAdmissible(command.provider(), command.provenance() != null);
             applyProviderOverride(command.provider());
@@ -118,6 +121,7 @@ public class AnalyzeRequirementUseCase {
                     ? llmService.analyzeWithBudget(command.businessText())
                     : llmService.analyzeWithBudget(command.businessText(), command.analysisScope());
             result.setAnalysisScope(command.analysisScope());
+            result.setAnalysisReasonLength(command.analysisReasonLength());
             if (command.analysisScope().includesRelations()
                     && (result.getErrorMessage() == null || !isCooperativeStop(result.getErrorMessage()))) {
                 try {
@@ -150,6 +154,11 @@ public class AnalyzeRequirementUseCase {
             if (operation != null) operation.close();
             llmService.clearRequestProvider();
         }
+    }
+
+    private AnalyzeRequirementCommand freezeReasonLength(AnalyzeRequirementCommand command) {
+        return command.analysisReasonLength() != null ? command : command.withAnalysisReasonLength(
+                com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null)));
     }
 
     /**

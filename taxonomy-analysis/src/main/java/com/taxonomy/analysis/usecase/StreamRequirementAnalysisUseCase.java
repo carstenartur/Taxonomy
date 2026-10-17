@@ -38,7 +38,10 @@ public class StreamRequirementAnalysisUseCase {
         }
         long startedNanos = System.nanoTime();
         Locale previousLocale = LocaleContextHolder.getLocale();
-        try (var mockScope = "MOCK".equalsIgnoreCase(command.provider())
+        var reasonLength = command.analysisReasonLength() != null ? command.analysisReasonLength()
+                : llmService.resolveAnalysisReasonLength(null);
+        try (var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(reasonLength);
+             var mockScope = "MOCK".equalsIgnoreCase(command.provider())
                 ? llmService.withProviderBinding("MOCK", null) : null) {
             applyRequestLocale(command.requestLocale());
             llmService.requireProviderAdmissible(command.provider(), false);
@@ -110,14 +113,20 @@ public class StreamRequirementAnalysisUseCase {
         if (clusterExecution == null) throw new IllegalStateException("Cluster execution is not configured");
         if (!command.businessText().equals(analyzeCommand.businessText())
                 || !java.util.Objects.equals(command.provider(), analyzeCommand.provider())
-                || !command.analysisScope().equals(analyzeCommand.analysisScope())) {
+                || !command.analysisScope().equals(analyzeCommand.analysisScope())
+                || command.analysisReasonLength() != null && analyzeCommand.analysisReasonLength() != null
+                    && command.analysisReasonLength() != analyzeCommand.analysisReasonLength()) {
             throw new IllegalArgumentException("Streaming request does not match durable analysis input");
         }
+        var reasonLength = analyzeCommand.analysisReasonLength() != null ? analyzeCommand.analysisReasonLength()
+                : command.analysisReasonLength() != null ? command.analysisReasonLength()
+                : com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null));
+        var admitted = analyzeCommand.withAnalysisReasonLength(reasonLength);
         Locale previousLocale = LocaleContextHolder.getLocale();
         try {
             applyRequestLocale(command.requestLocale());
             promptBudgetPolicy.requireWithinBudget(command.businessText(), command.provider());
-            clusterExecution.execute(context, analyzeCommand, view,
+            clusterExecution.execute(context, admitted, view,
                     snapshot -> handler.handle(new AnalysisStreamEvent.DurableSnapshot(snapshot)));
         } finally {
             LocaleContextHolder.setLocale(previousLocale);

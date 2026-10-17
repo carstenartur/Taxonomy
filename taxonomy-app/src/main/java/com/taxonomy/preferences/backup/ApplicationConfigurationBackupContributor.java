@@ -1,6 +1,7 @@
 package com.taxonomy.preferences.backup;
 
 import com.taxonomy.backup.*;
+import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.exchange.backup.PortableRows;
 import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -56,6 +57,7 @@ public final class ApplicationConfigurationBackupContributor implements BackupDa
             var preferences = new PreferencesBackupContributor.Settings(
                     read.integer("taxonomy.llm.rpm"), read.integer("taxonomy.llm.timeout-seconds"),
                     read.integer("taxonomy.rate-limit.per-minute"), read.integer("taxonomy.analysis.min-score"),
+                    read.reasonLength("taxonomy.analysis.reason-length"),
                     read.text("taxonomy.dsl.default-branch"), read.text("taxonomy.dsl.project-name"),
                     read.integer("taxonomy.dsl.auto-save-interval"), read.integer("taxonomy.limits.max-business-text"),
                     read.integer("taxonomy.limits.max-architecture-nodes"), read.integer("taxonomy.limits.max-export-nodes"),
@@ -125,6 +127,12 @@ public final class ApplicationConfigurationBackupContributor implements BackupDa
         private Integer integer(String key) throws IOException { return converted(key, Integer.class); }
         private Long longNumber(String key) throws IOException { return converted(key, Long.class); }
         private Boolean flag(String key) throws IOException { return converted(key, Boolean.class); }
+        private AnalysisReasonLength reasonLength(String key) throws IOException {
+            String value = text(key);
+            if (value == null) return null;
+            if (value.isBlank()) throw new IOException("Invalid reason-length configuration");
+            return AnalysisReasonLength.fromValue(value);
+        }
         private String decimal(String key) throws IOException {
             BigDecimal number = converted(key, BigDecimal.class);
             if (number == null) return null;

@@ -3,28 +3,43 @@ package com.taxonomy.analysis.session;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -67,8 +82,20 @@ class AnalysisWorkingDraftMvcContractTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockitoBean
+    @MockitoSpyBean
     private AnalysisWorkingDraftService service;
+
+    @Autowired
+    private UserWorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @MockitoBean
     private WorkspaceResolver workspaceResolver;
@@ -79,34 +106,32 @@ class AnalysisWorkingDraftMvcContractTest {
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
                 RepositoryContext.workspace(
                         "repository-a", "workspace-b", "feature/b", "analyst"));
-        when(service.save(eq("analyst"), eq("workspace-a"), any()))
-                .thenAnswer(invocation -> {
-                    SaveAnalysisDraftRequest request = invocation.getArgument(2);
-                    return new AnalysisDraftView(
-                            "workspace-a",
-                            "feature/architecture",
-                            request.payload(),
-                            7L,
-                            Instant.parse("2026-08-20T12:00:00Z"));
-                });
-        when(service.reset(eq("analyst"), eq("workspace-a"), any()))
-                .thenAnswer(invocation -> {
-                    ResetAnalysisDraftRequest request = invocation.getArgument(2);
-                    var payload = tools.jackson.databind.json.JsonMapper.builder().build()
-                            .createObjectNode()
-                            .put("schemaVersion", 1)
-                            .put("draftState", "EMPTY")
-                            .put("businessText", "");
-                    if (request != null && request.analysisOptions() != null) {
-                        payload.set("analysisOptions", request.analysisOptions());
-                    }
-                    return new AnalysisDraftView(
-                            "workspace-a",
-                            "feature/architecture",
-                            payload,
-                            8L,
-                            Instant.parse("2026-08-20T12:05:00Z"));
-                });
+        doAnswer(invocation -> {
+            SaveAnalysisDraftRequest request = invocation.getArgument(2);
+            return new AnalysisDraftView(
+                    "workspace-a",
+                    "feature/architecture",
+                    request.payload(),
+                    7L,
+                    Instant.parse("2026-08-20T12:00:00Z"));
+        }).when(service).save(eq("analyst"), eq("workspace-a"), any());
+        doAnswer(invocation -> {
+            ResetAnalysisDraftRequest request = invocation.getArgument(2);
+            var payload = tools.jackson.databind.json.JsonMapper.builder().build()
+                    .createObjectNode()
+                    .put("schemaVersion", 1)
+                    .put("draftState", "EMPTY")
+                    .put("businessText", "");
+            if (request != null && request.analysisOptions() != null) {
+                payload.set("analysisOptions", request.analysisOptions());
+            }
+            return new AnalysisDraftView(
+                    "workspace-a",
+                    "feature/architecture",
+                    payload,
+                    8L,
+                    Instant.parse("2026-08-20T12:05:00Z"));
+        }).when(service).reset(eq("analyst"), eq("workspace-a"), any());
     }
 
     @Test
@@ -145,7 +170,7 @@ class AnalysisWorkingDraftMvcContractTest {
     @Test
     @WithMockUser(username = "analyst", roles = "USER")
     void absentDraftResponseIsExplicitlyNoStore() throws Exception {
-        when(service.read("analyst", "workspace-a")).thenReturn(Optional.empty());
+        doReturn(Optional.empty()).when(service).read("analyst", "workspace-a");
 
         mockMvc.perform(get("/api/analysis-drafts/{workspaceId}", "workspace-a"))
                 .andExpect(status().isNoContent())
@@ -157,6 +182,8 @@ class AnalysisWorkingDraftMvcContractTest {
     @Test
     @WithMockUser(username = "analyst", roles = "USER")
     void deleteResponseIsExplicitlyNoStoreAndUsesExpectedRevision() throws Exception {
+        doNothing().when(service).delete("analyst", "workspace-a", 6L);
+
         mockMvc.perform(delete("/api/analysis-drafts/{workspaceId}", "workspace-a")
                         .with(csrf())
                         .param("expectedVersion", "6"))
@@ -197,9 +224,9 @@ class AnalysisWorkingDraftMvcContractTest {
     @Test
     @WithMockUser(username = "analyst", roles = "USER")
     void optimisticDraftConflictRemainsHttp409AcrossGlobalExceptionHandling() throws Exception {
-        when(service.save(eq("analyst"), eq("workspace-a"), any()))
-                .thenThrow(new AnalysisDraftConflictException(
-                        "Analysis draft version conflict: expected 6, current 7"));
+        doThrow(new AnalysisDraftConflictException(
+                "Analysis draft version conflict: expected 6, current 7"))
+                .when(service).save(eq("analyst"), eq("workspace-a"), any());
 
         mockMvc.perform(put("/api/analysis-drafts/{workspaceId}", "workspace-a")
                         .with(csrf())
@@ -215,9 +242,9 @@ class AnalysisWorkingDraftMvcContractTest {
     @Test
     @WithMockUser(username = "analyst", roles = "USER")
     void invalidDraftRemainsHttp400AcrossGlobalExceptionHandling() throws Exception {
-        when(service.save(eq("analyst"), eq("workspace-a"), any()))
-                .thenThrow(new AnalysisDraftValidationException(
-                        "Analysis draft payload must be a JSON object"));
+        doThrow(new AnalysisDraftValidationException(
+                "Analysis draft payload must be a JSON object"))
+                .when(service).save(eq("analyst"), eq("workspace-a"), any());
 
         mockMvc.perform(put("/api/analysis-drafts/{workspaceId}", "workspace-a")
                         .with(csrf())
@@ -259,5 +286,92 @@ class AnalysisWorkingDraftMvcContractTest {
                 .andExpect(status().isForbidden());
 
         verify(service, never()).reset(any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"short", "standard", "detailed"})
+    @WithMockUser(username = "analyst", roles = "USER")
+    void persistedDraftRetainsExplicitReasonLengthAcrossPutAndGet(String reasonLength) throws Exception {
+        ObjectNode payload = recordedAnalysisPayload().put("analysisReasonLength", reasonLength);
+
+        JsonNode restored = persistAndReloadDraft(payload);
+
+        assertThat(restored.path("analysisReasonLength").asText()).isEqualTo(reasonLength);
+        assertThat(restored.path("reasons").path("BP-1000").asText())
+                .isEqualTo("The supplied requirement calls for resilient communications.");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @WithMockUser(username = "analyst", roles = "USER")
+    void persistedLegacyDraftKeepsUnknownReasonLengthAcrossPutAndGet(boolean explicitlyNull) throws Exception {
+        ObjectNode payload = recordedAnalysisPayload();
+        if (explicitlyNull) {
+            payload.putNull("analysisReasonLength");
+        }
+
+        JsonNode restored = persistAndReloadDraft(payload);
+
+        assertThat(restored.has("analysisReasonLength")).isEqualTo(explicitlyNull);
+        if (explicitlyNull) {
+            assertThat(restored.path("analysisReasonLength").isNull()).isTrue();
+        } else {
+            assertThat(restored.path("analysisReasonLength").isMissingNode()).isTrue();
+        }
+        assertThat(restored.path("reasons").path("BP-1000").asText())
+                .isEqualTo("The supplied requirement calls for resilient communications.");
+    }
+
+    private ObjectNode recordedAnalysisPayload() {
+        ObjectNode payload = objectMapper.createObjectNode()
+                .put("schemaVersion", 1)
+                .put("businessText", "Provide resilient communications");
+        payload.set("scores", objectMapper.createObjectNode().put("BP-1000", 82));
+        payload.set("reasons", objectMapper.createObjectNode().put(
+                "BP-1000", "The supplied requirement calls for resilient communications."));
+        return payload;
+    }
+
+    /** The unique workspace bypasses the boundary stubs and uses the real service and database. */
+    private JsonNode persistAndReloadDraft(ObjectNode payload) throws Exception {
+        String workspaceId = "draft-reasons-" + UUID.randomUUID();
+        UserWorkspace workspace = new UserWorkspace();
+        workspace.setWorkspaceId(workspaceId);
+        workspace.setUsername("analyst");
+        workspace.setDisplayName(workspaceId);
+        workspace.setCreatedAt(Instant.now());
+        workspace.setCurrentBranch("feature/reason-length");
+        workspace.setSourceRepositoryId(systemRepositoryService.getPrimaryRepository().getRepositoryId());
+        workspace = workspaceRepository.saveAndFlush(workspace);
+        try {
+            ObjectNode request = objectMapper.createObjectNode();
+            request.set("payload", payload);
+            request.putNull("expectedVersion");
+            var saved = mockMvc.perform(put("/api/analysis-drafts/{workspaceId}", workspaceId)
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                    .andReturn().getResponse();
+
+            String storedJson = jdbc.queryForObject(
+                    "select payload_json from analysis_working_draft where workspace_id = ? and username = ?",
+                    String.class, workspaceId, "analyst");
+            assertThat(objectMapper.readTree(storedJson)).isEqualTo(payload);
+
+            var restored = mockMvc.perform(get("/api/analysis-drafts/{workspaceId}", workspaceId))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string(HttpHeaders.ETAG, saved.getHeader(HttpHeaders.ETAG)))
+                    .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                    .andReturn().getResponse();
+            JsonNode restoredPayload = objectMapper.readTree(restored.getContentAsString()).path("payload");
+            assertThat(restoredPayload).isEqualTo(payload);
+            return restoredPayload;
+        } finally {
+            jdbc.update("delete from analysis_working_draft where workspace_id = ? and username = ?",
+                    workspaceId, "analyst");
+            workspaceRepository.delete(workspace);
+        }
     }
 }
