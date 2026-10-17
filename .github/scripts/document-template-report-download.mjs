@@ -164,8 +164,9 @@ async function verifyProductScoreBrowser(target) {
       try {
         views.renderDecisionMap(container, tree, state.currentScores);
         require([...container.querySelectorAll('.dm-label')].some(node => {
-          // SVG textContent concatenates wrapped lines without their separating spaces.
-          const text = [...node.querySelectorAll('tspan')].map(line => line.textContent).join(' ');
+          // Wrapped SVG lines are separate tspans; textContent omits their visual spaces.
+          const lines = [...node.querySelectorAll('tspan')];
+          const text = lines.length ? lines.map(line => line.textContent).join(' ') : node.textContent;
           return text.includes(product.code) && text.includes(label);
         }),
         `${stage}: decision map retains product evidence`);

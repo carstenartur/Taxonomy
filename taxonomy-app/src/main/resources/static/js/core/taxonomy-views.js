@@ -1309,19 +1309,23 @@
                 .attr('transform', 'translate(' + sourceY + ',' + sourceX + ')')
                 .style('opacity', 0);
 
+            // Expansion and saved rationale are independent controls. Keep their
+            // common positioned group neutral so assistive technology exposes both.
+            var nodeControl = nodeEnter.append('g').attr('class', 'dm-node-control');
+
             // A visible card occupies the measured boundary, so links clearly attach
             // to their parent while staying outside wrapped labels and action targets.
-            nodeEnter.append('rect').attr('class', 'dm-card').attr('rx', 6).attr('stroke-width', 2);
-            nodeEnter.append('circle').attr('r', 7).attr('stroke-width', 1.5);
+            nodeControl.append('rect').attr('class', 'dm-card').attr('rx', 6).attr('stroke-width', 2);
+            nodeControl.append('circle').attr('r', 7).attr('stroke-width', 1.5);
 
-            nodeEnter.append('text')
+            nodeControl.append('text')
                 .attr('class', 'dm-label')
                 .attr('dy', '0.31em')
                 .style('font-size', '14px')
                 .style('font-family', 'Arial, Helvetica, sans-serif')
                 .style('user-select', 'none');
 
-            nodeEnter.append('text')
+            nodeControl.append('text')
                 .attr('class', 'dm-rank')
                 .attr('dy', '-0.7em')
                 .attr('text-anchor', 'middle')
@@ -1350,7 +1354,7 @@
                         .text(t('views.diagram.rationale'));
                 });
 
-            nodeEnter.filter(function (d) { return d.data.code !== '__root__'; })
+            nodeControl.filter(function (d) { return d.data.code !== '__root__'; })
                 .style('cursor', 'pointer')
                 .on('click', function (event, d) {
                     event.stopPropagation();
@@ -1361,7 +1365,7 @@
                 .on('mouseleave', hideTooltip);
 
             var nodeUpdate = nodeEnter.merge(node);
-            decisionNavigation.update(diagramEntries(nodeUpdate));
+            decisionNavigation.update(diagramEntries(nodeUpdate.select('.dm-node-control')));
 
             var nodeT = nodeUpdate.transition().duration(300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })

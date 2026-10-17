@@ -20,8 +20,10 @@ class TaxonomyLazyTreeContractTest {
 
         assertThat(browse)
                 .contains("function materializeChildren(wrapper, scores)")
-                .contains("function ensureNodeRendered(code, scores)")
+                .contains("function ensureNodeRendered(code, scores, respectClosedBranches)")
+                .contains("respectClosedBranches && path.slice(0, -1).some(node => expansionPreference(node.code) === false)")
                 .contains("function materializeScoredPaths(scores)")
+                .contains("ensureNodeRendered(entry[0], scores, true)")
                 .contains("function materializeAllTaxonomyNodes(scores)")
                 .contains("childContainer.dataset.renderState = 'deferred'")
                 .contains("wrapper._taxonomyNode = node")
@@ -38,7 +40,9 @@ class TaxonomyLazyTreeContractTest {
         String scoring = resource("/static/js/core/taxonomy-scoring.js");
 
         assertThat(scoring)
-                .contains("B().ensureNodeRendered(code, S.currentScores)")
+                .contains("B().ensureNodeRendered(code, scores, true)")
+                .contains("const el = renderedScoreNode(code, S.currentScores)")
+                .contains("const el = renderedScoreNode(code, scores)")
                 .contains("B().materializeChildren(el, scores)");
     }
 
@@ -48,7 +52,8 @@ class TaxonomyLazyTreeContractTest {
 
         assertThat(search)
                 .contains("window.TaxonomyBrowse.ensureNodeRendered(")
-                .contains("window.TaxonomyState ? window.TaxonomyState.currentScores : null")
+                .contains("window.TaxonomyState ? window.TaxonomyState.currentScores : null);")
+                .contains("window.TaxonomyBrowse.setNodeExpanded(parentNode, true);")
                 .contains("header.classList.add('search-highlight')");
     }
 

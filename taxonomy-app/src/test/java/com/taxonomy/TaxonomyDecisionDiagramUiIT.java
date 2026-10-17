@@ -54,18 +54,63 @@ class TaxonomyDecisionDiagramUiIT {
         browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent']")).sendKeys(Keys.ENTER); settle();
         assertThat(browser.executeScript(GEOMETRY)).isEqualTo("");
     }
+    @Test void expansionAndSavedReasonRemainSeparateAccessibleKeyboardActions() throws Exception {
+        // Use the repository's pinned axe dependency, provisioned by the root Maven owner.
+        browser.executeScript(Files.readString(Path.of("../.github/node_modules/axe-core/axe.min.js")));
+        String violations = (String) browser.executeAsyncScript("""
+            const done = arguments[arguments.length - 1];
+            axe.run(document.querySelector('#diagram'), {runOnly: {type: 'rule', values: ['nested-interactive']}})
+                .then(result => done(JSON.stringify(result.violations)), error => done(String(error)));
+            """);
+        Path evidence = Path.of("target/decision-diagram-evidence");
+        Files.createDirectories(evidence);
+        Files.writeString(evidence.resolve("decision-controls-axe.json"), violations);
+        assertThat(violations).as("Expansion and saved rationale must both be exposed to assistive technology").isEqualTo("[]");
+
+        var parent = browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent']"));
+        assertThat(parent.getAriaRole()).isEqualTo("button");
+        assertThat(parent.getAccessibleName()).contains("fixture-parent", "75%");
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node][tabindex='0']"))).hasSize(1);
+        browser.executeScript("window.beforeKeyboardEvidence=JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons}); arguments[0].focus()", parent);
+        parent.sendKeys(Keys.TAB);
+        var reason = browser.switchTo().activeElement();
+        assertThat(reason.getDomAttribute("class")).contains("dm-reason-action");
+        assertThat(reason.getAriaRole()).isEqualTo("button");
+        assertThat(reason.getAccessibleName()).contains("fixture-parent");
+        reason.sendKeys(Keys.SPACE);
+        assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains("SAVED EXPLANATION", "Final saved line.");
+        browser.switchTo().activeElement().sendKeys(Keys.ESCAPE);
+        assertThat(browser.switchTo().activeElement()).isEqualTo(reason);
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node]"))).hasSize(26);
+        reason.sendKeys(Keys.chord(Keys.SHIFT, Keys.TAB));
+        assertThat(browser.switchTo().activeElement()).isEqualTo(parent);
+        parent.sendKeys(Keys.ENTER); settle();
+        assertThat(parent.getDomAttribute("aria-expanded")).isEqualTo("false");
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node]:not([aria-hidden='true'])"))).hasSize(2);
+        assertThat(browser.switchTo().activeElement()).isEqualTo(parent);
+        parent.sendKeys(Keys.SPACE); settle();
+        assertThat(parent.getDomAttribute("aria-expanded")).isEqualTo("true");
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node]:not([aria-hidden='true'])"))).hasSize(26);
+        parent.sendKeys(Keys.ARROW_DOWN);
+        assertThat(browser.switchTo().activeElement().getDomAttribute("data-diagram-node")).isEqualTo("fixture-child-0");
+        browser.switchTo().activeElement().sendKeys(Keys.END);
+        assertThat(browser.switchTo().activeElement().getDomAttribute("data-diagram-node")).isEqualTo("fixture-second");
+        browser.switchTo().activeElement().sendKeys(Keys.HOME);
+        assertThat(browser.switchTo().activeElement()).isEqualTo(parent);
+        assertThat(browser.executeScript("return beforeKeyboardEvidence===JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons})")).isEqualTo(true);
+    }
     @Test void explicitSavedReasonWorksWithKeyboardAndTouchAndReturnsFocus() throws Exception {
-        var action=browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent'] .dm-reason-action"));
+        var action=browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent'] + .dm-reason-action"));
         action.sendKeys(Keys.ENTER);
         assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains("CATALOGUE ONLY", "SAVED EXPLANATION", "Final saved line.");
         capture("decision-rationale.png");
         browser.switchTo().activeElement().sendKeys(Keys.ESCAPE);
         assertThat(browser.findElements(By.id("decisionReasonDialog"))).isEmpty();
         assertThat(browser.executeScript("return document.activeElement.classList.contains('dm-reason-action')")).isEqualTo(true);
-        browser.executeScript("document.querySelector(\"[data-diagram-node='fixture-parent'] .dm-reason-action\").dispatchEvent(new PointerEvent('click',{bubbles:true,pointerType:'touch'}))");
+        browser.executeScript("document.querySelector(\"[data-diagram-node='fixture-parent'] + .dm-reason-action\").dispatchEvent(new PointerEvent('click',{bubbles:true,pointerType:'touch'}))");
         assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains("SAVED EXPLANATION");
         browser.findElement(By.cssSelector("#decisionReasonDialog button")).click();
-        browser.executeScript("document.querySelector(\"[data-diagram-node='fixture-second'] .dm-reason-action\").dispatchEvent(new MouseEvent('click',{bubbles:true}))");
+        browser.executeScript("document.querySelector(\"[data-diagram-node='fixture-second'] + .dm-reason-action\").dispatchEvent(new MouseEvent('click',{bubbles:true}))");
         assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains("views.diagram.reasonMissing");
     }
     @Test void printUsesCompleteReadablePagesAndPreservesZoomCollapseAndStoredResults() throws Exception {
@@ -215,7 +260,7 @@ class TaxonomyDecisionDiagramUiIT {
     }
     void settle(){new WebDriverWait(browser,Duration.ofSeconds(5)).until(d->Boolean.TRUE.equals(browser.executeScript("return document.querySelector('#diagram').dataset.transitionsComplete==='true'")));}
     private static final String GEOMETRY="""
-        const nodes=[...document.querySelectorAll('g.dm-node')].map(n=>({code:n.dataset.diagramNode,b:n.getBoundingClientRect()}));
+        const nodes=[...document.querySelectorAll('g.dm-node')].map(n=>({code:n.querySelector('[data-diagram-node]').dataset.diagramNode,b:n.getBoundingClientRect()}));
         for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
           const a=nodes[i].b,b=nodes[j].b;
           if(a.left<b.right && b.left<a.right && a.top<b.bottom && b.top<a.bottom)return 'overlap '+nodes[i].code+' '+nodes[j].code;
