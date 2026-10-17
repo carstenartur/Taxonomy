@@ -201,8 +201,8 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
     order: [...document.querySelector('.analysis-command-grid')?.children || []]
       .map(element => element.id).filter(Boolean)
   }));
-  assert(initialControls.interactive === true,
-    'Ordinary analysis preference should remain interactive before Copilot starts');
+  assert(initialControls.interactive === false,
+    'Ordinary analysis should default to complete scoring before Copilot starts');
   assert(initialControls.architecture === false,
     'Architecture expansion should remain opt-in before Copilot starts');
   assert(initialControls.cancelVisible === false,
@@ -247,6 +247,12 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   }, { times: 1 });
 
   await page.locator('#businessText').fill(firstRequirement);
+  // Preserve coverage that Copilot completes the analysis even after an explicit
+  // interactive preference, independently of the ordinary complete default.
+  await page.locator('#interactiveMode').check();
+  assert(await page.evaluate(() => document.getElementById('interactiveMode')?.checked === true
+      && window.TaxonomyState?.interactiveMode === true),
+  'Explicit interactive mode selection did not reach the analysis state');
   await page.locator('.analysis-command-grid').scrollIntoViewIfNeeded();
   await page.locator('#copilotBtn').click();
   await page.waitForFunction(() => {

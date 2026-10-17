@@ -998,7 +998,8 @@
     // Each actual tree owns its one roving tab stop. Area headings are outside
     // these widgets, so their native buttons keep their independent tab behavior.
     function syncTreeTabStops(container) {
-        if (!container) return;
+        // A bulk reading action synchronizes once after all branches and focus settle.
+        if (!container || materializationBatchDepth > 0) return;
         var trees = Array.from(container.querySelectorAll('[role="tree"]'));
         if (container.getAttribute('role') === 'tree') trees.unshift(container);
         trees.forEach(function (tree) {
@@ -1092,6 +1093,11 @@
     // ── Render tabbed list view ────────────────────────────────────────────────
     function renderTabsView(data, scores) {
         const container = document.getElementById('taxonomyTree');
+        const previousTab = container.querySelector('#taxonomyTabsNav .nav-link.active');
+        if (previousTab) { S.activeTaxonomyTab = previousTab.dataset.taxonomyRoot; }
+        const selectedRoot = data.some(root => root.code === S.activeTaxonomyTab)
+            ? S.activeTaxonomyTab : data[0].code;
+        S.activeTaxonomyTab = selectedRoot;
         cleanupD3(container);
         container.innerHTML = '';
         container.setAttribute('role', 'region');
@@ -1104,10 +1110,10 @@
         const tabContent = document.createElement('div');
         tabContent.className = 'tab-content';
 
-        data.forEach((rootNode, i) => {
+        data.forEach(rootNode => {
             const paneId = 'tax-pane-' + rootNode.code;
             const tabId  = 'tax-tab-'  + rootNode.code;
-            const isFirst = (i === 0);
+            const isFirst = rootNode.code === selectedRoot;
 
             // Tab button
             const li = document.createElement('li');
@@ -1116,6 +1122,7 @@
 
             const btn = document.createElement('button');
             btn.id = tabId;
+            btn.dataset.taxonomyRoot = rootNode.code;
             btn.className = 'nav-link' + (isFirst ? ' active' : '');
             btn.setAttribute('data-bs-toggle', 'tab');
             btn.setAttribute('data-bs-target', '#' + paneId);
@@ -1150,11 +1157,17 @@
         container.appendChild(tabContent);
         initTreeKeyboardNavigation(container);
 
+        navUl.addEventListener('shown.bs.tab', function (event) {
+            if (event.target.dataset.taxonomyRoot) {
+                S.activeTaxonomyTab = event.target.dataset.taxonomyRoot;
+            }
+        });
         // Fallback tab switching – works even when Bootstrap JS is not available
         navUl.addEventListener('click', function (e) {
             const clickedBtn = e.target.closest('[data-bs-toggle="tab"]');
             if (!clickedBtn) { return; }
             e.preventDefault();
+            S.activeTaxonomyTab = clickedBtn.dataset.taxonomyRoot;
             navUl.querySelectorAll('.nav-link').forEach(b => {
                 b.classList.remove('active');
                 b.setAttribute('aria-selected', 'false');
@@ -1204,6 +1217,19 @@
 
     let materializationBatchDepth = 0;
 
+    /** Apply synchronous tree updates before reconciling their shared keyboard state. */
+    function withTreeUpdateBatch(update) {
+        materializationBatchDepth++;
+        try {
+            return update();
+        } finally {
+            materializationBatchDepth--;
+            if (materializationBatchDepth === 0) {
+                syncTreeTabStops(document.getElementById('taxonomyTree'));
+            }
+        }
+    }
+
     function materializeChildren(wrapper, scores) {
         if (!wrapper) { return null; }
         const childContainer = wrapper.querySelector(':scope > .tax-children');
@@ -1235,7 +1261,7 @@
             || tree.querySelector('[data-taxonomy-container="' + escaped + '"]');
     }
 
-    function ensureNodeRendered(code, scores) {
+    function ensureNodeRendered(code, scores, respectClosedBranches) {
         const tree = document.getElementById('taxonomyTree');
         if (!tree || !code) { return null; }
         let target = findRenderedNode(code);
@@ -1243,6 +1269,9 @@
 
         const path = findNodePath(code);
         if (path.length === 0) { return null; }
+        if (respectClosedBranches && path.slice(0, -1).some(node => expansionPreference(node.code) === false)) {
+            return null;
+        }
         let parentEl = null;
         for (let i = 0; i < path.length; i++) {
             const current = path[i];
@@ -1260,7 +1289,7 @@
     function materializeScoredPaths(scores) {
         if (!scores) { return; }
         Object.entries(scores).forEach(function (entry) {
-            if (entry[1] > 0) { ensureNodeRendered(entry[0], scores); }
+            if (entry[1] > 0) { ensureNodeRendered(entry[0], scores, true); }
         });
     }
 
@@ -1285,6 +1314,83 @@
             materializationBatchDepth--;
             if (materializationBatchDepth === 0) { syncTreeTabStops(tree); }
         }
+    }
+
+    function expansionPreference(code) {
+        if (!S.browseExpansion) { S.browseExpansion = new Map(); }
+        return S.browseExpansion.has(code) ? S.browseExpansion.get(code) : S.browseExpansionDefault;
+    }
+
+    /** Summarize actual source descendants, including branches absent from the lazy DOM. */
+    function descendantAssessment(node, scores) {
+        const result = { total: 0, assessed: 0, positive: 0, highest: null };
+        function visit(children) {
+            (children || []).forEach(function (child) {
+                if (!window.TaxonomyUtils.isTaxonomyContainer(child)) {
+                    result.total++;
+                    const value = scores && scores[child.code];
+                    const detail = (S.currentScoreDetails || {})[child.code];
+                    const parentRaw = detail && detail.parentCode
+                        ? (S.currentRawScores || {})[detail.parentCode] : null;
+                    const pendingProduct = detail && detail.kind === 'PRODUCT_SUITABILITY'
+                        && !Number.isFinite(parentRaw) && !Number.isFinite(detail.parentScore)
+                        && !Number.isFinite(detail.effectiveRelevance);
+                    if (Number.isFinite(value) && value >= 0 && value <= 100 && !pendingProduct) {
+                        result.assessed++;
+                        if (value > 0) { result.positive++; }
+                        result.highest = result.highest === null ? value : Math.max(result.highest, value);
+                    }
+                }
+                visit(child.children);
+            });
+        }
+        visit(node.children);
+        return result;
+    }
+
+    function updateContainerResult(wrapper, scores) {
+        const node = wrapper._taxonomyNode;
+        const heading = wrapper.querySelector(':scope > .tax-container-heading');
+        if (!node || !heading) { return; }
+        let area = heading.querySelector('.tax-container-score, .tax-container-area-state');
+        if (!area) { area = document.createElement('span'); heading.appendChild(area); }
+        const recorded = scores && Object.prototype.hasOwnProperty.call(scores, node.code)
+            ? scores[node.code] : null;
+        const assessedArea = Number.isFinite(recorded) && recorded >= 0 && recorded <= 100;
+        area.className = assessedArea ? 'tax-container-score' : 'tax-container-area-state';
+        area.classList.toggle('tax-container-score-positive', assessedArea && recorded > 0);
+        area.textContent = assessedArea
+            ? t('browse.container.relevance', recorded) : t('browse.container.area.unassessed');
+        area.title = assessedArea ? ((S.currentReasons || {})[node.code] || '') : '';
+
+        let summary = heading.querySelector('.tax-container-summary');
+        if (!summary) {
+            summary = document.createElement('span');
+            summary.className = 'tax-container-summary';
+            heading.appendChild(summary);
+        }
+        const assessment = descendantAssessment(node, scores);
+        summary.dataset.assessedCount = String(assessment.assessed);
+        summary.dataset.totalCount = String(assessment.total);
+        summary.dataset.positiveCount = String(assessment.positive);
+        summary.dataset.highestEffectiveRelevance = assessment.highest === null ? '' : String(assessment.highest);
+        summary.dataset.assessmentState = assessment.assessed === 0 ? 'unassessed'
+            : assessment.assessed < assessment.total ? 'partial' : 'assessed';
+        if (assessment.total === 0) {
+            summary.textContent = t('browse.container.empty');
+        } else if (assessment.assessed === 0) {
+            summary.textContent = t(S.interactiveMode && S.storedBusinessText
+                ? 'browse.container.interactive.unassessed' : 'browse.container.unassessed');
+        } else {
+            summary.textContent = t('browse.container.assessed', assessment.assessed,
+                assessment.total, assessment.positive, assessment.highest);
+        }
+    }
+
+    function refreshContainerSummaries(scores) {
+        document.querySelectorAll('#taxonomyTree [data-taxonomy-container]').forEach(function (wrapper) {
+            updateContainerResult(wrapper, scores);
+        });
     }
 
     function buildContainerEl(node, scores) {
@@ -1320,14 +1426,8 @@
             heading.textContent = title;
         }
 
-        const pct = scores && scores[node.code];
-        if (Number.isFinite(pct)) {
-            const badge = document.createElement('span');
-            badge.className = 'tax-container-score';
-            badge.textContent = t('browse.container.relevance', pct);
-            heading.appendChild(badge);
-        }
         wrapper.appendChild(heading);
+        updateContainerResult(wrapper, scores);
 
         if (hasChildren) {
             const children = document.createElement('div');
@@ -1340,8 +1440,10 @@
             // when its heading is opened. Passive browsing shows that first level.
             const needsEvaluation = S.interactiveMode && S.storedBusinessText
                 && !S.evaluatedNodes.has(node.code);
-            if (!needsEvaluation) { materializeChildren(wrapper, scores); }
-            setNodeExpanded(wrapper, !needsEvaluation);
+            const remembered = expansionPreference(node.code);
+            const expanded = typeof remembered === 'boolean' ? remembered : !needsEvaluation;
+            if (expanded) { materializeChildren(wrapper, scores); }
+            setNodeExpanded(wrapper, expanded, true);
         } else {
             const empty = document.createElement('p');
             empty.className = 'tax-container-empty text-muted small';
@@ -1548,15 +1650,26 @@
             childContainer.dataset.renderState = 'deferred';
             childContainer.style.display = 'none'; // collapsed by default
             wrapper.appendChild(childContainer);
+            if (expansionPreference(node.code) === true) {
+                materializeChildren(wrapper, scores);
+                setNodeExpanded(wrapper, true, true);
+            }
         }
 
         return wrapper;
     }
 
-    function setNodeExpanded(wrapper, expanded) {
+    function setNodeExpanded(wrapper, expanded, automatic) {
         if (!wrapper) { return; }
         const children = wrapper.querySelector(':scope > .tax-children');
         if (!children) { return; }
+        const code = wrapper.dataset.taxonomyContainer || wrapper.dataset.code;
+        if (automatic && expansionPreference(code) === false) {
+            expanded = false;
+        } else if (!automatic && code) {
+            expansionPreference(code); // initialize reading preferences when needed
+            S.browseExpansion.set(code, expanded);
+        }
         if (expanded) { materializeChildren(wrapper, S.currentScores); }
         children.style.display = expanded ? '' : 'none';
         const containerToggle = wrapper.querySelector(':scope > .tax-container-heading > .tax-container-toggle');
@@ -1573,7 +1686,9 @@
                 const focusTarget = containerToggle || wrapper;
                 if (isVisibleTreeElement(focusTarget)) { focusTarget.focus(); }
             }
-            syncTreeTabStops(wrapper.closest('[role="tree"]') || wrapper);
+            if (materializationBatchDepth === 0) {
+                syncTreeTabStops(wrapper.closest('[role="tree"]') || wrapper);
+            }
         }
     }
 
@@ -1581,12 +1696,14 @@
         let children = wrapper.querySelector(':scope > .tax-children');
         if (!children) return;
         const isHidden = children.style.display === 'none';
+        const code = wrapper.dataset.taxonomyContainer || wrapper.dataset.code;
+        expansionPreference(code);
+        S.browseExpansion.set(code, isHidden);
         if (isHidden) {
             children = materializeChildren(wrapper, S.currentScores) || children;
         }
 
         if (isHidden && S.interactiveMode && S.storedBusinessText) {
-            const code = wrapper.dataset.taxonomyContainer || wrapper.dataset.code;
             if (!S.evaluatedNodes.has(code)) {
                 S.evaluatedNodes.add(code);
                 evaluateNodeChildren(code, wrapper);
@@ -1731,8 +1848,8 @@
                     }
                 });
 
-                // Now expand the node
-                setNodeExpanded(wrapper, true);
+                // The response is automatic; retain any explicit close made while it was pending.
+                setNodeExpanded(wrapper, true, true);
 
                 // Reconcile family corrections in previously evaluated product rows as well.
                 SC().syncVisibleScoreNodes();
@@ -1747,42 +1864,36 @@
                 S.evaluatedNodes.delete(parentCode); // allow retry
                 console.error('[Taxonomy] Failed to evaluate', parentCode, err);
                 showStatus('danger', t('browse.eval.failed', parentCode, err.message));
-                // Still expand the node (without scores)
-                setNodeExpanded(wrapper, true);
+                // A failed response must also respect a newer explicit close.
+                setNodeExpanded(wrapper, true, true);
             });
     }
 
     function expandAll() {
-        materializeAllTaxonomyNodes(S.currentScores);
-        document.querySelectorAll('.tax-children').forEach(el => {
-            el.style.display = '';
-        });
-        document.querySelectorAll('.tax-toggle').forEach(el => {
-            if (el.textContent === '▶') el.textContent = '▼';
-        });
-        // Update ARIA expanded state
-        document.querySelectorAll('[role="treeitem"][aria-expanded]').forEach(el => {
-            el.setAttribute('aria-expanded', 'true');
-        });
-        document.querySelectorAll('.tax-container').forEach(el => setNodeExpanded(el, true));
-        syncTreeTabStops(document.getElementById('taxonomyTree'));
+        S.browseExpansion = new Map();
+        S.browseExpansionDefault = true;
+        materializationBatchDepth++;
+        try {
+            materializeAllTaxonomyNodes(S.currentScores);
+            document.querySelectorAll('#taxonomyTree .tax-node, #taxonomyTree .tax-container').forEach(el => setNodeExpanded(el, true));
+        } finally {
+            materializationBatchDepth--;
+            if (materializationBatchDepth === 0) { syncTreeTabStops(document.getElementById('taxonomyTree')); }
+        }
     }
 
     function collapseAll() {
         const focused = document.activeElement;
-        document.querySelectorAll('.tax-children').forEach(el => {
-            el.style.display = 'none';
-        });
-        document.querySelectorAll('.tax-toggle').forEach(el => {
-            if (el.textContent === '▼') el.textContent = '▶';
-        });
-        // Update ARIA expanded state
-        document.querySelectorAll('[role="treeitem"][aria-expanded]').forEach(el => {
-            el.setAttribute('aria-expanded', 'false');
-        });
-        document.querySelectorAll('.tax-container').forEach(el => setNodeExpanded(el, false));
         const container = document.getElementById('taxonomyTree');
-        syncTreeTabStops(container);
+        S.browseExpansion = new Map();
+        S.browseExpansionDefault = false;
+        materializationBatchDepth++;
+        try {
+            document.querySelectorAll('#taxonomyTree .tax-node, #taxonomyTree .tax-container').forEach(el => setNodeExpanded(el, false));
+        } finally {
+            materializationBatchDepth--;
+            if (materializationBatchDepth === 0) { syncTreeTabStops(container); }
+        }
         if (container && container.contains(focused) && !isVisibleTreeElement(focused)) {
             const tree = focused.closest('[role="tree"]');
             const visibleItem = tree && tree.querySelector('[role="treeitem"][tabindex="0"]');
@@ -2491,6 +2602,7 @@
     // ── Public API for cross-module use ──────────────────────────────────────
     window.TaxonomyBrowse = {
         renderView: renderView,
+        refreshContainerSummaries: refreshContainerSummaries,
         refreshAnalysisDuration: refreshAnalysisDuration,
         switchView: switchView,
         showStatus: showStatus,
@@ -2502,6 +2614,7 @@
         ensureNodeRendered: ensureNodeRendered,
         findRenderedNode: findRenderedNode,
         setNodeExpanded: setNodeExpanded,
+        withTreeUpdateBatch: withTreeUpdateBatch,
         materializeChildren: materializeChildren,
         materializeAllTaxonomyNodes: materializeAllTaxonomyNodes
     };

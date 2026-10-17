@@ -149,6 +149,13 @@ When a valid sibling still needs semantic clarification, the parent retains
 `CLARIFICATION` so that question remains selectable for an explicit retry.
 Corrective questions have separate identities and raw responses. Replay reconstructs
 the accepted results from these checkpoints without issuing successful calls again.
+When a later parent assessment covers an entry, obsolete corrective checkpoints
+become `SUPERSEDED`, including selected retries and previously skipped corrections.
+Their raw responses and attempt counts stay unchanged. Current semantic questions
+and different requirement, phase or worker scopes remain independent. Local reuse
+of distributed checkpoints retains the existing unique-input compatibility check.
+Validated source entries enter partial reports before corrective calls, so a deadline
+or cancellation during another entry's correction cannot remove those sources.
 An unresolved corrective question remains available for explicit retry/leave-open;
 decomposition alone is not a successful model assessment. Backups retain this state.
 Conservative distributed grants cover adaptive splitting and each possible corrective

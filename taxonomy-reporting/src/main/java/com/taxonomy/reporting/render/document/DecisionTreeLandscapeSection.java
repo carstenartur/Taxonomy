@@ -14,12 +14,17 @@ import java.math.BigInteger;
 /** Section properties describe the content BEFORE the break; the final body section follows it. */
 public final class DecisionTreeLandscapeSection {
     public void write(XWPFDocument doc, DecisionRationaleReport report, boolean followingContent) throws Exception {
+        write(doc, report, followingContent, false);
+    }
+    public void write(XWPFDocument doc, DecisionRationaleReport report, boolean followingContent, boolean reasonLinks) throws Exception {
         var labels = new DecisionReportLabels(report.languageTag());
         var writer = new WordDocumentWriter(doc, labels);
         var body = doc.getDocument().getBody();
         var original = body.isSetSectPr() ? (CTSectPr) body.getSectPr().copy() : portrait();
         var panels = new DecisionTreeFigureRenderer().render(report.scope().decisionTree(), report.languageTag(), report.scope().options().treeLayout());
         if (panels.isEmpty()) { writer.heading(labels.treeOverview(), 1, "decision_tree"); writer.paragraph(labels.notEvaluated()); return; }
+        var seenRoots = new java.util.HashSet<String>();
+        var evidence = new DecisionNodeEvidence(report);
         for (int i = 0; i < panels.size(); i++) {
             var panel = panels.get(i);
             if (!doc.getBodyElements().isEmpty()) finishSection(doc, body.isSetSectPr() ? body.getSectPr() : original);
@@ -34,13 +39,27 @@ public final class DecisionTreeLandscapeSection {
             body.setSectPr(section);
             // SHORT contents includes outline level 1; additional roots and continuation
             // panels remain available at level 2 without expanding that short overview.
-            writer.heading(labels.treeOverview() + " · " + panel.rootCode() + " · " + (i + 1) + "/" + panels.size(), i == 0 ? 1 : 2, i == 0 ? "decision_tree" : null);
+            var heading = writer.heading(labels.treeOverview() + " · " + panel.rootCode() + " · " + (i + 1) + "/" + panels.size(), i == 0 ? 1 : 2, i == 0 ? "decision_tree" : null);
+            if (seenRoots.add(panel.rootCode())) writer.bookmark(heading, DecisionNodeEvidence.rootBookmark(panel.rootCode()));
             var p = doc.createParagraph(); p.setSpacingBefore(0); p.setSpacingAfter(0);
             var run = p.createRun();
             run.addPicture(new ByteArrayInputStream(panel.png()), Document.PICTURE_TYPE_PNG, "decision-tree-"+i+".png",
                     Units.toEMU(panel.width()), Units.toEMU(panel.height()));
             var drawing = run.getCTR().getDrawingArray(0).getInlineArray(0).getDocPr();
             drawing.setDescr(panel.description()); drawing.setTitle(labels.treeOverview());
+            var reasonCodes = reasonLinks ? panel.nodeCodes().stream().filter(evidence::hasOriginal).toList() : java.util.List.<String>of();
+            if (!reasonCodes.isEmpty()) {
+                var key = writer.paragraph(labels.german() ? "Originalbegründungen (Knotencode anklicken): " : "Original reasons (select a node code): ");
+                for (String code : reasonCodes) writer.link(key, DecisionNodeEvidence.reasonBookmark(code), code);
+            }
+            if (report.scope().options().includes(com.taxonomy.reporting.api.decision.DecisionReportOptions.Section.CHAPTERS)) {
+                var chapterRows = report.scope().decisionTree().rows().stream()
+                        .filter(row -> panel.nodeCodes().contains(row.code()) && row.bookmark() != null).toList();
+                if (!chapterRows.isEmpty()) {
+                    var chapters = writer.paragraph("");
+                    chapterRows.forEach(row -> writer.link(chapters, row.bookmark(), labels.chapter() + " " + row.chapterNumber() + " · " + row.code()));
+                }
+            }
         }
         if (followingContent) { finishSection(doc, body.getSectPr()); body.setSectPr(original); }
     }

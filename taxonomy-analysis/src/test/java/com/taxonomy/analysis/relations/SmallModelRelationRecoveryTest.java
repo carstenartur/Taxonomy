@@ -39,6 +39,44 @@ class SmallModelRelationRecoveryTest {
     }
 
     @Test
+    void interruptionDuringCorrectionRetainsAcceptedSourcesInSearchAndPreparation() {
+        for (var reason : List.of(com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED,
+                com.taxonomy.analysis.service.AnalysisStoppedException.Reason.TIME_LIMIT)) {
+            for (boolean preparation : List.of(false, true)) {
+                try (var journal = new com.taxonomy.analysis.recovery.RecoveryCheckpointPersistenceProbe.Journal();
+                     var session = new AnalysisCheckpointSession(journal)) {
+                    var calls = new java.util.concurrent.atomic.AtomicInteger();
+                    Function<String, String> completion = prompt -> {
+                        if (calls.incrementAndGet() == 1) return reply(List.of(selection(FIRST.id(), ORIGINAL),
+                                selection(SECOND.id(), SECOND.description())));
+                        throw new com.taxonomy.analysis.service.AnalysisStoppedException(reason);
+                    };
+                    if (preparation) {
+                        var catalogue = new RequirementRelationSearch.InputCatalogue() {
+                            public Node find(String id) { return FIRST.id().equals(id) ? FIRST : SECOND; }
+                            public List<Node> roots() { return List.of(); }
+                            public List<Node> children(Node node) { return List.of(); }
+                        };
+                        var plan = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(), completion, () -> {})
+                                .prepare("interrupted", ORIGINAL, Map.of(FIRST.id(), 100d, SECOND.id(), 90d),
+                                        List.of("persisted-source-result"),
+                                        new RequirementRelationSearch.Options(new Limits(5, 8, 10, 128), 2), true);
+                        assertEquals(List.of(FIRST.id()), plan.sources().stream().map(source -> source.node().id()).toList());
+                        assertTrue(plan.stopReason().startsWith(reason.name() + ":"));
+                    } else {
+                        var report = search(List.of(FIRST, SECOND), 5, 2, completion);
+                        assertEquals(List.of(FIRST.id()), report.sources().stream().map(source -> source.node().id()).toList());
+                        assertTrue(report.stopReason().startsWith(reason.name() + ":"));
+                    }
+                    assertEquals(2, calls.get(), "a cooperative stop must still prevent further model calls");
+                    assertTrue(journal.checkpoints().values().stream().anyMatch(q -> q.state().equals("DECOMPOSED")
+                            && q.detail().getRawResponse().contains(FIRST.id())), "validated parent evidence remains durable");
+                }
+            }
+        }
+    }
+
+    @Test
     void keepsAValidSiblingWhenTheCorrectionAlsoFails() {
         List<String> sent = new ArrayList<>();
         var report = search(List.of(FIRST, SECOND), 5, 2, prompt -> {

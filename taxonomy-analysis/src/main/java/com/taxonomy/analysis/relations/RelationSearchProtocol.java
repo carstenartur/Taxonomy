@@ -252,11 +252,16 @@ public final class RelationSearchProtocol {
 
     /** Valid siblings survive a bad entry; each bad entry gets at most one smaller corrective request. */
     SourceBatch contributionsRecovering(String original, List<Node> nodes) {
+        return contributionsRecovering(original, nodes, assessment -> { });
+    }
+
+    SourceBatch contributionsRecovering(String original, List<Node> nodes,
+                                       java.util.function.Consumer<SourceAssessment> accepted) {
         var result = recover(Step.SOURCES, nodes, "selections", "nodeId",
                 offered -> sourcePrompt(original, offered, Map.of()),
                 (node, error) -> sourcePrompt(original, List.of(node), Map.of(node.id(), error)),
                 (offered, raw) -> parseContributions(original, offered, offered.stream().map(Node::id).toList(), raw),
-                SourceAssessment::question);
+                SourceAssessment::question, accepted);
         return new SourceBatch(List.copyOf(result.accepted().values()), result.failures());
     }
 
@@ -266,7 +271,7 @@ public final class RelationSearchProtocol {
                 offered -> decisionPrompt(withCandidates(query, offered), Map.of()),
                 (node, error) -> decisionPrompt(withCandidates(query, List.of(node)), Map.of(node.id(), error)),
                 (offered, raw) -> parseDecisions(withCandidates(query, offered), offered.stream().map(Node::id).toList(), raw),
-                decision -> decision.outcome() == Outcome.UNRESOLVED ? decision.question() : "");
+                decision -> decision.outcome() == Outcome.UNRESOLVED ? decision.question() : "", decision -> { });
         List<Decision> decisions = new ArrayList<>();
         for (Node node : query.candidates()) {
             Decision accepted = result.accepted().get(node.id());
@@ -283,17 +288,23 @@ public final class RelationSearchProtocol {
 
     private <T> Batch<T> recover(Step step, List<Node> nodes, String arrayField, String identityField,
             Function<List<Node>, String> prompt, java.util.function.BiFunction<Node, String, String> correction,
-            java.util.function.BiFunction<List<Node>, String, List<T>> parser, Function<T, String> question) {
+            java.util.function.BiFunction<List<Node>, String, List<T>> parser, Function<T, String> question,
+            java.util.function.Consumer<T> publish) {
         ChildAssessmentContract.validateCandidates(nodes.stream().map(Node::id).toList());
         Batch<T> first = exchangeBatch(step, nodes, prompt.apply(nodes), arrayField, identityField, parser, question, true);
+        first.accepted().values().forEach(publish);
+        supersedeCorrections(step, nodes, first.accepted().keySet(), correction, null);
         if (first.failures().isEmpty() || first.leftOpen()) return first;
         Map<String, T> accepted = new LinkedHashMap<>(first.accepted());
         Map<String, String> failures = new LinkedHashMap<>(first.failures());
         for (Node node : nodes) {
             if (!first.failures().containsKey(node.id())) continue;
             try {
-                Batch<T> retried = exchangeBatch(step, List.of(node), correction.apply(node, first.failures().get(node.id())),
+                String correctivePrompt = correction.apply(node, first.failures().get(node.id()));
+                Batch<T> retried = exchangeBatch(step, List.of(node), correctivePrompt,
                         arrayField, identityField, parser, question, false);
+                retried.accepted().values().forEach(publish);
+                supersedeCorrections(step, nodes, retried.accepted().keySet(), correction, correctivePrompt);
                 accepted.putAll(retried.accepted());
                 if (retried.accepted().containsKey(node.id())) failures.remove(node.id());
                 else failures.putAll(retried.failures());
@@ -305,6 +316,27 @@ public final class RelationSearchProtocol {
         Map<String, T> ordered = new LinkedHashMap<>();
         nodes.forEach(node -> { if (accepted.containsKey(node.id())) ordered.put(node.id(), accepted.get(node.id())); });
         return new Batch<>(Collections.unmodifiableMap(ordered), Collections.unmodifiableMap(failures), false);
+    }
+
+    /** Retire redundant retries by exact immutable input, including earlier validation-error variants. */
+    private void supersedeCorrections(Step step, List<Node> nodes, Set<String> accepted,
+            java.util.function.BiFunction<Node, String, String> correction, String currentCorrection) {
+        if (accepted.isEmpty()) return;
+        Map<String, Node> covered = new HashMap<>();
+        nodes.stream().filter(node -> accepted.contains(node.id())).forEach(node -> covered.put(node.id(), node));
+        AnalysisCheckpointSession.supersedeEvidence(step.name(), provider, saved -> {
+            if (saved.nodes().size() != 1 || saved.prompt() == null || saved.prompt().equals(currentCorrection)) return false;
+            Node node = covered.get(saved.nodes().getFirst());
+            if (node == null) return false;
+            int input = saved.prompt().indexOf("INPUT\n");
+            if (input < 0) return false;
+            try {
+                JsonNode data = JSON.readTree(saved.prompt().substring(input + 6));
+                JsonNode errors = data.get("validationErrors");
+                JsonNode error = errors == null ? null : errors.get(node.id());
+                return error != null && error.isString() && saved.prompt().equals(correction.apply(node, error.asString()));
+            } catch (RuntimeException unrelated) { return false; }
+        });
     }
 
     private <T> Batch<T> exchangeBatch(Step step, List<Node> nodes, String prompt, String arrayField, String identityField,

@@ -13,6 +13,13 @@ public final class DecisionTreeWordSectionRenderer {
         write(document, tree, language, true);
     }
     public void write(XWPFDocument document, DecisionTreeOverview tree, String language, boolean chapterLinks) {
+        write(document, tree, language, chapterLinks, false);
+    }
+    public void write(XWPFDocument document, DecisionTreeOverview tree, String language, boolean chapterLinks, boolean reasonLinks) {
+        write(document, tree, language, chapterLinks, reasonLinks ? tree.rows().stream().map(DecisionTreeOverview.DecisionTreeRow::code)
+                .collect(java.util.stream.Collectors.toSet()) : java.util.Set.of());
+    }
+    public void write(XWPFDocument document, DecisionTreeOverview tree, String language, boolean chapterLinks, java.util.Set<String> reasonCodes) {
         var labels = new DecisionReportLabels(language);
         var writer = new WordDocumentWriter(document, labels);
         writer.heading(labels.treeOverview(), 1, "decision_tree");
@@ -29,6 +36,9 @@ public final class DecisionTreeWordSectionRenderer {
             var row = table.createRow();
             row.setCantSplitRow(true);
             var p = row.getCell(0).getParagraphs().getFirst();
+            if (entry.depth() == 0) writer.bookmark(p, com.taxonomy.reporting.render.decision.DecisionNodeEvidence.rootBookmark(entry.code()));
+            if (reasonCodes.contains(entry.code())) writer.link(row.getCell(3).getParagraphs().getFirst(),
+                    com.taxonomy.reporting.render.decision.DecisionNodeEvidence.reasonBookmark(entry.code()), entry.code() + " · " + labels.rationale());
             p.setIndentationLeft(Math.min(entry.depth(), 12) * 100);
             var run = p.createRun();
             run.setFontSize(9);

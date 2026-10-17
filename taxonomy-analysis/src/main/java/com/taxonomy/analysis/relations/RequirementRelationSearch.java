@@ -283,16 +283,15 @@ public final class RequirementRelationSearch {
             checkpoint.run();
             plan.sourceBatch(batch.stream().map(Node::id).toList());
             try {
-                var result = protocol.contributionsRecovering(original, batch);
-                sources.addAll(result.accepted());
-                result.failures().forEach((id, error) -> warnings.add("INVALID_SOURCE_RESPONSE [" + id + "]: " + error));
-                result.failures().values().stream().filter(error -> error.startsWith("CALL_BUDGET:") || error.startsWith("SOURCE_LIMIT:")
-                        || error.startsWith("WORK_LIMIT:")).findFirst().ifPresent(warnings::add);
-                for (var assessment : result.accepted()) {
+                var result = protocol.contributionsRecovering(original, batch, assessment -> {
+                    sources.add(assessment);
                     plan.assessed(assessment);
                     if (!assessment.question().isBlank()) warnings.add("SOURCE_UNRESOLVED "
                             + assessment.node().id() + ": " + assessment.question());
-                }
+                });
+                result.failures().forEach((id, error) -> warnings.add("INVALID_SOURCE_RESPONSE [" + id + "]: " + error));
+                result.failures().values().stream().filter(error -> error.startsWith("CALL_BUDGET:") || error.startsWith("SOURCE_LIMIT:")
+                        || error.startsWith("WORK_LIMIT:")).findFirst().ifPresent(warnings::add);
             } catch (AnalysisCheckpointSession.DeferredException deferred) {
                 warnings.add(deferred.getMessage() + ": " + (nodes.size() - processed) + " sources remain unassessed.");
                 break;

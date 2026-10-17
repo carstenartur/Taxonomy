@@ -25,8 +25,11 @@ class TaxonomyLazyTreeContractTest {
 
         assertContains(browse, "function materializeChildren(wrapper, scores)",
                 "incremental child materializer must be present");
-        assertContains(browse, "function ensureNodeRendered(code, scores)",
-                "path materializer must be present");
+        assertContains(browse, "function ensureNodeRendered(code, scores, respectClosedBranches)",
+                "path materializer must distinguish automatic updates from explicit navigation");
+        assertContains(browse,
+                "if (respectClosedBranches && path.slice(0, -1).some(node => expansionPreference(node.code) === false)) { return null; }",
+                "automatic materialization must leave explicitly closed ancestor paths deferred");
         assertContains(browse, "function materializeAllTaxonomyNodes(scores)",
                 "explicit full materialization must remain available");
         assertContains(browse, "wrapper._taxonomyNode = node;",
@@ -51,6 +54,8 @@ class TaxonomyLazyTreeContractTest {
 
         assertContains(browse, "materializeScoredPaths(scores);",
                 "scored paths must be materialized before score expansion");
+        assertContains(browse, "if (entry[1] > 0) { ensureNodeRendered(entry[0], scores, true); }",
+                "automatic scored-path materialization must respect closed branches");
         assertContains(browse, "ensureNodeRendered: ensureNodeRendered",
                 "path materialization API must be exposed to scoring");
         assertContains(browse, "materializeChildren: materializeChildren",
@@ -58,10 +63,18 @@ class TaxonomyLazyTreeContractTest {
         assertContains(browse, "materializeAllTaxonomyNodes: materializeAllTaxonomyNodes",
                 "explicit full materialization API must remain exposed");
 
-        assertContains(scoring, "B().ensureNodeRendered(code, S.currentScores);",
-                "streaming score updates must materialize their target before DOM access");
-        assertContains(scoring, "B().ensureNodeRendered(code, scores)",
-                "matched scores must materialize their target path");
+        assertContains(scoring,
+                "function renderedScoreNode(code, scores) { return B().ensureNodeRendered(code, scores, true)",
+                "score updates must materialize paths through the API that respects closed branches");
+        assertContains(scoring, "const el = renderedScoreNode(code, S.currentScores);",
+                "streaming score updates must resolve their target before DOM access");
+        assertContains(scoring, "const el = renderedScoreNode(code, scores);",
+                "matched scores must use the same guarded target resolution");
+        assertContains(scoring,
+                "const el = userInitiated ? B().ensureNodeRendered(code, S.currentScores) : renderedScoreNode(code, S.currentScores);",
+                "explicit navigation must be able to reveal a path that automatic updates leave closed");
+        assertContains(scoring, "B().setNodeExpanded(el, true, !userInitiated);",
+                "expansion must preserve whether the request was automatic or user initiated");
         assertContains(scoring, "B().materializeChildren(el, scores);",
                 "matched nodes must materialize the immediate child level before expansion");
         assertContains(scoring, "el.setAttribute('aria-expanded', 'true');",

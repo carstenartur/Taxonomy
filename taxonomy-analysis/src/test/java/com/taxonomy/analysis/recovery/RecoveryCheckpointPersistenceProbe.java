@@ -15,6 +15,77 @@ import java.util.function.Function;
 
 /** Real Hibernate/SQL boundary, with a large opaque saved result rather than an LLM or fake catalogue. */
 public final class RecoveryCheckpointPersistenceProbe {
+    /** Independent transactions exercise the same retry and completion boundary as a live continuation. */
+    public static final class Journal implements AnalysisCheckpointSession.Store, AutoCloseable {
+        private final Database db = new Database();
+        private AnalysisContinuationStore.Claim claim = db.claim();
+        private AnalysisContinuationStore.QuestionOwner owner;
+
+        public Journal() { }
+        public Journal(String namespace) {
+            db.transaction(em -> { em.find(AnalysisContinuationRun.class, db.id).clusterOperationId = "operation"; return null; });
+            owner = new AnalysisContinuationStore.QuestionOwner("operation", "task", 1, UUID.randomUUID().toString(), namespace);
+        }
+        public void useLocalScope() { owner = null; }
+
+        public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question question) {
+            return db.transaction(em -> owner == null ? db.store(em).prepare(claim, question)
+                    : db.store(em).prepareDistributed(claim, question, owner));
+        }
+        public void finish(AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
+            db.transaction(em -> {
+                if (owner == null) db.store(em).finish(claim, question, state, detail);
+                else db.store(em).finishDistributed(claim, question, state, detail, owner);
+                return null;
+            });
+        }
+        public void checkActive() {
+            if (!"RUNNING".equals(db.transaction(em -> db.store(em).state(claim))))
+                throw new com.taxonomy.analysis.service.AnalysisStoppedException(
+                        com.taxonomy.analysis.service.AnalysisStoppedException.Reason.AWAITING_DECISION);
+        }
+        public void supersedeEvidence(String kind, String provider, java.util.function.Predicate<AnalysisCheckpointSession.Question> covered) {
+            db.transaction(em -> { db.store(em).supersedeEvidence(claim, kind, provider, covered, owner); return null; });
+        }
+        public Map<String, AnalysisCheckpointSession.Checkpoint> checkpoints() {
+            return db.transaction(em -> {
+                var result = new java.util.LinkedHashMap<String, AnalysisCheckpointSession.Checkpoint>();
+                for (var saved : em.createQuery("select q from AnalysisQuestionCheckpoint q where q.run.id=:id", AnalysisQuestionCheckpoint.class)
+                        .setParameter("id", db.id).getResultList()) {
+                    var question = new AnalysisCheckpointSession.Question(saved.questionKey, saved.inputHash, saved.provider,
+                            List.of(db.mapper.readValue(saved.nodeCodes, String[].class)), saved.prompt);
+                    result.put(saved.questionKey, new AnalysisCheckpointSession.Checkpoint(question, saved.state,
+                            saved.detailJson == null ? null : db.mapper.readValue(saved.detailJson, LlmCallDetail.class)));
+                }
+                return result;
+            });
+        }
+        public String complete() {
+            var result = new AnalysisResult(Map.of(), List.of()); result.setStatus("SUCCESS");
+            db.transaction(em -> db.store(em).complete(claim, result, List.of()));
+            return db.transaction(em -> em.find(AnalysisContinuationRun.class, db.id).state);
+        }
+        public void retryOpen() {
+            decide("RETRY", List.of("UNASSESSED", "CLARIFICATION", "FAILED"));
+        }
+        public void skipCorrections() {
+            decide("SKIP", List.of("UNASSESSED"));
+        }
+        private void decide(String action, List<String> states) {
+            claim = db.transaction(em -> {
+                var run = em.find(AnalysisContinuationRun.class, db.id);
+                var request = new com.taxonomy.dto.AnalysisRequest();
+                request.setContinuationId(db.id); request.setContinuationAction(action);
+                request.setContinuationVersion(run.version);
+                request.setContinuationQuestions(em.createQuery("select q.questionKey from AnalysisQuestionCheckpoint q where q.run.id=:id and q.state in :states", String.class)
+                        .setParameter("id", db.id).setParameter("states", states).getResultList());
+                return db.store(em).begin(request, new com.taxonomy.workspace.service.WorkspaceContext(
+                        "owner", "workspace", "draft", "repository"), "0".repeat(64), List.of());
+            });
+        }
+        @Override public void close() { db.close(); }
+    }
+
     private static void check(boolean value, String message) {
         if (!value) throw new AssertionError(message);
     }
@@ -218,6 +289,60 @@ public final class RecoveryCheckpointPersistenceProbe {
             db.transaction(em -> {
                 check(db.savedResult.equals(em.find(AnalysisContinuationRun.class, db.id).resultJson),
                         "checkpoint replay replaced the frozen snapshot");
+                return null;
+            });
+        }
+    }
+
+    public static void supersessionIsNamespaceBound() {
+        try (var db = new Database()) {
+            db.transaction(em -> { em.find(AnalysisContinuationRun.class, db.id).clusterOperationId = "operation"; return null; });
+            var first = new AnalysisContinuationStore.QuestionOwner("operation", "first-task", 1,
+                    UUID.randomUUID().toString(), "RELATION_ANALYSIS:UA");
+            var second = new AnalysisContinuationStore.QuestionOwner("operation", "second-task", 1,
+                    UUID.randomUUID().toString(), "RELATION_ANALYSIS:IP");
+            var input = AnalysisCheckpointSession.evidenceQuestion("SOURCES", "MOCK", List.of("UA-first"), "corrective prompt");
+            var detail = new LlmCallDetail(); detail.setRawResponse("failed raw response"); detail.setError("invalid quote");
+            var questions = new ArrayList<AnalysisCheckpointSession.Question>();
+            for (var owner : List.of(first, second)) {
+                var question = db.transaction(em -> db.store(em).prepareDistributed(db.claim(), input, owner)).question();
+                questions.add(question);
+                db.transaction(em -> { db.store(em).finishDistributed(db.claim(), question, "UNASSESSED", detail, owner); return null; });
+            }
+            db.transaction(em -> { db.store(em).supersedeEvidence(db.claim(), "SOURCES", "MOCK", question -> true, first); return null; });
+            expectConflict(() -> db.transaction(em -> {
+                db.store(em).supersedeEvidence(db.claim(), "SOURCES", "MOCK", question -> true, null); return null;
+            })); // Local compatibility must not choose between two identical distributed scopes.
+            db.transaction(em -> {
+                var covered = em.find(AnalysisQuestionCheckpoint.class, db.id + ":" + questions.getFirst().key());
+                var independent = em.find(AnalysisQuestionCheckpoint.class, db.id + ":" + questions.getLast().key());
+                check("SUPERSEDED".equals(covered.state), "Current worker's obsolete correction remained open");
+                check("UNASSESSED".equals(independent.state), "Another worker namespace was changed");
+                check(covered.attempts == 1 && independent.attempts == 1, "Retirement invented an assessment attempt");
+                check("failed raw response".equals(db.mapper.readValue(covered.detailJson, LlmCallDetail.class).getRawResponse()),
+                        "Retirement rewrote failed raw evidence");
+                return null;
+            });
+        }
+    }
+
+    public static void supersessionIsClaimBound() {
+        try (var db = new Database()) {
+            var question = AnalysisCheckpointSession.evidenceQuestion("SOURCES", "MOCK", List.of("UA-first"), "corrective prompt");
+            db.transaction(em -> db.store(em).prepare(db.claim(), question));
+            var detail = new LlmCallDetail(); detail.setRawResponse("failed raw response"); detail.setError("invalid quote");
+            db.transaction(em -> { db.store(em).finish(db.claim(), question, "UNASSESSED", detail); return null; });
+            var foreign = new AnalysisContinuationStore.Claim(db.id, UUID.randomUUID().toString(), null);
+            expectConflict(() -> db.transaction(em -> { db.store(em).supersedeEvidence(foreign, "SOURCES", "MOCK", q -> true, null); return null; }));
+            db.transaction(em -> { em.find(AnalysisContinuationRun.class, db.id).state = "CANCELLED"; return null; });
+            expectConflict(() -> db.transaction(em -> { db.store(em).supersedeEvidence(db.claim(), "SOURCES", "MOCK", q -> true, null); return null; }));
+            db.transaction(em -> {
+                var run = em.find(AnalysisContinuationRun.class, db.id); run.state = "RUNNING"; run.claimUntil = System.currentTimeMillis() - 1; return null;
+            });
+            expectConflict(() -> db.transaction(em -> { db.store(em).supersedeEvidence(db.claim(), "SOURCES", "MOCK", q -> true, null); return null; }));
+            db.transaction(em -> {
+                check("UNASSESSED".equals(em.find(AnalysisQuestionCheckpoint.class, db.id + ":" + question.key()).state),
+                        "A stale or cancelled claim retired the correction");
                 return null;
             });
         }

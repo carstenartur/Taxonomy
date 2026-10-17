@@ -30,7 +30,7 @@ public record DecisionReportOptions(Profile profile,
         if (roots.size() > 100) throw new IllegalArgumentException("Too many export taxonomy roots");
         taxonomyRoots = Collections.unmodifiableSet(roots);
         contents = contents == null ? (profile == Profile.FULL ? Contents.FULL : Contents.SHORT) : contents;
-        treeLayout = treeLayout == null ? (profile == Profile.FULL ? TreeLayout.TABLE : TreeLayout.AUTO) : treeLayout;
+        treeLayout = treeLayout == null ? TreeLayout.AUTO : treeLayout;
         if (sections == null) sections = switch (profile) {
             case FULL -> EnumSet.allOf(Section.class);
             case STANDARD -> EnumSet.of(Section.SUMMARY, Section.TREE, Section.CHAPTERS, Section.ARCHITECTURE);

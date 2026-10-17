@@ -24,8 +24,6 @@ public final class DecisionTreeFigureRenderer {
     private record Line(DecisionTreeRow row, List<String> text, int indent, int height, String parent) {}
 
     public List<Panel> render(DecisionTreeOverview tree, String language, TreeLayout layout) {
-        if (tree.rows().size() > 2000) throw new WordReportLayoutException(
-                "Tree exceeds the figure budget. Select fewer taxonomies or the table layout.");
         var result = new ArrayList<Panel>();
         var roots = new ArrayList<List<DecisionTreeRow>>();
         for (var row : tree.rows()) {
@@ -33,13 +31,17 @@ public final class DecisionTreeFigureRenderer {
             roots.getLast().add(row);
         }
         for (var rows : roots) {
+            if (rows.size() > 2000) throw new WordReportLayoutException(
+                    "Tree " + rows.getFirst().code() + " exceeds the per-taxonomy figure budget of 2000 nodes. Choose the table layout.");
             boolean a3 = layout == TreeLayout.A3_LANDSCAPE;
             List<Line> lines = layout(rows, language, a3 ? 1070 : 720);
-            if (layout == TreeLayout.AUTO && totalHeight(lines) > 430) {
-                var larger = layout(rows, language, 1070);
-                if (totalHeight(larger) <= 665) { a3 = true; lines = larger; }
+            if (layout == TreeLayout.AUTO && totalHeight(lines) > 360) {
+                // Keep the wider, taller reading area for continuation pages too.
+                // Falling back to A4 for the longest roots creates avoidable sparse panels.
+                a3 = true;
+                lines = layout(rows, language, 1070);
             }
-            int width = a3 ? 1070 : 720, budget = a3 ? 665 : 430;
+            int width = a3 ? 1070 : 720, budget = a3 ? 640 : 360;
             if (layout != TreeLayout.AUTO && totalHeight(lines) > budget) throw new WordReportLayoutException(
                     "The complete tree " + rows.getFirst().code() + " does not fit on one readable "
                             + (a3 ? "A3" : "A4") + " page. Choose Auto for continuation pages or A3 for more space.");
@@ -56,6 +58,25 @@ public final class DecisionTreeFigureRenderer {
             }
             if (!page.isEmpty()) result.add(draw(rows.getFirst().code(), page, width, used, a3));
         }
+        return List.copyOf(result);
+    }
+
+    /** Portrait chapter panels use the same measured, unabridged labels at ten printed points. */
+    public List<Panel> renderChapter(DecisionTreeOverview tree, String language, int width) {
+        if (width < 180) throw new WordReportLayoutException("Template is too narrow for a readable decision diagram at 10pt");
+        var result = new ArrayList<Panel>();
+        var lines = layout(tree.rows(), language, width);
+        var page = new ArrayList<Line>();
+        int used = 28;
+        for (var line : lines) {
+            if (line.height() + 28 > 360) throw new WordReportLayoutException("A chapter label exceeds a readable page; use the tree table");
+            if (used + line.height() > 360 && !page.isEmpty()) {
+                result.add(draw(tree.rows().getFirst().code(), page, width, used, false));
+                page = new ArrayList<>(); used = 28;
+            }
+            page.add(line); used += line.height();
+        }
+        if (!page.isEmpty()) result.add(draw(tree.rows().getFirst().code(), page, width, used, false));
         return List.copyOf(result);
     }
 
@@ -139,6 +160,17 @@ public final class DecisionTreeFigureRenderer {
             g.setColor(new Color(Integer.parseInt(fill, 16))); g.fillRoundRect(x, y, width-x-8, h, 5, 5);
             svg.append("<rect x=\"").append(x).append("\" y=\"").append(y).append("\" width=\"").append(width-x-8)
                     .append("\" height=\"").append(h).append("\" rx=\"5\" fill=\"#").append(fill).append("\"/>");
+            if (line.row().score() != null) {
+                // Numeric relevance remains authoritative; length is only a visual cue, never probability.
+                // A common 120pt track fits the minimum supported row width and is invariant across depth and page sizes.
+                int barWidth = (int) Math.round(120 * Math.max(0, Math.min(100, line.row().score())) / 100d);
+                g.setColor(new Color(0xCDD5DC)); g.fillRect(x + 7, y + h - 3, 120, 3);
+                svg.append("<rect class=\"relevance-track\" x=\"").append(x + 7).append("\" y=\"").append(y + h - 3)
+                        .append("\" width=\"120\" height=\"3\" fill=\"#cdd5dc\"/>");
+                g.setColor(new Color(0x007A78)); g.fillRect(x + 7, y + h - 3, barWidth, 3);
+                svg.append("<rect class=\"relevance-bar\" x=\"").append(x + 7).append("\" y=\"").append(y + h - 3)
+                        .append("\" width=\"").append(barWidth).append("\" height=\"3\" fill=\"#007a78\"/>");
+            }
             g.setColor(new Color(0x243746));
             int textY = y + 14;
             for (var text : line.text()) {

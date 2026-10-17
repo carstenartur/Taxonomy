@@ -576,7 +576,7 @@
                 // The text tree exposes the score and rationale, including deferred
                 // descendants. Expanding it through the browse API never starts an LLM call.
                 browse.switchView('list');
-                scoring.expandNodeByCode(assessment.code);
+                scoring.expandNodeByCode(assessment.code, true);
                 var target = browse.findRenderedNode ? browse.findRenderedNode(assessment.code)
                     : document.querySelector('#taxonomyTree .tax-node[data-code="'
                         + CSS.escape(assessment.code) + '"]');

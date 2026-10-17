@@ -163,8 +163,12 @@ async function verifyProductScoreBrowser(target) {
       const originalFillText = CanvasRenderingContext2D.prototype.fillText;
       try {
         views.renderDecisionMap(container, tree, state.currentScores);
-        require([...container.querySelectorAll('.dm-label')].some(node =>
-          node.textContent.includes(product.code) && node.textContent.includes(label)),
+        require([...container.querySelectorAll('.dm-label')].some(node => {
+          // Wrapped SVG lines are separate tspans; textContent omits their visual spaces.
+          const lines = [...node.querySelectorAll('tspan')];
+          const text = lines.length ? lines.map(line => line.textContent).join(' ') : node.textContent;
+          return text.includes(product.code) && text.includes(label);
+        }),
         `${stage}: decision map retains product evidence`);
         if (state.currentScores[product.code] === 0 && state.currentScores[family.code] === 0) {
           require([...container.querySelectorAll('.dm-rank')].every(node => !node.textContent),
@@ -525,9 +529,16 @@ async function downloadDecisionReport(target, reportPath) {
   const dialog = target.locator('dialog.decision-export-dialog');
   await dialog.waitFor({ state: 'visible', timeout: 30_000 });
   await dialog.locator('[name="format"]').selectOption('docx');
-  // This acceptance test verifies the complete template-backed report, not the
-  // dialog's compact default or a contextually preselected single taxonomy.
+  const initialProfile = await dialog.locator('[name="profile"]').inputValue();
+  const initialLayout = await dialog.locator('[name="treeLayout"]').inputValue();
+  if (initialProfile !== 'STANDARD' || initialLayout !== 'AUTO') {
+    throw new Error(`Unexpected initial report presentation: ${initialProfile}/${initialLayout}`);
+  }
+  // Exercise complete template-backed output with independently chosen contents and layout.
   await dialog.locator('[name="profile"]').selectOption('FULL');
+  await dialog.locator('details > summary').click();
+  await dialog.locator('[name="contents"]').selectOption('FULL');
+  await dialog.locator('[name="treeLayout"]').selectOption('TABLE');
   const roots = dialog.locator('input[name="root"]:enabled');
   await roots.first().waitFor({ state: 'visible', timeout: 30_000 });
   for (const root of await roots.all()) await root.check();
