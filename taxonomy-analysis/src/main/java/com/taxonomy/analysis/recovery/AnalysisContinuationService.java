@@ -137,6 +137,9 @@ public class AnalysisContinuationService {
                 public RelationSearchReport previousRelations() {
                     return claim.previousRelations();
                 }
+                public void supersedeEvidence(String kind, String provider, java.util.function.Predicate<AnalysisCheckpointSession.Question> covered) {
+                    store.supersedeEvidence(claim, kind, provider, covered, null);
+                }
                 public void finish(AnalysisCheckpointSession.Question q, String state, LlmCallDetail detail) {
                     store.finish(claim, q, state, detail);
                     if ("SUCCESS".equals(state) && "PAUSED".equals(store.state(claim)))

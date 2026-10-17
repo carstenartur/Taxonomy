@@ -225,6 +225,9 @@ public class LlmService {
         return providerConfig.getActiveProviderId();
     }
 
+    /** Execution mode remains explicit when a MOCK request hides the worker's transport. */
+    public boolean isMockMode() { return providerConfig != null && providerConfig.isMockMode(); }
+
     /** Mock mode supplies explicit synthetic JSON independently of the selected transport. */
     public boolean supportsGenerativeCompletion() {
         return (providerConfig != null && providerConfig.isMockMode())
@@ -924,6 +927,8 @@ public class LlmService {
                 Integer.toString(minimumProductScore()), templates);
         String tokenContract = providerConfig.isMockMode() ? null : providerConfig.tokenContractRevision(provider);
         if (tokenContract != null) fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint, tokenContract);
+        String completionConfiguration = providerConfig.isMockMode() ? null : providerConfig.completionConfigurationRevision(provider);
+        if (completionConfiguration != null) fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint, completionConfiguration);
         // Numeric-policy changes invalidate old answer reuse; external transports
         // must never reuse checkpoints produced by another artifact or configuration.
         if (LlmProvider.builtin(provider).isEmpty()) {
@@ -1763,6 +1768,11 @@ public class LlmService {
      * @return the raw text response, or {@code null} if the LLM is unavailable or the call failed
      */
     public String callLlmRaw(String prompt) {
+        return callLlmRaw(prompt, null);
+    }
+
+    /** Sends an opted completion while retaining the same provider and execution boundary. */
+    public String callLlmRaw(String prompt, LlmCompletionOptions options) {
         if (providerConfig.isMockMode()) {
             recordSuccess();
             return MockRelationReplies.reply(prompt);
@@ -1782,8 +1792,12 @@ public class LlmService {
 
         try {
             LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
-            String body = gateway.sendHttpRequest(prompt, apiKey);
+            String body = options == null ? gateway.sendHttpRequest(prompt, apiKey)
+                    : gateway.sendHttpRequest(prompt, apiKey, options);
             return body != null ? gateway.extractResponseText(body) : null;
+        } catch (LlmIncompleteResponseException incomplete) {
+            recordFailure(incomplete.getMessage());
+            throw incomplete;
         } catch (LlmRateLimitException e) {
             recordFailure(e.getMessage());
             throw e;
@@ -1800,4 +1814,5 @@ public class LlmService {
             return null;
         }
     }
+
 }

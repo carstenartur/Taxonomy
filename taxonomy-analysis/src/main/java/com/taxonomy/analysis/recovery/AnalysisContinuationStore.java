@@ -161,18 +161,14 @@ public class AnalysisContinuationStore {
         var run = checkpointOwner(claim, true);
         var question = question(run.id(), request.key());
         if (question == null && compatibleLocal) {
-            var candidates = em.createQuery("select q from AnalysisQuestionCheckpoint q where q.run.id=:id and q.inputHash=:hash and q.provider=:provider", AnalysisQuestionCheckpoint.class)
-                    .setParameter("id", run.id()).setParameter("hash", request.inputHash()).setParameter("provider", request.provider()).setMaxResults(2).getResultList();
-            if (candidates.size() > 1) throw conflict("Ambiguous saved question scope; use the original distributed context");
-            if (candidates.size() == 1 && Objects.equals(candidates.getFirst().nodeCodes, mapper.writeValueAsString(request.nodes()))
-                    && AnalysisCheckpointSession.isRelationQuestion(candidates.getFirst().questionKey) == AnalysisCheckpointSession.isRelationQuestion(request.key())) {
-                question = candidates.getFirst();
+            question = compatibleQuestion(run.id(), request);
+            if (question != null) {
                 request = new AnalysisCheckpointSession.Question(question.questionKey, request.inputHash(), request.provider(), request.nodes(), request.prompt());
             }
         }
         if (question != null) {
             if (!question.inputHash.equals(request.inputHash())) throw conflict("A saved question's input changed");
-            if (!"READY".equals(question.state)) return checkpoint(question, request);
+            if (!Set.of("READY", "SUPERSEDED").contains(question.state)) return checkpoint(question, request);
         } else {
             long count = em.createQuery("select count(q) from AnalysisQuestionCheckpoint q where q.run.id=:id", Long.class)
                     .setParameter("id", run.id()).getSingleResult();
@@ -200,6 +196,15 @@ public class AnalysisContinuationStore {
         } else question.prompt = request.prompt();
         updateCheckpointOwner(claim, run, state, nextPayload, currentNode);
         return checkpoint(question, request);
+    }
+
+    private AnalysisQuestionCheckpoint compatibleQuestion(String runId, AnalysisCheckpointSession.Question request) {
+        var candidates = em.createQuery("select q from AnalysisQuestionCheckpoint q where q.run.id=:id and q.inputHash=:hash and q.provider=:provider", AnalysisQuestionCheckpoint.class)
+                .setParameter("id", runId).setParameter("hash", request.inputHash()).setParameter("provider", request.provider()).setMaxResults(2).getResultList();
+        if (candidates.size() > 1) throw conflict("Ambiguous saved question scope; use the original distributed context");
+        return candidates.size() == 1 && Objects.equals(candidates.getFirst().nodeCodes, mapper.writeValueAsString(request.nodes()))
+                && AnalysisCheckpointSession.isRelationQuestion(candidates.getFirst().questionKey) == AnalysisCheckpointSession.isRelationQuestion(request.key())
+                ? candidates.getFirst() : null;
     }
 
     /** A physical question belongs to one captured delivery and one worker session. */
@@ -253,6 +258,34 @@ public class AnalysisContinuationStore {
                 || !Objects.equals(question.clusterTaskId, owner.taskId())
                 || !Objects.equals(question.clusterDelivery, owner.delivery())) throw conflict("Question belongs to another worker delivery");
         finish(claim, request, state, detail);
+    }
+
+    /** Redundant corrective questions retain raw evidence but no longer block the current assessment. */
+    @Transactional
+    public void supersedeEvidence(Claim claim, String kind, String provider,
+            java.util.function.Predicate<AnalysisCheckpointSession.Question> covered, QuestionOwner owner) {
+        var run = checkpointOwner(claim, true);
+        if (owner != null && !Objects.equals(run.operationId(), owner.operationId()))
+            throw conflict("Question operation binding was superseded");
+        var pending = em.createQuery("select q from AnalysisQuestionCheckpoint q where q.run.id=:id and q.provider=:provider and q.state in ('READY','UNASSESSED','CLARIFICATION','FAILED','SKIPPED')", AnalysisQuestionCheckpoint.class)
+                .setParameter("id", run.id()).setParameter("provider", provider).getResultList();
+        boolean changed = false;
+        for (var saved : pending) {
+            if (!AnalysisCheckpointSession.isRelationQuestion(saved.questionKey) || saved.prompt == null) continue;
+            var question = AnalysisCheckpointSession.evidenceQuestion(kind, saved.provider,
+                    List.of(mapper.readValue(saved.nodeCodes, String[].class)), saved.prompt);
+            if (!Objects.equals(saved.inputHash, question.inputHash()) || !covered.test(question)) continue;
+            if (owner != null) {
+                String scopedKey = "R" + AnalysisCheckpointSession.digest("distributed-question-v1", owner.namespace(),
+                        question.key(), question.inputHash()).substring(1);
+                if (!saved.questionKey.equals(scopedKey) && !saved.questionKey.equals(question.key())) continue;
+            } else if (!saved.questionKey.equals(question.key())) {
+                var compatible = compatibleQuestion(run.id(), question);
+                if (compatible == null || !compatible.questionKey.equals(saved.questionKey)) continue;
+            }
+            saved.state = "SUPERSEDED"; changed = true;
+        }
+        if (changed) updateCheckpointOwner(claim, run, "RUNNING", run.payloadCharacters(), run.currentNode());
     }
 
     @Transactional

@@ -79,6 +79,35 @@ public class LlmProviderConfig {
     @Value("${custom.llm.api.key:}")
     private String customLlmApiKey;
 
+    @Value("${custom.llm.context-window-tokens:0}")
+    private int customLlmContextWindowTokens;
+
+    @Value("${custom.llm.max-output-tokens:4096}")
+    private int customLlmMaxOutputTokens = 4096;
+
+    @Value("${custom.llm.structured-output-enabled:true}")
+    private boolean customLlmStructuredOutputEnabled = true;
+
+    public int getCustomLlmContextWindowTokens() { return customLlmContextWindowTokens; }
+    public int getCustomLlmMaxOutputTokens() { return customLlmMaxOutputTokens; }
+    public boolean isCustomLlmStructuredOutputEnabled() { return customLlmStructuredOutputEnabled; }
+
+    /** Zero means unknown; this is operator/model configuration, never a tokenizer count. */
+    public int getContextWindowTokens(ProviderId provider) {
+        return LlmProvider.CUSTOM_OPENAI.id().equals(provider) ? getCustomLlmContextWindowTokens() : 0;
+    }
+
+    public int getMaxOutputTokens(ProviderId provider) {
+        return LlmProvider.CUSTOM_OPENAI.id().equals(provider) ? getCustomLlmMaxOutputTokens() : 4096;
+    }
+
+    /** Public non-secret completion settings that affect the admitted model request. */
+    public String completionConfigurationRevision(ProviderId provider) {
+        if (!LlmProvider.CUSTOM_OPENAI.id().equals(provider)) return null;
+        return "custom-completion-v1\0" + getCustomLlmContextWindowTokens()
+                + "\0" + getCustomLlmMaxOutputTokens() + "\0" + isCustomLlmStructuredOutputEnabled();
+    }
+
     private final LocalEmbeddingService localEmbeddingService;
     private final ScenarioReplayProviders replays;
     private Map<ProviderId, LlmTransportExtension> externalProviders = Map.of();
@@ -317,6 +346,8 @@ public class LlmProviderConfig {
         } catch (Exception invalid) { endpoint = "plugin:" + id.value(); }
         String model = id.value().equals("GEMINI") ? endpoint : getOpenAiCompatibleModel(id);
         String ordinary = operatorRevision + "\0" + endpoint + "\0" + model;
+        String completionConfiguration = completionConfigurationRevision(id);
+        if (completionConfiguration != null) ordinary += "\0" + completionConfiguration;
         String tokenContract = tokenContractRevision(id);
         return tokenContract == null ? ordinary : ordinary + "\0" + tokenContract;
     }
@@ -489,7 +520,21 @@ public class LlmProviderConfig {
     }
 
     public CustomOpenAiConfigurationStatus getCustomOpenAiConfigurationStatus() {
-        return validateCustomOpenAiConfiguration(customLlmUrl, customLlmModel);
+        var endpoint = validateCustomOpenAiConfiguration(customLlmUrl, customLlmModel);
+        if (!endpoint.valid()) return endpoint;
+        if (customLlmContextWindowTokens < 0 || customLlmContextWindowTokens > 1_000_000_000) {
+            return CustomOpenAiConfigurationStatus.invalid("INVALID_CONTEXT_WINDOW",
+                    "CUSTOM_LLM_CONTEXT_WINDOW_TOKENS must be 0 (unknown) or between 1 and 1000000000.");
+        }
+        if (customLlmMaxOutputTokens < 1 || customLlmMaxOutputTokens > 1_000_000) {
+            return CustomOpenAiConfigurationStatus.invalid("INVALID_MAX_OUTPUT_TOKENS",
+                    "CUSTOM_LLM_MAX_OUTPUT_TOKENS must be between 1 and 1000000.");
+        }
+        if (customLlmContextWindowTokens > 0 && customLlmMaxOutputTokens >= customLlmContextWindowTokens) {
+            return CustomOpenAiConfigurationStatus.invalid("OUTPUT_RESERVATION_EXHAUSTS_CONTEXT",
+                    "CUSTOM_LLM_MAX_OUTPUT_TOKENS must be smaller than CUSTOM_LLM_CONTEXT_WINDOW_TOKENS when the context window is known.");
+        }
+        return endpoint;
     }
 
     /** Shared validation used by readiness diagnostics and the HTTP gateway. */

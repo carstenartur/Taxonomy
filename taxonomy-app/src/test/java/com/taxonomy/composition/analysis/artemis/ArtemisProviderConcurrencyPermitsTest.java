@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import tools.jackson.databind.json.JsonMapper;
@@ -356,10 +357,9 @@ class ArtemisProviderConcurrencyPermitsTest {
 
     private LlmGateway gateway(LlmProvider provider, String url, ProviderConcurrencyPermits permits) {
         var json = JsonMapper.builder().build();
-        var config = new LlmProviderConfig(null) {
-            @Override public String getOpenAiCompatibleUrl(LlmProvider selected) { return url; }
-            @Override public String getOpenAiCompatibleModel(LlmProvider selected) { return "fixture-model"; }
-        };
+        var config = new LlmProviderConfig(null);
+        ReflectionTestUtils.setField(config, "customLlmUrl", url);
+        ReflectionTestUtils.setField(config, "customLlmModel", "fixture-model");
         var httpFactory = new SimpleClientHttpRequestFactory();
         // The registry's fixed upstream URLs are redirected only by this test HTTP factory.
         var http = new RestTemplate((uri, method) -> httpFactory.createRequest(URI.create(url), method));

@@ -152,11 +152,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertAnalysisDispatchSchema(dataSource);
         assertClusterAnalysisSchema(dataSource);
         assertProviderBindingSchema(dataSource);
+        assertAnalysisReasonLengthSchema(dataSource);
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39");
     }
 
     @Test
@@ -231,13 +232,99 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
         assertAnalysisDispatchSchema(dataSource);
         assertClusterAnalysisSchema(dataSource);
         assertProviderBindingSchema(dataSource);
+        assertAnalysisReasonLengthSchema(dataSource);
+    }
+
+    @Test
+    void analysisReasonLengthMigrationPreservesLegacyJobsAndConstrainsRecordedModes() throws Exception {
+        DataSource dataSource = isolatedDataSource("analysis_reason_length_migration");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "38");
+        assertThat(columnExists(dataSource, "req_analysis_job", "analysis_reason_length")).isFalse();
+        execute(dataSource, """
+                insert into system_repository (
+                    repository_id, display_name, topology_mode, default_branch,
+                    primary_repo, created_at, storage_repository_name, slug,
+                    visibility, lifecycle_state, owner_type, owner_id,
+                    created_by, updated_at)
+                values (
+                    'primary-repository', 'Primary', 'INTERNAL_SHARED', 'main',
+                    true, current_timestamp, 'taxonomy-dsl', 'shared-architecture',
+                    'ORGANIZATION', 'ACTIVE', 'SYSTEM', 'system', 'system', current_timestamp)
+                """);
+        execute(dataSource, """
+                insert into arch_project (
+                    id, scope_key, owner_username, project_key, title, status,
+                    created_at, updated_at, row_version,
+                    repository_id, workspace_scope, branch_name)
+                values (
+                    3901, 'v2|r18:primary-repository|s7:CENTRAL|b4:main', 'architect',
+                    'LEGACY-REASON-PROJECT', 'Legacy reason project', 'ACTIVE',
+                    current_timestamp, current_timestamp, 0,
+                    'primary-repository', 'CENTRAL', 'main')
+                """);
+        execute(dataSource, """
+                insert into req_analysis_job (
+                    id, scope_key, project_id, status, idempotency_key, provider,
+                    max_architecture_nodes, requested_by, created_at, total_items,
+                    successful_items, partial_items, failed_items, row_version)
+                values (
+                    'job-before-reason-length', 'v2|r18:primary-repository|s7:CENTRAL|b4:main',
+                    3901, 'PENDING', 'legacy-reason-job', 'MOCK', 25, 'architect',
+                    current_timestamp, 2, 0, 0, 0, 7)
+                """);
+        String legacyJob = singleString(dataSource, """
+                select to_jsonb(job)::text from req_analysis_job job
+                where id = 'job-before-reason-length'
+                """);
+
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(
+                Flyway.configure().dataSource(dataSource).load().getConfiguration());
+
+        assertAnalysisReasonLengthSchema(dataSource);
+        assertThat(singleString(dataSource, """
+                select (to_jsonb(job) - 'analysis_reason_length')::text from req_analysis_job job
+                where id = 'job-before-reason-length'
+                """)).isEqualTo(legacyJob);
+        assertThat(singleString(dataSource, """
+                select analysis_reason_length from req_analysis_job
+                where id = 'job-before-reason-length'
+                """)).isNull();
+
+        for (String mode : List.of("SHORT", "STANDARD", "DETAILED")) {
+            execute(dataSource, """
+                    update req_analysis_job set analysis_reason_length = '%s'
+                    where id = 'job-before-reason-length'
+                    """.formatted(mode));
+            assertThat(singleString(dataSource, """
+                    select analysis_reason_length from req_analysis_job
+                    where id = 'job-before-reason-length'
+                    """)).isEqualTo(mode);
+        }
+        execute(dataSource, """
+                update req_analysis_job set analysis_reason_length = null
+                where id = 'job-before-reason-length'
+                """);
+        for (String invalidMode : List.of("UNKNOWN", "", "standard", " STANDARD ")) {
+            assertThatThrownBy(() -> execute(dataSource, """
+                    update req_analysis_job set analysis_reason_length = '%s'
+                    where id = 'job-before-reason-length'
+                    """.formatted(invalidMode)))
+                    .isInstanceOfSatisfying(SQLException.class,
+                            exception -> assertThat(exception.getSQLState()).isEqualTo("23514"))
+                    .hasMessageContaining("ck_req_analysis_reason_length");
+        }
+        assertThat(singleString(dataSource, """
+                select analysis_reason_length from req_analysis_job
+                where id = 'job-before-reason-length'
+                """)).isNull();
     }
 
     @Test
@@ -269,6 +356,19 @@ class TaxonomySchemaPostgresMigrationIT {
                 .isEqualTo("float8");
         assertThat(columnType(dataSource, "req_solution_link", "coverage_percent"))
                 .isEqualTo("float8");
+    }
+
+    private static void assertAnalysisReasonLengthSchema(DataSource dataSource) throws SQLException {
+        try (var connection = dataSource.getConnection();
+             var metadata = connection.getMetaData().getColumns(
+                     connection.getCatalog(), connection.getSchema(),
+                     "req_analysis_job", "analysis_reason_length")) {
+            assertThat(metadata.next()).as("recorded analysis reason length").isTrue();
+            assertThat(metadata.getInt("DATA_TYPE")).isEqualTo(java.sql.Types.VARCHAR);
+            assertThat(metadata.getInt("COLUMN_SIZE")).isEqualTo(16);
+            assertThat(metadata.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNullable);
+            assertThat(metadata.getString("COLUMN_DEF")).isNull();
+        }
     }
 
     private static void assertProviderBindingSchema(DataSource dataSource) throws SQLException {

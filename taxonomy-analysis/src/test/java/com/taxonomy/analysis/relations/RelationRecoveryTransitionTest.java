@@ -18,12 +18,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class RelationRecoveryTransitionTest {
     @Test
     void invalidSourceExtractionCanBeRetriedThenReachArchitecture() throws Exception {
-        assertRetry(true, 1, 5);
+        assertRetry(true, 2, 5);
     }
 
     @Test
     void invalidNavigationCanBeRetriedWithoutRepeatingValidatedSourceExtraction() throws Exception {
-        assertRetry(false, 3, 3);
+        assertRetry(false, 4, 3);
     }
 
     private static void assertRetry(boolean failSource, int firstCalls, int continuationCalls) throws Exception {
@@ -50,7 +50,7 @@ class RelationRecoveryTransitionTest {
         var journal = new Journal();
         var fixture = fixture(false);
         AnalysisResult paused = analyze(fixture, journal);
-        assertPartial(paused, journal, 3, fixture);
+        assertPartial(paused, journal, 4, fixture);
         String failedKey = journal.decide("SKIPPED");
 
         AnalysisResult resumed = analyze(fixture, journal);
@@ -58,9 +58,10 @@ class RelationRecoveryTransitionTest {
         assertEquals("PARTIAL", resumed.getStatus());
         assertFalse(resumed.getRelationSearchReport().isSearchExhausted());
         assertEquals("SKIPPED", journal.entries.get(failedKey).state());
-        assertEquals(3, fixture.raw().get(), "independent PRODUCES was already evaluated; leaving the failed area open sends no request");
+        assertEquals(4, fixture.raw().get(), "independent PRODUCES was already evaluated; leaving the failed area open sends no request");
         assertTrue(resumed.getRelationSearchReport().result().trace().stream().anyMatch(trace -> trace.type().equals("PRODUCES")));
-        assertTrue(resumed.getRelationSearchReport().result().trace().stream().noneMatch(trace -> trace.type().equals("CONSUMES")),
+        assertTrue(resumed.getRelationSearchReport().result().trace().stream().filter(trace -> trace.type().equals("CONSUMES"))
+                        .allMatch(trace -> trace.outcome() == com.taxonomy.dto.RelationSearchModel.Outcome.UNRESOLVED),
                 "the failed CONSUMES assessment must remain unknown, without a fabricated negative finding");
         assertTrue(resumed.getRelationSearchReport().result().unfinished().stream().anyMatch(item -> item.type().equals("CONSUMES")));
         assertTrue(resumed.getRelationSearchReport().result().edges().isEmpty());
@@ -70,10 +71,11 @@ class RelationRecoveryTransitionTest {
     }
 
     private static RelationSearchUseCaseContract.Fixture fixture(boolean failSource) throws Exception {
-        var failed = new AtomicBoolean();
+        var failed = new java.util.concurrent.atomic.AtomicInteger();
         return RelationSearchUseCaseContract.fixture(true, 24, LlmProvider.CUSTOM_OPENAI, prompt -> {
             boolean source = prompt.contains("Extract ONLY each source");
-            if (source == failSource && failed.compareAndSet(false, true)) return "invalid JSON";
+            // The initial answer and its one automatic correction both fail.
+            if (source == failSource && failed.getAndIncrement() < 2) return "invalid JSON";
             return RequirementRelationSearchContract.answer(prompt);
         });
     }

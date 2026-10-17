@@ -74,6 +74,27 @@ class OpenAiResponsesQuotaGatewayTest {
         assertThat(paths).containsExactly("/v1/responses/input_tokens"); assertThat(authority.ids).hasSize(1);
         assertThat(authority.settled.getFirst().totalTokens()).isNull();
     }
+
+    @Test void structuredCompletionCountsTheSameSchemaAndKeepsItsReservedOutputCeiling() {
+        assertThat(gateway.sendHttpRequest(PROMPT, "fixture-key", OpenAiCompletionOptionsTest.options(1024)))
+                .isEqualTo(RESPONSE);
+
+        assertThat(authority.order).containsExactly("DEBIT", "START", "HTTP", "DEBIT", "START", "HTTP");
+        assertThat(authority.ids).hasSize(2).doesNotHaveDuplicates();
+        assertThat(requests.get(0).path("text")).isEqualTo(requests.get(1).path("text"));
+        var format = requests.get(1).path("text").path("format");
+        assertThat(format.path("type").asText()).isEqualTo("json_schema");
+        assertThat(format.path("name").asText()).isEqualTo("relation_decisions");
+        assertThat(format.path("strict").booleanValue()).isTrue();
+        assertThat(requests.get(1).path("max_output_tokens").intValue()).isEqualTo(256);
+        assertThat(requests.get(1).path("temperature").doubleValue()).isZero();
+    }
+
+    @Test void smallerRequestedCompletionDoesNotAlterTheQuotaAuthorityContract() {
+        gateway.sendHttpRequest(PROMPT, "fixture-key", OpenAiCompletionOptionsTest.options(128));
+        assertThat(authority.ids).hasSize(2);
+        assertThat(requests.get(1).path("max_output_tokens").intValue()).isEqualTo(128);
+    }
     @Test void exhaustedCount429StillPublishesSharedCooldownAndRetainsUnknownUsage() {
         countStatus.set(429);
         assertThatThrownBy(() -> gateway.sendHttpRequest(PROMPT, "fixture-key")).isInstanceOf(LlmRateLimitException.class);

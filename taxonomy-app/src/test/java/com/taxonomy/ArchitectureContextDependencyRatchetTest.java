@@ -126,6 +126,22 @@ class ArchitectureContextDependencyRatchetTest {
                 "com.taxonomy.analysis.service.AnalysisFollowUpProviders$Pin -> com.taxonomy.workspace.service.WorkspaceContext");
     }
 
+    @Test
+    void portfolioAdmissionReadsOnlyItsReviewedAnalysisConfigurationPorts() {
+        var admission = new ClassFileImporter().importClasses(
+                com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService.class)
+                .get(com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService.class);
+        Set<String> targets = new TreeSet<>();
+        for (Dependency dependency : admission.getDirectDependenciesFromSelf()) {
+            if (dependency.getTargetClass().getPackageName().equals("com.taxonomy.analysis.service")) {
+                targets.add(dependency.getTargetClass().getName());
+            }
+        }
+        assertThat(targets).containsExactly(
+                "com.taxonomy.analysis.service.AnalysisRuntimeSettings",
+                "com.taxonomy.analysis.service.LlmProviderConfig");
+    }
+
     @ParameterizedTest(name = "{0}: {1}")
     @MethodSource("featureModuleRootSources")
     void rejectsRootPackageSourcesInFeatureModules(

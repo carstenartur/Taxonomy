@@ -67,12 +67,17 @@ public class LlmGatewayRegistry {
                 LlmProvider.MISTRAL, LlmProviderConfig.MISTRAL_URL, LlmProviderConfig.MISTRAL_MODEL,
                 0, restTemplate, objectMapper, responseParser,
                 preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
-        register(LlmProvider.CUSTOM_OPENAI, new OpenAiCompatibleGateway(
+        var customGateway = new OpenAiCompatibleGateway(
                 LlmProvider.CUSTOM_OPENAI,
                 providerConfig.getOpenAiCompatibleUrl(LlmProvider.CUSTOM_OPENAI),
                 providerConfig.getOpenAiCompatibleModel(LlmProvider.CUSTOM_OPENAI),
                 0, restTemplate, objectMapper, responseParser,
-                preferencesService, llmRequestFactory, recordReplayService), promptBudgetPolicy);
+                preferencesService, llmRequestFactory, recordReplayService);
+        int customOutputTokens = providerConfig.getCustomLlmMaxOutputTokens();
+        customGateway.configureCompletionLimits(providerConfig.isCustomLlmStructuredOutputEnabled(),
+                customOutputTokens > 0 ? customOutputTokens : 4096);
+        customGateway.configureCustomStatus(providerConfig.getCustomOpenAiConfigurationStatus());
+        register(LlmProvider.CUSTOM_OPENAI, customGateway, promptBudgetPolicy);
         Map<ProviderId, LlmTransportExtension> external = new LinkedHashMap<>();
         for (var extension : providerConfig.externalTransports())
             external.put(new ProviderId(extension.descriptor().providerId()), extension);

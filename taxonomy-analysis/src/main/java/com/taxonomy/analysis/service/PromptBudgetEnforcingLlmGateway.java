@@ -30,6 +30,14 @@ final class PromptBudgetEnforcingLlmGateway implements LlmGateway {
     }
 
     @Override
+    public String sendHttpRequest(String prompt, String apiKey, LlmCompletionOptions options) {
+        // Schema bytes consume model input too, but are not part of the authored prompt preview.
+        AnalysisRunControl.preparedPrompt(prompt);
+        promptBudgetPolicy.requireWithinBudget(options == null ? prompt : options.budgetText(prompt), delegate.providerName());
+        return delegate.sendHttpRequest(prompt, apiKey, options);
+    }
+
+    @Override
     public void validatePromptBudget(String prompt) {
         // Retain the bounded prepared prompt even if admission or transport fails.
         // No credential is passed to observation and preparation does not imply delivery.
