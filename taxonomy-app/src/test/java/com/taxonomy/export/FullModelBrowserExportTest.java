@@ -1,6 +1,8 @@
 package com.taxonomy.export;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -38,10 +40,40 @@ class FullModelBrowserExportTest {
     }
 
     @Test
+    void mainPdfDownloadsTheServerDocumentWithoutBrowserPdfLibraries() throws Exception {
+        assertCompleteModelPdf(probe("pdf-no-client-renderer"));
+    }
+
+    @Test
+    void mainPdfFreezesAllFiveHundredNodesAndRecordedRelationshipEvidence() throws Exception {
+        var result = probe("pdf-large");
+        assertCompleteModelPdf(result);
+        var view = new JsonMapper().readTree(result.path("requests").get(0).path("body").asText());
+        assertThat(view.path("includedElements").size()).isEqualTo(500);
+        assertThat(view.path("includedElements").get(499).path("title").asText())
+                .endsWith("COMPLETE-LABEL-SUFFIX-499");
+        var relationship = view.path("includedRelationships").get(0);
+        assertThat(relationship.path("relationId").asLong()).isEqualTo(7);
+        assertThat(relationship.path("derivationReason").asText()).isEqualTo("RECORDED-RELATION-EVIDENCE");
+        assertThat(relationship.path("confidence").asDouble()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"pdf-wrong-type", "pdf-truncated", "pdf-wrong-signature", "pdf-login"})
+    void mainPdfRejectsWrongOrIncompleteResponsesWithoutSavingAFile(String scenario) throws Exception {
+        var result = probe(scenario);
+        assertThat(result.path("requests").get(0).path("url").asText()).isEqualTo("/api/diagram/current/pdf");
+        assertThat(result.path("pdfs").size()).isZero();
+        assertThat(result.path("downloads").size()).isZero();
+        assertThat(result.path("status").asText()).contains("Export failed");
+    }
+
+    @Test
     void staleRequirementCannotExportADifferentAnalysisAsPdf() throws Exception {
         var result = probe("pdf-stale");
         assertThat(result.path("requests").size()).isZero();
         assertThat(result.path("pdfs").size()).isZero();
+        assertThat(result.path("downloads").size()).isZero();
         assertThat(result.path("status").asText()).contains("requirement has changed");
     }
 
@@ -58,13 +90,13 @@ class FullModelBrowserExportTest {
     private static void assertCompleteModelPdf(JsonNode result) {
         assertThat(result.path("requests").size()).isEqualTo(1);
         var request = result.path("requests").get(0);
-        assertThat(request.path("url").asText()).isEqualTo("/api/diagram/current/svg");
+        assertThat(request.path("url").asText()).isEqualTo("/api/diagram/current/pdf");
         assertThat(request.path("method").asText()).isEqualTo("POST");
         assertThat(request.path("body").asText()).contains("CP-outside-viewport");
-        var pdf = result.path("pdfs").get(0);
-        assertThat(pdf.path("filename").asText()).isEqualTo("requirement-architecture.pdf");
-        assertThat(pdf.path("options").path("format").toString()).isEqualTo("[1600,1100]");
-        assertThat(pdf.path("svg").toString()).contains("CP-outside-viewport").doesNotContain("translate(-1000");
+        assertThat(result.path("pdfs").size()).as("server PDF is never re-rendered through SVG").isZero();
+        assertThat(result.path("filenames").get(0).asText()).isEqualTo("requirement-architecture.pdf");
+        assertThat(result.path("downloads").get(0).asText())
+                .isEqualTo("%PDF-1.7\nSERVER-DOCUMENT-BYTES\n%%EOF\n");
     }
 
     private static JsonNode probe(String scenario) throws Exception {

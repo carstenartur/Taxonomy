@@ -120,6 +120,56 @@ class LocalLoginFlowTest {
         assertThat(result.getResponse().getContentAsString()).doesNotContain("wrong-password");
     }
 
+    @Test
+    void logoutConfirmationPreservesAuthenticationUntilTheCsrfProtectedPost() throws Exception {
+        var session = signIn("");
+        var page = mvc.perform(get("/logout").session(session)).andExpect(status().isOk())
+                .andExpect(content().string(containsString("action=\"/logout\"")))
+                .andReturn().getResponse().getContentAsString();
+        mvc.perform(get("/default-ui.css")).andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/css"));
+        mvc.perform(get("/qa-login-protected").session(session)).andExpect(status().isOk());
+        mvc.perform(post("/logout").session(session)).andExpect(status().isForbidden());
+        mvc.perform(get("/qa-login-protected").session(session)).andExpect(status().isOk());
+        mvc.perform(post("/logout").session(session).accept("text/html").param("_csrf", formCsrf(page)))
+                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/login?logout"));
+        assertThat(session.isInvalid()).isTrue();
+        mvc.perform(get("/qa-login-protected").accept("text/html"))
+                .andExpect(redirectedUrl("/login"));
+    }
+
+    @Test
+    void logoutConfirmationAndItsStylesRespectTheServletContextPath() throws Exception {
+        var session = signIn("/taxonomy");
+        var page = mvc.perform(get("/taxonomy/logout").contextPath("/taxonomy").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("action=\"/taxonomy/logout\"")))
+                .andReturn().getResponse().getContentAsString();
+        mvc.perform(get("/taxonomy/default-ui.css").contextPath("/taxonomy"))
+                .andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith("text/css"));
+        mvc.perform(post("/taxonomy/logout").contextPath("/taxonomy").session(session)
+                        .accept("text/html").param("_csrf", formCsrf(page)))
+                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/taxonomy/login?logout"));
+        assertThat(session.isInvalid()).isTrue();
+    }
+
+    private MockHttpSession signIn(String prefix) throws Exception {
+        var result = mvc.perform(post(prefix + "/login").contextPath(prefix).with(csrf())
+                        .param("username", "qa-user").param("password", "qa-password"))
+                .andExpect(status().is3xxRedirection()).andReturn();
+        var session = (MockHttpSession) result.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+        return session;
+    }
+
+    private static String formCsrf(String html) {
+        var token = java.util.regex.Pattern.compile(
+                "<input\\b(?=[^>]*\\bname=\"_csrf\")(?=[^>]*\\bvalue=\"([^\"]+)\")[^>]*>")
+                .matcher(html);
+        assertThat(token.find()).as("actual logout confirmation supplies its CSRF token").isTrue();
+        return token.group(1);
+    }
+
     @Controller
     static class ProtectedPage {
         @GetMapping("/qa-login-protected") @ResponseBody

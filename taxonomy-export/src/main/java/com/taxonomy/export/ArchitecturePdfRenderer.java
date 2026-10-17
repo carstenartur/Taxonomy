@@ -74,6 +74,27 @@ public final class ArchitecturePdfRenderer {
                 "Derived server layout · Git-authoritative architecture"));
     }
 
+    /** Supplied working data has no verified Git or persisted-snapshot authority. */
+    public byte[] renderWorkingView(DiagramScene scene) {
+        requireScene(scene);
+        return renderScene(scene, document -> {
+            var information = new PDDocumentInformation();
+            information.setTitle(scene.title());
+            information.setSubject("Client-provided working view");
+            information.setCreator("Taxonomy server-side vector renderer");
+            document.setDocumentInformation(information);
+        }, (stream, height) -> {
+            text(stream, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16,
+                    "Requirement architecture - working view");
+            text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33,
+                    "Client-provided working view; source authority has not been verified.");
+            text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 45,
+                    PdfDiagramText.wrap(scene.title(), REGULAR, 8,
+                            PDRectangle.A3.getHeight() - 2 * PAGE_MARGIN, 1).getFirst());
+        }, stream -> text(stream, REGULAR, 8, PAGE_MARGIN, 16,
+                "Generated server layout | Client-provided working view | No re-analysis or persistence"));
+    }
+
     private static void requireScene(DiagramScene scene) {
         if (scene == null || scene.isEmpty()) {
             throw new IllegalArgumentException("Architecture scene must not be empty");

@@ -14,13 +14,17 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.authentication.ui.DefaultLogoutPageGeneratingFilter;
+import org.springframework.security.web.authentication.ui.DefaultResourcesFilter;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import java.util.Optional;
+import java.util.Map;
 
 /** Spring Security configuration for form-login mode. */
 @Configuration
@@ -99,6 +103,16 @@ public class SecurityConfig {
             .formLogin(form -> form.loginPage("/login").permitAll())
             .httpBasic(Customizer.withDefaults())
             .logout(Customizer.withDefaults());
+
+        // A custom login page disables Spring's generated logout page and its CSS too.
+        // Restore those UI filters while the standard CSRF-protected LogoutFilter performs logout.
+        var logoutPage = new DefaultLogoutPageGeneratingFilter();
+        logoutPage.setResolveHiddenInputs(request -> {
+            var token = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+            return token == null ? Map.of() : Map.of(token.getParameterName(), token.getToken());
+        });
+        http.addFilter(logoutPage);
+        http.addFilter(DefaultResourcesFilter.css());
 
         if (webDavCredentialFilter != null) {
             http.addFilterBefore(webDavCredentialFilter, BasicAuthenticationFilter.class);

@@ -5,6 +5,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.export.ArchitecturePdfRenderer;
+import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.export.service.ExportFacade;
@@ -19,6 +21,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,10 +60,23 @@ public class ExportApiController {
     private final ExportFacade exportFacade;
     private final ExportFormatExtensionRegistry exportFormatRegistry;
 
+    private final LayeredDiagramLayoutService currentDiagramLayout;
+    private final ArchitecturePdfRenderer currentDiagramPdf;
+
     public ExportApiController(ExportFacade exportFacade,
                                ExportFormatExtensionRegistry exportFormatRegistry) {
+        this(exportFacade, exportFormatRegistry, new LayeredDiagramLayoutService(), new ArchitecturePdfRenderer());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ExportApiController(ExportFacade exportFacade,
+                               ExportFormatExtensionRegistry exportFormatRegistry,
+                               LayeredDiagramLayoutService currentDiagramLayout,
+                               ArchitecturePdfRenderer currentDiagramPdf) {
         this.exportFacade = exportFacade;
         this.exportFormatRegistry = exportFormatRegistry;
+        this.currentDiagramLayout = currentDiagramLayout;
+        this.currentDiagramPdf = currentDiagramPdf;
     }
 
     @Operation(summary = "Export Visio diagram",
@@ -196,6 +213,36 @@ public class ExportApiController {
         } catch (UncheckedIOException e) {
             log.error("Export failed for format '{}': {}", formatId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @Operation(summary = "Export the complete current architecture as PDF",
+            description = "Renders a client-provided working view with bounded PDF pages and complete label and relationship evidence inventories. No AI analysis, repository lookup, second selection or persistence occurs; historical source authority is not asserted.")
+    @ApiResponse(responseCode = "200", description = "Complete working-view PDF returned as attachment",
+            content = @Content(mediaType = "application/pdf", schema = @Schema(type = "string", format = "binary")))
+    @ApiResponse(responseCode = "400", description = "Missing, malformed or oversized architecture view")
+    @ApiResponse(responseCode = "500", description = "PDF generation failed; working state unchanged")
+    @PostMapping("/diagram/current/pdf")
+    public ResponseEntity<?> exportCurrentDiagramPdf(
+            @Parameter(description = "Captured working architecture view with its saved labels and relationship evidence", required = true)
+            @RequestBody RequirementArchitectureView view) {
+        final DiagramModel diagram;
+        try {
+            diagram = exportFacade.buildCurrentDiagram(view);
+        } catch (IllegalArgumentException invalid) {
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("error", "A valid architecture view within export capacity is required."));
+        }
+        try {
+            byte[] bytes = currentDiagramPdf.renderWorkingView(currentDiagramLayout.layout(diagram));
+            if (bytes == null || bytes.length == 0) throw new IllegalStateException("Empty architecture PDF");
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF).cacheControl(CacheControl.noStore())
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"requirement-architecture.pdf\"")
+                    .body(bytes);
+        } catch (RuntimeException failure) {
+            log.error("Current working-view PDF export failed", failure);
+            return ResponseEntity.internalServerError().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("error", "The architecture PDF could not be created. The working state was not changed."));
         }
     }
 

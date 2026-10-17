@@ -194,16 +194,11 @@
         // tab and its temporary pan/zoom. Explicit containers remain view captures.
         if (!containerId && window.TaxonomyState?.currentArchView) {
             var requirement = document.getElementById('businessText');
-            return diagramDownload('/api/diagram/svg', requirement ? requirement.value : '',
-                'requirement-architecture.svg', 'text', function (svgText) {
-                    var parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
-                    var svg = parsed.documentElement;
-                    if (!svg || svg.localName !== 'svg' || parsed.querySelector('parsererror')) {
-                        throw new Error(exportMessage('The architecture SVG is invalid.',
-                            'Das Architektur-SVG ist ungültig.'));
-                    }
-                    return renderPdf(svg, filename || 'requirement-architecture.pdf');
-                });
+            // The server paginates wide scenes and appends complete labels and
+            // relationship evidence that a browser SVG conversion cannot retain.
+            return diagramDownload('/api/diagram/current/pdf', requirement ? requirement.value : '',
+                filename || 'requirement-architecture.pdf', 'blob', null,
+                { id: 'pdf', contentType: 'application/pdf' });
         }
         var svg = standaloneSvg(containerId || 'taxonomyTree');
         if (!svg) return unavailable('export.no.svg');
@@ -355,6 +350,7 @@
         var expected = filename.endsWith('.vsdx') ? ['application/vnd.ms-visio.drawing']
             : filename.endsWith('.zip') ? ['application/zip']
             : filename.endsWith('.svg') ? ['image/svg+xml']
+            : filename.endsWith('.pdf') ? ['application/pdf']
             : filename.endsWith('.xml') ? ['application/xml', 'text/xml'] : ['text/plain'];
         if (descriptor) expected = [descriptor.contentType.split(';')[0].trim().toLowerCase()];
         var htmlAttachment = descriptor && type === 'text/html';
@@ -409,6 +405,8 @@
         // A transport guard, not a replacement for the server's OPC/schema validation.
         // Read bounded ZIP metadata, never inflate arbitrary archive content.
         var zip = filename.endsWith('.vsdx') || filename.endsWith('.zip');
+        var pdf = filename.endsWith('.pdf') || (descriptor &&
+            descriptor.contentType.split(';')[0].trim().toLowerCase() === 'application/pdf');
         var invalid = !blob.size;
         if (zip && !invalid) {
             var head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
@@ -454,6 +452,10 @@
                         || ranges.some(function (range, index) { return index > 0 && ranges[index - 1].end > range.start; });
                 }
             }
+        } else if (pdf && !invalid) {
+            var signature = await blob.slice(0, 5).text();
+            var trailer = await blob.slice(-1024).text();
+            invalid = blob.size < 14 || signature !== '%PDF-' || !/%%EOF\s*$/.test(trailer);
         } else if (!invalid) {
             var prefix = (await blob.slice(0, 512).text()).trimStart();
             var declaredHtml = descriptor && descriptor.contentType.split(';')[0].trim().toLowerCase() === 'text/html';

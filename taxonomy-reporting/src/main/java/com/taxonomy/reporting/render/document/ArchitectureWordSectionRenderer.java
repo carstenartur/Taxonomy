@@ -133,7 +133,8 @@ public final class ArchitectureWordSectionRenderer {
             for (var edge : report.diagram().edges()) {
                 if (edge.metadata() == null) continue;
                 writer.heading(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId(), 2, null);
-                com.taxonomy.export.DiagramPresentation.relationshipDetails(edge.metadata()).forEach(writer::paragraph);
+                // One point between evidence fields; body type remains the writer's readable 10pt.
+                relationshipDetails(edge.metadata()).forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
             }
         }
         writer.heading(labels.provenance(), 1, "architecture_evidence");
@@ -161,6 +162,30 @@ public final class ArchitectureWordSectionRenderer {
 
     private List<String> row(String name, Object value) {
         return List.of(name, String.valueOf(value));
+    }
+
+    /** Equal recorded reasons share their value while retaining every source-field label. */
+    private static List<String> relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata) {
+        var labels = List.of("Included because", "Derivation reason", "Presence reason");
+        var values = Arrays.asList(metadata.includedBecause(), metadata.derivationReason(), metadata.presenceReason());
+        var grouped = new LinkedHashMap<String, List<String>>();
+        for (int i = 0; i < labels.size(); i++) {
+            String value = values.get(i);
+            if (value != null) grouped.computeIfAbsent(value, ignored -> new ArrayList<>()).add(labels.get(i));
+        }
+        var result = new ArrayList<String>();
+        boolean reasonsWritten = false;
+        for (String detail : com.taxonomy.export.DiagramPresentation.relationshipDetails(metadata)) {
+            if (labels.stream().anyMatch(label -> detail.startsWith(label + ": "))) {
+                if (!reasonsWritten) {
+                    grouped.forEach((value, fields) -> result.add(String.join(", ", fields) + ": " + value));
+                    reasonsWritten = true;
+                }
+            } else {
+                result.add(detail);
+            }
+        }
+        return result;
     }
 
     private String value(String text, DecisionReportLabels labels) {
