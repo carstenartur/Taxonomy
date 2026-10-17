@@ -55,6 +55,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("browser")
 @Tag("ui-acceptance")
+@Tag("ci-app-shard-browser")
 class PortfolioClientRoutingIT {
     private static final List<String> PREFIXES = List.of("", "/taxonomy", "/teams/blue/taxonomy");
     private static final List<PageContract> PAGES = List.of(

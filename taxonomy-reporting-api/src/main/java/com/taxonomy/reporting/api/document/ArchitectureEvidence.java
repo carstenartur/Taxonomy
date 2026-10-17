@@ -64,7 +64,7 @@ public final class ArchitectureEvidence {
                             e.targetId(),
                             e.relationType(),
                             e.relevance(),
-                            e.relationCategory())
+                            e.relationCategory(), e.metadata())
                     .equals(edges.get(e.id())))
                 throw new IllegalArgumentException(
                         "Contradictory architecture scene relation " + e.id());

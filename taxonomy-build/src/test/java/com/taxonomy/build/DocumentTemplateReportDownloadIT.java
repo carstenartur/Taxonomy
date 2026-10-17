@@ -118,9 +118,7 @@ class DocumentTemplateReportDownloadIT {
             }
         }
 
-        if (Boolean.parseBoolean(
-                System.getenv().getOrDefault(
-                        "TAXONOMY_RENDER_DOCX_PREVIEW", "false"))) {
+        if (renderPreviewEnabled()) {
             assertFile(output.resolve(
                     "decision-rationale-template-test-report.png"), 10_000);
             assertFile(output.resolve(
@@ -130,6 +128,11 @@ class DocumentTemplateReportDownloadIT {
         }
 
         assertDownloadedDocx(downloadedReport);
+    }
+
+    private static boolean renderPreviewEnabled() {
+        return Boolean.parseBoolean(System.getProperty("documentTemplateRenderPreview", "false"))
+                || Boolean.parseBoolean(System.getenv().getOrDefault("TAXONOMY_RENDER_DOCX_PREVIEW", "false"));
     }
 
     private static void runPlaywright(
@@ -154,6 +157,7 @@ class DocumentTemplateReportDownloadIT {
         builder.environment().put("TAXONOMY_UI_PASSWORD", "admin");
         builder.environment().put("TAXONOMY_UI_OUTPUT_DIR", output.toString());
         builder.environment().put("TAXONOMY_UI_DISPOSABLE_INSTANCE", "true");
+        builder.environment().put("TAXONOMY_RENDER_DOCX_PREVIEW", Boolean.toString(renderPreviewEnabled()));
 
         Process process = builder.start();
         boolean finished = process.waitFor(10, TimeUnit.MINUTES);

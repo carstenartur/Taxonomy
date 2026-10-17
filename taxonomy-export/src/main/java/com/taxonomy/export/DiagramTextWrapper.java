@@ -51,6 +51,36 @@ public final class DiagramTextWrapper {
         return List.copyOf(lines);
     }
 
+    /** Measured code-point wrapping; SVG fixes textLength to these advances across font substitutions. */
+    public static List<String> wrapMeasured(String value, java.awt.Font font, double width, int maximumLines, String fallback) {
+        if (width <= 0 || !Double.isFinite(width) || maximumLines < 1) throw new IllegalArgumentException("Invalid text bounds");
+        String remaining = normalize(value, fallback);
+        var lines = new ArrayList<String>();
+        while (!remaining.isEmpty() && lines.size() < maximumLines) {
+            boolean last = lines.size() == maximumLines - 1;
+            if (measure(remaining, font) <= width) { lines.add(remaining); break; }
+            String suffix = last ? "..." : "";
+            while (!suffix.isEmpty() && measure(suffix, font) > width) suffix = suffix.substring(0, suffix.length() - 1);
+            int end = 0, next;
+            while (end < remaining.length()) {
+                next = end + Character.charCount(remaining.codePointAt(end));
+                if (measure(remaining.substring(0, next) + suffix, font) > width) break;
+                end = next;
+            }
+            if (last) { lines.add(remaining.substring(0, end).stripTrailing() + suffix); break; }
+            if (end == 0) { lines.add(""); break; }
+            int space = remaining.lastIndexOf(' ', end);
+            if (space > 0) end = space;
+            lines.add(remaining.substring(0, end).stripTrailing());
+            remaining = remaining.substring(end).stripLeading();
+        }
+        return List.copyOf(lines);
+    }
+
+    public static double measure(String value, java.awt.Font font) {
+        return font.getStringBounds(value, new java.awt.font.FontRenderContext(null, true, true)).getWidth();
+    }
+
     private static String normalize(String value, String fallback) {
         String candidate = value == null || value.isBlank() ? fallback : value;
         if (candidate == null || candidate.isBlank()) {

@@ -559,32 +559,7 @@ public class LocalEmbeddingService {
         }
 
         try {
-            float[] queryVector = embedQuery(businessText);
-            String indexKey = embeddingIndexKey();
-            List<String> nodeCodes = nodes.stream()
-                    .map(TaxonomyNode::getCode)
-                    .collect(Collectors.toList());
-
-            SearchSession session = Search.session(entityManager);
-            List<List<?>> hits = session.search(TaxonomyNode.class)
-                    .select(factory -> factory.composite(
-                            factory.entity(TaxonomyNode.class),
-                            factory.score()))
-                    .where(factory -> factory.knn(nodes.size())
-                            .field("embedding")
-                            .matching(queryVector)
-                            .filter(factory.bool()
-                                    .must(factory.terms().field("code").matchingAny(nodeCodes))
-                                    .must(factory.match().field("embeddingModel").matching(indexKey))))
-                    .fetchHits(nodes.size());
-
-            for (List<?> hit : hits) {
-                TaxonomyNode node = (TaxonomyNode) hit.get(0);
-                float luceneScore = (Float) hit.get(1);
-                double percentage = (2.0 * luceneScore - 1.0) * 100.0;
-                percentage = Math.max(0, Math.min(100, percentage));
-                scores.put(node.getCode(), percentage);
-            }
+            queryNodeScores(businessText, nodes, scores);
 
             log.info("LOCAL_ONNX scores: {}", scores);
         } catch (Exception exception) {
@@ -592,6 +567,52 @@ public class LocalEmbeddingService {
         }
 
         return scores;
+    }
+
+    /** Analysis evidence contains only actual index hits; inference/index failures are never negative assessments. */
+    @Transactional(readOnly = true)
+    public Map<String, Double> scoreNodesForAnalysis(String businessText, List<TaxonomyNode> nodes) {
+        catalogueRuntimePolicy.requireGlobalIndexAllowed();
+        if (!isAvailable()) throw new IllegalStateException("LOCAL_ONNX embedding model is unavailable");
+        if (nodes.isEmpty()) return Map.of();
+        try {
+            Map<String, Double> scores = new HashMap<>();
+            queryNodeScores(businessText, nodes, scores);
+            return scores;
+        } catch (Exception failure) {
+            throw new IllegalStateException("LOCAL_ONNX inference or index scoring failed", failure);
+        }
+    }
+
+    private void queryNodeScores(String businessText, List<TaxonomyNode> nodes,
+                                 Map<String, Double> scores) throws Exception {
+        float[] queryVector = embedQuery(businessText);
+        String indexKey = embeddingIndexKey();
+        List<String> nodeCodes = nodes.stream()
+                .map(TaxonomyNode::getCode)
+                .collect(Collectors.toList());
+
+        SearchSession session = Search.session(entityManager);
+        List<List<?>> hits = session.search(TaxonomyNode.class)
+                .select(factory -> factory.composite(
+                    factory.entity(TaxonomyNode.class),
+                    factory.score()))
+                .where(factory -> factory.knn(nodes.size())
+                    .field("embedding")
+                    .matching(queryVector)
+                    .filter(factory.bool()
+                        .must(factory.terms().field("code").matchingAny(nodeCodes))
+                        .must(factory.match().field("embeddingModel").matching(indexKey))))
+                .fetchHits(nodes.size());
+
+        for (List<?> hit : hits) {
+            TaxonomyNode node = (TaxonomyNode) hit.get(0);
+            float luceneScore = (Float) hit.get(1);
+            double percentage = (2.0 * luceneScore - 1.0) * 100.0;
+            percentage = Math.max(0, Math.min(100, percentage));
+            scores.put(node.getCode(), percentage);
+        }
+
     }
 
     @Transactional(readOnly = true)

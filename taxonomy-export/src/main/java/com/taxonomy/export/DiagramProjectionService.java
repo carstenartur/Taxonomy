@@ -169,7 +169,10 @@ public class DiagramProjectionService {
                     rel.getTargetCode(),
                     rel.getRelationType(),
                     rel.getPropagatedRelevance(),
-                    rel.getRelationCategory()));
+                    rel.getRelationCategory(),
+                    new com.taxonomy.diagram.DiagramRelationMetadata(rel.getRelationId(), rel.getOrigin(),
+                            rel.getRecordedConfidence(), rel.getIncludedBecause(), rel.getDerivationReason(),
+                            rel.getPresenceReason(), rel.getSeedType(), rel.getRequirementEvidence())));
         }
 
         return new DiagramModel(title, nodes, edges, new DiagramLayout("LR", true));

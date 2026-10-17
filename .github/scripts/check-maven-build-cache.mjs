@@ -25,7 +25,7 @@ for (const output of ['classes', 'test-classes', 'surefire-reports', 'failsafe-r
   requireContract(cache.includes(`<dirName>${output}</dirName>`), `missing attached output ${output}`);
 }
 requireContract(cache.includes('<dirName glob="jacoco.exec"></dirName>'), 'missing attached jacoco.exec output');
-for (const execution of ['generate-aggregate-sbom', 'download-pinned-embedding-model']) {
+for (const execution of ['generate-aggregate-sbom', 'download-pinned-embedding-model', 'install-junit-javascript-driver-dependencies']) {
   requireContract(cache.includes(`<execId>${execution}</execId>`), `${execution} must run even on cache hits`);
 }
 for (const property of ['skipTests', 'skipITs']) {

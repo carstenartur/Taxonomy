@@ -147,6 +147,10 @@
         <taxonomy.app.shard.coverage.enabled>false</taxonomy.app.shard.coverage.enabled>
         <taxonomy.coverage.policy.exclude>**/NeverCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
         <taxonomy.app.unit.tests.skip>false</taxonomy.app.unit.tests.skip>
+        <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+        <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
+        <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+        <taxonomy.frontend.skip>false</taxonomy.frontend.skip>
         <taxonomy.ui.skip>true</taxonomy.ui.skip>
         <taxonomy.quality.skip>true</taxonomy.quality.skip>
         <taxonomy.ui.suite>all</taxonomy.ui.suite>
@@ -229,6 +233,7 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <configuration><systemPropertyVariables>
                         <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
+                        <taxonomy.observability.performance.enabled>${taxonomy.observability.performance.enabled}</taxonomy.observability.performance.enabled>
                         <taxonomy.test.browser.version>${taxonomy.test.browser.version}</taxonomy.test.browser.version>
                         <taxonomy.test.browser.cache>${taxonomy.test.browser.cache}</taxonomy.test.browser.cache>
                         <taxonomy.test.browser.offline>${taxonomy.test.browser.offline}</taxonomy.test.browser.offline>
@@ -254,7 +259,16 @@
                     <goals><goal>install-node-and-npm</goal></goals>
                     <configuration>
                         <nodeVersion>${node.version}</nodeVersion>
+                        <skip>${taxonomy.frontend.skip}</skip>
                         <skipTests>false</skipTests>
+                    </configuration>
+                </execution><execution>
+                    <id>install-junit-javascript-driver-dependencies</id>
+                    <phase>process-test-resources</phase>
+                    <goals><goal>npm</goal></goals>
+                    <configuration>
+                        <skip>${taxonomy.frontend.skip}</skip>
+                        <arguments>ci --ignore-scripts --no-audit --no-fund</arguments>
                     </configuration>
                 </execution></executions>
             </plugin>
@@ -331,6 +345,9 @@
                 <version>${cyclonedx.version}</version>
                 <inherited>false</inherited>
                 <executions>
+                    <!-- The root is a POM, so Boot's application SBOM duplicates the
+                         authoritative package aggregate and is never packaged. -->
+                    <execution><id>default</id><phase>none</phase></execution>
                     <execution>
                         <id>generate-aggregate-sbom</id>
                         <phase>package</phase>
@@ -477,6 +494,9 @@
             <id>ci</id>
             <properties>
                 <skipITs>false</skipITs>
+                <taxonomy.observability.performance.enabled>true</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>false</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>false</taxonomy.production.image.skip>
                 <excludedGroups>real-llm,db-mssql,db-oracle</excludedGroups>
                 <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
                 <taxonomy.ui.skip>false</taxonomy.ui.skip>
@@ -667,6 +687,9 @@
         <profile>
             <id>ci-app-test-shards-core</id>
             <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
                 <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser</excludedGroups>
                 <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
@@ -676,6 +699,9 @@
         <profile>
             <id>ci-app-test-shard-recovery</id>
             <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
                 <groups>ci-app-shard-recovery</groups>
                 <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
@@ -689,6 +715,9 @@
         <profile>
             <id>ci-app-test-shard-browser</id>
             <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
                 <groups>ci-app-shard-browser</groups>
                 <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
@@ -701,6 +730,12 @@
         <profile>
             <id>ci-app-test-shards-coverage</id>
             <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
+                <!-- Core outputs and their digests were verified before replay. -->
+                <cyclonedx.skip>true</cyclonedx.skip>
+                <taxonomy.frontend.skip>true</taxonomy.frontend.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
                 <taxonomy.app.shard.coverageMergePhase>verify</taxonomy.app.shard.coverageMergePhase>
                 <taxonomy.app.shard.coverageInclude>**/jacoco-shards-merged.exec</taxonomy.app.shard.coverageInclude>

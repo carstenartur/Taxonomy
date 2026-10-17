@@ -175,8 +175,9 @@ test('the warning uses the existing German translation', () => {
 test('both Maven-owned npm entry points run this regression suite', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(pkg.scripts['test:copilot-summary-freshness'],
-    'node --test scripts/copilot-summary-freshness.test.mjs');
-  for (const entry of ['verify:ui', 'verify:ui-contracts']) {
-    assert.ok(pkg.scripts[entry].split(' && ').includes('npm run test:copilot-summary-freshness'));
-  }
+    '../mvnw -B -f ../pom.xml -pl taxonomy-tooling -am test -Dtest=JavascriptContractTest -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.javascript.sources=.github/scripts/copilot-summary-freshness.test.mjs');
+  assert.match(pkg.scripts['verify:ui-contracts'], /-Dtest=JavascriptContractTest/);
+  assert.equal(pkg.scripts['verify:ui'], '../mvnw -B -f ui-verification-pom.xml verify -Pshard');
+  const inventory = await readFile(new URL('../../.mvn/javascript-junit-sources.txt', import.meta.url), 'utf8');
+  assert.ok(inventory.includes('copilot-summary-freshness.test.mjs'));
 });

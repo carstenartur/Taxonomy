@@ -11,6 +11,14 @@ fi
 cp target/ui-verification/summary.json \
   target/quality-reports/evidence/ui-verification-summary.json
 
+# Preserve actual JUnit browser scenario/component XML from every shard.
+while IFS= read -r -d '' report; do
+  relative=${report#target/ui-verification/}
+  destination="target/quality-reports/tests/ui/$relative"
+  mkdir -p "$(dirname "$destination")"
+  cp "$report" "$destination"
+done < <(find target/ui-verification -type f -name 'TEST-*.xml' -print0)
+
 source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
 build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
 # The action pin is configuration, not evidence of a completed independent scan.

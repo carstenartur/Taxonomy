@@ -106,7 +106,7 @@ class RootScoringFlowTest {
         var gateway = new Gateway();
         var embeddings = new LocalEmbeddingService() {
             @Override public boolean isAvailable() { return true; }
-            @Override public Map<String, Double> scoreNodes(String text, List<TaxonomyNode> nodes) {
+            @Override public Map<String, Double> scoreNodesForAnalysis(String text, List<TaxonomyNode> nodes) {
                 return Map.of("BP", 20d);
             }
         };

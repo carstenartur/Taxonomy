@@ -39,6 +39,9 @@ class GitNativeSyncPortfolioProjectionTest {
             when(repositories.getCentralRepository("repository-a")).thenReturn(repository);
             var system = mock(SystemRepositoryService.class);
             when(system.getSharedBranch()).thenReturn("draft");
+            var sourceMetadata = new com.taxonomy.workspace.model.SystemRepository();
+            sourceMetadata.setRepositoryId("repository-a");
+            when(system.getRepository("repository-a")).thenReturn(sourceMetadata);
             var state = new SyncState();
             state.setUsername("alice");
             state.setSyncStatus("DIVERGED");
@@ -55,7 +58,8 @@ class GitNativeSyncPortfolioProjectionTest {
                 }
             };
             var service = new GitNativeSyncIntegrationService(states, mock(UserWorkspaceRepository.class),
-                    system, repositories, new SemanticGitMergeService(), portfolio, resolver, versions);
+                    system, repositories, new SemanticGitMergeService(), portfolio, resolver, versions,
+                mock(RepositoryMembershipService.class, invocation -> true));
 
             String result = pull ? service.syncFromShared("alice", "review")
                     : service.publishToShared("alice", "review");

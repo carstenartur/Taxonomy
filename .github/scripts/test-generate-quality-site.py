@@ -22,7 +22,8 @@ class GenerateQualitySummaryTest(unittest.TestCase):
             reports = root / "tests" / "module" / "target" / "surefire-reports"
             reports.mkdir(parents=True)
             reports.joinpath("TEST-example.xml").write_text(
-                '<testsuite tests="5" failures="0" errors="0" skipped="1"/>',
+                '<testsuite tests="5" failures="0" errors="0" skipped="1">'
+                '<testcase/><testcase/><testcase/><testcase/><testcase><skipped/></testcase></testsuite>',
                 encoding="utf-8",
             )
             coverage = root / "coverage"
@@ -78,7 +79,7 @@ class GenerateQualitySummaryTest(unittest.TestCase):
             reports = root / "tests"
             reports.mkdir()
             reports.joinpath("TEST-failing.xml").write_text(
-                '<testsuite tests="2" failures="1" errors="0" skipped="0"/>',
+                '<testsuite tests="2" failures="1" errors="0" skipped="0"><testcase><failure/></testcase><testcase/></testsuite>',
                 encoding="utf-8",
             )
             coverage = root / "coverage"

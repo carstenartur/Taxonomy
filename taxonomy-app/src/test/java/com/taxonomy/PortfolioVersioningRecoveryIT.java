@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("browser")
 @Tag("ui-acceptance")
+@Tag("ci-app-shard-recovery")
 class PortfolioVersioningRecoveryIT {
     private static final String PREFIX = "/taxonomy";
     private static final String COMMIT_DRAFT = "  Reviewed the revised requirements.\nKeep this context.  ";

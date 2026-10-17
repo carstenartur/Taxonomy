@@ -18,7 +18,8 @@ class MissingPortfolioMutationBoundaryTest {
         var context = mock(WorkspaceContextResolver.class);
         var versions = mock(WorkspaceArchitectureVersionPort.class);
         var service = new GitNativeSyncIntegrationService(sync, workspaces, system, repositories, merge,
-                portfolio, context, versions);
+                portfolio, context, versions,
+                mock(RepositoryMembershipService.class, invocation -> true));
         clearInvocations(repositories);
         doThrow(new IllegalStateException("Feature unavailable")).when(portfolio).requireAvailable();
         assertThatThrownBy(() -> service.syncFromShared("alice", "draft")).hasMessage("Feature unavailable");

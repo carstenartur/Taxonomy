@@ -181,14 +181,16 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
         List<DiagramEdge> result = new ArrayList<>();
         Set<String> signatures = new LinkedHashSet<>();
         for (DiagramEdge e : originalEdges) {
-            String src = reroute.getOrDefault(e.sourceId(), e.sourceId());
-            String tgt = reroute.getOrDefault(e.targetId(), e.targetId());
+            // Recorded provenance belongs to its exact endpoints; visual curation may omit it, never reassign it.
+            String src = e.metadata() == null ? reroute.getOrDefault(e.sourceId(), e.sourceId()) : e.sourceId();
+            String tgt = e.metadata() == null ? reroute.getOrDefault(e.targetId(), e.targetId()) : e.targetId();
             if (!survivorIds.contains(src) || !survivorIds.contains(tgt)) continue;
             if (src.equals(tgt)) continue;
-            String sig = src + "->" + tgt + ":" + e.relationType();
+            String sig = src + "->" + tgt + ":" + e.relationType()
+                    + (e.metadata() == null ? "" : ":" + e.id());
             if (signatures.add(sig)) {
                 result.add(new DiagramEdge(e.id(), src, tgt,
-                        e.relationType(), e.relevance(), e.relationCategory()));
+                        e.relationType(), e.relevance(), e.relationCategory(), e.metadata()));
             }
         }
         return result;

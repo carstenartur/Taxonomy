@@ -89,7 +89,8 @@ class GitNativeSyncSnapshotRaceTest {
             var syncRows = mock(SyncStateRepository.class);
             when(syncRows.findByUsername("owner")).thenReturn(Optional.of(new SyncState()));
             service = new GitNativeSyncIntegrationService(syncRows, rows, catalog, factory, merger, portfolio,
-                    mock(WorkspaceContextResolver.class), DIRECT);
+                    mock(WorkspaceContextResolver.class), DIRECT,
+                mock(RepositoryMembershipService.class, invocation -> true));
         }
         void sync(boolean publish) throws IOException {
             if (publish) service.publishFromWorkspaceToShared("owner", "workspace");

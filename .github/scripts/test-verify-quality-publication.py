@@ -26,8 +26,10 @@ class VerifyQualityPublicationTest(unittest.TestCase):
             "sourceTree": "tree123",
             "buildId": "run-1",
             "tools": {"java": "21", "maven": "3.9.11"},
+            "testReports": ["tests/TEST-fixture.xml"],
             "tests": {
                 "tests": 5,
+                "reportFiles": 1,
                 "executed": 4,
                 "passed": 4,
                 "skipped": 1,
@@ -44,6 +46,8 @@ class VerifyQualityPublicationTest(unittest.TestCase):
 
     def _write_local(self, root: Path) -> None:
         summary, tests, coverage = self._payloads()
+        (root / "tests").mkdir(parents=True, exist_ok=True)
+        (root / "tests/TEST-fixture.xml").write_text('<testsuite tests="5" failures="0" errors="0" skipped="1"><testcase/><testcase/><testcase/><testcase/><testcase><skipped/></testcase></testsuite>')
         for relative in MODULE.REQUIRED_FILES:
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -102,6 +106,8 @@ class VerifyQualityPublicationTest(unittest.TestCase):
 
         def text_fetcher(url: str) -> str:
             self.assertIn("verified=", url)
+            if "TEST-fixture.xml" in url:
+                return '<testsuite tests="5" failures="0" errors="0" skipped="1"><testcase/><testcase/><testcase/><testcase/><testcase><skipped/></testcase></testsuite>'
             return f"quality report for {self.COMMIT}"
 
         MODULE.verify_remote_once(

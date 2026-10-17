@@ -13,7 +13,10 @@ test('draft-read feedback is included in both server and browser message sources
 });
 test('both canonical UI verification commands include the read-safety regressions',()=>{
  const {scripts}=JSON.parse(read('.github/package.json'));
- for(const key of ['verify:ui','verify:ui-contracts']) assert.ok(scripts[key].includes('npm run test:dsl-text-read'),key);
+ assert.match(scripts['verify:ui-contracts'],/-Dtest=JavascriptContractTest/);
+ assert.equal(scripts['verify:ui'],'../mvnw -B -f ui-verification-pom.xml verify -Pshard');
+ const inventory=read('.mvn/javascript-junit-sources.txt');
+ for(const source of ['ui-dsl-text-read.test.mjs','ui-dsl-read-delivery.test.mjs']) assert.ok(inventory.includes(source));
  assert.ok(scripts['test:dsl-text-read'].includes('ui-dsl-text-read.test.mjs'));
  assert.ok(scripts['test:dsl-text-read'].includes('ui-dsl-read-delivery.test.mjs'));
 });

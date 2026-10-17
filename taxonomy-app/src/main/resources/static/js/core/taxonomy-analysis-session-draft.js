@@ -229,6 +229,8 @@
         S.analysisRecovery = null;
         S.recoveryContext = null;
         S.lastAnalysisProvider = null;
+        S.analysisOperationId = null;
+        S.analysisProviderId = null;
         S.lastAnalysisStatus = null;
         S.lastAnalysisDurationMillis = null;
         S.currentRawScores = {};
@@ -283,6 +285,8 @@
             S.analysisRecovery = payload.analysisRecovery || null;
             S.recoveryContext = payload.recoveryContext || null;
             S.lastAnalysisProvider = payload.lastAnalysisProvider || null;
+            S.analysisOperationId = payload.analysisOperationId || null;
+            S.analysisProviderId = payload.analysisProviderId || null;
             S.lastAnalysisStatus = payload.lastAnalysisStatus || null;
             S.lastAnalysisDurationMillis = Number.isSafeInteger(payload.analysisDurationMillis)
                 && payload.analysisDurationMillis >= 0 ? payload.analysisDurationMillis : null;

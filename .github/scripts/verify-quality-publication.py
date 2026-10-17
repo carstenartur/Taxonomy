@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 import time
@@ -14,6 +15,37 @@ from urllib.request import Request, urlopen
 
 JsonFetcher = Callable[[str], object]
 TextFetcher = Callable[[str], str]
+
+
+_SPEC = importlib.util.spec_from_file_location("quality_report_validation", Path(__file__).with_name("generate-quality-site.py"))
+_GENERATOR = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_GENERATOR)
+
+
+def validate_report_path(path: object) -> None:
+    if (not isinstance(path, str) or not path.startswith("tests/")
+            or ".." in Path(path).parts or not path.endswith(".xml")
+            or "\\" in path or "?" in path or "#" in path):
+        raise ValueError(f"invalid raw JUnit report path: {path}")
+
+
+def verify_report_totals(summary: dict, reports: list[tuple[str, str]]) -> None:
+    totals = dict.fromkeys(("tests", "failures", "errors", "skipped"), 0)
+    paths = summary.get("testReports")
+    if not isinstance(paths, list) or not paths or len(set(paths)) != len(paths):
+        raise ValueError("quality summary must inventory every raw JUnit report")
+    if sorted(paths) != sorted(path for path, _ in reports):
+        raise ValueError("raw JUnit report inventory differs from the summary")
+    for path, content in reports:
+        validate_report_path(path)
+        counts = _GENERATOR.parse_junit_report(content, path)
+        for key in totals:
+            totals[key] += counts[key]
+    totals["executed"] = totals["tests"] - totals["skipped"]
+    totals["passed"] = totals["executed"] - totals["failures"] - totals["errors"]
+    totals["reportFiles"] = len(reports)
+    if totals != summary["tests"]:
+        raise ValueError(f"raw JUnit outcomes differ from summary: {totals}")
 
 REQUIRED_FILES = (
     "index.html",
@@ -97,6 +129,8 @@ def verify_local(root: Path, expected_commit: str) -> None:
     test_badge = json.loads(root.joinpath("tests/badge.json").read_text(encoding="utf-8"))
     coverage_badge = json.loads(root.joinpath("coverage/badge.json").read_text(encoding="utf-8"))
     verify_payloads(summary, test_badge, coverage_badge, expected_commit)
+    verify_report_totals(summary, [(str(path.relative_to(root)), path.read_text(encoding="utf-8"))
+                                   for path in sorted((root / "tests").rglob("TEST-*.xml"))])
 
 
 def _request(url: str) -> Request:
@@ -142,6 +176,10 @@ def verify_remote_once(
     coverage_badge = json_fetcher(_remote_url(base_url, "coverage/badge.json", expected_commit))
     verify_payloads(summary, test_badge, coverage_badge, expected_commit)
 
+    for path in summary.get("testReports", []):
+        validate_report_path(path)
+    verify_report_totals(summary, [(path, text_fetcher(_remote_url(base_url, path, expected_commit)))
+                                  for path in summary.get("testReports", [])])
     index = text_fetcher(_remote_url(base_url, "index.html", expected_commit))
     report = text_fetcher(_remote_url(base_url, "tests/surefire-report.html", expected_commit))
     if expected_commit.lower() not in index.lower():

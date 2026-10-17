@@ -53,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("ui-acceptance")
 @Tag("docker-required")
+@Tag("ci-app-shard-browser")
 class CompleteCopilotSessionIT {
 
     private static final String ADMIN_PASSWORD = "Complete-Copilot-Session-2026!";

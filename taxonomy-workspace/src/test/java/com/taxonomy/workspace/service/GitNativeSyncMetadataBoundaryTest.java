@@ -33,7 +33,8 @@ class GitNativeSyncMetadataBoundaryTest {
         var contexts = mock(WorkspaceContextResolver.class);
         var versions = mock(WorkspaceArchitectureVersionPort.class);
         var service = new GitNativeSyncIntegrationService(
-                syncStates, rows, catalog, factory, merger, portfolio, contexts, versions);
+                syncStates, rows, catalog, factory, merger, portfolio, contexts, versions,
+                mock(RepositoryMembershipService.class, invocation -> true));
         // The legacy superclass obtains its shared handle during construction;
         // this test concerns side effects of the requested operation itself.
         clearInvocations(factory);

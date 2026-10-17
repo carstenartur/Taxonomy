@@ -128,7 +128,8 @@ class WorkspaceCentralReadBoundaryTest {
         var editor = mock(WorkspaceArchitectureVersionPort.class);
         var contexts = new WorkspaceContextResolver(manager, catalog, rows);
         var service = new GitNativeSyncIntegrationService(syncRows, rows, catalog, factory,
-                semantic, portfolio, contexts, editor);
+                semantic, portfolio, contexts, editor,
+                mock(RepositoryMembershipService.class, invocation -> true));
         clearInvocations(factory); // The legacy constructor obtains its primary handle once.
 
         assertThrows(AccessDeniedException.class, () -> {

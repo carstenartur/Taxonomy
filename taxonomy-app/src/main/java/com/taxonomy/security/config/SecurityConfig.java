@@ -96,7 +96,7 @@ public class SecurityConfig {
                     .maxAgeInSeconds(31536000))
                 .referrerPolicy(referrer -> referrer
                     .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
-            .formLogin(Customizer.withDefaults())
+            .formLogin(form -> form.loginPage("/login").permitAll())
             .httpBasic(Customizer.withDefaults())
             .logout(Customizer.withDefaults());
 

@@ -63,7 +63,8 @@ class GitNativeSyncIntegrationServiceTest {
                 repositoryFactory,
                 semanticMergeService,
                 portfolioGitPort,
-                contextResolver, DIRECT_VERSIONS);
+                contextResolver, DIRECT_VERSIONS,
+                mock(RepositoryMembershipService.class, invocation -> true));
 
         state = new SyncState();
         state.setUsername("alice");

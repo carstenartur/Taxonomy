@@ -310,10 +310,11 @@ test('a zero product suitability remains visible and a normal zero removes an ol
 test('both Maven-owned entry points execute the streaming regression suite', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(pkg.scripts['test:product-score-streaming'],
-    'node --test scripts/product-score-streaming.test.mjs');
-  for (const name of ['verify:ui', 'verify:ui-contracts']) {
-    assert.ok(pkg.scripts[name].split(' && ').includes('npm run test:product-score-streaming'));
-  }
+    '../mvnw -B -f ../pom.xml -pl taxonomy-tooling -am test -Dtest=JavascriptContractTest -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.javascript.sources=.github/scripts/product-score-streaming.test.mjs');
+  assert.match(pkg.scripts['verify:ui-contracts'], /-Dtest=JavascriptContractTest/);
+  assert.equal(pkg.scripts['verify:ui'], '../mvnw -B -f ui-verification-pom.xml verify -Pshard');
+  const inventory = await readFile(new URL('../../.mvn/javascript-junit-sources.txt', import.meta.url), 'utf8');
+  assert.ok(inventory.includes('product-score-streaming.test.mjs'));
 });
 
 for (const locale of ['en', 'de']) {

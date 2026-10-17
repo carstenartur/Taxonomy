@@ -201,15 +201,18 @@ async function runAnalysisUxBrowserTests(group) {
   await writeFile(bootstrapCss, css);
 
   console.log('\n=== Native Chromium component regressions: analysis/navigation UX ===');
-  await runProcess(process.execPath, [
-    '--test',
-    path.join(scriptDir, 'analysis-navigation.browser.test.mjs'),
-    path.join(scriptDir, 'analysis-ux.browser.test.mjs')
+  // JUnit owns analysis-navigation.browser.test.mjs and analysis-ux.browser.test.mjs.
+  await runProcess(path.join(repoRoot, 'mvnw'), [
+    '-B', '-f', path.join(repoRoot, 'pom.xml'), '-pl', 'taxonomy-tooling', '-am', 'test',
+    '-Dtest=JavascriptContractTest', '-Dsurefire.failIfNoSpecifiedTests=false',
+    '-Dtaxonomy.javascript.mode=browser', '-Dtaxonomy.frontend.skip=true',
+    `-Dtaxonomy.javascript.reports=${path.join(outputRoot, 'junit-browser-reports')}`
   ], {
     cwd: repoRoot,
     env: {
       ...process.env,
       BOOTSTRAP_CSS: bootstrapCss,
+      TAXONOMY_NODE_EXECUTABLE: process.execPath,
       TAXONOMY_TEST_RESOURCE_ROOT: path.join(repoRoot, 'taxonomy-app', 'src', 'main', 'resources')
     }
   });
@@ -333,6 +336,11 @@ if (selectedShardScenarios) {
     throw new Error(
       `Runtime UI shard ${requestedShard} does not match its authoritative scenario plan`);
   }
+}
+
+if (process.argv.includes('--list-scenarios')) {
+  console.log(`JUNIT_UI_SCENARIOS ${JSON.stringify(scenarios.map(scenario => scenarioKey(scenario.suite, scenario.id)))}`);
+  process.exit(0);
 }
 
 const groups = groupScenarios(scenarios);

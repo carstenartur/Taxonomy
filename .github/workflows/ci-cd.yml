@@ -47,10 +47,14 @@ jobs:
   production-image:
     name: Production Docker image verification
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    outputs: { executed: "${{ github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true' }}" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Set up Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { java-version: '21', distribution: temurin, cache: maven }
       - name: Configure and verify Docker Hub cache
         run: bash .github/scripts/configure-docker-mirror.sh
       - name: Detect production-image changes
@@ -80,26 +84,12 @@ jobs:
       - name: Verify production Docker image build
         if: github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true'
         env: { IMAGE_TAG: 'taxonomy-ci:${{ github.sha }}' }
-        run: |
-          set -euo pipefail
-          docker build \
-            --progress=plain \
-            --build-arg BUILD_DATE=1970-01-01T00:00:00Z \
-            --build-arg VCS_REF="$GITHUB_SHA" \
-            --build-arg VERSION="ci-${GITHUB_SHA}" \
-            --tag "$IMAGE_TAG" .
-          image_revision=$(docker image inspect \
-            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
-            "$IMAGE_TAG")
-          if [[ "$image_revision" != "$GITHUB_SHA" ]]; then
-            echo "::error::Docker image revision label is '$image_revision'; expected '$GITHUB_SHA'."
-            exit 1
-          fi
-          image_user=$(docker image inspect --format '{{ .Config.User }}' "$IMAGE_TAG")
-          if [[ "$image_user" != '10001:10001' ]]; then
-            echo "::error::Docker image runtime user is '$image_user'; expected '10001:10001'."
-            exit 1
-          fi
+        run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pimage
+
+      - name: Upload JUnit production image evidence
+        if: always() && (github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: junit-production-image, path: '.github/target/failsafe-reports/TEST-com.taxonomy.build.ProductionImageIT.xml', if-no-files-found: error, retention-days: 90 }
 
   app-test-plan:
     name: Plan Maven-owned application test shards
@@ -487,6 +477,9 @@ jobs:
           key: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}
       - name: Run Maven-owned UI contracts and prepare browser runtime
         run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts
+      - name: Upload JUnit contract evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: junit-ui-contracts, path: 'taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.JavascriptContractTest.xml', if-no-files-found: error, retention-days: 90 }
 
   ui-shards:
     name: UI shard / ${{ matrix.shard }}
@@ -521,7 +514,7 @@ jobs:
         env:
           TAXONOMY_UI_SHARD: ${{ matrix.shard }}
           TAXONOMY_UI_OUTPUT_ROOT: ${{ github.workspace }}/target/ui-verification/${{ matrix.shard }}
-        run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pshard
+        run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pshard -Dtaxonomy.ui.junit.directory="$TAXONOMY_UI_OUTPUT_ROOT/junit-scenarios"
       - name: Upload UI shard evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -542,7 +535,11 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: taxonomy-ui-application, path: target/ui-application }
       - name: Verify real StrictDoc and Archi round trips
-        run: node .github/scripts/verify-interoperability-products.mjs
+        run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pinteroperability
+      - name: Upload JUnit product evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: junit-interoperability-products, path: '.github/target/failsafe-reports/TEST-com.taxonomy.build.InteroperabilityProductsIT.xml', if-no-files-found: error, retention-days: 90 }
       - name: Upload product compatibility evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -654,6 +651,16 @@ jobs:
       - name: Download complete coverage and app shard reports
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { name: quality-reports-coverage, path: target/quality-reports }
+      - name: Download JUnit contract evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: junit-ui-contracts, path: target/quality-reports/tests/ui-contracts/target/surefire-reports }
+      - name: Download JUnit production image evidence
+        if: needs.production-image.outputs.executed == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: junit-production-image, path: target/quality-reports/tests/production-image/target/failsafe-reports }
+      - name: Download JUnit product evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: junit-interoperability-products, path: target/quality-reports/tests/interoperability-products/target/failsafe-reports }
       - name: Verify complete digest-bound UI evidence
         env:
           TAXONOMY_UI_EXPECTED_COMMIT: ${{ github.sha }}

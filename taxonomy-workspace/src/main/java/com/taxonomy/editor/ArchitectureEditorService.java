@@ -78,6 +78,14 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
             return new Document(Context.version(context, selected), source(repository, selected), "HISTORICAL",
                     List.of(), versions, 0, null, "GIT_CHECKPOINT");
         }
+        // Central and fork views have Git checkpoints, never workspace journal revisions.
+        if (context.scope() != RepositoryScope.WORKSPACE) {
+            if (revision != null && revision != 0) {
+                throw problem("NOT_FOUND", "revision", "Unknown workspace revision", List.of());
+            }
+            return new Document(Context.version(context, head), source(repository, head), "READY",
+                    List.of(), versions, 0, null, "GIT_CHECKPOINT");
+        }
         Snapshot snapshot = snapshot(context);
         State state = snapshot.state();
         String dsl = state.dsl();

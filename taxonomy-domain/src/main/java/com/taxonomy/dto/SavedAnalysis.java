@@ -22,6 +22,14 @@ import java.util.Map;
  */
 public class SavedAnalysis {
 
+    /** Optional follow-up locator; authority is revalidated by the operation owner on every use. */
+    private String analysisOperationId;
+    private String analysisProviderId;
+    public String getAnalysisOperationId() { return analysisOperationId; }
+    public void setAnalysisOperationId(String value) { analysisOperationId = value; }
+    public String getAnalysisProviderId() { return analysisProviderId; }
+    public void setAnalysisProviderId(String value) { analysisProviderId = value; }
+
     /** Optional frozen automatic-run provenance; manual and legacy evidence may have none. */
     private AnalysisScope analysisScope;
     public AnalysisScope getAnalysisScope() { return analysisScope; }

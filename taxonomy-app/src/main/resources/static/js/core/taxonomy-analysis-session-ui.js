@@ -132,6 +132,8 @@
 
         runtime.invalidating = true;
         S.currentScores = null;
+        S.analysisOperationId = null;
+        S.analysisProviderId = null;
         S.currentRawScores = {};
         S.currentEffectiveScores = {};
         S.currentScoreDetails = {};

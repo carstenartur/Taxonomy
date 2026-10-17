@@ -1,5 +1,7 @@
 package com.taxonomy.backup.runtime;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.backup.*;
 
 import com.taxonomy.backup.snapshot.BackupMaintenanceLease;
@@ -24,6 +26,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(properties = {"taxonomy.backup.enabled=true", "embedding.enabled=false",
         "spring.datasource.url=jdbc:hsqldb:mem:backup-writer-coverage;hsqldb.tx=mvcc", "spring.jpa.hibernate.ddl-auto=update"})
 @DirtiesContext
+@Tag("ci-app-shard-recovery")
 class BackupWriterCoverageIT {
     @Autowired ApplicationContext context;
     @Autowired DataSource database;

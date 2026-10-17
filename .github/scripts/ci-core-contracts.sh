@@ -10,18 +10,9 @@ if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
   exit 1
 fi
 
-python3 .github/scripts/test-generate-quality-site.py
-python3 .github/scripts/test-verify-quality-publication.py
-python3 .github/scripts/test-verify-deployment.py
-node .github/scripts/test-taxonomy-base-path.mjs
-bash -n .github/scripts/release.sh
-bash -n .github/scripts/install-helm.sh
-bash -n .github/scripts/download-embedding-model.sh
-bash -n deploy/helm/taxonomy/verify.sh
-python3 .github/scripts/check-release-delivery-contract.py
-python3 .github/scripts/check-delivery-hardening.py
-python3 .github/scripts/check-observability-performance-scope.py
-node .github/scripts/check-maven-build-cache.mjs
+# Regression callbacks and repository guard commands are owned by root Maven:
+# PythonContractTest, JavascriptContractTest and CoreDeliveryContractsTest.
+# No separate test runner may diverge from that JUnit inventory.
 
 current_version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
 if [[ "$current_version" == *-SNAPSHOT ]]; then

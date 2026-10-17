@@ -49,6 +49,20 @@ class SavedScopeExchangeTest {
         return controller;
     }
 
+    @org.junit.jupiter.api.Test
+    void followUpIdentitySurvivesScoreExportAndImportWithoutGrantingAuthority() throws Exception {
+        String operation = "10000000-0000-4000-8000-000000000001";
+        var body = Map.<String, Object>of("requirement", "requirement", "scores", Map.of("BP", 0d),
+                "provider", "DEMO.TIME-TRACKING-V1.R0",
+                "analysisOperationId", operation, "analysisProviderId", "DEMO.TIME-TRACKING-V1.R0");
+        var exported = controller().exportScores(body);
+        assertThat(exported.getStatusCode().value()).isEqualTo(200);
+        var imported = controller().importScores(mapper.writeValueAsString(exported.getBody()));
+        assertThat(imported.getStatusCode().value()).isEqualTo(200);
+        assertThat(imported.getBody()).containsEntry("analysisOperationId", operation)
+                .containsEntry("analysisProviderId", "DEMO.TIME-TRACKING-V1.R0");
+    }
+
     private SavedAnalysis evidence(int version) {
         var saved = service.buildExport("Manual or automatic requirement", Map.of("BP", 70d), Map.of(), "MOCK");
         saved.setVersion(version);

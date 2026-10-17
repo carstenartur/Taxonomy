@@ -257,6 +257,8 @@ public class ExportApiController {
         String provider = body.get("provider") instanceof String p
                 ? p : exportFacade.getActiveProviderName();
         SavedAnalysis exported = exportFacade.buildExport(requirement, scores, reasons, provider);
+        if (body.get("analysisOperationId") instanceof String id) exported.setAnalysisOperationId(id);
+        if (body.get("analysisProviderId") instanceof String id) exported.setAnalysisProviderId(id);
         // Legacy and mixed worker evidence can be partial without v3 coverage.
         if (body.get("analysisStatus") instanceof String analysisStatus) {
             exported.setAnalysisStatus(analysisStatus);
@@ -318,6 +320,8 @@ public class ExportApiController {
             result.put("scores", saved.getScores() != null ? saved.getScores() : Map.of());
             result.put("reasons", saved.getReasons() != null ? saved.getReasons() : Map.of());
             result.put("provider", saved.getProvider());
+            result.put("analysisOperationId", saved.getAnalysisOperationId());
+            result.put("analysisProviderId", saved.getAnalysisProviderId());
             result.put("warnings", warnings);
             result.put("analysisCoverage", saved.getAnalysisCoverage());
             result.put("analysisScope", saved.getAnalysisScope());

@@ -86,6 +86,10 @@ public class ProvisionalRelationStep implements ArchitecturePipelineStep {
             rv.setPropagatedRelevance(hyp.getConfidence());
             rv.setHopDistance(0);
             rv.setIncludedBecause("provisional (AI-suggested, not yet confirmed)");
+            rv.setOrigin(RelationOrigin.SUGGESTED_CANDIDATE);
+            rv.setConfidence(hyp.getConfidence());
+            rv.setDerivationReason(hyp.getReasoning());
+            rv.setPresenceReason("AI-suggested hypothesis; human approval not recorded");
             relationships.add(rv);
             addedProvisional = true;
         }

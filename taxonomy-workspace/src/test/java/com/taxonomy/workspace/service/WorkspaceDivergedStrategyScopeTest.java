@@ -63,7 +63,8 @@ class WorkspaceDivergedStrategyScopeTest {
             var portfolio = mock(WorkspacePortfolioGitPort.class);
             var semantic = mock(SemanticGitMergeService.class);
             var service = new GitNativeSyncIntegrationService(syncRows, rows, catalog, factory,
-                    semantic, portfolio, contexts, DIRECT);
+                    semantic, portfolio, contexts, DIRECT,
+                mock(RepositoryMembershipService.class, invocation -> true));
 
             assertDoesNotThrow(() -> service.resolveDiverged("selected-user", "work", strategy));
 

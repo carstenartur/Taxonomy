@@ -6,8 +6,14 @@ public record DiagramEdge(
     String targetId,
     String relationType,
     double relevance,
-    String relationCategory
+    String relationCategory,
+    DiagramRelationMetadata metadata
 ) {
+    public DiagramEdge(String id, String sourceId, String targetId, String relationType,
+                       double relevance, String relationCategory) {
+        this(id, sourceId, targetId, relationType, relevance, relationCategory, null);
+    }
+
     /**
      * Backward-compatible constructor that defaults relationCategory to "trace".
      */

@@ -66,7 +66,9 @@ public final class ArchitectureWordSectionRenderer {
                                                                 value(edge.relationType(), labels),
                                                                 value(
                                                                         edge.relationCategory(),
-                                                                        labels)))
+                                                                        labels)
+                                                                        + " · " + com.taxonomy.export.DiagramPresentation
+                                                                                .relationshipStatus(edge.metadata())))
                                         .toList());
                 writer.columnWidths(key, 12, 32, 32, 24);
             }
@@ -104,6 +106,8 @@ public final class ArchitectureWordSectionRenderer {
                         .toList());
         writer.heading(labels.relations(), 1, "architecture_relations");
         writer.caption(labels.relations(), false);
+        var metadataById = new HashMap<String, com.taxonomy.diagram.DiagramRelationMetadata>();
+        report.diagram().edges().forEach(edge -> metadataById.put(edge.id(), edge.metadata()));
         writer.table(
                 List.of(
                         labels.identifier(),
@@ -120,9 +124,18 @@ public final class ArchitectureWordSectionRenderer {
                                                 e.sourceId(),
                                                 e.targetId(),
                                                 value(e.type(), labels),
-                                                value(e.category(), labels),
+                                                value(e.category(), labels) + " · "
+                                                        + com.taxonomy.export.DiagramPresentation.relationshipStatus(metadataById.get(e.id())),
                                                 percentage(e.relevance())))
                         .toList());
+        if (report.diagram().edges().stream().anyMatch(edge -> edge.metadata() != null)) {
+            writer.heading(labels.german() ? "Beziehungsherkunft" : "Relationship provenance", 2, null);
+            for (var edge : report.diagram().edges()) {
+                if (edge.metadata() == null) continue;
+                writer.heading(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId(), 2, null);
+                com.taxonomy.export.DiagramPresentation.relationshipDetails(edge.metadata()).forEach(writer::paragraph);
+            }
+        }
         writer.heading(labels.provenance(), 1, "architecture_evidence");
         var e = report.evidence();
         writer.table(

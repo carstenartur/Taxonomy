@@ -115,7 +115,7 @@ public class LayeredDiagramLayoutService {
                         sourceX,
                         source.y() + source.height() / 2.0,
                         targetX,
-                        target.y() + target.height() / 2.0));
+                        target.y() + target.height() / 2.0, edge.metadata()));
             }
         }
 

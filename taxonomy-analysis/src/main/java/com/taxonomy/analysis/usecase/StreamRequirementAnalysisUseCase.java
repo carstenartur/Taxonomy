@@ -38,7 +38,8 @@ public class StreamRequirementAnalysisUseCase {
         }
         long startedNanos = System.nanoTime();
         Locale previousLocale = LocaleContextHolder.getLocale();
-        try {
+        try (var mockScope = "MOCK".equalsIgnoreCase(command.provider())
+                ? llmService.withProviderBinding("MOCK", null) : null) {
             applyRequestLocale(command.requestLocale());
             llmService.requireProviderAdmissible(command.provider(), false);
             applyProviderOverride(command.provider());
