@@ -29,9 +29,15 @@ test('streaming reconciliation does not require Object.hasOwn browser support', 
 function element(className = '') {
   const attributes = new Map();
   const listeners = new Map();
-  const el = { className, style: {}, children: [], textContent: '',
-    setAttribute(key, value) { attributes.set(key, String(value)); },
-    getAttribute(key) { return attributes.get(key) ?? null; },
+  const dataKey = key => key.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+  const el = { className, style: {}, dataset: {}, children: [], textContent: '',
+    setAttribute(key, value) {
+      attributes.set(key, String(value));
+      if (key.startsWith('data-')) this.dataset[dataKey(key)] = String(value);
+    },
+    getAttribute(key) {
+      return key.startsWith('data-') ? this.dataset[dataKey(key)] ?? null : attributes.get(key) ?? null;
+    },
     appendChild(child) { child.parent = this; this.children.push(child); },
     insertBefore(child, before) {
       child.parent = this;
@@ -42,19 +48,14 @@ function element(className = '') {
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); },
     addEventListener(name, listener) { (listeners.get(name) || listeners.set(name, []).get(name)).push(listener); },
     emit(name) { (listeners.get(name) || []).forEach(listener => listener({ target: this })); },
-    querySelector(selector) {
-      const className = selector.startsWith('.') ? selector.slice(1) : null;
-      if (!className) return null;
-      const visit = node => node.children.find(child =>
-        child.className.split(' ').includes(className)) || node.children.map(visit).find(Boolean);
-      return visit(this) || null;
-    },
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; },
     querySelectorAll(selector) {
-      const className = selector.startsWith('.') ? selector.slice(1) : null;
-      if (!className) return [];
+      const classes = selector.split(',').map(value => value.trim()).filter(value => value.startsWith('.'))
+        .map(value => value.slice(1));
+      if (!classes.length) return [];
       const result = [];
       const visit = node => node.children.forEach(child => {
-        if (child.className.split(' ').includes(className)) result.push(child);
+        if (classes.some(name => child.className.split(' ').includes(name))) result.push(child);
         visit(child);
       });
       visit(this); return result;
@@ -94,6 +95,9 @@ function harness(locale = 'en') {
     createElement: () => element(), createTextNode: value => ({ textContent: value }),
     querySelector(selector) { return nodes.get(selector.match(/data-(?:code|taxonomy-container)="([^"]+)"/)?.[1]) || null; },
     querySelectorAll(selector) {
+      if (selector === '#taxonomyTree [data-taxonomy-container]') {
+        return [...nodes.values()].filter(node => node.getAttribute('data-taxonomy-container'));
+      }
       assert.ok(['.tax-node[data-code]', '.tax-node[data-code], [data-taxonomy-container]'].includes(selector));
       return [...nodes.values()];
     }
@@ -121,6 +125,8 @@ function harness(locale = 'en') {
   const browse = window.TaxonomyBrowse;
   vm.runInContext(durationBrowseSource, context);
   browse.refreshAnalysisDuration = window.TaxonomyBrowse.refreshAnalysisDuration;
+  // Keep the real source-summary renderer at this module boundary, not a stubbed area badge.
+  browse.refreshContainerSummaries = window.TaxonomyBrowse.refreshContainerSummaries;
   window.TaxonomyBrowse = browse;
   vm.runInContext(source, context);
   vm.runInContext(viewsSource, context);
@@ -148,6 +154,8 @@ test('streaming keeps area relevance in the group heading without a catalogue-no
   const h = harness();
   const group = h.nodes.get('BP');
   group.setAttribute('data-taxonomy-container', 'BP');
+  group._taxonomyNode = { code: 'BP', taxonomyContainer: true, children: [] };
+  h.state.taxonomyData = [group._taxonomyNode];
   group.header.className = 'tax-container-heading';
   group.querySelector = selector => selector === ':scope > .tax-container-heading' ? group.header : null;
   h.score({BP: 80});
@@ -298,12 +306,26 @@ test('terminal unresolved-parent zero remains explicit and clears the provisiona
   assert.equal(h.state.currentScoreSemanticsWarnings.length, 1);
 });
 
-test('a zero product suitability remains visible and a normal zero removes an old badge', () => {
+test('explicit zero product suitability and normal relevance remain measured visible evidence', () => {
   const h = harness(); h.score({ [family]: 40, [product]: 0, BP: 75 }, { [product]: hint });
   assert.match(h.badge().textContent, /0%.*0\/100/);
   assert.equal(h.badge('BP').textContent, '75%');
   h.score({ BP: 0 });
+  assert.equal(h.badge('BP').textContent, '0%');
+  assert.match(h.aria('BP'), /Score: 0 percent/);
+  assert.equal(h.state.currentRawScores.BP, 0);
+  assert.equal(h.state.currentEffectiveScores.BP, 0);
+  assert.equal(h.nodes.get('BP').header.style.backgroundColor, '');
+});
+
+test('terminal missing relevance removes an old positive badge without fabricating measured zero', () => {
+  const h = harness(); h.score({ BP: 75 });
+  assert.equal(h.badge('BP').textContent, '75%');
+  h.send('complete', { totalScores: {}, rawScores: {}, status: 'SUCCESS' });
   assert.equal(h.badge('BP'), null);
+  assert.doesNotMatch(h.aria('BP'), /Score: 0 percent/);
+  assert.equal(Object.prototype.hasOwnProperty.call(h.state.currentRawScores, 'BP'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(h.state.currentScores, 'BP'), false);
   assert.equal(h.nodes.get('BP').header.style.backgroundColor, '');
 });
 
@@ -413,6 +435,7 @@ function interactiveHarness(response) {
   const classes = new Set(['tax-has-unevaluated']);
   const children = { style: { display: 'none' }, dataset: { renderState: 'ready' } };
   const wrapper = {
+    dataset: { taxonomyContainer: 'IP' }, isConnected: false,
     classList: { add: key => classes.add(key), remove: key => classes.delete(key) },
     querySelector: selector => selector === ':scope > .tax-children' ? children : null,
     setAttribute() {}

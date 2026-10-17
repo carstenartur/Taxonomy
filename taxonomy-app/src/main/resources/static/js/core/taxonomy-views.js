@@ -773,6 +773,304 @@
      * @param {Array}       data      - Array of root taxonomy nodes (each with `children`).
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
+    /** Wrap using the same measured font used by SVG. Even unbroken names remain complete. */
+    function decisionLines(text, measure, width) {
+        var lines = [], line = '';
+        String(text || '').split(/\s+/).forEach(function (word) {
+            var candidate = line ? line + ' ' + word : word;
+            if (measure(candidate) <= width) { line = candidate; return; }
+            if (line) { lines.push(line); line = ''; }
+            if (measure(word) <= width) { line = word; return; }
+            Array.from(word).forEach(function (character) {
+                if (measure(line + character) > width && line) { lines.push(line); line = character; }
+                else { line += character; }
+            });
+        });
+        if (line || !lines.length) { lines.push(line); }
+        return lines;
+    }
+
+    function decisionMeasure() {
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d');
+        context.font = 'bold 14px Arial, Helvetica, sans-serif';
+        return function (value) { return context.measureText(value).width; };
+    }
+
+    /**
+     * The hierarchy remains unchanged. Each subtree reserves all occupied node/label/action
+     * bounds; area captions and their wrapped lines occupy their own band above the subtree.
+     * Screen, fit and print all consume this one measured layout.
+     */
+    function layoutDecisionPanels(root, scores, areas, measure, captionAreas, metrics) {
+        metrics = metrics || {};
+        var textWidth = metrics.textWidth || 226;
+        var cardWidth = metrics.cardWidth || 262;
+        var columnPitch = metrics.columnPitch || 304;
+        var panels = [], byCode = {}, nodes = [], cursor = 16, width = 320;
+        (root.children || []).forEach(function (branch) {
+            var area = areas[branch.data.code] || branch.data;
+            var panel = byCode[area.code];
+            if (!panel) { panel = {area: area, roots: [], nodes: []}; byCode[area.code] = panel; panels.push(panel); }
+            panel.roots.push(branch);
+        });
+        (captionAreas || []).forEach(function (area) {
+            if (!byCode[area.code]) {
+                var panel = {area: area, roots: [], nodes: []};
+                byCode[area.code] = panel; panels.push(panel);
+            }
+        });
+        if (captionAreas) {
+            var order = captionAreas.map(function (area) { return area.code; });
+            panels.sort(function (a, b) { return order.indexOf(a.area.code) - order.indexOf(b.area.code); });
+        }
+        panels.forEach(function (panel) {
+            panel.top = cursor;
+            panel.lines = decisionLines(containerLabel(panel.area, scores), measure, 900);
+            panel.captionHeight = panel.lines.length * 20 + 24;
+            cursor += panel.captionHeight;
+            function size(node) {
+                var label = node.data.code + (node.data.name ? ' – ' + node.data.name : '');
+                if (hasScoreLabel(node.data.code, scores)) { label += ' · ' + scoreText(node.data.code, scores[node.data.code]); }
+                node.lines = decisionLines(label, measure, textWidth);
+                // Bold measurement conservatively bounds regular labels; action and stroke get their own padding.
+                node.contextHeight = node.parent && node.parent.data.code !== '__root__'
+                    ? Math.max(36, decisionLines(t('views.diagram.printParent', node.parent.data.code, 999999), measure, textWidth).length * 20 + 16) : 36;
+                node.nodeHeight = Math.max(48, node.lines.length * 20 + node.contextHeight);
+                node.subtreeHeight = Math.max(node.nodeHeight, (node.children || []).reduce(function (sum, child) { return sum + size(child) + 16; }, 0) - (node.children ? 16 : 0));
+                return node.subtreeHeight;
+            }
+            function place(node, top) {
+                node.y = 32 + (node.depth - 1) * columnPitch;
+                node.x = top + node.subtreeHeight / 2;
+                node.box = {left: node.y - 10, right: node.y + cardWidth - 10, top: node.x - node.nodeHeight / 2, bottom: node.x + node.nodeHeight / 2};
+                panel.nodes.push(node); nodes.push(node); width = Math.max(width, node.box.right + 16);
+                var childTop = top;
+                (node.children || []).forEach(function (child) { place(child, childTop); childTop += child.subtreeHeight + 16; });
+            }
+            panel.roots.forEach(function (branch) { size(branch); place(branch, cursor); cursor += branch.subtreeHeight + 16; });
+            panel.bottom = cursor;
+            panel.left = 16;
+            panel.right = Math.max(288, panel.lines.reduce(function (max, line) { return Math.max(max, measure(line)); }, 0) + 32,
+                panel.nodes.reduce(function (max, node) { return Math.max(max, node.box.right + 16); }, 0));
+            width = Math.max(width, panel.right);
+            cursor += 40;
+        });
+        var knownCodes = new Set(nodes.map(function (node) { return node.data.code; }));
+        var rankMap = {};
+        Object.keys(scores).filter(function (code) { return knownCodes.has(code) && Number.isFinite(scores[code]) && scores[code] > 0; })
+            .sort(function (a, b) { return scores[b] - scores[a]; }).slice(0, 3).forEach(function (code, index) { rankMap[code] = index + 1; });
+        return {panels: panels, nodes: nodes, width: width, height: cursor, scores: scores, rankMap: rankMap, measure: measure, textWidth: textWidth, columnsPerPage: metrics.columnsPerPage || 3};
+    }
+
+    function showDecisionReason(node, scores, trigger) {
+        hideTooltip();
+        var old = document.getElementById('decisionReasonDialog');
+        if (old) { old.remove(); }
+        var dialog = document.createElement('dialog');
+        dialog.id = 'decisionReasonDialog'; dialog.className = 'tax-reason-dialog';
+        dialog.setAttribute('aria-labelledby', 'decisionReasonTitle');
+        var heading = document.createElement('div'); heading.className = 'tax-reason-heading';
+        var title = document.createElement('h2'); title.id = 'decisionReasonTitle';
+        title.textContent = node.code + (node.name ? ' – ' + node.name : '');
+        var close = document.createElement('button'); close.type = 'button';
+        close.className = 'btn btn-sm btn-outline-secondary'; close.textContent = t('views.diagram.close');
+        close.addEventListener('click', function () { dialog.close(); });
+        heading.append(title, close); dialog.appendChild(heading);
+        if (hasScoreLabel(node.code, scores)) {
+            var score = document.createElement('p'); score.textContent = scoreText(node.code, scores[node.code]); dialog.appendChild(score);
+        }
+        var reasons = window.TaxonomyState && window.TaxonomyState.currentReasons || {};
+        [[t('views.diagram.catalogueDescription'), node.description || t('views.diagram.descriptionMissing')],
+            [t('views.diagram.analysisReason'), reasons[node.code] || t('views.diagram.reasonMissing')]].forEach(function (section) {
+            var label = document.createElement('h3'); label.className = 'h6'; label.textContent = section[0];
+            var content = document.createElement('p'); content.className = 'tax-reason-text'; content.textContent = section[1];
+            dialog.append(label, content);
+        });
+        dialog.addEventListener('close', function () { dialog.remove(); if (trigger && trigger.isConnected) { trigger.focus(); } }, {once: true});
+        document.body.appendChild(dialog); dialog.showModal();
+    }
+
+    function decisionSvgElement(doc, parent, tag, attributes, value) {
+        var element = doc.createElementNS('http://www.w3.org/2000/svg', tag);
+        Object.keys(attributes || {}).forEach(function (key) { element.setAttribute(key, attributes[key]); });
+        if (value !== undefined) { element.textContent = value; }
+        parent.appendChild(element); return element;
+    }
+
+    /** Each node fits one landscape page at 14px type, with its parent code as continuation context. */
+    function buildDecisionPrintPages(layout, doc) {
+        var pages = [];
+        layout.panels.forEach(function (panel) {
+            var batches = [];
+            var headerLines = panel.lines;
+            var rootLines = [];
+            panel.roots.forEach(function (root) {
+                rootLines = rootLines.concat(decisionLines(t('views.diagram.printRoots', root.data.code) + ' · ' + t('views.diagram.printContinue', 999999, 999999), layout.measure, 900));
+            });
+            // A short overview belongs in the page header; only extensive root lists
+            // need dedicated overview continuation sheets.
+            var inlineOverview = rootLines.length > 0 && rootLines.length <= 3;
+            var overviewHeight = inlineOverview ? (rootLines.length + 1) * 20 + 6 : 0;
+            var bandHeight = Math.max(160, 640 - (headerLines.length > 9 ? 62 : headerLines.length * 20 + 42) - overviewHeight);
+            var maxDepth = panel.nodes.reduce(function (max, node) { return Math.max(max, node.depth); }, 1);
+            for (var depth = 1; depth <= maxDepth; depth += layout.columnsPerPage) {
+                var candidates = panel.nodes.filter(function (node) { return node.depth >= depth && node.depth < depth + layout.columnsPerPage; })
+                    .sort(function (a, b) { return a.box.top - b.box.top; });
+                // A pathological long name can exceed a page by itself. Keep all its text
+                // on continuation fragments instead of scaling the entire taxonomy down.
+                candidates = candidates.reduce(function (result, node) {
+                    var lineLimit = Math.max(1, Math.floor((bandHeight - node.contextHeight) / 20));
+                    if (node.nodeHeight <= bandHeight) { result.push(node); return result; }
+                    for (var line = 0; line < node.lines.length; line += lineLimit) {
+                        var fragment = Object.assign({}, node);
+                        fragment.lines = node.lines.slice(line, line + lineLimit);
+                        fragment.nodeHeight = fragment.lines.length * 20 + node.contextHeight;
+                        fragment.fragment = line > 0;
+                        fragment.box = Object.assign({}, node.box, {top: node.box.top + line * 20, bottom: node.box.top + line * 20 + fragment.nodeHeight});
+                        fragment.x = fragment.box.top + fragment.nodeHeight / 2;
+                        result.push(fragment);
+                    }
+                    return result;
+                }, []);
+                // Fragment expansion changes the occupied ordering: a child's original
+                // top may precede its parent's later fragments. Re-sort the full set.
+                candidates.sort(function (a, b) { return a.box.top - b.box.top; });
+                var batch = [], top = 0, bottom = 0;
+                candidates.forEach(function (node) {
+                    var nextTop = batch.length ? Math.min(top, node.box.top) : node.box.top;
+                    if (batch.length && Math.max(bottom, node.box.bottom) - nextTop > bandHeight) { batches.push({nodes: batch, depth: depth, top: top, bottom: bottom}); batch = []; }
+                    if (!batch.length) { top = node.box.top; bottom = node.box.bottom; }
+                    batch.push(node); top = Math.min(top, node.box.top); bottom = Math.max(bottom, node.box.bottom);
+                });
+                if (batch.length) { batches.push({nodes: batch, depth: depth, top: top, bottom: bottom}); }
+            }
+            // Recorded area relevance is caption evidence, never a fabricated catalogue node.
+            if (!panel.nodes.length) { batches.push({nodes: [], depth: 1, top: 0, bottom: 0}); }
+            // Put root-bearing pages first; the overview and parent references identify
+            // exact continuation destinations without modifying the measured screen layout.
+            batches.sort(function (a, b) {
+                var aRoot = a.nodes.some(function (node) { return panel.roots.indexOf(node) >= 0 || panel.roots.some(function (root) { return root.data.code === node.data.code; }); });
+                var bRoot = b.nodes.some(function (node) { return panel.roots.indexOf(node) >= 0 || panel.roots.some(function (root) { return root.data.code === node.data.code; }); });
+                return Number(bRoot) - Number(aRoot) || a.depth - b.depth || a.top - b.top;
+            });
+            var overviewCount = inlineOverview ? 0 : Math.ceil(rootLines.length / 28);
+            var captionCount = headerLines.length > 9 ? Math.ceil(headerLines.length / 28) : 0;
+            var prefixPages = overviewCount + captionCount;
+            var totalPages = prefixPages + batches.length;
+            var nodePage = {};
+            batches.forEach(function (batch, index) { batch.nodes.forEach(function (node) { if (!nodePage[node.data.code]) { nodePage[node.data.code] = prefixPages + index + 1; } }); });
+            rootLines = [];
+            panel.roots.forEach(function (root) {
+                rootLines = rootLines.concat(decisionLines(t('views.diagram.printRoots', root.data.code) + ' · ' + t('views.diagram.printContinue', nodePage[root.data.code], totalPages), layout.measure, 900));
+            });
+            for (var overview = 0; overview < overviewCount; overview++) {
+                var overviewPage = doc.createElement('section'); overviewPage.className = 'decision-print-page';
+                overviewPage.setAttribute('data-taxonomy-panel', panel.area.code);
+                var overviewHeading = doc.createElement('h2');
+                overviewHeading.textContent = panel.area.code + ' · ' + t('views.diagram.printOverview') + ' · ' + t('views.diagram.printContinue', overview + 1, totalPages);
+                overviewPage.appendChild(overviewHeading);
+                var overviewSvg = decisionSvgElement(doc, overviewPage, 'svg', {viewBox: '0 0 960 600', width: 960, height: 600});
+                rootLines.slice(overview * 28, (overview + 1) * 28).forEach(function (line, index) {
+                    decisionSvgElement(doc, overviewSvg, 'text', {x: 12, y: 20 + index * 20, fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+                });
+                doc.body.appendChild(overviewPage); pages.push(overviewPage);
+            }
+            if (headerLines.length > 9) {
+                for (var captionLine = 0; captionLine < headerLines.length; captionLine += 28) {
+                    var captionPage = doc.createElement('section'); captionPage.className = 'decision-print-page';
+                    captionPage.setAttribute('data-taxonomy-panel', panel.area.code);
+                    var captionTitle = doc.createElement('h2'); captionTitle.textContent = panel.area.code + ' · ' + t('views.diagram.printContinue', overviewCount + Math.floor(captionLine / 28) + 1, totalPages);
+                    captionPage.appendChild(captionTitle);
+                    var captionSvg = decisionSvgElement(doc, captionPage, 'svg', {viewBox: '0 0 960 600', width: 960, height: 600});
+                    headerLines.slice(captionLine, captionLine + 28).forEach(function (line, index) {
+                        decisionSvgElement(doc, captionSvg, 'text', {x: 12, y: 20 + index * 20, fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+                    });
+                    doc.body.appendChild(captionPage); pages.push(captionPage);
+                }
+            }
+            batches.forEach(function (batch, index) {
+                var page = doc.createElement('section'); page.className = 'decision-print-page';
+                page.setAttribute('data-taxonomy-panel', panel.area.code);
+                var heading = doc.createElement('h2'); heading.textContent = headerLines.length > 9 ? panel.area.code : containerLabel(panel.area, layout.scores);
+                // Very long area headings wrap in a bounded header, rather than consuming the diagram page.
+                heading.style.cssText = 'font-size:14px;line-height:20px;max-width:900px;margin:0 0 6px;overflow-wrap:anywhere';
+                page.appendChild(heading);
+                var continuation = doc.createElement('p'); continuation.textContent = t('views.diagram.printContinue', prefixPages + index + 1, totalPages) + (batch.nodes.length ? ' · ' + t('views.diagram.printContext') : '');
+                continuation.style.cssText = 'font-size:14px;line-height:20px;margin:0 0 8px'; page.appendChild(continuation);
+                if (inlineOverview) {
+                    var rootOverview = doc.createElement('p');
+                    rootOverview.style.cssText = 'font-size:14px;line-height:20px;white-space:pre-wrap;max-width:900px;margin:0 0 6px';
+                    rootOverview.textContent = t('views.diagram.printOverview') + '\n' + rootLines.join('\n');
+                    page.appendChild(rootOverview);
+                }
+                var offsetX = batch.nodes.length ? 16 - Math.min.apply(null, batch.nodes.map(function (node) { return node.box.left; })) : 16, offsetY = 12 - batch.top;
+                var pageWidth = batch.nodes.length ? Math.max(280, Math.max.apply(null, batch.nodes.map(function (node) { return node.box.right + offsetX + 12; }))) : 960;
+                var pageHeight = batch.bottom - batch.top + 24;
+                var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 ' + pageWidth + ' ' + pageHeight,
+                    width: pageWidth, height: pageHeight, role: 'img', 'aria-label': heading.textContent});
+                var included = new Set(batch.nodes);
+                batch.nodes.forEach(function (node) {
+                    if (included.has(node.parent)) {
+                        decisionSvgElement(doc, svg, 'path', {d: 'M' + (node.parent.box.right + offsetX) + ',' + (node.parent.x + offsetY) + 'H' + (node.y - 10 + offsetX) + 'V' + (node.x + offsetY),
+                            fill: 'none', stroke: '#64748b', 'stroke-width': decisionPrintLinkWidth(node, layout.scores, layout.rankMap)});
+                    } else if (node.parent && node.parent.data.code !== '__root__') {
+                        // A continued edge keeps its original weight beside the page reference.
+                        decisionSvgElement(doc, svg, 'path', {d: 'M' + (node.y + offsetX - 20) + ',' + (node.x + offsetY) + 'H' + (node.y + offsetX - 10),
+                            'data-parent-page': nodePage[node.parent.data.code], fill: 'none', stroke: '#64748b',
+                            'stroke-width': decisionPrintLinkWidth(node, layout.scores, layout.rankMap)});
+                    }
+                });
+                batch.nodes.forEach(function (node) {
+                    var box = {left: node.box.left + offsetX, right: node.box.right + offsetX, top: node.box.top + offsetY, bottom: node.box.bottom + offsetY};
+                    var group = decisionSvgElement(doc, svg, 'g', {'data-print-node': node.fragment ? '' : node.data.code, 'data-print-fragment': node.data.code, 'data-occupied-bounds': JSON.stringify(box)});
+                    decisionSvgElement(doc, group, 'rect', {class: 'decision-print-card', x: box.left + 1, y: box.top + 1,
+                        width: box.right - box.left - 2, height: box.bottom - box.top - 2, rx: 6, fill: '#FFFFFF', stroke: '#334155', 'stroke-width': 2});
+                    decisionSvgElement(doc, group, 'circle', {cx: node.y + offsetX, cy: node.x + offsetY, r: 7, fill: '#fff', stroke: '#334155', 'stroke-width': 1.5});
+                    node.lines.forEach(function (line, lineIndex) {
+                        decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.top + 16 + lineIndex * 20, fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+                    });
+                    if (node.parent && node.parent.data.code !== '__root__') {
+                        decisionLines(t('views.diagram.printParent', node.parent.data.code, nodePage[node.parent.data.code]), layout.measure, layout.textWidth).forEach(function (line, index) {
+                            decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.bottom - node.contextHeight + 20 + index * 20, fill: '#334155', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+                        });
+                    }
+                });
+                doc.body.appendChild(page); pages.push(page);
+            });
+        });
+        return pages;
+    }
+
+    function decisionPrintLinkWidth(node, scores, rankMap) {
+        if (rankMap[node.data.code]) { return 4; }
+        var value = scores[node.data.code] || 0;
+        return value > 0 ? Math.max(2, Math.min(4, 2 + value / 50)) : 1;
+    }
+
+    function printDecisionDiagram(layout, container) {
+        // Open synchronously in the user gesture so normal popup policies can allow it.
+        var popup = window.open('', '_blank');
+        if (!popup) {
+            var message = container.querySelector('.decision-print-status');
+            if (!message) { message = document.createElement('p'); message.className = 'decision-print-status'; message.setAttribute('role', 'status'); container.appendChild(message); }
+            message.textContent = t('views.diagram.printBlocked'); return;
+        }
+        var doc = popup.document;
+        doc.documentElement.lang = document.documentElement.lang || 'en';
+        var charset = doc.createElement('meta'); charset.setAttribute('charset', 'utf-8');
+        doc.head.appendChild(charset);
+        doc.title = t('views.diagram.printTitle');
+        var style = doc.createElement('style');
+        style.textContent = '@page{size:A4 landscape;margin:10mm}html,body{margin:0;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif}.decision-print-page{box-sizing:border-box;width:1040px;break-after:page;page-break-after:always;padding:0}.decision-print-page:last-child{break-after:auto;page-break-after:auto}.decision-print-page svg{display:block;max-width:100%;height:auto}h2{font-weight:600}@media screen{body{padding:20px}.decision-print-page{border-bottom:1px solid #ccc;margin-bottom:24px}}';
+        doc.head.appendChild(style);
+        buildDecisionPrintPages(layout, doc);
+        popup.addEventListener('afterprint', function () { popup.close(); }, {once: true});
+        popup.focus();
+        // Let the new DOM and fonts settle; cancellation affects only this disposable window.
+        popup.requestAnimationFrame(function () { popup.requestAnimationFrame(function () { if (!popup.closed) { popup.print(); } }); });
+    }
+
     function renderDecisionMap(container, data, scores) {
         rememberDiagramFocus(container);
         container.removeAttribute('data-view-rendered');
@@ -864,11 +1162,12 @@
             return result;
         }
         var filteredData = data.map(filterToHot).filter(Boolean);
-        appendContainerHeadings(container, data.filter(function (node) {
-            return hotSet.has(node.code) || (isTaxonomyContainer(node) && scores[node.code] > 0);
-        }), scores);
+        var visibleAreas = data.filter(function (area) {
+            return hotSet.has(area.code) || (isTaxonomyContainer(area) && Number.isFinite(scores[area.code]) && scores[area.code] > 0);
+        });
 
-        if (filteredData.length === 0) {
+        if (filteredData.length === 0 && visibleAreas.length === 0) {
+            appendContainerHeadings(container, data, scores);
             renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
             container.setAttribute('data-view-rendered', 'decision');
             return;
@@ -885,7 +1184,20 @@
         var rootData = { code: '__root__', name: '', children: contentRoots(filteredData) };
         var root = d3.hierarchy(rootData);
 
-        var treeLayout = d3.tree().nodeSize([28, 280]);
+        var panelAreas = {};
+        filteredData.forEach(function (area) {
+            if (isTaxonomyContainer(area)) {
+                (area.children || []).forEach(function (branch) { panelAreas[branch.code] = area; });
+            } else { panelAreas[area.code] = area; }
+        });
+        var measureDecisionText = decisionMeasure();
+        var decisionLayout;
+        // This full hierarchy is independent of screen collapse, node coordinates and zoom.
+        var printRoot = d3.hierarchy(rootData);
+        // Reflow print cards at the same measured 14px type: four ordinary levels
+        // fit landscape paper without changing screen dimensions or scaling text.
+        var printLayout = layoutDecisionPanels(printRoot, scores, panelAreas, measureDecisionText, visibleAreas,
+            {textWidth: 174, cardWidth: 210, columnPitch: 240, columnsPerPage: 4});
         var containerWidth = container.clientWidth || 800;
 
         var svgWrapper = document.createElement('div');
@@ -904,6 +1216,12 @@
             .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); });
         svg.call(decisionZoom);
         installDiagramZoomControls(container, svg.node(), svg, decisionZoom, function () { return zoomLayer.node().getBBox(); });
+        var printButton = document.createElement('button'); printButton.type = 'button';
+        printButton.className = 'btn btn-sm btn-outline-secondary';
+        printButton.textContent = t('views.diagram.print');
+        printButton.addEventListener('click', function () { printDecisionDiagram(printLayout, container); });
+        var toolbar = container.querySelector('.tax-diagram-controls');
+        toolbar.insertBefore(printButton, toolbar.querySelector('.tax-diagram-hint'));
         var decisionNavigation = createDiagramNavigation(container, svg.node(), {
             scores: scores, activate: function (node) { toggleDiagramBranch(node, dmUpdate); }
         });
@@ -962,21 +1280,22 @@
         function dmUpdate(source) {
             container.removeAttribute('data-transitions-complete');
             var currentToken = ++dmUpdateToken;
-            treeLayout(root);
-            var nodes = root.descendants();
+            decisionLayout = layoutDecisionPanels(root, scores, panelAreas, measureDecisionText, visibleAreas);
+            var nodes = decisionLayout.nodes;
             var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
-
-            var xMin = Infinity, xMax = -Infinity, yMax = 0;
-            nodes.forEach(function (d) {
-                if (d.x < xMin) { xMin = d.x; }
-                if (d.x > xMax) { xMax = d.x; }
-                if (d.y > yMax) { yMax = d.y; }
-            });
-
-            var svgW = Math.max(containerWidth, yMax + marginLeft + marginRight);
-            var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
-            svg.attr('width', svgW).attr('height', svgH);
-            g.attr('transform', 'translate(' + marginLeft + ',' + (marginTop - xMin) + ')');
+            svg.attr('width', Math.max(containerWidth, decisionLayout.width)).attr('height', Math.max(400, decisionLayout.height));
+            g.attr('transform', 'translate(0,0)');
+            var captions = g.selectAll('text.dm-area-caption').data(decisionLayout.panels, function (panel) { return panel.area.code; });
+            captions.exit().remove();
+            captions.enter().append('text').attr('class', 'dm-area-caption').merge(captions)
+                .attr('data-taxonomy-container', function (panel) { return panel.area.code; })
+                .attr('x', 16).attr('y', function (panel) { return panel.top + 16; })
+                .style('font-family', 'Arial, Helvetica, sans-serif').style('font-size', '14px')
+                .style('fill', dmTheme('--decision-map-text', '#1F2937'))
+                .each(function (panel) {
+                    var caption = d3.select(this); caption.selectAll('tspan').remove();
+                    panel.lines.forEach(function (line, index) { caption.append('tspan').attr('x', 16).attr('dy', index ? 20 : 0).text(line); });
+                });
 
             var sourceX = source.x0 !== undefined ? source.x0 : (source.x || 0);
             var sourceY = source.y0 !== undefined ? source.y0 : (source.y || 0);
@@ -990,22 +1309,52 @@
                 .attr('transform', 'translate(' + sourceY + ',' + sourceX + ')')
                 .style('opacity', 0);
 
-            nodeEnter.append('circle').attr('r', 7).attr('stroke-width', 1.5);
+            // Expansion and saved rationale are independent controls. Keep their
+            // common positioned group neutral so assistive technology exposes both.
+            var nodeControl = nodeEnter.append('g').attr('class', 'dm-node-control');
 
-            nodeEnter.append('text')
+            // A visible card occupies the measured boundary, so links clearly attach
+            // to their parent while staying outside wrapped labels and action targets.
+            nodeControl.append('rect').attr('class', 'dm-card').attr('rx', 6).attr('stroke-width', 2);
+            nodeControl.append('circle').attr('r', 7).attr('stroke-width', 1.5);
+
+            nodeControl.append('text')
                 .attr('class', 'dm-label')
                 .attr('dy', '0.31em')
-                .style('font-size', '12px')
+                .style('font-size', '14px')
+                .style('font-family', 'Arial, Helvetica, sans-serif')
                 .style('user-select', 'none');
 
-            nodeEnter.append('text')
+            nodeControl.append('text')
                 .attr('class', 'dm-rank')
                 .attr('dy', '-0.7em')
                 .attr('text-anchor', 'middle')
                 .style('font-size', '13px')
                 .style('pointer-events', 'none');
 
-            nodeEnter.filter(function (d) { return d.data.code !== '__root__'; })
+            nodeEnter.filter(function (d) { return Number.isFinite(scores[d.data.code]); })
+                .append('g').attr('class', 'dm-reason-action').attr('role', 'button').attr('tabindex', '0')
+                .attr('aria-haspopup', 'dialog')
+                .attr('aria-label', function (d) { return t('views.diagram.rationaleFor', d.data.code + ' ' + (d.data.name || '')); })
+                .style('cursor', 'pointer')
+                .on('focus', function () { d3.select(this).select('rect').attr('stroke', dmTheme('--decision-score-stroke', '#1D4ED8')).attr('stroke-width', 2); })
+                .on('blur', function () { d3.select(this).select('rect').attr('stroke', 'none'); })
+                .on('click', function (event, d) { event.stopPropagation(); showDecisionReason(d.data, scores, this); })
+                .on('keydown', function (event, d) {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault(); event.stopPropagation();
+                        if (!event.repeat) { showDecisionReason(d.data, scores, this); }
+                    }
+                })
+                .each(function () {
+                    var action = d3.select(this);
+                    action.append('rect').attr('x', 8).attr('y', -20).attr('width', 238).attr('height', 26).attr('fill', 'transparent');
+                    action.append('text').attr('x', 12).style('font-size', '14px').style('font-family', 'Arial, Helvetica, sans-serif')
+                        .style('text-decoration', 'underline').style('fill', dmTheme('--decision-score-stroke', '#1D4ED8'))
+                        .text(t('views.diagram.rationale'));
+                });
+
+            nodeControl.filter(function (d) { return d.data.code !== '__root__'; })
                 .style('cursor', 'pointer')
                 .on('click', function (event, d) {
                     event.stopPropagation();
@@ -1016,29 +1365,32 @@
                 .on('mouseleave', hideTooltip);
 
             var nodeUpdate = nodeEnter.merge(node);
-            decisionNavigation.update(diagramEntries(nodeUpdate));
+            decisionNavigation.update(diagramEntries(nodeUpdate.select('.dm-node-control')));
 
             var nodeT = nodeUpdate.transition().duration(300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
+
+            nodeUpdate.select('.dm-card')
+                .attr('x', -9).attr('y', function (d) { return -d.nodeHeight / 2 + 1; })
+                .attr('width', 260).attr('height', function (d) { return d.nodeHeight - 2; })
+                .attr('fill', 'var(--bs-body-bg, #FFFFFF)').attr('stroke', dmNodeStroke);
 
             nodeUpdate.select('circle')
                 .attr('fill', dmNodeFill)
                 .attr('stroke', dmNodeStroke);
 
             nodeUpdate.select('.dm-label')
-                .text(function (d) {
-                    if (d.data.code === '__root__') { return ''; }
-                    var name = nameMap[d.data.code];
-                    var label = name ? (d.data.code + ' \u2013 ' + name) : d.data.code;
-                    var pct = scores[d.data.code];
-                    if (hasScoreLabel(d.data.code, scores)) { label += ' ' + scoreText(d.data.code, pct); }
-                    return label;
-                })
-                .attr('x', function (d) { return (d.children || d._children) ? -10 : 10; })
-                .attr('text-anchor', function (d) { return (d.children || d._children) ? 'end' : 'start'; })
+                .attr('x', 12).attr('y', function (d) { return -d.nodeHeight / 2 + 18; }).attr('dy', 0)
+                .attr('text-anchor', 'start')
                 .style('fill', function () { return dmTheme('--decision-map-text', '#1F2937'); })
-                .style('font-weight', function (d) { return rankMap[d.data.code] ? '700' : '400'; });
+                .style('font-weight', '400')
+                .each(function (d) {
+                    var label = d3.select(this); label.selectAll('tspan').remove();
+                    d.lines.forEach(function (line, index) { label.append('tspan').attr('x', 12).attr('dy', index ? 20 : 0).text(line); });
+                });
+            nodeUpdate.select('.dm-reason-action')
+                .attr('transform', function (d) { return 'translate(0,' + (d.nodeHeight / 2 - 8) + ')'; });
 
             nodeUpdate.select('.dm-rank')
                 .text(function (d) {
@@ -1052,9 +1404,11 @@
                 .remove();
 
             // ── Links ──────────────────────────────────
-            var diag = d3.linkHorizontal()
-                .x(function (d) { return d.y; })
-                .y(function (d) { return d.x; });
+            var curve = d3.linkHorizontal().x(function (d) { return d.y; }).y(function (d) { return d.x; });
+            var diag = function (link) {
+                return curve({source: {x: link.source.x, y: link.source.box ? link.source.box.right : link.source.y},
+                    target: {x: link.target.x, y: link.target.box ? link.target.y - 10 : link.target.y}});
+            };
 
             var link = g.selectAll('path.dm-link')
                 .data(links, function (d) { return d.target.id; });

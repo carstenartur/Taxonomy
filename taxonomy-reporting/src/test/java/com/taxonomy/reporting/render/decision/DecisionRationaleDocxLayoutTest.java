@@ -13,6 +13,46 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class DecisionRationaleDocxLayoutTest {
     @Test
+    void overviewIncludesEveryRootAndLinksToCompleteReasonsEvenWithoutAppendix() throws Exception {
+        var base = DecisionCompactReportTest.report(com.taxonomy.reporting.api.decision.DecisionReportOptions.TreeLayout.AUTO, 4);
+        var rows = new java.util.ArrayList<>(base.scope().decisionTree().rows());
+        rows.add(new com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow(0, "BP", "Business processes", 0d, Disposition.REJECTED, null, null));
+        rows.add(new com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow(0, "BR", "Business roles", null, Disposition.NOT_EVALUATED, null, null));
+        rows.add(new com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow(0, "IP", "Information products", 80d, Disposition.CONTINUED, null, null));
+        rows.add(new com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow(1, "IP-A", "First tied result", 40d, Disposition.LEAF_CANDIDATE, null, null));
+        rows.add(new com.taxonomy.reporting.api.document.DecisionTreeOverview.DecisionTreeRow(1, "IP-B", "Second tied result", 40d, Disposition.LEAF_CANDIDATE, null, null));
+        String reason = "Saved original evidence. ".repeat(40) + "UNABRIDGED-END";
+        var options = new com.taxonomy.reporting.api.decision.DecisionReportOptions(
+                com.taxonomy.reporting.api.decision.DecisionReportOptions.Profile.STANDARD, null, com.taxonomy.reporting.api.decision.DecisionReportOptions.Contents.NONE, null, null);
+        var scope = new com.taxonomy.reporting.api.decision.DecisionReportScope(null, null, java.util.List.of(),
+                new java.util.LinkedHashSet<>(java.util.List.of("CP", "BP", "BR", "IP")), java.util.Set.of(),
+                new com.taxonomy.reporting.api.document.DecisionTreeOverview(rows, java.util.List.of()), options, false, false)
+                .withRecordedReasons(java.util.Map.of("BP", "No matching business process.", "IP-A", reason, "IP-B", "Equal recorded relevance."));
+        byte[] bytes = new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()).render(base.withScope(scope));
+        var directory = java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/decision-reading-qa"));
+        java.nio.file.Files.write(directory.resolve("decision-multi-root.docx"), bytes);
+        try (var doc = new XWPFDocument(new java.io.ByteArrayInputStream(bytes))) {
+            String text = new XWPFWordExtractor(doc).getText();
+            assertThat(text).contains("Results by taxonomy", "Business processes", "Business roles", "Information products",
+                    "0%", "Not evaluated", "2 tied", "UNABRIDGED-END", "not a statistical probability", "Back to root tree");
+            var overview = doc.getTables().stream().filter(t -> t.getRow(0).getCell(0).getText().equals("Taxonomy")).findFirst().orElseThrow();
+            assertThat(overview.getRows()).hasSize(5);
+            assertThat(overview.getText()).contains("Business roles", "IP → IP-A", "2 tied");
+            var treeHeading = doc.getParagraphs().stream().filter(p -> p.getText().startsWith(new DecisionReportLabels("en").treeOverview())
+                    && "Heading1".equals(p.getStyle())).findFirst().orElseThrow();
+            assertThat(doc.getBodyElements().indexOf(overview)).isLessThan(doc.getBodyElements().indexOf(treeHeading));
+            var xml = doc.getDocument();
+            String namespace = "declare namespace w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'; ";
+            var bookmarks = java.util.Arrays.stream(xml.selectPath(namespace + ".//w:bookmarkStart"))
+                    .map(n -> n.getDomNode().getAttributes().getNamedItemNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "name").getNodeValue()).toList();
+            assertThat(bookmarks).doesNotHaveDuplicates();
+            var links = java.util.Arrays.stream(xml.selectPath(namespace + ".//w:hyperlink"))
+                    .map(n -> n.getDomNode().getAttributes().getNamedItemNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "anchor").getNodeValue()).toList();
+            assertThat(links).isNotEmpty().allSatisfy(anchor -> assertThat(bookmarks).contains(anchor));
+        }
+    }
+
+    @Test
     void alternativesKeepDistinctScoresAndSourcesButShareFullWidthRationales() throws Exception {
         String reason = "This alternative is outside the scenario subscription boundary. "
                 + "Published warnings must retain their source, observation time and geographic area.";
@@ -35,8 +75,9 @@ class DecisionRationaleDocxLayoutTest {
                     .writeReportBody(document, report, new DecisionReportLabels("en"));
             String text = new XWPFWordExtractor(document).getText();
             assertThat(document.getDocument().xmlText()).contains("Heading1", "TOC ", "decision_chapter_1_BP", "SEQ Figure");
-            assertThat(document.getTables().stream().flatMap(t -> t.getRows().stream()).flatMap(r -> r.getTableCells().stream())
-                    .flatMap(c -> c.getParagraphs().stream()).flatMap(p -> p.getCTP().getHyperlinkList().stream()).map(h -> h.getAnchor()))
+            assertThat(java.util.stream.Stream.concat(document.getParagraphs().stream(),
+                    document.getTables().stream().flatMap(t -> t.getRows().stream()).flatMap(r -> r.getTableCells().stream())
+                            .flatMap(c -> c.getParagraphs().stream())).flatMap(p -> p.getCTP().getHyperlinkList().stream()).map(h -> h.getAnchor()))
                     .contains("decision_chapter_1_BP");
             assertThat(document.getSettings().getCTSettings().xmlText()).contains("updateFields");
             assertThat(text).contains("BP-A", "BP-B", "BP-C", "BP-D", "100 %", "0 %", "Not evaluated");

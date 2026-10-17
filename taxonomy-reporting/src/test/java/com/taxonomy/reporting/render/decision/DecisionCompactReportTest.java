@@ -28,7 +28,7 @@ class DecisionCompactReportTest {
         try (var doc = new XWPFDocument(new ByteArrayInputStream(bytes))) {
             String text = new XWPFWordExtractor(doc).getText();
             assertThat(text).contains("snapshot", "CP", new DecisionReportLabels("en").finalStatus(), report.requirement())
-                    .doesNotContain(new DecisionReportLabels("en").appendix());
+                    .doesNotContain(new DecisionReportLabels("en").appendix(), "Recorded node reasons", "Full original reason");
             assertThat(doc.getDocument().xmlText()).contains("landscape", "1-1");
             assertThat(doc.getAllPictures()).hasSize(1);
             assertThat(doc.getDocument().getBody().getSectPr().getPgSz().getOrient().toString()).isEqualTo("landscape");
@@ -54,7 +54,7 @@ class DecisionCompactReportTest {
         assertThat(panels).hasSizeGreaterThan(1);
         assertThat(panels.stream().flatMap(p -> p.nodeCodes().stream()).toList())
                 .containsExactlyElementsOf(report.scope().decisionTree().rows().stream().map(DecisionTreeOverview.DecisionTreeRow::code).toList());
-        assertThat(panels).allSatisfy(p -> { assertThat(p.fontSize()).isGreaterThanOrEqualTo(8); assertThat(p.png()).isNotEmpty(); });
+        assertThat(panels).allSatisfy(p -> { assertThat(p.fontSize()).isGreaterThanOrEqualTo(10); assertThat(p.png()).isNotEmpty(); });
         assertThat(panels.stream().map(DecisionTreeFigureRenderer.Panel::svg).reduce("", String::concat))
                 .contains("Überprüfung", "Ω", "nicht");
     }
@@ -68,12 +68,49 @@ class DecisionCompactReportTest {
         assertThat(String.join("\n", DecisionReportPresentation.compactReasons(base.withScope(scope))))
                 .contains("Capability reason.", "No business-process match.", new DecisionReportLabels("en").aiReason());
     }
+    @Test void chapterFiguresUseFullLabelsAtTenPrintedPointsAndProportionalRelevanceBars() throws Exception {
+        var rows = List.of(
+                new DecisionTreeOverview.DecisionTreeRow(0, "R", "Root", 100d, Disposition.CONTINUED, null, null),
+                new DecisionTreeOverview.DecisionTreeRow(1, "R-A", "A long complete label ".repeat(12) + "LABEL-END", 25d, Disposition.LEAF_CANDIDATE, null, null),
+                new DecisionTreeOverview.DecisionTreeRow(1, "R-B", "Second alternative", 75d, Disposition.LEAF_CANDIDATE, null, null));
+        var panels = new DecisionTreeFigureRenderer().renderChapter(new DecisionTreeOverview(rows, List.of()), "en", 440);
+        String svg = panels.stream().map(DecisionTreeFigureRenderer.Panel::svg).reduce("", String::concat);
+        assertThat(svg).contains("LABEL-END", "relevance-bar", "25%", "75%");
+        var bars = java.util.regex.Pattern.compile("class=\"relevance-bar\"[^>]*width=\"(\\d+)\"").matcher(svg);
+        var widths = new java.util.ArrayList<Integer>();
+        while (bars.find()) widths.add(Integer.parseInt(bars.group(1)));
+        assertThat(widths).hasSize(3);
+        assertThat((double) widths.get(2) / widths.get(1)).isBetween(2.9, 3.1);
+        assertThat(panels).allSatisfy(panel -> assertThat(panel.fontSize()).isEqualTo(10));
+        try (var doc = new XWPFDocument()) {
+            var writer = new WordDocumentWriter(doc, new DecisionReportLabels("en"));
+            for (var panel : panels) {
+                writer.decisionPicture(panel.png(), "chapter", "Chapter", panel.description(), panel.width(), panel.height());
+                var picture = doc.getParagraphs().getLast().getRuns().getFirst().getCTR().getDrawingArray(0).getInlineArray(0);
+                double printedWidth = picture.getExtent().getCx() / 12700d;
+                var raster = javax.imageio.ImageIO.read(new ByteArrayInputStream(panel.png()));
+                assertThat(20d * printedWidth / raster.getWidth()).isGreaterThanOrEqualTo(10d);
+            }
+        }
+    }
     @Test void autoChoosesA3BeforeSplittingAMediumTree() {
         var panels = new DecisionTreeFigureRenderer().render(report(DecisionReportOptions.TreeLayout.AUTO, 20)
                 .scope().decisionTree(), "en", DecisionReportOptions.TreeLayout.AUTO);
         assertThat(panels).hasSize(1);
         assertThat(panels.getFirst().a3()).isTrue();
         assertThat(panels.getFirst().nodeCodes()).hasSize(20);
+    }
+    @Test void autoKeepsReadableA3ContinuationPagesForLongTrees() {
+        var tree = report(DecisionReportOptions.TreeLayout.AUTO, 65).scope().decisionTree();
+        var panels = new DecisionTreeFigureRenderer().render(tree, "en", DecisionReportOptions.TreeLayout.AUTO);
+        assertThat(panels.size()).isBetween(2, 4);
+        assertThat(panels).allSatisfy(panel -> {
+            assertThat(panel.a3()).as("long trees retain the larger continuation format").isTrue();
+            assertThat(panel.height()).isLessThanOrEqualTo(640);
+            assertThat(panel.fontSize()).isEqualTo(10);
+        });
+        assertThat(panels.stream().flatMap(panel -> panel.nodeCodes().stream()).toList())
+                .containsExactlyElementsOf(tree.rows().stream().map(DecisionTreeOverview.DecisionTreeRow::code).toList());
     }
     @Test void strictSinglePageExplainsWhenTheWholeTreeCannotFit() {
         assertThatThrownBy(() -> new DecisionTreeFigureRenderer().render(report(DecisionReportOptions.TreeLayout.AUTO, 65)

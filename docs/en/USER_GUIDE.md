@@ -303,13 +303,18 @@ The fully expanded tree shows scores at every level, making it easy to identify 
 
 ### Interactive Mode
 
-Tick the **Interactive Mode** checkbox before clicking **Analyze with AI** to use level-by-level exploration instead of launching an automatic hierarchical run over the selected scope.
+A new working state starts with the complete hierarchical analysis of the selected scope. You do not need to open individual taxonomies to begin their assessment. An explicitly saved preference for interactive mode remains effective.
+
+Each taxonomy heading shows its recorded area relevance as a number and colour. It also summarizes assessed entries, positive matches and their highest relevance, including entries in collapsed branches. Missing area assessments and unassessed entries are identified explicitly. Result updates retain manually opened or closed branches and the selected tab.
+
+Tick **Interactive Mode** before starting an analysis when you want to control assessment level by level.
 
 In Interactive Mode:
-- Only the top-level nodes are scored first.
-- A **▶ Analyze Node** button appears next to each top-level node.
-- Click **▶ Analyze Node** on a node to score its children.
-- Continue expanding the tree level by level.
+
+- Areas awaiting their first assessment are labelled accordingly.
+- Open a taxonomy to assess its first level.
+- Open further branches to request assessment of their children.
+- Read existing recorded reasons without another provider request.
 
 This mode is useful for very large taxonomies or when you want to focus on one branch.
 
@@ -428,6 +433,10 @@ The Tree view renders the taxonomy as an interactive node-link diagram. Use the 
 ### Decision Map View
 
 The Decision Map view shows the taxonomy as a decision-tree style layout optimised for selecting relevant nodes based on the analysis scores.
+
+Taxonomies occupy separate areas. Spacing accounts for complete wrapped node names and remains clear when branches expand or collapse. **Reason** at a node opens its saved analysis reason and a separately labelled catalogue description. The action also works with a keyboard or touchscreen; **Close** or Escape returns focus to the node.
+
+Use **Print diagram** in the diagram toolbar to open a separate landscape print view. It includes every relevant branch in the decision tree, independently of the current zoom and collapsed screen branches. Large areas continue on readable pages. Taxonomy headings, root overviews and references to the parent node's page preserve context. Choose a printer or **Save as PDF** in the browser. If the browser blocks the print window, allow pop-ups for this application and select **Print diagram** again.
 
 ![Decision Map view (scored)](../images/69-decision-map-scored.png)
 
@@ -823,10 +832,10 @@ Each report includes:
 
 Open **Decision report …** under **Decision Evidence** in the Export tab, on a saved requirement's detail page or in its architecture view. These entry points share the same dialog. Opening it from a single-tree view preselects that taxonomy. For a saved result, both the choices and the report belong to the selected analysis snapshot.
 
-#### Create a short Word report for one taxonomy
+#### Create a Word report with an overview and reasons
 
 1. Open the required analysis result, then **Decision report …**.
-2. Select **Word (.docx)** and **Compact** content.
+2. Keep **Word (.docx)** and the default **Standard** content. Choose **Compact** when you only need a shorter overview.
 3. Under **Taxonomies in this report**, select the required taxonomy, such as **CP**. Select several for a small collection. At least one must remain selected.
 4. Check the source reference and **recorded analysis** scope. Taxonomies outside that scope cannot be selected.
 5. Open **More options** if needed. Choose **Short — main sections** or **None** for contents, and **Automatic (landscape)** for the decision tree.
@@ -834,7 +843,7 @@ Open **Decision report …** under **Decision Evidence** in the Export tab, on a
 
 The following illustrations show the current dialog component with labelled example input.
 
-![Decision report: Word, compact content and selected CP taxonomy; IP is outside the analysis scope](../images/decision-export-dialog-en.png)
+![Decision report: Word, Standard content and selected CP taxonomy; IP is outside the analysis scope](../images/decision-export-dialog-en.png)
 
 #### Content and more options
 
@@ -844,7 +853,11 @@ The following illustrations show the current dialog component with labelled exam
 | **Standard** | Adds decision reasoning and available saved architecture |
 | **Full** | Also includes a cover and detailed evidence |
 
+The dialog starts with **Standard**, short contents and **Automatic (landscape)**. Changing content depth preserves the selected tree layout and contents. A full report therefore keeps its graphical overview; **Table** remains available as an explicit choice.
+
 Under **More options**, select individual sections. Contents can cover the main sections, show detailed entries or be omitted. The saved-architecture section is disabled for a taxonomies-only analysis. Available source references, status and warnings remain visible in a short report.
+
+The Word report begins with an overview of every selected taxonomy: area relevance, assessment status, a principal decision path and its recorded reason. Areas without positive matches or completed assessments also appear. Tree figures show numeric scores and relevance bars. A clickable node key beside each figure leads to the complete reason, with a return link to its tree. Decision chapters and reasons precede exhaustive architecture and provenance material.
 
 ![More export options: short contents, A4 landscape and individual report sections](../images/decision-export-options-en.png)
 

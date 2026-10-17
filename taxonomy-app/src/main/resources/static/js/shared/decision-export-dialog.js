@@ -13,9 +13,9 @@
         const roots = input.selectedRoots || [];
         const available = new Set((input.roots || []).filter(r => r.inAnalysisScope !== false).map(r => r.code));
         if (!roots.length || roots.some(code => !available.has(code))) throw new Error(reportText('Select at least one available taxonomy.', 'Wählen Sie mindestens eine verfügbare Taxonomie.'));
-        return {profile: input.profile || 'COMPACT', taxonomyRoots: [...new Set(roots)],
+        return {profile: input.profile || 'STANDARD', taxonomyRoots: [...new Set(roots)],
             contents: input.contents || 'SHORT', treeLayout: input.treeLayout || 'AUTO',
-            sections: input.sections || presets[input.profile || 'COMPACT']};
+            sections: input.sections || presets[input.profile || 'STANDARD']};
     }
     function query(options) {
         const params = new URLSearchParams();
@@ -77,7 +77,7 @@
         }
         const format = select(t('Format', 'Format'), 'format', [], '');
         const presentation = el('div'); fieldset.append(presentation);
-        const profile = select(t('Content', 'Umfang'), 'profile', [['COMPACT',t('Compact','Kompakt')],['STANDARD',t('Standard','Standard')],['FULL',t('Full','Vollständig')]], 'COMPACT', presentation);
+        const profile = select(t('Content', 'Umfang'), 'profile', [['COMPACT',t('Compact','Kompakt')],['STANDARD',t('Standard','Standard')],['FULL',t('Full','Vollständig')]], 'STANDARD', presentation);
         const profileNote = el('p'); presentation.append(profileNote);
         const rootGroup = el('fieldset'); rootGroup.append(el('legend', t('Taxonomies in this report', 'Taxonomien im Bericht'))); fieldset.append(rootGroup);
         const sourceScope = el('p'); fieldset.append(sourceScope);
@@ -94,8 +94,8 @@
         function preset() {
             profileNote.textContent = {COMPACT:t('Summary and complete decision tree.','Zusammenfassung und vollständiger Entscheidungsbaum.'),STANDARD:t('Includes decision reasoning.','Mit Entscheidungsbegründungen.'),FULL:t('Includes cover and detailed evidence.','Mit Deckblatt und ausführlichen Nachweisen.')}[profile.value];
             sections.forEach(input => {input.checked = !input.disabled && presets[profile.value].includes(input.value);});
-            contents.value = profile.value === 'FULL' ? 'FULL' : 'SHORT';
-            layout.value = profile.value === 'FULL' ? 'TABLE' : 'AUTO';
+            // Content depth selects sections. The reader's layout and navigation
+            // choices remain independent, including for a complete report.
         }
         function updateFormat() { const json = format.value === 'json'; presentation.hidden = json; advanced.hidden = json; jsonNote.hidden = !json; }
         profile.addEventListener('change',preset);format.addEventListener('change',updateFormat);preset();updateFormat();

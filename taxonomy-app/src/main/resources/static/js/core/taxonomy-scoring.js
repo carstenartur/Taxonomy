@@ -666,10 +666,13 @@
                 });
                 if (!changed.length) return;
                 if (S.currentView === 'list' || S.currentView === 'tabs') {
-                    changed.forEach(function (code) {
-                        applyScoreToNode(code, S.currentScores[code], null,
-                            S.currentScoreDetails[code], S.currentRawScores[code]);
+                    withScoreNodeUpdates(function () {
+                        changed.forEach(function (code) {
+                            applyScoreToNode(code, S.currentScores[code], null,
+                                S.currentScoreDetails[code], S.currentRawScores[code], true);
+                        });
                     });
+                    if (B().refreshContainerSummaries) B().refreshContainerSummaries(S.currentScores);
                 } else {
                     B().renderView(S.taxonomyData, S.currentScores);
                 }
@@ -943,11 +946,14 @@
             if (data.scoreSemanticsVersion) {
                 S.scoreSemanticsVersion = data.scoreSemanticsVersion;
             }
-            Object.entries(changedScores).forEach(function ([code, raw]) {
-                var detail = S.currentScoreDetails[code];
-                if (isProductScore(detail)) S.currentProductSuitabilityScores[code] = clampScore(raw);
-                applyScoreToNode(code, effectiveScores[code], S.currentReasons[code], detail, raw);
+            withScoreNodeUpdates(function () {
+                Object.entries(changedScores).forEach(function ([code, raw]) {
+                    var detail = S.currentScoreDetails[code];
+                    if (isProductScore(detail)) S.currentProductSuitabilityScores[code] = clampScore(raw);
+                    applyScoreToNode(code, effectiveScores[code], S.currentReasons[code], detail, raw, true);
+                });
             });
+            if (B().refreshContainerSummaries) B().refreshContainerSummaries(S.currentScores);
             if (data.prompt !== undefined || data.rawResponse !== undefined) {
                 appendLlmLogEntry(
                     data.message || data.description || 'streaming',
@@ -1072,45 +1078,43 @@
 
     // ── Incremental DOM update helpers ────────────────────────────────────────
 
+    function withScoreNodeUpdates(update) {
+        if (B().withTreeUpdateBatch) return B().withTreeUpdateBatch(update);
+        return update();
+    }
+
     function syncVisibleScoreNodes() {
         // Reconcile terminal evidence without rebuilding the tree or losing focus/scroll.
-        document.querySelectorAll('.tax-node[data-code], [data-taxonomy-container]').forEach(function (node) {
-            var code = node.getAttribute('data-code') || node.getAttribute('data-taxonomy-container');
-            applyScoreToNode(code, (S.currentScores || {})[code] || 0,
-                (S.currentReasons || {})[code], (S.currentScoreDetails || {})[code],
-                (S.currentRawScores || {})[code]);
+        withScoreNodeUpdates(function () {
+            document.querySelectorAll('.tax-node[data-code], [data-taxonomy-container]').forEach(function (node) {
+                var code = node.getAttribute('data-code') || node.getAttribute('data-taxonomy-container');
+                applyScoreToNode(code, (S.currentScores || {})[code],
+                    (S.currentReasons || {})[code], (S.currentScoreDetails || {})[code],
+                    (S.currentRawScores || {})[code], true);
+            });
         });
+        if (B().refreshContainerSummaries) B().refreshContainerSummaries(S.currentScores);
         refreshScoreStatistics();
     }
 
     function renderedScoreNode(code, scores) {
-        return B().ensureNodeRendered(code, scores)
+        return B().ensureNodeRendered(code, scores, true)
             || (B().findRenderedNode && B().findRenderedNode(code))
             || document.querySelector('[data-code="' + CSS.escape(code) + '"]')
             || document.querySelector('[data-taxonomy-container="' + CSS.escape(code) + '"]');
     }
 
     /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
-    function applyScoreToNode(code, pct, reason, detail, rawScore) {
+    function applyScoreToNode(code, pct, reason, detail, rawScore, deferContainerRefresh) {
+        if (!deferContainerRefresh && B().refreshContainerSummaries) {
+            B().refreshContainerSummaries(S.currentScores);
+        }
         const el = renderedScoreNode(code, S.currentScores);
         if (!el) return;
         // Remove evaluating animation
         el.classList.remove('tax-evaluating');
 
-        if (el.getAttribute('data-taxonomy-container')) {
-            const heading = el.querySelector(':scope > .tax-container-heading') || el;
-            let areaBadge = heading.querySelector('.tax-container-score');
-            if (Object.prototype.hasOwnProperty.call(S.currentScores || {}, code) && Number.isFinite(pct)) {
-                if (!areaBadge) {
-                    areaBadge = document.createElement('span');
-                    areaBadge.className = 'tax-container-score small ms-2';
-                    heading.appendChild(areaBadge);
-                }
-                areaBadge.textContent = t('browse.container.relevance', pct);
-                areaBadge.title = reason || '';
-            } else if (areaBadge) areaBadge.remove();
-            return;
-        }
+        if (el.getAttribute('data-taxonomy-container')) { return; }
 
         const header = el.querySelector(':scope > .tax-node-header');
         if (!header) return;
@@ -1130,7 +1134,7 @@
             header.style.color = '';
         }
 
-        if (pct > 0 || isProductScore(scoreDetail)) {
+        if (Number.isFinite(pct) || isProductScore(scoreDetail)) {
             let badge = header.querySelector('.tax-pct');
             if (!badge) {
                 badge = document.createElement('span');
@@ -1155,9 +1159,15 @@
                 reasonIcon.title = reason;
             }
         } else {
-            // A later explicit zero must remove an earlier positive badge as well.
+            // Missing evidence remains unassessed; a recorded zero keeps its badge.
             var previousBadge = header.querySelector('.tax-pct');
             if (previousBadge) previousBadge.remove();
+            const previousReason = header.querySelector('.tax-reason-icon');
+            if (previousReason) previousReason.remove();
+        }
+
+        if (Number.isFinite(pct) && pct > 0) {
+            expandRenderedAncestors(el, S.currentScores);
         }
 
         // Update ARIA label with score info (WCAG 4.1.2)
@@ -1166,14 +1176,16 @@
         var rawForAria = rawScore === undefined
             ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
         var detailForAria = detail || (S.currentScoreDetails || {})[code];
-        ariaLabel += ', ' + scoreAriaLabel(code, pct, rawForAria, detailForAria);
-        if (reason) { ariaLabel += ', Reason: ' + reason; }
+        if (Number.isFinite(pct) || isProductScore(detailForAria)) {
+            ariaLabel += ', ' + scoreAriaLabel(code, pct, rawForAria, detailForAria);
+        }
+        if (Number.isFinite(pct) && reason) { ariaLabel += ', ' + t('browse.node.reason', reason); }
         el.setAttribute('aria-label', ariaLabel);
     }
 
-    function expandRenderedNode(el, scores) {
+    function expandRenderedNode(el, scores, userInitiated) {
         if (B().setNodeExpanded) {
-            B().setNodeExpanded(el, true);
+            B().setNodeExpanded(el, true, !userInitiated);
             return;
         }
         const children = el.querySelector(':scope > .tax-children');
@@ -1186,23 +1198,24 @@
         }
     }
 
-    function expandRenderedAncestors(el, scores) {
+    function expandRenderedAncestors(el, scores, userInitiated) {
         let parent = el.parentElement;
         while (parent) {
             if (parent.classList.contains('tax-children')) {
                 const pNode = parent.parentElement;
-                if (pNode) expandRenderedNode(pNode, scores);
+                if (pNode) expandRenderedNode(pNode, scores, userInitiated);
             }
             parent = parent.parentElement;
         }
     }
 
     /** Expand a catalogue node or subtaxonomy group and all of its ancestors. */
-    function expandNodeByCode(code) {
-        const el = renderedScoreNode(code, S.currentScores);
+    function expandNodeByCode(code, userInitiated) {
+        const el = userInitiated ? B().ensureNodeRendered(code, S.currentScores)
+            : renderedScoreNode(code, S.currentScores);
         if (!el) return;
-        expandRenderedNode(el, S.currentScores);
-        expandRenderedAncestors(el, S.currentScores);
+        expandRenderedNode(el, S.currentScores, userInitiated);
+        expandRenderedAncestors(el, S.currentScores, userInitiated);
     }
 
     /** Add a pulsing CSS class to indicate a node is currently being evaluated. */
@@ -1211,13 +1224,12 @@
         if (el) el.classList.add('tax-evaluating');
     }
 
-    /** Expand all nodes that have a match > 0 (and their ancestors). */
+    /** Reveal assessed positive paths without opening every positive node's unassessed children. */
     function expandMatched(scores) {
         Object.entries(scores).forEach(([code, pct]) => {
             if (pct > 0) {
                 const el = renderedScoreNode(code, scores);
                 if (!el) return;
-                expandRenderedNode(el, scores);
                 expandRenderedAncestors(el, scores);
             }
         });
@@ -1451,10 +1463,14 @@
     function clearDerivedAnalysisView() {
         acceptRelationSearchReport(null);
         S.currentArchView = null;
-        if (typeof B().switchView === 'function') {
-            B().switchView('list');
-        } else {
-            S.currentView = 'list';
+        // Only the derived summary requires a fallback when its evidence is cleared.
+        // Preserve the reader's list/tab/diagram choice while a new run starts.
+        if (S.currentView === 'summary') {
+            if (typeof B().switchView === 'function') {
+                B().switchView('list');
+            } else {
+                S.currentView = 'list';
+            }
         }
         renderArchitectureView(null);
         var content = document.getElementById('architectureViewContent');
@@ -2233,7 +2249,7 @@
             navigate.textContent = isGermanLocale() ? 'Im Taxonomiebaum anzeigen' : 'Show in taxonomy tree';
             navigate.addEventListener('click', function () {
                 B().switchView('list');
-                expandNodeByCode(code);
+                expandNodeByCode(code, true);
                 var node = B().ensureNodeRendered(code, S.currentScores);
                 if (node) {
                     node.scrollIntoView({ block: 'center' });

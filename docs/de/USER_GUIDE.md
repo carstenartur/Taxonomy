@@ -306,13 +306,18 @@ Der vollständig aufgeklappte Baum zeigt Bewertungen auf jeder Ebene und macht e
 
 ### Interaktiver Modus
 
-Aktivieren Sie das **Interactive Mode**-Kontrollkästchen, bevor Sie auf **Analyze with AI** klicken, um eine ebenenweise Erkundung anstelle der Bewertung des gesamten Baums auf einmal zu verwenden.
+Ein neuer Arbeitsstand startet mit der vollständigen hierarchischen Analyse des ausgewählten Umfangs. Sie müssen die Teiltaxonomien nicht einzeln öffnen, um ihre Bewertung zu beginnen. Eine ausdrücklich gespeicherte Auswahl des interaktiven Modus bleibt erhalten.
+
+Die Überschrift jeder Teiltaxonomie zeigt die vorhandene Bereichsrelevanz als Zahl und Farbe. Zusätzlich nennt sie die bereits bewerteten Einträge, die positiven Treffer und deren höchste Relevanz. Diese Zusammenfassung berücksichtigt auch geschlossene Zweige. Eine fehlende Bereichsbewertung und noch nicht bewertete Einträge sind ausdrücklich gekennzeichnet. Manuell geöffnete oder geschlossene Zweige und der ausgewählte Tab bleiben bei Ergebnisaktualisierungen erhalten.
+
+Aktivieren Sie das **Interaktiver Modus**-Kontrollkästchen vor dem Analysestart, wenn Sie die Bewertung ausdrücklich Ebene für Ebene steuern möchten.
 
 Im interaktiven Modus:
-- Zuerst werden nur die Knoten der obersten Ebene bewertet.
-- Neben jedem Knoten der obersten Ebene erscheint eine **▶ Analyze Node**-Schaltfläche.
-- Klicken Sie auf **▶ Analyze Node** bei einem Knoten, um dessen Unterknoten zu bewerten.
-- Setzen Sie die Erkundung des Baums Ebene für Ebene fort.
+
+- Nach dem Start sind die noch nicht bewerteten Bereiche entsprechend gekennzeichnet.
+- Öffnen Sie eine Teiltaxonomie, um ihre erste Ebene bewerten zu lassen.
+- Öffnen Sie weitere Zweige, um die Bewertung ihrer Unterknoten anzufordern.
+- Bereits gespeicherte Begründungen lassen sich ohne weitere Anbieteranfrage lesen.
 
 Dieser Modus ist nützlich für sehr große Taxonomien oder wenn Sie sich auf einen Zweig konzentrieren möchten.
 
@@ -432,6 +437,10 @@ Die Baumansicht stellt die Taxonomie als interaktives Knoten-Verbindungs-Diagram
 ### Entscheidungskarten-Ansicht
 
 Die Entscheidungskarten-Ansicht zeigt die Taxonomie als Entscheidungsbaum-Layout, das für die Auswahl relevanter Knoten basierend auf den Analysebewertungen optimiert ist.
+
+Die Teiltaxonomien stehen in getrennten Bereichen. Der Abstand berücksichtigt die vollständigen umgebrochenen Knotenbezeichnungen und bleibt beim Auf- und Zuklappen erhalten. Über **Begründung** am Knoten öffnen Sie die gespeicherte Analysebegründung und die getrennt beschriftete Katalogbeschreibung. Die Aktion funktioniert auch per Tastatur und auf Touchscreens; **Schließen** oder Escape führt zum Knoten zurück.
+
+Mit **Diagramm drucken** in der Diagrammleiste öffnen Sie eine eigene Druckansicht im Querformat. Sie enthält alle relevanten Zweige des Entscheidungsbaums, unabhängig vom aktuellen Zoom und von zugeklappten Bildschirmzweigen. Große Bereiche werden auf lesbare Folgeseiten verteilt. Taxonomieüberschrift, Wurzelübersicht und Verweise auf die Seite des übergeordneten Knotens erhalten die Orientierung. Wählen Sie im Browser einen Drucker oder **Als PDF speichern**. Falls der Browser das Druckfenster blockiert, erlauben Sie Pop-ups für diese Anwendung und wählen Sie **Diagramm drucken** erneut.
 
 ![Entscheidungskarten-Ansicht (bewertet)](../images/69-decision-map-scored.png)
 
@@ -830,10 +839,10 @@ Jeder Bericht enthält:
 
 Öffnen Sie **Entscheidungsbericht …** im Exportbereich unter **Decision Evidence**, auf der Detailseite einer gespeicherten Anforderung oder in deren Architekturansicht. Alle drei Einstiege verwenden denselben Dialog. Aus einer einzelnen Baumansicht wird die aktuelle Teil-Taxonomie vorausgewählt. Bei einem gespeicherten Ergebnis beziehen sich Auswahl und Bericht auf den ausgewählten Analysesnapshot.
 
-#### Einen kurzen Word-Bericht für eine Teil-Taxonomie erstellen
+#### Einen Word-Bericht mit Übersicht und Begründungen erstellen
 
 1. Öffnen Sie das gewünschte Analyseergebnis und anschließend **Entscheidungsbericht …**.
-2. Wählen Sie **Word (.docx)** und den Umfang **Kompakt**.
+2. Behalten Sie **Word (.docx)** und den voreingestellten Umfang **Standard** bei. Für eine kürzere Übersicht können Sie **Kompakt** wählen.
 3. Markieren Sie unter **Taxonomien im Bericht** die benötigte Teil-Taxonomie, beispielsweise **CP**. Für eine kleine Auswahl können Sie mehrere Taxonomien markieren. Mindestens eine muss ausgewählt bleiben.
 4. Prüfen Sie die Quellenangabe und den **aufgezeichneten Analyseumfang**. Taxonomien außerhalb dieses Umfangs sind nicht auswählbar.
 5. Öffnen Sie bei Bedarf **Weitere Optionen**. Wählen Sie **Kurz – Hauptabschnitte** oder **Keines** für das Inhaltsverzeichnis und **Automatisch (Querformat)** für den Entscheidungsbaum.
@@ -841,7 +850,7 @@ Jeder Bericht enthält:
 
 Die folgenden Abbildungen zeigen die aktuelle Dialogkomponente mit gekennzeichneten Beispieldaten.
 
-![Entscheidungsbericht: Word, kompakter Umfang und ausgewählte Teil-Taxonomie CP; IP liegt außerhalb des Analyseumfangs](../images/decision-export-dialog-de.png)
+![Entscheidungsbericht: Word, Standardumfang und ausgewählte Teil-Taxonomie CP; IP liegt außerhalb des Analyseumfangs](../images/decision-export-dialog-de.png)
 
 #### Umfang und weitere Optionen
 
@@ -851,7 +860,11 @@ Die folgenden Abbildungen zeigen die aktuelle Dialogkomponente mit gekennzeichne
 | **Standard** | Zusätzlich Entscheidungsbegründungen und verfügbare gespeicherte Architektur |
 | **Vollständig** | Zusätzlich Deckblatt und ausführliche Nachweise |
 
+Der Dialog beginnt mit **Standard**, kurzem Inhaltsverzeichnis und **Automatisch (Querformat)**. Eine Änderung des Inhaltsumfangs erhält das gewählte Baumlayout und Inhaltsverzeichnis. Auch ein vollständiger Bericht bleibt dadurch grafisch; **Tabelle** ist weiterhin ausdrücklich auswählbar.
+
 Unter **Weitere Optionen** können Sie die Abschnitte einzeln wählen. Das Inhaltsverzeichnis lässt sich auf Hauptabschnitte verkürzen, ausführlich ausgeben oder weglassen. Bei einer reinen Taxonomieanalyse ist der Abschnitt für gespeicherte Architektur deaktiviert. Verfügbare Quellangaben, Status und Warnungen bleiben auch in einem kurzen Bericht sichtbar.
+
+Der Word-Bericht beginnt mit einer Übersicht je ausgewählter Teiltaxonomie: Bereichsrelevanz, Bewertungsstand, wesentlicher Entscheidungspfad und gespeicherte Begründung. Auch Bereiche ohne positive Treffer oder ohne abgeschlossene Bewertung erscheinen dort. Die Baumgrafiken zeigen Zahlenwerte und Relevanzbalken. Ein anklickbarer Knotenschlüssel bei jeder Grafik führt zur vollständigen Begründung; von dort gelangen Sie zum zugehörigen Baum zurück. Entscheidungskapitel und Begründungen stehen vor umfangreichen Architektur- und Herkunftsnachweisen.
 
 ![Weitere Exportoptionen: kurzes Inhaltsverzeichnis, A4-Querformat und einzeln wählbare Berichtsabschnitte](../images/decision-export-options-de.png)
 
