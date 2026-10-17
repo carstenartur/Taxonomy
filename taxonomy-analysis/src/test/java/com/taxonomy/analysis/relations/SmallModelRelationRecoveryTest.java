@@ -221,6 +221,88 @@ class SmallModelRelationRecoveryTest {
     }
 
     @Test
+    void interleavedTaxonomiesShareCoherentSourceRequestsAndKeepTheirRanking() {
+        var process = new Node("BP-first", "BP", "Process", "Time recording process", false);
+        var otherProcess = new Node("BP-second", "BP", "Other process", "Time sheet process", false);
+        var ranked = List.of(FIRST, process, SECOND, otherProcess);
+        List<String> sent = new ArrayList<>();
+        var report = search(ranked, 2, 4, prompt -> {
+            sent.add(prompt);
+            var input = input(prompt);
+            Set<String> roots = new HashSet<>(); input.get("nodes").forEach(node -> roots.add(node.get("root").asString()));
+            assertEquals(1, roots.size());
+            return reply(ids(input).stream().map(id -> selection(id, ORIGINAL)).toList());
+        });
+        assertEquals(ranked.stream().map(Node::id).toList(), report.sources().stream().map(source -> source.node().id()).toList(),
+                "taxonomy packing must not change source priority or strand valid sources at the call limit");
+        assertEquals(2, sent.size());
+        assertFalse(report.warnings().stream().anyMatch(warning -> warning.contains("CALL_BUDGET")));
+    }
+
+    @Test
+    void sourcePriorityRemainsStableAfterContinuingAnInterleavedCohort() {
+        var process = new Node("BP-first", "BP", "Process", "Time recording process", false);
+        var otherProcess = new Node("BP-second", "BP", "Other process", "Time sheet process", false);
+        var ranked = List.of(FIRST, process, SECOND, otherProcess);
+        Map<String, AnalysisCheckpointSession.Checkpoint> saved = new LinkedHashMap<>();
+        var previous = new java.util.concurrent.atomic.AtomicReference<com.taxonomy.dto.RelationSearchReport>();
+        var journal = new AnalysisCheckpointSession.Store() {
+            public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question question) {
+                var checkpoint = saved.get(question.key());
+                return checkpoint == null || "READY".equals(checkpoint.state())
+                        ? new AnalysisCheckpointSession.Checkpoint(question, "ATTEMPT", null) : checkpoint;
+            }
+            public void finish(AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
+                saved.put(question.key(), new AnalysisCheckpointSession.Checkpoint(question, state, detail));
+            }
+            public void checkActive() { }
+            public com.taxonomy.dto.RelationSearchReport previousRelations() { return previous.get(); }
+        };
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        for (int pass = 0; pass < 2; pass++) {
+            try (var session = new AnalysisCheckpointSession(journal)) {
+                previous.set(search(ranked, 1, 4, prompt -> {
+                    calls.incrementAndGet(); return reply(ids(input(prompt)).stream().map(id -> selection(id, ORIGINAL)).toList());
+                }));
+            }
+        }
+        assertEquals(2, calls.get(), "completed source groups must replay without another provider request");
+        assertEquals(ranked.stream().map(Node::id).toList(), previous.get().sources().stream().map(source -> source.node().id()).toList());
+    }
+
+    @Test
+    void cancelledPreparationKeepsTheRankingOfItsPartialSources() {
+        var process = new Node("BP-first", "BP", "Process", "Time recording process", false);
+        var otherProcess = new Node("BP-second", "BP", "Other process", "Time sheet process", false);
+        var product = new Node("IP-last", "IP", "Records", "Working time records", false);
+        var ranked = List.of(FIRST, process, SECOND, otherProcess, product);
+        Map<String, Node> byId = new LinkedHashMap<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
+        for (int i = 0; i < ranked.size(); i++) {
+            byId.put(ranked.get(i).id(), ranked.get(i)); scores.put(ranked.get(i).id(), 100d - i);
+        }
+        var catalogue = new RequirementRelationSearch.InputCatalogue() {
+            public Node find(String id) { return byId.get(id); }
+            public List<Node> roots() { return List.of(); }
+            public List<Node> children(Node node) { return List.of(); }
+        };
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var search = new RequirementRelationSearch(catalogue, new RelationCompatibilityMatrix(), prompt -> {
+            calls.incrementAndGet();
+            return reply(ids(input(prompt)).stream().map(id -> selection(id, ORIGINAL)).toList());
+        }, () -> {
+            if (calls.get() == 2) throw new java.util.concurrent.CancellationException("Analysis cancelled");
+        });
+        var plan = search.prepare("cancelled", ORIGINAL, scores, List.of("persisted-source-result"),
+                new RequirementRelationSearch.Options(new Limits(5, 8, 10, 128), 5), true);
+        assertEquals(2, calls.get());
+        assertEquals(ranked.subList(0, 4).stream().map(Node::id).toList(),
+                plan.sources().stream().map(source -> source.node().id()).toList());
+        assertFalse(plan.stopReason().isBlank());
+        assertTrue(plan.items().isEmpty());
+    }
+
+    @Test
     void anOversizedSingleDescriptionStaysUnassessedWithoutTruncationOrRemoteCall() {
         var large = new Node("UA-too-long", "UA", "Long description", "x".repeat(18_000), false);
         var report = search(List.of(large), 5, 1, prompt -> { fail("oversized evidence must not be sent or silently shortened"); return null; });

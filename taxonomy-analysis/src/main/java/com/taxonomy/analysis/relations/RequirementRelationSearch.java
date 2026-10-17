@@ -66,6 +66,7 @@ public final class RequirementRelationSearch {
             throw new IllegalArgumentException("Saved relation evidence belongs to another requirement");
         Budget budget = new Budget(options);
         RelationWorkPlan plan = null;
+        List<Node> nodes = List.of();
         List<SourceAssessment> sources = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);
@@ -77,7 +78,7 @@ public final class RequirementRelationSearch {
             List<Node> offeredRoots = List.copyOf(catalogue.roots());
             ChildAssessmentContract.validateCandidates(offeredRoots.stream().map(Node::id).toList());
             List<Node> roots = offeredRoots.stream().sorted(Comparator.comparing(Node::id)).toList();
-            List<Node> nodes = sourceNodes(scores, warnings);
+            nodes = sourceNodes(scores, warnings);
             plan = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
             plan.restore(previous);
             budget.plan = plan;
@@ -110,6 +111,7 @@ public final class RequirementRelationSearch {
             result = new Result(List.copyOf(edges), result.unfinished(), List.copyOf(trace),
                     result.calls(), result.visitedBatches(), result.durationMillis());
         }
+        sortSourcesByRank(sources, nodes);
         if (plan != null) plan.finish(warnings.isEmpty() && stop.isEmpty() && result.searchExhausted());
         var progress = plan == null ? null : plan.snapshot();
         var tasks = plan == null ? List.<com.taxonomy.dto.RelationSearchProgress.Task>of() : plan.tasks();
@@ -177,6 +179,7 @@ public final class RequirementRelationSearch {
                         intent.type(), intent.direction(), com.taxonomy.analysis.dag.TaxonomyShardRoot.of(root.root()), bound));
             }
         } catch (RuntimeException failure) { stop = failureReason(failure); }
+        sortSourcesByRank(sources, nodes);
         return new RelationSearchDistribution.Plan(1, preparationId, sha256(original), sourceResultIds, options,
                 nodes, roots, sources, items, charged[0], (System.nanoTime() - started) / 1_000_000,
                 warnings, stop, includeRelations);
@@ -269,8 +272,12 @@ public final class RequirementRelationSearch {
         // available source slots or force already accepted requests to change keys.
         for (int offset = 0; offset < nodes.size(); offset += options.maxSources()) {
             var cohort = nodes.subList(offset, Math.min(offset + options.maxSources(), nodes.size()));
-            batches.addAll(RelationCandidateBatches.split(cohort, options.limits().batchSize(), options.maxPromptCharacters(),
-                    offered -> RelationSearchProtocol.requestCharacters(RelationSearchProtocol.sourcePrompt(original, offered, Map.of()))));
+            Map<String, List<Node>> taxonomies = new LinkedHashMap<>();
+            for (Node node : cohort) taxonomies.computeIfAbsent(node.root(), unused -> new ArrayList<>()).add(node);
+            for (List<Node> taxonomy : taxonomies.values()) {
+                batches.addAll(RelationCandidateBatches.split(taxonomy, options.limits().batchSize(), options.maxPromptCharacters(),
+                        offered -> RelationSearchProtocol.requestCharacters(RelationSearchProtocol.sourcePrompt(original, offered, Map.of()))));
+            }
         }
         for (var batch : batches) {
             checkpoint.run();
@@ -294,6 +301,15 @@ public final class RequirementRelationSearch {
             }
             processed += batch.size();
         }
+        // Packing combines interleaved taxonomies within the already ranked cohort.
+        // Search intents and returned evidence must still follow the original priority.
+        sortSourcesByRank(sources, nodes);
+    }
+
+    private static void sortSourcesByRank(List<SourceAssessment> sources, List<Node> nodes) {
+        Map<String, Integer> rank = new HashMap<>();
+        for (int i = 0; i < nodes.size(); i++) rank.put(nodes.get(i).id(), i);
+        sources.sort(Comparator.comparingInt(source -> rank.getOrDefault(source.node().id(), Integer.MAX_VALUE)));
     }
 
     private List<Intent> intents(List<SourceAssessment> sources, List<Node> roots, List<String> warnings) {

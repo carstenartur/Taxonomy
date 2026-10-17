@@ -15,7 +15,7 @@ The default adds bounded remote evaluations using the selected provider:
 taxonomy.analysis.relations.hierarchical.enabled=true
 taxonomy.analysis.relations.hierarchical.max-calls=24
 taxonomy.analysis.relations.hierarchical.max-depth=8
-taxonomy.analysis.relations.hierarchical.batch-size=10
+# batch-size is automatic: 3 for custom OpenAI-compatible models, otherwise 10
 taxonomy.analysis.relations.hierarchical.max-work-items=512
 taxonomy.analysis.relations.hierarchical.max-sources=32
 ```
@@ -32,8 +32,8 @@ as a surrogate failure. Unrelated raw mock tasks retain their empty-array respon
 
 The scenario reference uses separately authored, requirement-specific replies at the
 remote HTTP boundary and checks exact required connections independently. Its
-exhaustive two-pass test budget is 256 calls per pass; production defaults remain
-unchanged. Optional SMS is retained in evidence, not promoted to a required edge.
+exhaustive two-pass test budget is 256 calls per pass, with explicit larger request
+groups for the simulated provider. Optional SMS is retained in evidence, not promoted to a required edge.
 Source-only role contributions are visible but never selected for impact analysis.
 This proves software behavior, not real-provider architectural quality.
 
@@ -59,8 +59,9 @@ The normal resumable analysis uses the existing question journal for validated
 relation exchanges as well as scoring. Budget exhaustion leaves an execution
 stopped; explicit continuation reuses successful answers and admits new work.
 Invalid or unresolved replies offer the existing retry / leave-open decision.
-Catalogue, requirement, provider and policy changes invalidate reuse. No automatic
-paid retry is introduced. The work-item limit counts only new navigation and
+Catalogue, requirement, provider and policy changes invalidate reuse. Automatic
+corrections share the existing budget and are limited to one per failed entry.
+The work-item limit counts only new navigation and
 verification evaluations per execution; replay never consumes it. The structural
 depth limit remains an explicit policy boundary: continuing unchanged cannot
 resolve a depth-limited branch. Changing that policy requires a new analysis.
@@ -128,7 +129,10 @@ Custom OpenAI-compatible requests default to three nodes; other providers retain
 groups of ten. Groups keep taxonomy boundaries. Source and target
 groups are packed using the assembled prompt plus schema size (including UTF-8 bytes),
 subject to both count and configured input limits. Stable source cohorts also admit
-the partial last group at a source-limit boundary. Descriptions are never silently shortened. A single
+the partial last group at a source-limit boundary. Taxonomies are grouped inside
+each already selected cohort to avoid singleton requests for interleaved roots;
+accepted assessments return to their original source priority before navigation.
+Descriptions are never silently shortened. A single
 oversized description stays unassessed with a `PROMPT_BUDGET` diagnostic. Token
 admission is a character/byte estimate, not a claim to use the model's exact tokenizer.
 
