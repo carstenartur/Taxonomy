@@ -20,7 +20,7 @@
                          th:text="#{login.error}">Invalid username or password.</div>
                     <div th:if="${param.logout != null}" class="alert alert-success" role="status"
                          th:text="#{login.loggedOut}">You have been signed out.</div>
-                    <form id="loginForm" method="post" th:action="@{/login}">
+                    <form id="loginForm" class="login-form" method="post" th:action="@{/login}">
                         <div class="mb-3">
                             <label for="username" class="form-label" th:text="#{login.username}">Username</label>
                             <input type="text" class="form-control" id="username" name="username"

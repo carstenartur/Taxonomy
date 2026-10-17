@@ -66,6 +66,8 @@ class LocalLoginFlowTest {
                 .andExpect(content().string(containsString("Passwort")))
                 .andExpect(content().string(containsString("Anmelden")))
                 .andExpect(content().string(containsString("for=\"username\"")))
+                .andExpect(content().string(containsString("class=\"login-form\"")))
+                .andExpect(content().string(containsString("method=\"post\" action=\"/login\"")))
                 .andExpect(content().string(containsString("autocomplete=\"current-password\"")))
                 .andExpect(content().string(containsString("name=\"_csrf\"")));
     }
@@ -73,6 +75,7 @@ class LocalLoginFlowTest {
     @Test
     void englishDefaultAndGermanCookieBothWorkWithoutAQueryParameter() throws Exception {
         mvc.perform(get("/login")).andExpect(status().isOk())
+                .andExpect(content().string(containsString("class=\"login-form\"")))
                 .andExpect(content().string(containsString("Sign in")));
         mvc.perform(get("/login").cookie(new Cookie("lang", "de"))).andExpect(status().isOk())
                 .andExpect(content().string(containsString("Benutzername")));
