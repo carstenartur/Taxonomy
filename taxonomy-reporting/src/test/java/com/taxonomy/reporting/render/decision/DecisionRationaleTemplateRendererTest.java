@@ -240,7 +240,7 @@ class DecisionRationaleTemplateRendererTest {
         }
         if(language.equals("too-small")) {
             org.assertj.core.api.Assertions.assertThatThrownBy(()->renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture)))
-                .isInstanceOf(com.taxonomy.reporting.render.document.WordReportLayoutException.class).hasMessageContaining("8pt");
+                .isInstanceOf(com.taxonomy.reporting.render.document.WordReportLayoutException.class).hasMessageContaining("10pt");
             return;
         }
         byte[] result=renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture));
@@ -270,6 +270,7 @@ class DecisionRationaleTemplateRendererTest {
             assertThat(doc.getProperties().getCustomProperties().getProperty("taxonomy.graph.sha256").getLpwstr()).isEqualTo(evidence.graphSha256());
             String text=new org.apache.poi.xwpf.extractor.XWPFWordExtractor(doc).getText();
             assertThat(text).contains("Saved A","Saved B","E1","Saved parent","Saved decision","Saved recommendation");
+            assertThat(text.indexOf("Saved decision")).isLessThan(text.indexOf("Saved A"));
             assertThat(text).contains(language.equals("de")?"Vollständiger Entscheidungsbaum":"Complete decision tree");
             assertThat(doc.getDocument().xmlText()).contains("decision_chapter_1_BP","architecture-detail-1");
         }

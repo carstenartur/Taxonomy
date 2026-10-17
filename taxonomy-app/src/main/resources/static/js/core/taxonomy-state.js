@@ -26,9 +26,12 @@
         lastAnalysisScope: null, // frozen evidence scope; independent of next-run controls
         currentView: 'list', // 'list' | 'tabs' | 'sunburst' | 'tree' | 'decision' | 'summary'
         currentTreeRoot: 'BP', // code of the taxonomy shown in tree view
+        activeTaxonomyTab: null, // retain the reader's selected area across result renders
+        browseExpansion: new Map(), // explicit user choices, independent of automatic scored paths
+        browseExpansionDefault: null, // set only by intentional Expand All / Collapse All
 
         // ── Interactive mode state ─────────────────────────────────────────────
-        interactiveMode: true,       // ON by default
+        interactiveMode: false,      // complete analysis by default; saved explicit choices still restore
         storedBusinessText: null,    // stored when user clicks Analyze in interactive mode
         evaluatedNodes: new Set(),   // track which parent nodes have been evaluated
         lastAnalyzedText: null,      // text that was most recently analyzed successfully

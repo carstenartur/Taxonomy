@@ -30,7 +30,7 @@ try {
         const dialog=page.locator('dialog');await dialog.waitFor();
         assert.equal(await page.locator('[name=root]:checked').count(),1);
         assert.equal(await page.locator('[value=IP]').isDisabled(),true);
-        assert.equal(await page.locator('[name=profile]').inputValue(),'COMPACT');
+        assert.equal(await page.locator('[name=profile]').inputValue(),'STANDARD');
         const bounds=await dialog.boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=width);
         await page.uncheck('[value=CP]');await page.click('[type=submit]');
         assert.match(await page.locator('[role=alert]').textContent(),/mindestens/);

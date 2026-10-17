@@ -4,15 +4,27 @@ The **Hierarchical Decision Rationale Report** documents how a requirement was r
 
 ## What the report contains
 
-The report is available as DOCX, standalone HTML, and structured JSON. The DOCX and HTML variants contain:
+The report is available as DOCX, standalone HTML, and structured JSON. The selected content determines which sections appear. A full report contains:
 
-- a professional title page with the requirement, document status, Taxonomy application version, build commit, taxonomy catalogue version, catalogue file SHA-256, loaded-data SHA-256, analysis-snapshot SHA-256, repository/workspace/branch/commit context, AI provider, generation timestamp, and generating account;
+- a title page with the requirement and document status, plus provenance covering the Taxonomy application version, build commit, taxonomy catalogue version, catalogue file SHA-256, loaded-data SHA-256, analysis-snapshot SHA-256, repository/workspace/branch/commit context, AI provider, generation timestamp, and generating account;
 - an executive summary naming the highest-rated actual leaf node and showing the complete root-to-leaf decision path with a short reason for every step;
 - one chapter for every actual parent node that has at least one directly scored child above 0%;
-- a deterministic diagram in every chapter showing the parent and all direct children, including absolute score, local share of the parent score, rank, path disposition, and leading-sibling marker;
-- a comparison table containing original AI reasons where available and clearly marked deterministic fallback text otherwise;
+- a deterministic diagram in every chapter showing the parent and all direct children, including absolute relevance and path disposition; in Word, bars on a common scale illustrate relevance;
+- a comparison table containing local share of the parent score, rank, leading-sibling marker, original AI reasons where available, and clearly marked deterministic fallback text otherwise;
 - a ranked list of positively scored actual leaf nodes, warnings, completeness information, and evidence metadata;
 - a footer on every page with generation time, generating account, Taxonomy version, taxonomy data version, and `Page X of Y` fields.
+
+### Reading and navigating the Word report
+
+The export dialog starts with **Standard**, short contents and **Automatic (landscape)**. Content depth and tree layout are independent: **Full** can also contain graphical trees. **Table** remains an explicit choice.
+
+The opening comparison table covers every selected taxonomy with its recorded area relevance, assessment status, complete representative code path and short excerpts from its stored reasons. Linked destinations retain full names and original text. Areas scored 0%, unassessed areas and tied leading results remain identifiable. A summary of child entries does not substitute for a missing area assessment.
+
+The following tree figures show hierarchy and effective relevance through numbers and bars. Long names wrap. Large trees continue completely across pages with parent context. The node key beside each figure in Standard and Full reports leads to the corresponding original reason, which links back to the taxonomy's tree. Equal text with the same source can share a reason block; each corresponding node code keeps its own link.
+
+Individual decisions and reasons precede extensive architecture and provenance material. A brief source reference and notice of incomplete results remain visible at the front. Export uses saved results and does not call a model to create new reasons. The [user guide](USER_GUIDE.md#configurable-decision-report) explains section selection.
+
+**Compact** defaults to the overview and trees. Brief source and status information precedes the trees without forcing an additional rationale appendix. Selecting decision chapters or evidence in this profile includes the full original reasons and their corresponding links.
 
 ## Score semantics
 
@@ -175,4 +187,4 @@ Use `language=de` for generated German labels. Saved evidence and administrator-
 
 The scenario acceptance pipeline checks source parity and semantic completeness, and renders both Word artifacts with LibreOffice/Poppler. This is not Microsoft Word product certification.
 
-The complete scenario fixture renders 71 decision pages (48 pages of decision chapters) and 10 standalone architecture pages. The render QA ceilings are 74 and 12 respectively, allowing 3/2 pages for renderer variance while retaining semantic coverage, reading-scale, empty-page and orphan-heading checks. Compact edge IDs may be omitted where they would cover nodes; native relation keys and inventories preserve every edge ID, source, target and type.
+The complete scenario fixture retains render QA ceilings of 74 decision pages and 12 standalone architecture pages. The checks also enforce semantic coverage, reading scale, empty-page and orphan-heading rules. Compact edge IDs may be omitted where they would cover nodes; native relation keys and inventories preserve every edge ID, source, target and type.

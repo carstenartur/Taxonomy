@@ -432,7 +432,7 @@
         var architecture = document.getElementById('includeArchitectureView');
         return Object.assign({
             provider: provider ? provider.value : '',
-            interactiveMode: interactive ? interactive.checked : true,
+            interactiveMode: interactive ? interactive.checked : false,
             includeArchitectureView: architecture ? architecture.checked : false
         }, window.TaxonomyAnalysisScope?.options() || {});
     }

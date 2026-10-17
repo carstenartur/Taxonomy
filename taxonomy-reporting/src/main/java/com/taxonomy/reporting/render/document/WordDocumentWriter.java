@@ -216,6 +216,18 @@ public final class WordDocumentWriter {
         setPictureMetadata(run, id, title, description);
     }
 
+    public int decisionFigureWidth() { return (int) Math.floor(Math.min(printableWidth(), 470)); }
+
+    /** A decision figure is drawn in point units at a 2x raster scale; never shrink its ten-point text. */
+    public void decisionPicture(byte[] png, String id, String title, String description, int width, int height) throws Exception {
+        if (width > printableWidth() || height + captionAllowance(title, printableWidth()) > printableHeight())
+            throw new WordReportLayoutException("Decision figure cannot fit this template at the minimum 10pt reading scale");
+        var p = document.createParagraph(); p.setSpacingAfter(40); p.setKeepNext(true);
+        var run = p.createRun();
+        run.addPicture(new ByteArrayInputStream(png), Document.PICTURE_TYPE_PNG, id + ".png", Units.toEMU(width), Units.toEMU(height));
+        setPictureMetadata(run, id, title, description);
+    }
+
     private double printableWidth() {
         return sectionValue("width", 612) - sectionValue("left", 81) - sectionValue("right", 81);
     }
@@ -370,12 +382,23 @@ public final class WordDocumentWriter {
     }
 
     public void link(XWPFParagraph paragraph, String anchor, String text) {
+        link(paragraph, anchor, text, 9);
+    }
+
+    public void link(XWPFParagraph paragraph, String anchor, String text, int fontSize) {
+        if (!paragraph.getCTP().getHyperlinkList().isEmpty()) {
+            var separator = paragraph.createRun();
+            separator.setText(" · ");
+            separator.setFontSize(fontSize);
+        }
         var hyperlink = paragraph.getCTP().addNewHyperlink();
         hyperlink.setAnchor(anchor);
         var run = hyperlink.addNewR();
         run.addNewRPr().addNewColor().setVal("007A78");
-        run.getRPr().addNewSz().setVal(BigInteger.valueOf(18));
-        run.addNewT().setStringValue(value(text));
+        run.getRPr().addNewSz().setVal(BigInteger.valueOf(fontSize * 2L));
+        var label = run.addNewT();
+        label.setStringValue(value(text));
+        label.setSpace(org.apache.xmlbeans.impl.xb.xmlschema.SpaceAttribute.Space.PRESERVE);
     }
 
     public void properties(ArchitectureReportDocument report) {

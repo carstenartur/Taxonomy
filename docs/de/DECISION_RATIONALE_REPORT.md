@@ -4,15 +4,27 @@ Der **hierarchische Entscheidungs- und Begründungsbericht** dokumentiert, wie e
 
 ## Inhalt des Berichts
 
-Der Bericht steht als DOCX, eigenständiges HTML und strukturiertes JSON zur Verfügung. DOCX und HTML enthalten:
+Der Bericht steht als DOCX, eigenständiges HTML und strukturiertes JSON zur Verfügung. Der gewählte Umfang bestimmt die enthaltenen Abschnitte. Ein vollständiger Bericht enthält:
 
-- eine professionell gestaltete Titelseite mit Anforderung, Dokumentstatus, Taxonomy-Anwendungsversion, Build-Commit, Version des Taxonomiekatalogs, SHA-256 der Katalogdatei, SHA-256 des tatsächlich geladenen Datenbestands, SHA-256 des Analysesnapshots, Repository-/Workspace-/Branch-/Commit-Kontext, KI-Anbieter, Erzeugungszeitpunkt und erzeugendem Account;
+- eine Titelseite mit Anforderung und Dokumentstatus sowie Herkunftsnachweise zu Taxonomy-Anwendungsversion, Build-Commit, Version des Taxonomiekatalogs, SHA-256 der Katalogdatei, SHA-256 des tatsächlich geladenen Datenbestands, SHA-256 des Analysesnapshots, Repository-/Workspace-/Branch-/Commit-Kontext, KI-Anbieter, Erzeugungszeitpunkt und erzeugendem Account;
 - eine Kurzfassung mit dem am höchsten bewerteten tatsächlichen Blattknoten und dem vollständigen Entscheidungspfad von der Wurzel bis zum Blatt einschließlich einer kurzen Begründung für jeden Schritt;
 - genau ein Kapitel für jeden tatsächlichen Vaterknoten, dessen direkte Kinder mindestens einen Wert größer 0% besitzen;
-- in jedem Kapitel eine deterministisch erzeugte Grafik aus Vaterknoten und sämtlichen direkten Kindern mit absolutem Wert, lokalem Anteil am Vaterwert, Rang, Pfadstatus und Kennzeichnung des innerhalb der Geschwistergruppe führenden Knotens;
-- eine Vergleichstabelle mit den ursprünglichen KI-Begründungen, soweit vorhanden, sowie eindeutig gekennzeichneten deterministischen Ersatztexten;
+- in jedem Kapitel eine deterministisch erzeugte Grafik aus Vaterknoten und sämtlichen direkten Kindern mit absolutem Relevanzwert und Pfadstatus; im Word-Bericht veranschaulichen Balken auf einer gemeinsamen Skala die Relevanz;
+- eine Vergleichstabelle mit lokalem Anteil am Vaterwert, Rang, Kennzeichnung des innerhalb der Geschwistergruppe führenden Knotens und ursprünglichen KI-Begründungen, soweit vorhanden, sowie eindeutig gekennzeichneten deterministischen Ersatztexten;
 - eine Rangliste positiv bewerteter tatsächlicher Blattknoten, Hinweise, Vollständigkeitsangaben und technische Nachweise;
 - auf jeder Seite eine Fußzeile mit Erzeugungszeitpunkt, Account, Taxonomy-Version, Taxonomiedaten-Version und den Feldern `Seite X von Y`.
+
+### Word-Bericht lesen und navigieren
+
+Der Exportdialog beginnt mit **Standard**, kurzem Inhaltsverzeichnis und **Automatisch (Querformat)**. Der Inhaltsumfang und das Baumlayout sind unabhängig: Auch **Vollständig** kann grafische Bäume enthalten. **Tabelle** bleibt ausdrücklich auswählbar.
+
+Am Anfang steht eine kompakte Vergleichstabelle über jede ausgewählte Teiltaxonomie mit gespeicherter Bereichsrelevanz, Bewertungsstand, vollständigem repräsentativem Codepfad und kurzen Auszügen aus den gespeicherten Begründungen. Vollständige Bezeichnungen und Originaltexte stehen an den verlinkten Zielen. Bereiche mit 0%, noch unbewertete Bereiche und gleich bewertete führende Ergebnisse bleiben erkennbar. Eine Zusammenfassung von Unterknoten ersetzt keine fehlende Bereichsbewertung.
+
+Die folgenden Baumgrafiken stellen die Hierarchie und die effektive Relevanz als Zahlen und Balken dar. Lange Bezeichnungen werden umgebrochen. Große Bäume erhalten vollständige Folgeseiten mit übergeordnetem Kontext. Der Knotenschlüssel bei der Grafik führt im Standard- und vollständigen Bericht zur jeweiligen Originalbegründung. Dort führt ein Rückverweis zum Baum der Teiltaxonomie. Gleiche Texte mit gleicher Herkunft können einen gemeinsamen Begründungsblock verwenden; die zugehörigen Knotencodes bleiben einzeln verlinkt.
+
+Einzelentscheidungen und Begründungen stehen vor den umfangreichen Architektur- und Herkunftsnachweisen. Eine kurze Quellenangabe und ein Hinweis auf unvollständige Ergebnisse bleiben am Anfang sichtbar. Der Export verwendet die gespeicherten Ergebnisse und ruft kein Modell für neue Begründungen auf. Hinweise zur Auswahl einzelner Abschnitte stehen im [Benutzerhandbuch](USER_GUIDE.md#configurable-decision-report).
+
+**Kompakt** beschränkt sich standardmäßig auf Übersicht und Bäume. Die kurzen Quellen- und Statusangaben stehen vor den Bäumen, ohne einen zusätzlichen Begründungsanhang zu erzwingen. Wer auch in diesem Profil Entscheidungskapitel oder Evidenz auswählt, erhält die vollständigen Originalbegründungen und die zugehörigen Verweise.
 
 ## Bedeutung der Prozentwerte
 
@@ -176,4 +188,4 @@ Beide verwenden dieselbe gespeicherte Anforderungsversion, Entscheidungsevidenz 
 
 Die Akzeptanzprüfung prüft Quellenparität und semantische Vollständigkeit und rendert beide Word-Dateien mit LibreOffice/Poppler. Dies ist keine Produktzertifizierung für Microsoft Word.
 
-Die vollständige Prüffallausgabe umfasst 71 Entscheidungsseiten (davon 48 Kapitelseiten) und 10 eigenständige Architekturseiten. Die Render-QA-Grenzen betragen 74 bzw. 12 Seiten und erlauben 3/2 Seiten Renderer-Abweichung; Evidenzabdeckung, Lesbarkeit, leere Seiten und verwaiste Überschriften werden weiterhin geprüft. Kompakte Beziehungskennungen entfallen dort, wo sie Knoten verdecken würden; native Beziehungsschlüssel und Inventare erhalten jede Kennung, Quelle, jedes Ziel und jeden Typ.
+Für die vollständige Prüffallausgabe gelten weiterhin Render-QA-Grenzen von 74 Entscheidungsseiten und 12 eigenständigen Architekturseiten. Die Prüfung kontrolliert zusätzlich Evidenzabdeckung, Lesbarkeit, leere Seiten und verwaiste Überschriften. Kompakte Beziehungskennungen entfallen dort, wo sie Knoten verdecken würden; native Beziehungsschlüssel und Inventare erhalten jede Kennung, Quelle, jedes Ziel und jeden Typ.

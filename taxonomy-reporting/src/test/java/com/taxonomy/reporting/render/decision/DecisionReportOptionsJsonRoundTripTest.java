@@ -55,6 +55,13 @@ class DecisionReportOptionsJsonRoundTripTest {
         assertEquals(options, mapper.readValue(json, DecisionReportOptions.class));
     }
 
+    @ParameterizedTest
+    @EnumSource(Profile.class)
+    void graphicalDefaultIsIndependentOfContentDepth(Profile profile) {
+        assertEquals(TreeLayout.AUTO, new DecisionReportOptions(profile, null, null, null, null).treeLayout());
+        assertEquals(TreeLayout.TABLE, new DecisionReportOptions(profile, null, null, TreeLayout.TABLE, null).treeLayout());
+    }
+
     @Test
     void omittedRootsKeepFullDefaults() {
         assertEquals(DecisionReportOptions.full(), mapper.readValue("{}", DecisionReportOptions.class));
