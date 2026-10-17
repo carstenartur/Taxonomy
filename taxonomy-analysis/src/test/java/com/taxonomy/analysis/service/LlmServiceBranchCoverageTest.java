@@ -324,7 +324,7 @@ class LlmServiceBranchCoverageTest {
         assertThat(unavailable.getScores()).isEmpty();
 
         when(localEmbeddingService.isAvailable()).thenReturn(true);
-        when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 17d));
+        when(localEmbeddingService.scoreNodesForAnalysis("requirement", List.of(node))).thenReturn(Map.of("A", 17d));
         LlmCallDetail available = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
         assertThat(available.getError()).isNull();
         assertThat(available.getScores()).containsEntry("A", 100d);
@@ -381,7 +381,7 @@ class LlmServiceBranchCoverageTest {
         assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).isEmpty();
 
         when(localEmbeddingService.isAvailable()).thenReturn(true);
-        when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 9d));
+        when(localEmbeddingService.scoreNodesForAnalysis("requirement", List.of(node))).thenReturn(Map.of("A", 9d));
         assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 100d);
     }
 
@@ -460,6 +460,60 @@ class LlmServiceBranchCoverageTest {
                 anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"timeout", "missing", "malformed"})
+    void failedProductResponsesStayUnassessedInInteractiveResults(String failure) {
+        TaxonomyNode product = node("IP-P1", "IP", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        if (failure.equals("timeout")) {
+            when(gateway.sendHttpRequest("product prompt", "test-key"))
+                    .thenThrow(new LlmTimeoutException("product timeout"));
+        } else if (failure.equals("malformed")) {
+            when(gateway.sendHttpRequest("product prompt", "test-key")).thenReturn("bad");
+            when(gateway.extractResponseText("bad")).thenReturn("{}");
+        }
+        var result = service.analyzeSingleBatchDetailed("requirement", List.of(product), 100);
+        assertThat(result.getScores()).doesNotContainKey("IP-P1");
+        assertThat(result.getReasons()).isEmpty();
+        assertThat(result.getError()).isNotBlank();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void laterProductFailureRetainsAcceptedProductsAndCategories(boolean rateLimited) {
+        TaxonomyNode category = node("IP-C", "IP-F", "IP");
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        ReflectionTestUtils.setField(service, "productBatchSize", 1);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("category");
+        when(gateway.extractResponseText("category")).thenReturn("{\"IP-C\":100}");
+        when(gateway.sendHttpRequest("product prompt", "test-key"))
+                .thenReturn("accepted").thenThrow(rateLimited
+                        ? new LlmRateLimitException("later rate limit") : new IllegalStateException("later provider failure"));
+        when(gateway.extractResponseText("accepted"))
+                .thenReturn("{\"IP-P1\":{\"score\":80,\"reason\":\"accepted evidence\"}}");
+        var result = service.analyzeSingleBatchDetailed("requirement", List.of(category, first, second), 100);
+        assertThat(result.getScores()).containsEntry("IP-C", 100d).containsEntry("IP-P1", 80d)
+                .doesNotContainKey("IP-P2");
+        assertThat(result.getReasons()).containsEntry("IP-P1", "accepted evidence");
+        assertThat(result.getError()).contains(rateLimited ? "later rate limit" : "later provider failure");
+
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(node("IP", null, "IP"))));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(category, first, second));
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("root", "category");
+        when(gateway.extractResponseText("root")).thenReturn("{\"IP\":100}");
+        org.mockito.Mockito.doReturn("accepted").doThrow(rateLimited
+                        ? new LlmRateLimitException("later rate limit") : new IllegalStateException("later provider failure"))
+                .when(gateway).sendHttpRequest("product prompt", "test-key");
+        var full = service.analyzeWithBudget("requirement");
+        assertThat(full.getRawScores()).containsEntry("IP-C", 100d).containsEntry("IP-P1", 80d)
+                .doesNotContainKey("IP-P2");
+        assertThat(full.getReasons()).containsEntry("IP-P1", "accepted evidence");
+        assertThat(full.getStatus()).isEqualTo("PARTIAL");
+    }
+
     @Test
     void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {
         TaxonomyNode root = node("IP", null, "IP");
@@ -469,7 +523,12 @@ class LlmServiceBranchCoverageTest {
         when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
         when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
         when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(product));
-        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        var rootDto = new com.taxonomy.dto.TaxonomyNodeDto(); rootDto.setCode("IP");
+        var productDto = new com.taxonomy.dto.TaxonomyNodeDto(); productDto.setCode("IP-P1");
+        productDto.setParentCode("IP"); productDto.setAnalysisRole("PRODUCT");
+        rootDto.setChildren(List.of(productDto));
+        when(taxonomyService.getFullTree()).thenReturn(List.of(rootDto));
+        when(taxonomyService.applyScores(any(), anyMap())).thenAnswer(invocation -> invocation.getArgument(0));
         when(gateway.sendHttpRequest("rendered prompt", "test-key"))
                 .thenReturn("root-body");
         when(gateway.extractResponseText("root-body")).thenReturn("{\"IP\":100}");
@@ -484,6 +543,12 @@ class LlmServiceBranchCoverageTest {
                 .anyMatch(warning -> warning.contains("IP")
                         && warning.contains("product provider timed out"));
         assertThat(result.getProductCoverageGaps()).isEmpty();
+        assertThat(result.getRawScores()).doesNotContainKey("IP-P1");
+        assertThat(result.getAnalysisCoverage().nodes().get("IP-P1").state())
+                .isEqualTo(com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN);
+        assertThat(result.getAnalysisCoverage().nodes().get("IP-P1").reason()).startsWith("FAILED:");
+        assertThat(result.getAnalysisCoverage().nodes().get("IP").descendants())
+                .isEqualTo(com.taxonomy.dto.AnalysisCoverage.Descendants.UNASSESSED);
 
         service.analyzeStreaming("requirement", callback);
 

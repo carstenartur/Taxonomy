@@ -58,6 +58,47 @@ class ArchitectureEditorVersionContextTest {
         }
     }
 
+    @Test void currentCentralReadReturnsExactReadOnlyGitSnapshotWithoutWorkspaceJournal() throws Exception {
+        try (var fixture = fixture()) {
+            var central = RepositoryContext.centralRead("central-repository", "release", "reader");
+            var repository = fixture.repositories.resolveRepository(central);
+            String head = repository.commitDsl("release", model("Central snapshot"), "owner", "Seed central");
+            var document = fixture.service.read(central, null);
+            assertThat(document.context()).isEqualTo(Context.version(central, head));
+            assertThat(document.dsl()).contains("Central snapshot");
+            assertThat(document.source()).isEqualTo("GIT_CHECKPOINT");
+            assertThat(document.history()).isEmpty();
+            assertThat(document.versions()).hasSize(1);
+            assertThat(document.pendingCheckpointId()).isNull();
+            assertThat(document.context().revision()).isZero();
+            var exported = new ArchitectureEditorExportAdapter(fixture.service,
+                    new ArchitectureEditorProjection(new com.taxonomy.export.LayeredDiagramLayoutService())).read(central, null, null);
+            assertThat(exported.repositoryId()).isEqualTo(central.repositoryId());
+            assertThat(exported.branch()).isEqualTo("release");
+            assertThat(exported.commit()).isEqualTo(head);
+            assertThat(exported.scene().nodes()).hasSize(1);
+            var edit = new Command(document.context(), metadata(), new SemanticCommand(new DeleteArchitectureElement("arch-context")));
+            assertThatThrownBy(() -> fixture.service.preview(central, edit)).isInstanceOfSatisfying(CommandProblem.class,
+                    error -> assertThat(error.code()).isEqualTo("READ_ONLY"));
+            assertThatThrownBy(() -> fixture.service.execute(central, edit)).isInstanceOfSatisfying(CommandProblem.class,
+                    error -> assertThat(error.code()).isEqualTo("READ_ONLY"));
+            assertThat(repository.getHeadCommit("release")).isEqualTo(head);
+        }
+    }
+
+    @Test void centralRevisionZeroAndEmptyBranchRemainReadOnlyAndOtherRevisionsAreRejected() throws Exception {
+        try (var fixture = fixture()) {
+            var central = RepositoryContext.centralRead("empty-central", "release", "reader");
+            var document = fixture.service.read(central, null, 0L);
+            assertThat(document.context()).isEqualTo(Context.version(central, null));
+            assertThat(document.dsl()).isEmpty();
+            assertThat(document.history()).isEmpty();
+            assertThat(document.versions()).isEmpty();
+            assertThatThrownBy(() -> fixture.service.read(central, null, 1L)).isInstanceOfSatisfying(CommandProblem.class,
+                    error -> assertThat(error.code()).isEqualTo("NOT_FOUND"));
+        }
+    }
+
     private Command create() {
         return new Command(Context.of(context, null, 0), metadata(),
                 new SemanticCommand(new CreateArchitectureElement("arch-context", "System", Map.of("title", "Original"))));

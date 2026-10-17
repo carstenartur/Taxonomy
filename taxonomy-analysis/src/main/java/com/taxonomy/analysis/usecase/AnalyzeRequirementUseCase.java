@@ -104,7 +104,8 @@ public class AnalyzeRequirementUseCase {
                                              boolean persistHypotheses) {
         long startedNanos = System.nanoTime();
         InProcessAnalysisOperation operation = null;
-        try {
+        try (var mockScope = "MOCK".equalsIgnoreCase(command.provider())
+                ? llmService.withProviderBinding("MOCK", null) : null) {
             llmService.requireProviderAdmissible(command.provider(), command.provenance() != null);
             applyProviderOverride(command.provider());
             promptBudgetPolicy.requireWithinBudget(

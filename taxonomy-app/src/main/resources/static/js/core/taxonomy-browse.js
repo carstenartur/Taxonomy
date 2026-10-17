@@ -170,6 +170,8 @@
                         } else S.currentScores = data.scores || {};
                         S.currentReasons = data.reasons || {};
                         S.lastAnalysisProvider = data.provider || 'IMPORTED';
+                        S.analysisProviderId = data.analysisProviderId || null;
+                        S.analysisOperationId = data.analysisOperationId || null;
                         S.lastAnalysisDurationMillis = null; // imported scores have no verified run timing
                         S.lastAnalysisStatus = data.analysisStatus || 'IMPORTED';
                         // Update business text field if present in the imported data
@@ -739,7 +741,8 @@
         const exportGroup = document.getElementById('exportGroup');
         const exportHint = document.getElementById('exportHint');
         if (!exportGroup) { return; }
-        const hasScores = S.currentScores && Object.values(S.currentScores).some(v => v > 0);
+        const hasScores = S.currentScores && Object.values(S.currentScores)
+            .some(v => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100);
         exportGroup.style.display = hasScores ? '' : 'none';
         if (exportHint) {
             exportHint.classList.toggle('d-none', hasScores);
@@ -1595,6 +1598,10 @@
     }
 
     function evaluateNodeChildren(parentCode, wrapper) {
+        if (SC().canRequestFollowUp && !SC().canRequestFollowUp()) {
+            S.evaluatedNodes.delete(parentCode);
+            return;
+        }
         wrapper.classList.add('tax-evaluating');
         console.log('[Taxonomy] evaluateNodeChildren: parentCode=' + parentCode
             + ', businessText=' + (S.storedBusinessText ? S.storedBusinessText.substring(0, 80) : ''));
@@ -1603,13 +1610,17 @@
             ? S.currentScores[parentCode] : 100;
         fetch('/api/analyze-node?parentCode=' + encodeURIComponent(parentCode)
               + '&businessText=' + encodeURIComponent(S.storedBusinessText)
-              + '&parentScore=' + encodeURIComponent(parentScore))
+              + '&parentScore=' + encodeURIComponent(parentScore)
+              + (S.analysisProviderId ? '&provider=' + encodeURIComponent(S.analysisProviderId) : '')
+              + (S.analysisOperationId ? '&operationId=' + encodeURIComponent(S.analysisOperationId) : ''))
             .then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(result => {
                 console.log('[Taxonomy] analyze-node response for', parentCode, result);
+                if (result.analysisOperationId) S.analysisOperationId = result.analysisOperationId;
+                if (result.analysisProviderId) S.analysisProviderId = result.analysisProviderId;
                 wrapper.classList.remove('tax-evaluating');
                 wrapper.classList.remove('tax-has-unevaluated');
 
@@ -1825,6 +1836,8 @@
         S.currentArchView = null;
         S.currentView = 'list';
         S.currentScores = null;
+        S.analysisOperationId = null;
+        S.analysisProviderId = null;
         S.currentReasons = {};
         S.storedBusinessText = null;
         S.evaluatedNodes = new Set();
@@ -2379,6 +2392,8 @@
         }
 
         S.lastAnalysisScope = null;
+        S.analysisOperationId = null;
+        S.analysisProviderId = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;

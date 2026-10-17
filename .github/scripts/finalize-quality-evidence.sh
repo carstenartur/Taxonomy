@@ -6,10 +6,20 @@ cp -a target/observability-performance/. \
   target/quality-reports/evidence/observability-performance/
 rm -rf target/quality-reports/evidence/observability-performance/tests
 if [[ -d target/observability-performance/tests ]]; then
-  cp -a target/observability-performance/tests/. target/quality-reports/tests/
+  # Core also records the disabled invocation; keep both original lane outcomes.
+  mkdir -p target/quality-reports/tests/observability-performance
+  cp -a target/observability-performance/tests/. target/quality-reports/tests/observability-performance/
 fi
 cp target/ui-verification/summary.json \
   target/quality-reports/evidence/ui-verification-summary.json
+
+# Preserve actual JUnit browser scenario/component XML from every shard.
+while IFS= read -r -d '' report; do
+  relative=${report#target/ui-verification/}
+  destination="target/quality-reports/tests/ui/$relative"
+  mkdir -p "$(dirname "$destination")"
+  cp "$report" "$destination"
+done < <(find target/ui-verification -type f -name 'TEST-*.xml' -print0)
 
 source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
 build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"

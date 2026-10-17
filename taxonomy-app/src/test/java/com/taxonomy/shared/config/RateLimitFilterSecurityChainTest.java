@@ -1,6 +1,10 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.preferences.PreferencesService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import jakarta.servlet.Filter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.io.IOException;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,7 +39,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
     "llm.mock=true",
-    "taxonomy.rate-limit.per-minute=1"
+    "taxonomy.rate-limit.per-minute=1",
+    "taxonomy.init.async=false",
+    "taxonomy.git.bootstrap=false"
 })
 class RateLimitFilterSecurityChainTest {
 
@@ -51,14 +58,38 @@ class RateLimitFilterSecurityChainTest {
     @Qualifier("springSecurityFilterChain")
     private FilterChainProxy securityFilterChain;
 
+    @Autowired
+    private TaxonomyService taxonomyService;
+
+    @Autowired
+    private TaxDslExportService exportService;
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
+    @Autowired
+    private DslGitRepositoryFactory repositories;
+
     @MockitoBean
     private PreferencesService preferencesService;
 
     @BeforeEach
-    void configureLimit() {
+    void configureLimit() throws IOException {
         when(preferencesService.getInt(
                 eq("rate-limit.per-minute"), anyInt())).thenReturn(1);
         rateLimitFilter.clearCounters();
+
+        // The production bootstrap guard is JVM-wide and may belong to a different
+        // test database. Own the real source checkpoint needed by analysis pinning.
+        assertThat(taxonomyService.isInitialized()).as("real catalogue startup completed").isTrue();
+        var primary = systemRepositoryService.getPrimaryRepository();
+        var source = repositories.getCentralRepository(primary.getRepositoryId());
+        String branch = primary.getDefaultBranch();
+        if (source.getHeadCommit(branch) == null) {
+            source.commitDsl(branch, exportService.exportAll("rate-limit-security-chain"),
+                    "system", "Catalogue source for rate-limit security-chain fixture");
+        }
+        assertThat(source.getDslAtHead(branch)).as("readable source checkpoint for analysis workspace").isNotBlank();
     }
 
     @Test

@@ -76,7 +76,8 @@ class WorkspaceInitialSyncBaseTest {
             when(syncStates.findByUsername("fork-owner")).thenReturn(Optional.of(state));
             var portfolio = mock(WorkspacePortfolioGitPort.class);
             var service = new GitNativeSyncIntegrationService(syncStates, rows, catalog, factory,
-                    merger, portfolio, mock(WorkspaceContextResolver.class), DIRECT_VERSIONS);
+                    merger, portfolio, mock(WorkspaceContextResolver.class), DIRECT_VERSIONS,
+                mock(RepositoryMembershipService.class, invocation -> true));
 
             if (publish) service.publishFromWorkspaceToShared("fork-owner", "initial-sync");
             else service.syncFromSharedToWorkspace("fork-owner", "initial-sync");

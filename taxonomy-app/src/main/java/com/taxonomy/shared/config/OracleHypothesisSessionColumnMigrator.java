@@ -87,10 +87,11 @@ final class OracleHypothesisSessionColumnMigrator {
                 temporaryName = temporary.name();
             }
 
+            // A resumed temporary copy can predate a source update. Copy SQL NULL
+            // as well, otherwise a session cleared during interruption is revived.
             execute(connection, "UPDATE " + qualified(connection, table)
                     + " SET " + quoted(connection, temporaryName)
-                    + " = TO_CHAR(" + quoted(connection, source.name()) + ")"
-                    + " WHERE " + quoted(connection, source.name()) + " IS NOT NULL");
+                    + " = TO_CHAR(" + quoted(connection, source.name()) + ")");
 
             dropIndexesOrConstraintsReferencingSource(connection, table);
             execute(connection, "ALTER TABLE " + qualified(connection, table)

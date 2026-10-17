@@ -7,6 +7,9 @@ public class VisioPage {
     private final String id;
     private final String name;
     private boolean relationshipDetail;
+    private VisioTextBox legend;
+    public VisioTextBox getLegend() { return legend; }
+    public void setLegend(VisioTextBox legend) { this.legend = legend; }
     private final List<VisioShape> shapes = new ArrayList<>();
     private final List<VisioConnect> connects = new ArrayList<>();
 

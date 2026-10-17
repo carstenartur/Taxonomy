@@ -12,6 +12,12 @@ public class AnalysisResult {
     public AnalysisScope getAnalysisScope() { return analysisScope; }
     public void setAnalysisScope(AnalysisScope value) { analysisScope = AnalysisScope.orDefault(value); }
 
+    private String analysisOperationId;
+    private String analysisProviderId;
+    public String getAnalysisOperationId() { return analysisOperationId; }
+    public void setAnalysisOperationId(String value) { analysisOperationId = value; }
+    public String getAnalysisProviderId() { return analysisProviderId; }
+    public void setAnalysisProviderId(String value) { analysisProviderId = value; }
     private AnalysisCoverage analysisCoverage;
     public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }
     public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }

@@ -10,7 +10,9 @@ public record AnalyzeNodeChildrenResult(
         String rawResponse,
         String provider,
         long durationMs,
-        String error) {
+        String error,
+        String analysisOperationId,
+        String analysisProviderId) {
 
     public AnalyzeNodeChildrenResult {
         scores = scores == null ? Map.of() : Map.copyOf(scores);
@@ -18,6 +20,16 @@ public record AnalyzeNodeChildrenResult(
         prompt = prompt == null ? "" : prompt;
         rawResponse = rawResponse == null ? "" : rawResponse;
         provider = provider == null ? "" : provider;
+    }
+
+    public AnalyzeNodeChildrenResult(Map<String, Double> scores, Map<String, String> reasons, String prompt,
+                                     String rawResponse, String provider, long durationMs, String error) {
+        this(scores, reasons, prompt, rawResponse, provider, durationMs, error, null, null);
+    }
+
+    public AnalyzeNodeChildrenResult withFollowUpContext(String operationId, String providerId) {
+        return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
+                operationId, providerId);
     }
 
     public static AnalyzeNodeChildrenResult empty() {

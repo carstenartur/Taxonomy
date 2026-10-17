@@ -16,6 +16,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @Testcontainers
 @Tag("db-postgres")
+@Tag("ci-app-shard-browser")
 class SeleniumPostgresContainerIT extends AbstractSeleniumContainerIT {
 
     @Override

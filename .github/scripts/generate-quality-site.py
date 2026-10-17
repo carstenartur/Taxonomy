@@ -19,28 +19,74 @@ def _integer(element: ET.Element, name: str) -> int:
         raise ValueError(f"invalid {name}={value!r} in {element.tag}") from error
 
 
+def _tag(element: ET.Element) -> str:
+    return element.tag.rsplit("}", 1)[-1]
+
+
+def validate_junit_report(document: ET.Element, report: object) -> dict[str, int]:
+    """Count execution occurrences; nested suite counters include their descendants.
+
+    Parameters and repeated executions are distinct testcase occurrences. A testcase
+    has at most one terminal outcome. Rerun/flaky evidence is rejected: a clean
+    publication may not silently turn an earlier unsuccessful attempt into a pass.
+    """
+    keys = ("tests", "failures", "errors", "skipped")
+    def visit(suite: ET.Element) -> dict[str, int]:
+        if _tag(suite) not in ("testsuite", "testsuites"):
+            raise ValueError(f"invalid JUnit root in {report}: {_tag(suite)}")
+        if suite.get("flakes", "0") != "0":
+            raise ValueError(f"flaky suite evidence is not publishable in {report}")
+        actual = dict.fromkeys(keys, 0)
+        for child in suite:
+            tag = _tag(child)
+            if tag in ("testsuite", "testsuites"):
+                nested = visit(child)
+                for key in keys:
+                    actual[key] += nested[key]
+            elif tag == "testcase":
+                actual["tests"] += 1
+                outcomes = [_tag(item) for item in child if _tag(item) in ("failure", "error", "skipped")]
+                if len(outcomes) > 1:
+                    raise ValueError(f"multiple testcase outcomes in {report}")
+                if any(_tag(item) in ("rerunFailure", "rerunError", "flakyFailure", "flakyError") for item in child):
+                    raise ValueError(f"rerun/flaky testcase evidence is not publishable in {report}")
+                if outcomes:
+                    actual[{"failure": "failures", "error": "errors", "skipped": "skipped"}[outcomes[0]]] += 1
+        # A testsuites wrapper may omit all counters; individual suites may not.
+        if _tag(suite) == "testsuite" or any(suite.get(key) is not None for key in keys):
+            for key in keys:
+                value = suite.get(key, "")
+                if not value.isascii() or not value.isdecimal() or int(value) != actual[key]:
+                    raise ValueError(f"inconsistent JUnit {key}={value!r}, actual={actual[key]} in {report} ({suite.get('name', '')})")
+        return actual
+    actual = visit(document)
+    if sum(1 for element in document.iter() if _tag(element) == "testcase") != actual["tests"]:
+        raise ValueError(f"testcase outside a supported suite in {report}")
+    for tag, key in (("failure", "failures"), ("error", "errors"), ("skipped", "skipped")):
+        if sum(1 for element in document.iter() if _tag(element) == tag) != actual[key]:
+            raise ValueError(f"{tag} outside a testcase terminal outcome in {report}")
+    if any(_tag(element) in ("rerunFailure", "rerunError", "flakyFailure", "flakyError") for element in document.iter()):
+        raise ValueError(f"rerun/flaky evidence is not publishable in {report}")
+    return actual
+
+
+def parse_junit_report(content: str, report: object) -> dict[str, int]:
+    if "<!DOCTYPE" in content.upper() or "<!ENTITY" in content.upper():
+        raise ValueError(f"DTD/entity declarations are not allowed in {report}")
+    return validate_junit_report(ET.fromstring(content), report)
+
+
 def collect_tests(root: Path) -> dict[str, int]:
     totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
     files = sorted(root.rglob("TEST-*.xml"))
     if not files:
         raise FileNotFoundError(f"no JUnit XML reports found below {root}")
-
     for report in files:
-        document = ET.parse(report).getroot()
-        if document.tag.endswith("testsuite"):
-            suites = [document]
-        else:
-            suites = [child for child in document if child.tag.endswith("testsuite")]
-        if not suites:
-            raise ValueError(f"no testsuite element in {report}")
-        for suite in suites:
-            for key in ("tests", "failures", "errors", "skipped"):
-                totals[key] += _integer(suite, key)
-
+        actual = parse_junit_report(report.read_text(encoding="utf-8"), report)
+        for key in totals:
+            totals[key] += actual[key]
     totals["executed"] = totals["tests"] - totals["skipped"]
     totals["passed"] = totals["executed"] - totals["failures"] - totals["errors"]
-    if totals["executed"] < 0 or totals["passed"] < 0:
-        raise ValueError(f"inconsistent test totals: {totals}")
     if totals["tests"] <= 0:
         raise ValueError("JUnit reports contained zero tests")
     totals["reportFiles"] = len(files)
@@ -121,6 +167,7 @@ def write_outputs(
         "generatedAt": generated_at,
         "tools": tool_metadata,
         "tests": tests,
+        "testReports": [str(path.relative_to(root)) for path in sorted((root / "tests").rglob("TEST-*.xml"))],
         "coverage": coverage,
     }
     write_json(root / "quality-summary.json", summary)

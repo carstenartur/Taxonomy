@@ -104,7 +104,7 @@ test('contract verification runs the complete contracts without native browser s
   const executions = verificationExecutions('contracts');
   assert.ok(executions.some(step => step.goal === 'install-node-and-npm'));
   assert.ok(executions.some(step => step.arguments === 'ci --ignore-scripts --no-audit --no-fund'));
-  for (const command of ['run test:api-transport', 'run verify:ui-contracts']) {
+  for (const command of ['run verify:ui-contracts']) {
     assert.ok(executions.some(step => step.phase === 'test' && step.arguments === command), command);
   }
   assert.doesNotMatch(verificationProfile('contracts'), /install:playwright|<phase>\s*pre-integration-test\s*<\/phase>/,
@@ -114,11 +114,11 @@ test('contract verification runs the complete contracts without native browser s
 test('browser shards still install their pinned runtime before executing acceptance', () => {
   const executions = verificationExecutions('shard');
   const setup = executions.find(step => step.arguments === 'run install:playwright:github');
-  const acceptance = executions.find(step => step.arguments === 'run verify:ui-shard');
+  const shardProfile = verificationProfile('shard');
   assert.ok(setup, 'The browser-runtime installation remains mandatory on shard runners');
-  assert.ok(acceptance, 'The actual browser acceptance remains mandatory');
+  assert.match(shardProfile, /UiScenarioIT\.java/);
+  assert.match(shardProfile, /<goal>integration-test<\/goal>/);
   assert.equal(setup.phase, 'pre-integration-test');
-  assert.equal(acceptance.phase, 'integration-test');
   assert.ok(executions.some(step => step.goal === 'install-node-and-npm'));
 });
 
@@ -168,22 +168,11 @@ test('XML comment masking leaves non-comment source unchanged and handles adjace
   assert.equal(maskXmlComments('<!-- first --><!-- second -->').trim(), '');
 });
 
-for (const gate of ['verify:ui', 'verify:ui-contracts']) {
-  test(`${gate} preserves both localization/state and search-readiness regressions`, async () => {
-    const { scripts } = JSON.parse(await readFile(
-      path.join(repoRoot, '.github', 'package.json'), 'utf8'));
-    const commands = scripts[gate].split(' && ');
-    for (const name of ['test:ui-localization', 'test:ux-state-recovery', 'test:search-mode-readiness', 'test:backup-export']) {
-      assert.ok(scripts[name], `Missing regression command ${name}`);
-      assert.equal(commands.filter(command => command === `npm run ${name}`).length, 1,
-        `${gate} must execute ${name} exactly once`);
-    }
-    assert.ok(commands.includes('node --test scripts/quality-dashboard-api.test.mjs'));
-    assert.equal(commands.includes('node scripts/run-ui-suite.mjs'), gate === 'verify:ui');
-    for (const [name, file] of [
-      ['test:integrations-review', 'scripts/integration-startup.test.mjs'],
-      ['test:state-render-consistency', '../taxonomy-app/src/test/js/diagram-keyboard-controls.cjs'],
-      ['test:architecture-workbench-basepath', 'scripts/architecture-workbench-print.test.mjs']
-    ]) assert.ok(scripts[name].split(' ').includes(file), `Missing ${file}`);
-  });
-}
+for (const gate of ['verify:ui', 'verify:ui-contracts']) test(`${gate} preserves localization/state and search-readiness through JUnit ownership`, async () => {
+  const {scripts} = JSON.parse(await readFile(path.join(repoRoot,'.github','package.json'),'utf8'));
+  assert.match(scripts['verify:ui-contracts'], /-Dtest=JavascriptContractTest/);
+  assert.equal(scripts['verify:ui'], '../mvnw -B -f ui-verification-pom.xml verify -Pshard');
+  const inventory=await readFile(path.join(repoRoot,'.mvn','javascript-junit-sources.txt'),'utf8');
+  for(const file of ['ui-localization-regression.test.mjs','ux-state-recovery.cjs','search-mode-readiness.test.mjs','backup-export.test.mjs','quality-dashboard-api.test.mjs','integration-startup.test.mjs','diagram-keyboard-controls.cjs','architecture-workbench-print.test.mjs']) assert.ok(inventory.includes(file),file);
+  for(const command of Object.values(scripts).filter(value => value.includes('JavascriptContractTest'))) assert.doesNotMatch(command,/node --test/);
+});

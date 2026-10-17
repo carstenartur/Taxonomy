@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("persistence")
 @Tag("docker-required")
+@Tag("ci-app-shard-recovery")
 class ProductionPersistenceRestartIT {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();

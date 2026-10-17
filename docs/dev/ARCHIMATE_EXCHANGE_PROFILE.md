@@ -71,16 +71,19 @@ projection is an equivalent ArchiMate metamodel relationship. `PRODUCES` writes 
 | Relevance and score meaning | Number `taxonomy.relevance`; explicit model score-semantics property |
 | Anchor and impact selection | Boolean `taxonomy.anchor` / `taxonomy.selectedForImpact` |
 | Hierarchy and layer | `taxonomy.parentId`, numeric depth/layer |
+| Recorded relationship provenance and scoped evidence | Versioned typed `taxonomy.provenance.*` properties, including nullable confidence and exact relation IDs |
 | Confidence, direct score, mapping origin | Typed, allowlisted snapshot properties where available |
 | Human review, action status, actor/time, rationale, action evidence | Authorized decision properties where available |
 | View membership and supported layout | Concrete element-backed nodes and relationship-backed connections |
 
 ArchiMate property definitions use `string`, `number` and `boolean`; values are
 validated against the declared Taxonomy type when read. Properties are allowlisted
-at the application boundary. Prompt text, provider/model response payloads,
-provider-derived explanations, raw requirement text, warnings and unreviewed
-source evidence are not copied into exchange metadata. Omitted fields are named
-in the report. Human decision comments and action evidence are intentionally part
+at the application boundary. Recorded neutral relationship origins, confidence,
+reasons and scoped evidence are retained in versioned typed relationship properties;
+absence stays distinct from explicit zero or an empty string. Raw prompt text,
+provider/model response payloads, raw requirement text, warnings and unscoped
+model-level source evidence are not copied into exchange metadata. Omitted fields
+are named in the report. Human decision comments and action evidence are intentionally part
 of the authorized handoff.
 
 Every selected object is either exported or individually accounted for by the

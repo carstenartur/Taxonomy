@@ -146,8 +146,8 @@ class WorkspaceControllerBranchCoverageTest {
                         new SemanticChange("ADD", "ELEMENT", "E", "element", null, "after"),
                         new SemanticChange("ADD", "RELATION", "R", "relation", null, "after")),
                 "diff");
-        when(contextCompareService.compareBranches(any(), any())).thenReturn(comparison);
-        when(contextCompareService.compareContexts(any(), any())).thenReturn(comparison);
+        when(contextCompareService.compareBranches(any(), any(), any())).thenReturn(comparison);
+        when(contextCompareService.compareContexts(any(), any(), any())).thenReturn(comparison);
 
         ResponseEntity<?> filtered = controller.compare("left", "right", null, null, Set.of("elements"));
         assertThat(filtered.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -158,9 +158,9 @@ class WorkspaceControllerBranchCoverageTest {
 
         assertThat(controller.compare("left", "right", "c1", "c2", Set.of("relations")).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
-        verify(contextCompareService).compareContexts(any(), any());
+        verify(contextCompareService).compareContexts(any(), any(), any());
 
-        when(contextCompareService.compareBranches(any(), any())).thenThrow(new IOException("compare failed"));
+        when(contextCompareService.compareBranches(any(), any(), any())).thenThrow(new IOException("compare failed"));
         ResponseEntity<?> failure = controller.compare("left", "right", null, null, null);
         assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         @SuppressWarnings("unchecked")

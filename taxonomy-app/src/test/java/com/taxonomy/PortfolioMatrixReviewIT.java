@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Matrix review contracts against production templates, real HTTP and native browser controls. */
 @Tag("browser")
+@Tag("ci-app-shard-browser")
 class PortfolioMatrixReviewIT {
     private static final String API = "/api/projects/1";
     private static final List<String> COLUMNS = List.of("REQ-ZERO", "REQ-POSITIVE", "REQ-MISSING", "REQ-UNKNOWN");

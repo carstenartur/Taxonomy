@@ -45,7 +45,7 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("xmlns", VISIO_NS);
         writer.addAttribute("xmlns:r", REL_NS);
 
-        if (!page.getShapes().isEmpty() || !page.getConnects().isEmpty()) {
+        if (!page.getShapes().isEmpty() || !page.getConnects().isEmpty() || page.getLegend() != null) {
             writer.startNode("Shapes");
             long connectorId = maximumShapeId(page);
             for (VisioConnect connect : page.getConnects()) {
@@ -59,6 +59,12 @@ public class VisioPageContentsConverter implements Converter {
             }
             // Shape order is drawing order: opaque nodes cover crossing strokes.
             for (VisioShape shape : page.getShapes()) writeRegularShape(writer, shape);
+            if (page.getLegend() != null) {
+                var box = page.getLegend();
+                var legend = new VisioShape(Long.toString(connectorId + 1), box.text(), box.x(), box.y(), box.width(), box.height(), "Legend", false);
+                legend.getProperties().put("taxonomy.presentationOnly", VisioProperty.bool(true));
+                writeRegularShape(writer, legend);
+            }
             writer.endNode();
         }
 
@@ -170,8 +176,10 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "LocPinY", "0");
         writeCell(writer, "Angle", decimal(angle),
                 "ATAN2(EndY-BeginY,EndX-BeginX)");
-        writeCell(writer, "LineColor", LINE_COLOR);
-        writeCell(writer, "LinePattern", "1");
+        boolean proposed = connect.getProperties().containsKey("taxonomy.proposed")
+                && "true".equals(connect.getProperties().get("taxonomy.proposed").value());
+        writeCell(writer, "LineColor", proposed ? "#9333EA" : LINE_COLOR);
+        writeCell(writer, "LinePattern", proposed ? "2" : "1");
         writeCell(writer, "LineWeight", "0.01388888888888889");
         writeCell(writer, "EndArrow", "13");
         writeCell(writer, "EndArrowSize", "2");

@@ -734,6 +734,8 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         }
         result.setWarnings(warnings); result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps);
         result.setProvider(provider); result.setStatus(warnings.isEmpty() ? "SUCCESS" : "PARTIAL");
+        result.setAnalysisOperationId(run.id);
+        result.setAnalysisProviderId(read(run.commandJson, AnalyzeRequirementCommand.class).provider());
         result.setAnalysisScope(read(run.commandJson, AnalyzeRequirementCommand.class).analysisScope());
         result.setViewContext(run.viewJson == null ? null : read(run.viewJson, ViewContext.class));
         result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));

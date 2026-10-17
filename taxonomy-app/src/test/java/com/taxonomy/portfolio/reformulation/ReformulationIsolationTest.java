@@ -92,9 +92,12 @@ class ReformulationIsolationTest {
     }
     @Test void missingProviderPersistsHonestFailedRunWithoutChangingOriginalDraft() throws Exception {
         String id=create().path("id").asText();
-        mvc.perform(get(base()+"/"+id+"/synthesis-runs")).andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].status").value("FAILED"))
-            .andExpect(jsonPath("$[0].failureCode").value("PROVIDER_NOT_CONFIGURED"));
+        // Creation returns 202 before the background worker persists its terminal outcome.
+        // Keep MockMvc on this thread so the test's authenticated security context is retained.
+        org.awaitility.Awaitility.await().pollInSameThread().atMost(java.time.Duration.ofSeconds(15))
+            .untilAsserted(() -> mvc.perform(get(base()+"/"+id+"/synthesis-runs")).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("FAILED"))
+                .andExpect(jsonPath("$[0].failureCode").value("PROVIDER_NOT_CONFIGURED")));
         mvc.perform(get(base()+"/"+id)).andExpect(status().isOk()).andExpect(jsonPath("$.currentRevision.number").value(1));
     }
     @Test void savesTwoImmutableRevisionsWithoutChangingRequirementOrAnalysis() throws Exception {

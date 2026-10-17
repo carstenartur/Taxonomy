@@ -24,7 +24,8 @@ final class VisioPresentation {
             for (var connect : page.getConnects()) {
                 String key = relationKeys.get(id(connect));
                 connect.getProperties().put("taxonomy.displayKey", VisioProperty.text(key));
-                String fullCaption = key + " " + connect.getRelationType();
+                String fullCaption = key + " " + connect.getRelationType()
+                        + (connect.getProperties().containsKey("taxonomy.provenanceStatus") ? " | " + connect.getProperties().get("taxonomy.provenanceStatus").value() : "");
                 String text = dense ? key : display(fullCaption, 24, 2);
                 boolean shortened = !dense && shortened(fullCaption, text);
                 if (shortened && page == overview) {
@@ -101,7 +102,8 @@ final class VisioPresentation {
                 String direction = nodes.get(source.getFromShape()).getProperties().get("taxonomy.displayKey").value()
                         + " → " + nodes.get(source.getToShape()).getProperties().get("taxonomy.displayKey").value();
                 String type = display(source.getRelationType(), 52, 4);
-                String text = key(source) + "  " + direction + "\n" + type;
+                String text = key(source) + "  " + direction + "\n" + type
+                        + (source.getProperties().containsKey("taxonomy.provenanceStatus") ? "\n" + source.getProperties().get("taxonomy.provenanceStatus").value() : "");
                 connect.setTextBox(new VisioTextBox(text, 11.3, 10 - row * 1.65, 5.2, 1.25));
                 connect.getProperties().put("taxonomy.captionDisposition", VisioProperty.text(shortened(source.getRelationType(), type) ? "TYPE_TRUNCATED" : "READABLE_DETAIL"));
                 page.getConnects().add(connect); row++;

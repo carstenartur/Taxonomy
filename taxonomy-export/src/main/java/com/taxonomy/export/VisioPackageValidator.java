@@ -55,7 +55,7 @@ final class VisioPackageValidator {
                 throw invalid("Connect collection on page " + pageIndex + " must not be null");
             }
 
-            shapeCount += shapes.size(); connectorCount += connects.size();
+            shapeCount += shapes.size() + (page.getLegend() == null ? 0 : 1); connectorCount += connects.size();
             if (shapeCount > 20_000 || connectorCount > 60_000) throw invalid("Visio profile shape/connector limit exceeded");
             Map<Long, VisioShape> shapesById = new HashMap<>();
             long maximumShapeId = 0;
@@ -93,7 +93,17 @@ final class VisioPackageValidator {
                         false);
             }
 
-            if (maximumShapeId > MAX_VISIO_ID - connects.size()) {
+            if (page.getLegend() != null) {
+                var box = page.getLegend();
+                validateXmlText(box.text(), "Legend display text");
+                validateCoordinate(box.x() - box.width() / 2, "Legend left", true);
+                validateCoordinate(box.y() - box.height() / 2, "Legend bottom", true);
+                validateCoordinate(box.x() + box.width() / 2, "Legend right", false);
+                validateCoordinate(box.y() + box.height() / 2, "Legend top", false);
+                validateCoordinate(box.width(), "Legend width", false);
+                validateCoordinate(box.height(), "Legend height", false);
+            }
+            if (maximumShapeId > MAX_VISIO_ID - connects.size() - (page.getLegend() == null ? 0 : 1)) {
                 throw invalid("Connector IDs overflow the Visio unsigned-int range on page "
                         + pageIndex);
             }

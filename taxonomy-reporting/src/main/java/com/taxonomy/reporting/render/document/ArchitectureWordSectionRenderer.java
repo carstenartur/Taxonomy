@@ -66,7 +66,9 @@ public final class ArchitectureWordSectionRenderer {
                                                                 value(edge.relationType(), labels),
                                                                 value(
                                                                         edge.relationCategory(),
-                                                                        labels)))
+                                                                        labels)
+                                                                        + " · " + com.taxonomy.export.DiagramPresentation
+                                                                                .relationshipStatus(edge.metadata())))
                                         .toList());
                 writer.columnWidths(key, 12, 32, 32, 24);
             }
@@ -104,6 +106,8 @@ public final class ArchitectureWordSectionRenderer {
                         .toList());
         writer.heading(labels.relations(), 1, "architecture_relations");
         writer.caption(labels.relations(), false);
+        var metadataById = new HashMap<String, com.taxonomy.diagram.DiagramRelationMetadata>();
+        report.diagram().edges().forEach(edge -> metadataById.put(edge.id(), edge.metadata()));
         writer.table(
                 List.of(
                         labels.identifier(),
@@ -120,9 +124,19 @@ public final class ArchitectureWordSectionRenderer {
                                                 e.sourceId(),
                                                 e.targetId(),
                                                 value(e.type(), labels),
-                                                value(e.category(), labels),
+                                                value(e.category(), labels) + " · "
+                                                        + com.taxonomy.export.DiagramPresentation.relationshipStatus(metadataById.get(e.id())),
                                                 percentage(e.relevance())))
                         .toList());
+        if (report.diagram().edges().stream().anyMatch(edge -> edge.metadata() != null)) {
+            writer.heading(labels.german() ? "Beziehungsherkunft" : "Relationship provenance", 2, null);
+            for (var edge : report.diagram().edges()) {
+                if (edge.metadata() == null) continue;
+                writer.heading(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId(), 2, null);
+                // One point between evidence fields; body type remains the writer's readable 10pt.
+                relationshipDetails(edge.metadata()).forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
+            }
+        }
         writer.heading(labels.provenance(), 1, "architecture_evidence");
         var e = report.evidence();
         writer.table(
@@ -148,6 +162,30 @@ public final class ArchitectureWordSectionRenderer {
 
     private List<String> row(String name, Object value) {
         return List.of(name, String.valueOf(value));
+    }
+
+    /** Equal recorded reasons share their value while retaining every source-field label. */
+    private static List<String> relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata) {
+        var labels = List.of("Included because", "Derivation reason", "Presence reason");
+        var values = Arrays.asList(metadata.includedBecause(), metadata.derivationReason(), metadata.presenceReason());
+        var grouped = new LinkedHashMap<String, List<String>>();
+        for (int i = 0; i < labels.size(); i++) {
+            String value = values.get(i);
+            if (value != null) grouped.computeIfAbsent(value, ignored -> new ArrayList<>()).add(labels.get(i));
+        }
+        var result = new ArrayList<String>();
+        boolean reasonsWritten = false;
+        for (String detail : com.taxonomy.export.DiagramPresentation.relationshipDetails(metadata)) {
+            if (labels.stream().anyMatch(label -> detail.startsWith(label + ": "))) {
+                if (!reasonsWritten) {
+                    grouped.forEach((value, fields) -> result.add(String.join(", ", fields) + ": " + value));
+                    reasonsWritten = true;
+                }
+            } else {
+                result.add(detail);
+            }
+        }
+        return result;
     }
 
     private String value(String text, DecisionReportLabels labels) {

@@ -328,6 +328,8 @@
             businessText: input ? input.value : '',
             lastAnalyzedText: S.lastAnalyzedText,
             lastAnalysisProvider: S.lastAnalysisProvider,
+            analysisOperationId: S.analysisOperationId || null,
+            analysisProviderId: S.analysisProviderId || null,
             lastAnalysisStatus: S.lastAnalysisStatus,
             analysisDurationMillis: S.lastAnalysisDurationMillis,
             analysisCoverage: S.analysisCoverage || null,

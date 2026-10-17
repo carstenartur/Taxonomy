@@ -88,6 +88,9 @@ public class AnalysisApiController {
     private ClusterAnalysisExecution clusterExecution;
 
     @Autowired(required = false)
+    private com.taxonomy.analysis.service.AnalysisFollowUpProviders followUpProviders;
+
+    @Autowired(required = false)
     private com.taxonomy.analysis.recovery.AnalysisContinuationService continuationService;
 
     /**
@@ -171,6 +174,8 @@ public class AnalysisApiController {
                             .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(result.analysisResult());
                 }
             }
+            String pinnedProvider = followUpProviders == null ? request.getProvider()
+                    : followUpProviders.remember(operationId, request.getProvider(), request.getBusinessText(), username, context);
             if (request.isResumable() && continuationService == null) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
             }
@@ -182,14 +187,13 @@ public class AnalysisApiController {
             }
             try (var run = analysisProgressRegistry == null ? null
                     : analysisProgressRegistry.open(operationId, username, context, null)) {
-            AnalyzeRequirementResult result = analyzeRequirementUseCase.analyze(
-                    new AnalyzeRequirementCommand(
-                            request.getBusinessText(),
-                            request.isIncludeArchitectureView(),
-                            maxArchitectureNodes,
-                            request.getProvider(),
-                            username,
-                            context, null, analysisScope));
+            var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
+                    maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
+            AnalyzeRequirementResult result = followUpProviders == null ? analyzeRequirementUseCase.analyze(command)
+                    : followUpProviders.execute(operationId, null, request.getBusinessText(), username, context,
+                            () -> analyzeRequirementUseCase.analyze(command));
+            result.analysisResult().setAnalysisOperationId(operationId);
+            result.analysisResult().setAnalysisProviderId(pinnedProvider);
             AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());
             if (run != null) {
                 // The continuation is the durable authority. Publishing live completion must
@@ -301,6 +305,8 @@ public class AnalysisApiController {
                     "Full analysis requires an isolated workspace");
         }
 
+        String followUpProvider = followUpProviders == null ? provider
+                : followUpProviders.remember(operationId, provider, businessText, username, streamContext);
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
                 businessText, provider, LocaleContextHolder.getLocale(), analysisScope);
         // Conflicts and capacity failures must retain their HTTP status, before async response commitment.
@@ -346,6 +352,7 @@ public class AnalysisApiController {
                     Map<String, Object> scopedPayload = new LinkedHashMap<>();
                     ((Map<?, ?>) mapped.payload()).forEach((key, value) -> scopedPayload.put(String.valueOf(key), value));
                     scopedPayload.put("analysisScope", analysisScope);
+                    if (followUpProvider != null) scopedPayload.put("analysisProviderId", followUpProvider);
                     mapped = new AnalysisSseEventMapper.MappedEvent(mapped.name(), scopedPayload);
                     if (!sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload())) {
                         cancelWorker.run();
@@ -358,7 +365,11 @@ public class AnalysisApiController {
                         Thread.currentThread().interrupt();
                     }
                     AnalysisRunControl.checkpoint();
-                    streamRequirementAnalysisUseCase.stream(command, emit);
+                    if (followUpProviders == null) streamRequirementAnalysisUseCase.stream(command, emit);
+                    else followUpProviders.execute(operationId, null, businessText, username, streamContext, () -> {
+                        streamRequirementAnalysisUseCase.stream(command, emit);
+                        return null;
+                    });
                     if (!completed.get()) emit.handle(new AnalysisStreamEvent.Error("ERROR",
                             "Analysis ended without a terminal result", Map.of(), List.of(), List.of(), List.of()));
                 } catch (AnalysisStoppedException stopped) {
@@ -522,22 +533,53 @@ public class AnalysisApiController {
     public ResponseEntity<AnalyzeNodeChildrenResult> analyzeNode(
             @RequestParam String parentCode,
             @RequestParam String businessText,
-            @RequestParam(defaultValue = "100") double parentScore) {
+            @RequestParam(defaultValue = "100") double parentScore,
+            @RequestParam(required = false) String provider,
+            @RequestParam(required = false) String operationId) {
         ResponseEntity<AnalyzeNodeChildrenResult> guard = checkInitialized();
         if (guard != null) return guard;
         try {
-            return ResponseEntity.ok(analyzeNodeChildrenUseCase.analyze(
-                    new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore)));
+            if (followUpProviders != null && (operationId == null || operationId.isBlank())) {
+                String owner = workspaceResolver.resolveCurrentUsername();
+                WorkspaceContext workspace = resolveWorkspaceContext(owner);
+                String id = UUID.randomUUID().toString();
+                String pin = followUpProviders.remember(id, provider, businessText, owner, workspace);
+                var result = followUpProviders.execute(id, null, businessText, owner, workspace,
+                        () -> analyzeNodeChildrenUseCase.analyze(new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore)));
+                return ResponseEntity.ok(result.withFollowUpContext(id, pin));
+            }
+            return ResponseEntity.ok(withFollowUpProvider(operationId, provider, businessText,
+                    () -> analyzeNodeChildrenUseCase.analyze(
+                            new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore))));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    public ResponseEntity<AnalyzeNodeChildrenResult> analyzeNode(String parentCode, String businessText, double parentScore) {
+        return analyzeNode(parentCode, businessText, parentScore, null, null);
     }
 
     public record JustifyLeafRequest(
             String nodeCode,
             String businessText,
             Map<String, Double> scores,
-            Map<String, String> reasons) {
+            Map<String, String> reasons,
+            String provider,
+            String operationId) {
+        public JustifyLeafRequest(String nodeCode, String businessText, Map<String, Double> scores, Map<String, String> reasons) {
+            this(nodeCode, businessText, scores, reasons, null, null);
+        }
+    }
+
+    private <T> T withFollowUpProvider(String operationId, String provider, String text, java.util.function.Supplier<T> work) {
+        if (followUpProviders == null) {
+            if ((operationId != null && !operationId.isBlank()) || (provider != null && !provider.isBlank()))
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Analysis provider binding is unavailable");
+            return work.get();
+        }
+        String owner = workspaceResolver.resolveCurrentUsername();
+        return followUpProviders.execute(operationId, provider, text, owner, resolveWorkspaceContext(owner), work);
     }
 
     @Operation(summary = "Generate leaf justification",
@@ -551,8 +593,9 @@ public class AnalysisApiController {
         ResponseEntity<JustifyLeafResult> guard = checkInitialized();
         if (guard != null) return guard;
         try {
-            JustifyLeafResult result = justifyLeafUseCase.justify(new JustifyLeafCommand(
-                    request.nodeCode(), request.businessText(), request.scores(), request.reasons()));
+            JustifyLeafResult result = withFollowUpProvider(request.operationId(), request.provider(), request.businessText(),
+                    () -> justifyLeafUseCase.justify(new JustifyLeafCommand(
+                            request.nodeCode(), request.businessText(), request.scores(), request.reasons())));
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             ProblemDetail problem = ProblemDetail.forStatusAndDetail(
@@ -560,6 +603,8 @@ public class AnalysisApiController {
             problem.setTitle("Invalid leaf justification request");
             problem.setType(URI.create("urn:taxonomy:problem:invalid-justification-request"));
             return ResponseEntity.badRequest().body(problem);
+        } catch (ResponseStatusException unavailable) {
+            throw unavailable;
         } catch (Exception e) {
             log.error("Leaf justification failed for node {}",
                     request != null ? request.nodeCode() : null, e);

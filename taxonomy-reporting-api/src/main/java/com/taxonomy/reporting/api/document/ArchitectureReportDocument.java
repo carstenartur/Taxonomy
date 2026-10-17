@@ -105,12 +105,54 @@ public record ArchitectureReportDocument(
                 field(out, e.relationType());
                 out.writeDouble(e.relevance());
                 field(out, e.relationCategory());
+                // Preserve historical digests when provenance was absent; newly recorded evidence participates fully.
+                if (e.metadata() != null) {
+                    field(out, "relationship-provenance-v1");
+                    provenance(out, e.metadata());
+                }
             }
             return HexFormat.of()
                     .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
         } catch (Exception exception) {
             throw new IllegalStateException("Could not fingerprint architecture graph", exception);
         }
+    }
+
+    private static void provenance(DataOutputStream out, DiagramRelationMetadata m) throws IOException {
+        field(out, m.relationId() == null ? null : m.relationId().toString());
+        field(out, m.origin() == null ? null : m.origin().name());
+        out.writeBoolean(m.confidence() != null);
+        if (m.confidence() != null) out.writeDouble(m.confidence());
+        field(out, m.includedBecause()); field(out, m.derivationReason()); field(out, m.presenceReason());
+        field(out, m.seedType() == null ? null : m.seedType().name());
+        // Evidence collection order is presentation only; fingerprint every field in canonical byte order.
+        var evidence = new ArrayList<byte[]>();
+        for (var item : m.requirementEvidence()) {
+            var bytes = new ByteArrayOutputStream();
+            evidence(new DataOutputStream(bytes), item);
+            evidence.add(bytes.toByteArray());
+        }
+        evidence.sort(Arrays::compareUnsigned);
+        out.writeInt(evidence.size());
+        for (byte[] item : evidence) { out.writeInt(item.length); out.write(item); }
+    }
+
+    private static void evidence(DataOutputStream out, com.taxonomy.dto.RelationSearchModel.Edge edge) throws IOException {
+        var c = edge.contribution();
+        evidenceNode(out, c.source()); field(out, c.text()); field(out, c.quote()); field(out, c.condition());
+        evidenceNode(out, edge.target()); field(out, edge.type()); field(out, edge.direction().name());
+        var d = edge.evidence();
+        out.writeBoolean(d != null);
+        if (d != null) {
+            field(out, d.targetId()); field(out, d.outcome() == null ? null : d.outcome().name());
+            field(out, d.contribution()); field(out, d.quote()); field(out, d.necessity() == null ? null : d.necessity().name());
+            field(out, d.condition()); field(out, d.alternativeGroup()); field(out, d.rationale()); field(out, d.question());
+        }
+    }
+
+    private static void evidenceNode(DataOutputStream out, com.taxonomy.dto.RelationSearchModel.Node node) throws IOException {
+        field(out, node.id()); field(out, node.root()); field(out, node.name()); field(out, node.description());
+        out.writeBoolean(node.container());
     }
 
     private static void field(DataOutputStream out, String value) throws IOException {

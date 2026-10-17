@@ -25,6 +25,11 @@ public final class ReportInventory {
                 + (german ? " Elemente · Navigationsknoten: " : " elements · Navigation nodes: ") + containers
                 + (german ? " · Beziehungen: " : " · Relationships: ") + relations);
         types.forEach((type, count) -> lines.add(type + ": " + count));
+        Map<String, Integer> statuses = new TreeMap<>();
+        var seenRelations = new java.util.HashSet<String>();
+        graph.edges().stream().filter(edge -> seenRelations.add(edge.id())).forEach(edge ->
+                statuses.merge(com.taxonomy.export.DiagramPresentation.relationshipStatus(edge.metadata()), 1, Integer::sum));
+        statuses.forEach((status, count) -> lines.add((german ? "Beziehungen - " : "Relationships - ") + status + ": " + count));
         lines.add(german ? "Fachliche Bestätigung ist in diesem Diagrammmodell nicht aufgezeichnet. KI-Prüfung ist keine Freigabe."
                 : "Human confirmation is not recorded in this diagram model. AI verification is not approval.");
         return List.copyOf(lines);

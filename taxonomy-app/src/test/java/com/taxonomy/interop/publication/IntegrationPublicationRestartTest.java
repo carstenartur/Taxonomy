@@ -1,5 +1,7 @@
 package com.taxonomy.interop.publication;
 
+import org.junit.jupiter.api.Tag;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.*;
@@ -7,6 +9,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("ci-app-shard-recovery")
 class IntegrationPublicationRestartTest {
 
     @TempDir

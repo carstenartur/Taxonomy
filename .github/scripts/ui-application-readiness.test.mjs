@@ -217,10 +217,11 @@ test('runner and Maven-owned npm contract both use the readiness gate', async ()
   assert.match(runner, /MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: UI_READINESS_GROUP/);
   assert.doesNotMatch(runner, /fetch\(`\$\{baseUrl\}\/login`/);
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-  assert.match(pkg.scripts['test:ui-application-readiness'], /node --test scripts\/ui-application-readiness\.test\.mjs/);
-  for (const entry of ['verify:ui', 'verify:ui-contracts']) {
-    assert.ok(pkg.scripts[entry].includes('npm run test:ui-application-readiness'));
-  }
+  assert.match(pkg.scripts['test:ui-application-readiness'], /JavascriptContractTest.*ui-application-readiness\.test\.mjs/);
+  assert.match(pkg.scripts['verify:ui-contracts'], /-Dtest=JavascriptContractTest/);
+  assert.equal(pkg.scripts['verify:ui'], '../mvnw -B -f ui-verification-pom.xml verify -Pshard');
+  const inventory = await readFile(new URL('../../.mvn/javascript-junit-sources.txt', import.meta.url), 'utf8');
+  assert.ok(inventory.includes('ui-application-readiness.test.mjs'));
 });
 
 test('HTTP failure diagnostics retain method/path/status but not credentials or query secrets', async () => {

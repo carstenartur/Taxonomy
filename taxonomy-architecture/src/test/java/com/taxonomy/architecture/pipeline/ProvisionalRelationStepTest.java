@@ -51,6 +51,12 @@ class ProvisionalRelationStepTest {
         assertThat(ctx.getElements()).hasSize(2);
         assertThat(ctx.getRelationships()).hasSize(1);
         assertThat(ctx.isUsedProvisional()).isTrue();
+        var relation = ctx.getRelationships().getFirst();
+        assertThat(relation.getOrigin()).isEqualTo(com.taxonomy.dto.RelationOrigin.SUGGESTED_CANDIDATE);
+        assertThat(relation.getRelationCategory()).isEqualTo("impact");
+        assertThat(relation.getConfidence()).isEqualTo(.8);
+        assertThat(relation.getDerivationReason()).isEqualTo("hypothesis rationale");
+        assertThat(relation.getPresenceReason()).contains("human approval not recorded");
     }
 
     private static RelationHypothesisDto hypothesis(String sourceCode, String targetCode) {
@@ -59,6 +65,7 @@ class ProvisionalRelationStepTest {
         hypothesis.setTargetCode(targetCode);
         hypothesis.setRelationType("supports");
         hypothesis.setConfidence(0.8);
+        hypothesis.setReasoning("hypothesis rationale");
         return hypothesis;
     }
 }

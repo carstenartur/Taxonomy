@@ -436,10 +436,10 @@ public class LlmService {
             result.setStatus("SUCCESS");
         }
 
-        if (!scope.legacyFull()) {
+        if (!scope.legacyFull() || !run.failedAssessments.isEmpty()) {
             List<TaxonomyNodeDto> coverageTree = plannedTree == null ? rawTree : plannedTree;
             result.setAnalysisCoverage(AnalysisCoverage.derive(scope.selectedTree(coverageTree), run.allScores,
-                    result.getScores(), Map.of(), run.stop == null ? null : "INTERRUPTED:" + run.stop.reason().name()));
+                    result.getScores(), run.failedAssessments, run.stop == null ? null : "INTERRUPTED:" + run.stop.reason().name()));
         }
         return result;
     }
@@ -449,6 +449,7 @@ public class LlmService {
         final Map<String, Double> allScores = new HashMap<>();
         final Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
         final Map<String, String> allReasons = new LinkedHashMap<>();
+        final Map<String, String> failedAssessments = new LinkedHashMap<>();
         final List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         final List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
         final List<String> warnings = new ArrayList<>();
@@ -497,6 +498,7 @@ public class LlmService {
             }
             int warningsBefore = run.warnings.size();
             addAnalysisWarning(run.warnings, root.getCode(), rootDetail);
+            recordUnassessed(List.of(root), rootDetail, run.failedAssessments);
             double score = rootScore.getOrDefault(root.getCode(), 0d);
 
             if (score > 0) {
@@ -506,7 +508,7 @@ public class LlmService {
                     analyzeNodesPropagating(
                             businessText, level1Children, run.allScores, run.allReasons,
                             run.allDiscrepancies, run.productCoverageGaps, run.warnings, score,
-                            run.scoreContexts, null);
+                            run.scoreContexts, run.failedAssessments, null);
                 }
             }
 
@@ -539,6 +541,16 @@ public class LlmService {
         }
     }
 
+    private void recordUnassessed(List<TaxonomyNode> nodes, LlmCallDetail detail,
+                                         Map<String, String> failures) {
+        if (failures == null || !hasError(detail)) return;
+        String reason = "FAILED:" + detail.getError();
+        if (reason.length() > 4096) reason = reason.substring(0, 4096);
+        for (TaxonomyNode node : nodes) {
+            if (!detail.getScores().containsKey(node.getCode())) failures.put(node.getCode(), reason);
+        }
+    }
+
     private static Double boundedScore(Double score) {
         return score == null ? null : Math.max(0, Math.min(100, score));
     }
@@ -565,11 +577,19 @@ public class LlmService {
                                           List<String> warnings,
                                           double parentScore,
                                           Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts,
+                                          Map<String, String> failedAssessments,
                                           AnalysisEventCallback callback) {
         if (nodes == null || nodes.isEmpty()) return;
         if (scoreContexts != null) captureScoreContexts(nodes, scoreContexts);
 
-        SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
+        SiblingBatchResult batch;
+        ProductBatchFailure pendingFailure = null;
+        try {
+            batch = scoreSiblingBatch(businessText, nodes, parentScore);
+        } catch (ProductBatchFailure failure) {
+            pendingFailure = failure;
+            batch = new SiblingBatchResult(failure.detail, false);
+        }
         LlmCallDetail detail = batch.detail();
         Map<String, Double> scores = detail.getScores();
         allScores.putAll(scores);
@@ -580,8 +600,10 @@ public class LlmService {
             allDiscrepancies.add(detail.getDiscrepancy());
         }
         addAnalysisWarning(warnings, siblingScope(nodes), detail);
+        recordUnassessed(nodes, detail, failedAssessments);
         if (callback != null) callback.onScores(scores, detail.getReasons(),
                 "Evaluated " + nodes.size() + " node(s)", detail);
+        if (pendingFailure != null) throw pendingFailure.failure;
 
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
         if (!productNodes.isEmpty() && batch.productEvaluationComplete()
@@ -598,7 +620,7 @@ public class LlmService {
                             children.stream().map(TaxonomyNode::getCode).toList());
                     analyzeNodesPropagating(
                             businessText, children, allScores, allReasons,
-                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue(), scoreContexts, callback);
+                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue(), scoreContexts, failedAssessments, callback);
                 }
             }
         }
@@ -657,7 +679,7 @@ public class LlmService {
                         callback.onExpanding(root.getCode(),
                                 level1Children.stream().map(TaxonomyNode::getCode).toList());
                         analyzeNodesPropagating(businessText, level1Children, allScores, allReasons,
-                                allDiscrepancies, productCoverageGaps, warnings, rootScore, null, callback);
+                                allDiscrepancies, productCoverageGaps, warnings, rootScore, null, null, callback);
                     }
                 }
             }
@@ -698,6 +720,8 @@ public class LlmService {
             String businessText, List<TaxonomyNode> nodes, double parentScore) {
         try {
             return scoreSiblingBatchDetailed(businessText, nodes, parentScore);
+        } catch (ProductBatchFailure failure) {
+            return failure.detail;
         } catch (LlmTimeoutException e) {
             log.warn("LLM API call timed out: {}", e.getMessage());
             LlmCallDetail detail = new LlmCallDetail();
@@ -784,6 +808,8 @@ public class LlmService {
             productDetail = callProductBatchesDetailed(businessText, products);
         } catch (AnalysisStoppedException stopped) {
             throw stopped.withPartial(categoryDetail);
+        } catch (ProductBatchFailure failure) {
+            throw new ProductBatchFailure(failure.failure, mergeDetails(List.of(categoryDetail, failure.detail)));
         }
         return new SiblingBatchResult(
                 mergeDetails(List.of(categoryDetail, productDetail)),
@@ -804,11 +830,32 @@ public class LlmService {
                 accumulator.add(callProductBatchDetailed(businessText, batch));
             } catch (AnalysisStoppedException stopped) {
                 throw stopped.withPartial(accumulator.result());
+            } catch (RuntimeException failure) {
+                AnalysisExecutionFailures.rethrow(failure);
+                LlmCallDetail diagnostic = new LlmCallDetail();
+                diagnostic.setProvider(getActiveProviderName());
+                diagnostic.setScores(Map.of());
+                diagnostic.setReasons(Map.of());
+                diagnostic.setError("Product evaluation failed: " + failure.getMessage());
+                accumulator.add(diagnostic);
+                recordFailure(diagnostic.getError());
+                throw new ProductBatchFailure(failure, accumulator.result());
             }
         }
         LlmCallDetail result = accumulator.result();
         if (result.getProvider() == null) result.setProvider(getActiveProviderName());
         return result;
+    }
+
+    /** Retains accepted evidence while preserving the original stop policy at the traversal boundary. */
+    private static final class ProductBatchFailure extends RuntimeException {
+        final RuntimeException failure;
+        final LlmCallDetail detail;
+        ProductBatchFailure(RuntimeException failure, LlmCallDetail detail) {
+            super(failure.getMessage(), failure);
+            this.failure = failure;
+            this.detail = detail;
+        }
     }
 
     /** Semantic input identity deliberately excludes credentials and transport-only retry settings. */
@@ -918,7 +965,7 @@ public class LlmService {
         if (provider.equals(LlmProvider.LOCAL_ONNX.id())) {
             if (!localEmbeddingService.isAvailable()) {
                 String error = "LOCAL_ONNX embedding model is not available. Product scoring is disabled.";
-                detail.setScores(responseParser.zeroScores(products));
+                detail.setScores(Map.of());
                 detail.setReasons(Map.of());
                 detail.setPrompt("(local embedding – no prompt sent)");
                 detail.setRawResponse("");
@@ -927,13 +974,22 @@ public class LlmService {
                 return detail;
             }
             long start = System.currentTimeMillis();
-            Map<String, Double> rawScores = scoreLocalNodes(businessText, products);
-            detail.setScores(applyProductThreshold(rawScores, products, minimumScore));
             detail.setReasons(Map.of());
             detail.setPrompt("(local embedding – independent product suitability)");
-            detail.setRawResponse("(cosine similarity scores computed via local ONNX embeddings)");
+            try {
+                Map<String, Double> rawScores = scoreLocalNodes(businessText, products);
+                detail.setScores(applyProductThreshold(rawScores, products, minimumScore));
+                detail.setRawResponse("(cosine similarity scores computed via local ONNX embeddings)");
+                detail.setError(missingLocalScores(rawScores, products));
+                if (hasError(detail)) recordFailure(detail.getError()); else recordSuccess();
+            } catch (RuntimeException failure) {
+                AnalysisExecutionFailures.rethrow(failure);
+                detail.setScores(Map.of());
+                detail.setRawResponse("");
+                detail.setError("LOCAL_ONNX assessment failed: " + failure.getMessage());
+                recordFailure(detail.getError());
+            }
             detail.setDurationMs(System.currentTimeMillis() - start);
-            recordSuccess();
             return detail;
         }
 
@@ -941,7 +997,7 @@ public class LlmService {
         if (missingCredential(provider, apiKey) && !isReplayActive()) {
             String error = "No API key configured for provider " + provider
                     + ". Set environment variable " + provider.value() + "_API_KEY.";
-            detail.setScores(responseParser.zeroScores(products));
+            detail.setScores(Map.of());
             detail.setReasons(Map.of());
             detail.setPrompt("");
             detail.setRawResponse("");
@@ -967,7 +1023,7 @@ public class LlmService {
             responseBody = gateway.sendHttpRequest(prompt, apiKey);
         } catch (LlmTimeoutException exception) {
             detail.setDurationMs(System.currentTimeMillis() - start);
-            detail.setScores(responseParser.zeroScores(products));
+            detail.setScores(Map.of());
             detail.setReasons(Map.of());
             detail.setRawResponse("");
             detail.setError(exception.getMessage());
@@ -978,7 +1034,7 @@ public class LlmService {
 
         if (responseBody == null) {
             String error = "LLM API call returned no response while scoring products.";
-            detail.setScores(responseParser.zeroScores(products));
+            detail.setScores(Map.of());
             detail.setReasons(Map.of());
             detail.setRawResponse("");
             detail.setError(error);
@@ -990,7 +1046,7 @@ public class LlmService {
         detail.setRawResponse(rawText != null ? rawText : "");
         if (rawText == null) {
             String error = "LLM response contained no usable product-scoring text.";
-            detail.setScores(responseParser.zeroScores(products));
+            detail.setScores(Map.of());
             detail.setReasons(Map.of());
             detail.setError(error);
             recordFailure(error);
@@ -1009,7 +1065,7 @@ public class LlmService {
             AnalysisExecutionFailures.rethrow(exception);
             String error = "Failed to parse independent product response: " + exception.getMessage();
             log.error(error, exception);
-            detail.setScores(responseParser.zeroScores(products));
+            detail.setScores(Map.of());
             detail.setReasons(Map.of());
             detail.setError(error);
             recordFailure(error);
@@ -1046,11 +1102,20 @@ public class LlmService {
             int minimumScore) {
         Map<String, Double> scores = new LinkedHashMap<>();
         for (TaxonomyNode product : products) {
-            double raw = rawScores.getOrDefault(product.getCode(), 0d);
+            Double raw = rawScores.get(product.getCode());
+            if (raw == null) continue;
             double clamped = com.taxonomy.dto.AnalysisPercentages.require(raw);
             scores.put(product.getCode(), clamped >= minimumScore ? clamped : 0);
         }
         return scores;
+    }
+
+    private static String missingLocalScores(Map<String, Double> scores, List<TaxonomyNode> nodes) {
+        String missing = nodes.stream().map(TaxonomyNode::getCode).filter(code -> scores.get(code) == null)
+                .collect(java.util.stream.Collectors.joining(", "));
+        if (missing.isEmpty()) return null;
+        String reason = "LOCAL_ONNX did not assess indexed nodes: " + missing;
+        return reason.length() <= 4096 ? reason : reason.substring(0, 4096);
     }
 
     private LlmCallDetail mergeDetails(List<LlmCallDetail> details) {
@@ -1220,7 +1285,7 @@ public class LlmService {
     /** Frozen workers do not enter the legacy global-index transaction. */
     private Map<String, Double> scoreLocalNodes(String businessText, List<TaxonomyNode> nodes) {
         return com.taxonomy.catalog.snapshot.FrozenCatalogueContext.current() == null
-                ? localEmbeddingService.scoreNodes(businessText, nodes)
+                ? localEmbeddingService.scoreNodesForAnalysis(businessText, nodes)
                 : localEmbeddingService.scoreFrozenNodes(businessText, nodes);
     }
 
@@ -1320,14 +1385,31 @@ public class LlmService {
                 return detail;
             }
             long start = System.currentTimeMillis();
-            Map<String, Double> similarityScores = scoreLocalNodes(businessText, nodes);
-            Map<String, Double> scores = kind == ScoreAssessmentKind.ROOT_RELEVANCE
-                    ? similarityScores : normalizeToParent(similarityScores, parentScore);
-            detail.setDurationMs(System.currentTimeMillis() - start);
-            detail.setScores(scores);
             detail.setPrompt("(local embedding – no prompt sent)");
-            detail.setRawResponse("(cosine similarity scores computed via local ONNX embeddings)");
-            recordSuccess();
+            detail.setReasons(Map.of());
+            try {
+                Map<String, Double> similarityScores = scoreLocalNodes(businessText, nodes);
+                String missing = missingLocalScores(similarityScores, nodes);
+                if (missing != null) {
+                    // A category budget cannot be redistributed while sibling evidence is missing.
+                    detail.setScores(Map.of());
+                    detail.setError(missing);
+                    detail.setRawResponse("");
+                    recordFailure(missing);
+                } else {
+                    detail.setScores(kind == ScoreAssessmentKind.ROOT_RELEVANCE
+                            ? similarityScores : normalizeToParent(similarityScores, parentScore));
+                    detail.setRawResponse("(cosine similarity scores computed via local ONNX embeddings)");
+                    recordSuccess();
+                }
+            } catch (RuntimeException failure) {
+                AnalysisExecutionFailures.rethrow(failure);
+                detail.setScores(Map.of());
+                detail.setError("LOCAL_ONNX assessment failed: " + failure.getMessage());
+                detail.setRawResponse("");
+                recordFailure(detail.getError());
+            }
+            detail.setDurationMs(System.currentTimeMillis() - start);
             return detail;
         }
 

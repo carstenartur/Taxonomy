@@ -1,42 +1,76 @@
 {
   "schemaVersion": 1,
-  "canonicalCommand": "./mvnw -B verify -Pci",
+  "canonicalCommand": "./mvnw -B verify -Pci -DrunOnnxTests=true",
   "profiles": {
     "test-local": {
       "purpose": "Docker-free Java, Spring Boot/HSQLDB, forked restart and real local Chrome scenarios; reuses existing tests without adding a duplicate CI lane",
       "excludedGroups": "real-llm,onnx,db-postgres,db-mssql,db-oracle,docker-required",
       "systemProperty": "taxonomy.test.browser=local",
-      "requires": ["Java 21", "Node", "Matching Chrome and ChromeDriver (CHROME_BIN and CHROMEDRIVER)"]
+      "requires": [
+        "Java 21",
+        "Node",
+        "Matching Chrome and ChromeDriver (CHROME_BIN and CHROMEDRIVER)"
+      ]
     },
     "ci": {
       "purpose": "Required pull-request verification: unit tests, core, PostgreSQL and Keycloak integration tests, quality gates, browser matrix and accessibility audit",
-      "requires": ["Java 21", "Docker", "Python 3", "POSIX shell"]
+      "requires": [
+        "Java 21",
+        "Docker",
+        "Python 3",
+        "POSIX shell"
+      ]
     },
     "core-integration": {
       "itTest": "DiagnosticsContainerIT,DiagnosticsWithApiKeyContainerIT,CoreUiAcceptanceIT,ProductionPersistenceRestartIT"
     },
-    "database-postgres": {"itTest": "*Postgres*IT"},
-    "database-mssql": {"itTest": "*Mssql*IT"},
-    "database-oracle": {"itTest": "*Oracle*IT"},
+    "database-postgres": {
+      "itTest": "*Postgres*IT"
+    },
+    "database-mssql": {
+      "itTest": "*Mssql*IT"
+    },
+    "database-oracle": {
+      "itTest": "*Oracle*IT"
+    },
     "ci-database-compatibility": {
       "purpose": "Explicit CI companion to database-postgres, database-mssql or database-oracle; skips only duplicate taxonomy-app Surefire execution and partial aggregate coverage while retaining the selected database Failsafe suite and reactor build guards",
       "profile": "ci-database-compatibility",
-      "baseProfiles": ["database-postgres", "database-mssql", "database-oracle"]
+      "baseProfiles": [
+        "database-postgres",
+        "database-mssql",
+        "database-oracle"
+      ]
     },
-    "onnx": {"itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT", "systemProperty": "runOnnxTests"},
+    "onnx": {
+      "itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT",
+      "systemProperty": "runOnnxTests"
+    },
     "ci-onnx-reference": {
       "purpose": "Explicit CI companion to onnx; selects App ONNX and reference unit tests plus WorkerRuntimeFootprintTest, retains both ONNX Failsafe suites and upstream/build-policy tests, and omits the unrelated product demo and partial coverage aggregate",
       "profile": "ci-onnx-reference",
       "baseProfile": "onnx",
       "itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT"
     },
-    "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,PluginModuleBoundaryTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest"},
-    "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},
-    "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest"},
+    "architecture-tests": {
+      "test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ReportingIsolationTest,ReportModelContractTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,PluginModuleBoundaryTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest"
+    },
+    "document-import-tests": {
+      "test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"
+    },
+    "archimate-import-tests": {
+      "test": "ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest"
+    },
     "plugin-packaging-tests": {
       "purpose": "Full standalone lifecycle for the independent SDK build, immutable host, authenticated HTTP and physically optional features; required by the existing CI workflow alongside canonical verification",
       "itTest": "ExternalPluginPackagedIT,OptionalFeaturePackagedIT",
-      "requires": ["Java 21", "Maven", "Maven repository access", "Docker", "Helm"]
+      "requires": [
+        "Java 21",
+        "Maven",
+        "Maven repository access",
+        "Docker",
+        "Helm"
+      ]
     },
     "ci-plugin-packaging": {
       "purpose": "CI companion to plugin-packaging-tests; skips only taxonomy-app Surefire reruns already covered by core/shards while retaining the selected packaged Failsafe suites and build checks",
@@ -48,59 +82,97 @@
       "purpose": "Packaged application, PostgreSQL Testcontainers, Playwright requirement evaluation, report download and rendered document evidence",
       "itTest": "DocumentTemplateReportDownloadIT",
       "systemProperty": "documentTemplateE2E",
-      "requires": ["Java 21", "Docker", "Node 24", "Chromium", "LibreOffice", "Poppler"]
+      "requires": [
+        "Java 21",
+        "Docker",
+        "Node 24",
+        "Chromium",
+        "LibreOffice",
+        "Poppler"
+      ]
     },
     "reformulation-usage-tests": {
       "purpose": "Scoped durable usage, recovery, encoding and repository-guard regression tests; supplements canonical CI",
       "test": "ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ReformulationEncodingTest,ArchitectureContextDependencyRatchetTest,WorkflowTestAuthorityPolicyTest,PythonSourceRatchetRepositoryTest,ReformulationVerificationProfileTest",
-      "requires": ["Java 21", "Node"]
+      "requires": [
+        "Java 21",
+        "Node"
+      ]
     },
     "reformulation-real-llm": {
       "purpose": "Explicit opt-in five-case real-provider walk-up versus complete-prompt comparison; human quality review remains separate",
       "test": "ReformulationRealModelComparisonTest",
       "groups": "real-llm",
       "excludedGroups": "onnx,db-postgres,db-mssql,db-oracle",
-      "requires": ["Java 21", "Configured generative provider", "Explicit network/cost opt-in"]
+      "requires": [
+        "Java 21",
+        "Configured generative provider",
+        "Explicit network/cost opt-in"
+      ]
     },
     "scenario-acceptance": {
       "purpose": "Sourced Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
       "test": "ScenarioArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationScenarioAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationScenarioBrowserTest,ReformulationBrowserTest",
       "systemProperty": "generateScreenshots",
-      "requires": ["Java 21", "Docker or test-local with matching Chrome and ChromeDriver"]
+      "requires": [
+        "Java 21",
+        "Docker or test-local with matching Chrome and ChromeDriver"
+      ]
     },
     "supply-chain-policy": {
       "purpose": "Focused repository scan for immutable external GitHub Action commits and production image digests",
       "test": "SupplyChainPinPolicyRepositoryTest",
-      "requires": ["Java 21"]
+      "requires": [
+        "Java 21"
+      ]
     },
-    "ui-tests": {"runner": ".github/scripts/run-ui-suite.mjs"},
+    "ui-tests": {
+      "runner": ".github/scripts/run-ui-suite.mjs"
+    },
     "jgit-storage-hibernate-contract": {
       "purpose": "Bounded consumer-owned Core schema, Hibernate Search and PostgreSQL compatibility contract for jgit-storage-hibernate upgrades",
       "test": "JgitStorageHibernateIntegrationTest,JgitStorageOptimizedIndexContractTest,JgitStorageSchemaIndexValidationTest,JgitStorageSchemaMigrationConfigTest,CommitIndexHibernateSearchTest",
       "itTest": "JgitStoragePostgresMigrationIT,TaxonomyPostgresValidateStartupIT,TaxonomySchemaPostgresMigrationIT,ArchitectureCommitIndexTenantMigrationPostgresIT",
       "excludedGroups": "real-llm,onnx,db-mssql,db-oracle",
-      "requires": ["Java 21", "Docker", "Python 3", "Bash 4+"]
+      "requires": [
+        "Java 21",
+        "Docker",
+        "Python 3",
+        "Bash 4+"
+      ]
     }
   },
   "focusedCommands": {
     "keycloak-security": {
       "command": "./mvnw -B verify -pl taxonomy-app -am -DskipITs=false -Dit.test=KeycloakSecurityContainerIT",
       "purpose": "Imported-realm browser OIDC, bearer JWT, CSRF, role, Swagger, logout and health verification",
-      "requires": ["Java 21", "Docker"]
+      "requires": [
+        "Java 21",
+        "Docker"
+      ]
     }
   },
   "applicationTestShards": {
     "purpose": "Split measured expensive taxonomy-app suites across isolated Maven runners while untagged and newly added tests remain in the authoritative core group.",
     "defaultGroup": "core",
-    "excludedTags": ["real-llm", "db-mssql", "db-oracle"],
+    "excludedTags": [
+      "real-llm",
+      "db-mssql",
+      "db-oracle"
+    ],
     "requiredExecutions": [
       {
         "className": "com.taxonomy.composition.demo.ProductDemoEndToEndTest",
-        "identities": ["product-demo-isolated"]
+        "identities": [
+          "product-demo-isolated"
+        ]
       },
       {
         "className": "com.taxonomy.ArchitectureExceptionLedgerTest",
-        "identities": ["default", "module-gate-ci-anchor"]
+        "identities": [
+          "default",
+          "module-gate-ci-anchor"
+        ]
       }
     ],
     "groups": {
@@ -128,7 +200,12 @@
           "com.taxonomy.portfolio.reformulation.ReformulationCheckpointTest",
           "com.taxonomy.portfolio.reformulation.ReformulationRestartTest",
           "com.taxonomy.portfolio.reformulation.ReformulationUsageTest",
-          "com.taxonomy.OnnxRestEndpointTest"
+          "com.taxonomy.OnnxRestEndpointTest",
+          "com.taxonomy.PortfolioVersioningRecoveryIT",
+          "com.taxonomy.workspace.service.WorkspaceRestartSelectionIT",
+          "com.taxonomy.ProductionPersistenceRestartIT",
+          "com.taxonomy.backup.runtime.BackupWriterCoverageIT",
+          "com.taxonomy.interop.publication.IntegrationPublicationRestartTest"
         ]
       },
       "browser": {
@@ -141,7 +218,13 @@
           "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
           "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
           "com.taxonomy.ScenarioArchitectureAcceptanceTest",
-          "com.taxonomy.DerivedMetadataAndSummaryTests"
+          "com.taxonomy.DerivedMetadataAndSummaryTests",
+          "com.taxonomy.CoreUiAcceptanceIT",
+          "com.taxonomy.PortfolioClientRoutingIT",
+          "com.taxonomy.CompleteCopilotSessionIT",
+          "com.taxonomy.SeleniumPostgresContainerIT",
+          "com.taxonomy.ArchitectureWorkbenchUiIT",
+          "com.taxonomy.PortfolioMatrixReviewIT"
         ]
       }
     }

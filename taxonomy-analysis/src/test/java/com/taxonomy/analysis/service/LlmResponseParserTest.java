@@ -132,7 +132,7 @@ class LlmResponseParserTest {
         }
 
         @Test
-        void malformedJson_returnsNull() {
+        void malformedOpenAiJson_returnsNull() {
             assertNull(parser.extractOpenAiText("{broken"));
         }
     }
@@ -512,7 +512,7 @@ class LlmResponseParserTest {
     class ParseOpenAiResponse {
 
         @Test
-        void validResponse_returnsScores() {
+        void validOpenAiResponse_returnsScores() {
             String responseBody = """
                     {
                       "choices": [{
@@ -528,7 +528,7 @@ class LlmResponseParserTest {
         }
 
         @Test
-        void nullText_returnsZeroScores() {
+        void nullOpenAiText_returnsZeroScores() {
             String responseBody = """
                     {"choices": []}""";
             List<TaxonomyNode> nodes = List.of(node("X"));

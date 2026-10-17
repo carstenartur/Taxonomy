@@ -87,6 +87,75 @@ class ArchitectureVisioHandoffAcceptanceTest {
         assertThrows(PortfolioException.class, () -> service.exportVisioBundle(42L, "other-snapshot", "alice", CONTEXT));
     }
 
+    @Test void recordedNeutralReasonsHaveTruthfulLossReportsInBothActualBundles() throws Exception {
+        var source = new FrozenWorkbench(projectionWithRecordedReason("Recorded scoped relationship reason"));
+        var service = service(source);
+        var archimate = service.exportArchiMateBundle(42L, "snapshot-965", "alice", CONTEXT);
+        var archimateManifest = JSON.readTree(entry(archimate.content(), "manifest.json"));
+        var imported = new com.taxonomy.archimate.exchange.ArchiMateExchangeReader().read(entry(archimate.content(), "model.archimate.xml"));
+        assertEquals("Recorded scoped relationship reason", imported.relationships().getFirst().properties()
+                .get("taxonomy.provenance.presenceReason").value());
+        var visio = service.exportVisioBundle(42L, "snapshot-965", "alice", CONTEXT);
+        var visioManifest = JSON.readTree(entry(visio.content(), "manifest.json")).path("handoff");
+        assertEquals("Recorded scoped relationship reason", visioManifest.at("/pages/0/relationships/0/properties/taxonomy.presenceReason/value").asText());
+        for (var manifest : List.of(archimateManifest, visioManifest)) {
+            boolean elementOmission = false, rawEvidencePolicy = false;
+            for (var loss : manifest.path("losses")) {
+                assertFalse(loss.path("scope").asText().equals("relationship") && loss.path("id").asText().equals("r-1")
+                        && loss.path("field").asText().equals("presenceReason") && loss.path("kind").asText().equals("OMITTED"));
+                if (loss.path("scope").asText().equals("element") && loss.path("field").asText().equals("presenceReason")) elementOmission = true;
+                if (loss.path("field").asText().equals("sourceEvidence")) {
+                    rawEvidencePolicy = loss.path("rationale").asText().contains("Raw model-level")
+                            && loss.path("rationale").asText().contains("scoped relationship evidence");
+                }
+            }
+            assertTrue(elementOmission, "Unrelated element explanation omission remains explicit");
+            assertTrue(rawEvidencePolicy, "Raw model evidence must remain distinguished from retained scoped relationship evidence");
+        }
+    }
+
+    @Test void historicalReviewConfidenceRemainsAuthoritativeAndNeutralConfidenceIsSeparate() throws Exception {
+        var service = service(new FrozenWorkbench(projectionWithRecordedReason("Recorded reason")));
+        var bundle = service.exportVisioBundle(42L, "snapshot-965", "alice", CONTEXT);
+        var manifest = JSON.readTree(entry(bundle.content(), "manifest.json")).path("handoff");
+        var properties = manifest.at("/pages/0/relationships/0/properties");
+        assertEquals("0.9", properties.path("taxonomy.confidence").path("value").asText());
+        assertEquals("0.42", properties.path("taxonomy.provenanceConfidence").path("value").asText());
+        assertEquals("CONFIRMED", properties.path("taxonomy.reviewStatus").path("value").asText());
+        assertEquals("alice", properties.path("taxonomy.decisionBy").path("value").asText());
+        assertEquals("Reviewed relationship", properties.path("taxonomy.decisionRationale").path("value").asText());
+        byte[] vsdx = entry(bundle.content(), "diagram.vsdx");
+        String page = new String(entry(vsdx, "visio/pages/page1.xml"), StandardCharsets.UTF_8);
+        assertTrue(page.contains("supplied review metadata remains authoritative"));
+        assertFalse(page.contains("Human approval is not recorded"));
+    }
+
+    @Test void legacyRelationshipsStillReportUnavailablePresenceReasons() throws Exception {
+        for (var projection : List.of(projection(), projectionWithRecordedReason(null))) {
+            var service = service(new FrozenWorkbench(projection));
+            var archimate = JSON.readTree(entry(service.exportArchiMateBundle(42L, "snapshot-965", "alice", CONTEXT).content(), "manifest.json"));
+            var visio = JSON.readTree(entry(service.exportVisioBundle(42L, "snapshot-965", "alice", CONTEXT).content(), "manifest.json")).path("handoff");
+            for (var manifest : List.of(archimate, visio)) {
+                boolean omitted = false;
+                for (var loss : manifest.path("losses")) if (loss.path("scope").asText().equals("relationship")
+                        && loss.path("field").asText().equals("presenceReason") && loss.path("kind").asText().equals("OMITTED")) omitted = true;
+                assertTrue(omitted);
+            }
+        }
+    }
+
+    private static Projection projectionWithRecordedReason(String reason) {
+        var p = projection();
+        var edge = p.diagram().edges().getFirst();
+        var metadata = new DiagramRelationMetadata(42L, com.taxonomy.dto.RelationOrigin.LLM_SUPPORTED, .42,
+                "Scoped relationship inclusion", "Recorded derivation", reason, null, List.of());
+        var graph = new DiagramModel(p.diagram().title(), p.diagram().nodes(), List.of(new DiagramEdge(edge.id(),
+                edge.sourceId(), edge.targetId(), edge.relationType(), edge.relevance(), edge.relationCategory(), metadata)), p.diagram().layout());
+        return new Projection(p.projectId(), p.projectKey(), p.projectTitle(), p.requirementId(), p.requirementKey(),
+                p.requirementTitle(), p.requirementText(), p.snapshotId(), p.snapshotStatus(), p.snapshotCreatedAt(), p.provider(),
+                p.modelName(), p.workspaceId(), p.branchName(), p.commitSha(), graph, null, p.elements(), p.relations(), p.warnings(), p.exportProvenance());
+    }
+
     private static ArchitectureSnapshotExportService service(FrozenWorkbench source) {
         return new ArchitectureSnapshotExportService(source, new CanonicalDiagramExportService(
                 new VisioDiagramService(), new VisioPackageBuilder(), new ArchiMateDiagramService(), new ArchiMateXmlExporter()));

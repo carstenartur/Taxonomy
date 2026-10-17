@@ -27,9 +27,10 @@ Display names never determine identity. Sorted original element IDs allocate pos
 | Element ID, type, score, anchor and impact selection | `taxonomy.id`, `type`, `relevance`, `anchor`, `selectedForImpact` Shape Data | String, number and Boolean types are retained |
 | Depth, layer, parent ID, container flag | Typed Shape Data | Containers become flat rectangles explicitly marked non-semantic; no native grouping fidelity is claimed |
 | Relationship ID, type, source/target ID, score, category | Connector Shape Data and page mapping | Exact semantics survive independently of visual arrow geometry |
+| Recorded relationship origin, confidence, reasons and scoped evidence | Typed connector Shape Data | `taxonomy.provenanceConfidence` retains neutral confidence; supplied snapshot `taxonomy.confidence` remains authoritative |
 | Authorized persisted reviews and decisions | Review/action status, confidence, actor/time, human rationale/action evidence | Only allowlisted values; absent review metadata is declared |
 | Browser layout and routing | Generated layer layout in inches | Explicitly mapped; typography, browser geometry and routing are not copied |
-| Prompts, credentials, provider payloads, requirement text, unreviewed source evidence and warnings | Excluded from the handoff | Use separately authorized canonical evidence where appropriate |
+| Prompts, credentials, provider payloads, requirement text, raw unscoped source evidence and warnings | Excluded from the handoff | Recorded scoped relationship evidence is retained separately; no raw model-level provider payload is added |
 | Snapshot history, operations and changes made in Visio | No write-back | VSDX editing does not update Taxonomy |
 
 The primary page contains the complete selected diagram. A second page is generated for a nonempty proper anchor/impact subset with its induced relationships. The canonical graph hash uses the shared semantic graph contract; explicitly visual container rectangles do not change that hash. The manifest records page membership and layout/container transformations.

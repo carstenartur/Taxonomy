@@ -442,6 +442,8 @@
         S.currentDiscrepancies = result.discrepancies || [];
         S.currentProductCoverageGaps = result.productCoverageGaps || [];
         S.lastAnalysisProvider = result.provider || provider || null;
+        S.analysisProviderId = result.analysisProviderId || provider || null;
+        S.analysisOperationId = result.analysisOperationId || settings.operationId || null;
         S.lastAnalysisStatus = result.status || 'UNKNOWN';
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
@@ -622,6 +624,8 @@
         S.lastAnalyzedText = null;
         S.pendingProposalNodeCode = null;
         S.lastAnalysisProvider = null;
+        S.analysisProviderId = null;
+        S.analysisOperationId = null;
         S.lastAnalysisScope = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         window._currentProvisionalRelations = [];
@@ -647,7 +651,7 @@
             }
             if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
             acceptedResult = applyAnalysisResult(result, { text: text, requestedScope: requestedScope, provider: provider,
-                options: options, analysisStart: analysisStart });
+                options: options, analysisStart: analysisStart, operationId: operationId });
             resultHandled = true;
             return acceptedResult;
         }
@@ -781,6 +785,8 @@
         S.evaluatedNodes = new Set(); S.pendingProposalNodeCode = null;
         S.analysisCoverage = null; S.analysisRecovery = null; S.recoveryContext = null;
         S.lastAnalysisScope = saved.analysisScope; S.lastAnalysisProvider = saved.provider;
+        S.analysisProviderId = saved.provider || null;
+        S.analysisOperationId = operationId;
         S.storedBusinessText = saved.businessText; S.lastAnalyzedText = null;
         S.lastAnalysisStatus = 'IN_PROGRESS'; window._currentProvisionalRelations = [];
         applyScoreEnvelope({}); clearAnalysisLog(true); setAnalyzing(true);
@@ -796,7 +802,7 @@
             }
             monitor.finish(result.status, false, result.analysisDurationMillis);
             applyAnalysisResult(result, { text: saved.businessText, provider: saved.provider,
-                requestedScope: saved.analysisScope, options: { recoveryManaged: true } });
+                requestedScope: saved.analysisScope, options: { recoveryManaged: true }, operationId: operationId });
         }, saved.scope);
         return monitor;
     }
@@ -827,6 +833,8 @@
         S.currentReasons = {};
         var interactiveProvider = document.getElementById('providerSelect');
         S.lastAnalysisProvider = interactiveProvider ? interactiveProvider.value : null;
+        S.analysisProviderId = S.lastAnalysisProvider;
+        S.analysisOperationId = null;
         S.lastAnalysisDurationMillis = null;
         S.lastAnalysisStatus = 'IN_PROGRESS';
         document.getElementById('businessText').classList.remove('stale-results');
@@ -892,15 +900,21 @@
         if (provider && provider !== 'MANUAL') {
             url += '&provider=' + encodeURIComponent(provider);
         }
+        S.analysisProviderId = provider || null;
+        S.analysisOperationId = null;
         const eventSource = new EventSource(url);
 
         eventSource.addEventListener('phase', function (e) {
             const data = JSON.parse(e.data);
+            if (data.operationId) S.analysisOperationId = data.operationId;
+            if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
             B().showStatus('info', data.message);
         });
 
         eventSource.addEventListener('scores', function (e) {
             const data = JSON.parse(e.data);
+            if (data.operationId) S.analysisOperationId = data.operationId;
+            if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
             var rawScores = data.rawScores || data.scores || {};
             try {
                 Object.values(rawScores).forEach(requireScore);
@@ -953,6 +967,8 @@
 
         eventSource.addEventListener('expanding', function (e) {
             const data = JSON.parse(e.data);
+            if (data.operationId) S.analysisOperationId = data.operationId;
+            if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
             expandNodeByCode(data.parentCode);
             data.childCodes.forEach(function (code) {
                 markNodeAsEvaluating(code);
@@ -961,6 +977,8 @@
 
         eventSource.addEventListener('complete', function (e) {
             const data = JSON.parse(e.data);
+            if (data.operationId) S.analysisOperationId = data.operationId;
+            if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
             eventSource.close();
             setAnalyzing(false);
             applyScoreEnvelope({
@@ -1004,6 +1022,8 @@
             if (e.data) {
                 try {
                     const data = JSON.parse(e.data);
+                    if (data.operationId) S.analysisOperationId = data.operationId;
+                    if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
                     eventSource.close();
                     setAnalyzing(false);
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
@@ -1251,11 +1271,20 @@
     }
 
     // ── Leaf Justification ────────────────────────────────────────────────────
+    function canRequestFollowUp() {
+        if (S.lastAnalysisProvider && !S.analysisProviderId && !S.analysisOperationId) {
+            B().showStatus('warning', t('scoring.followup.unavailable'));
+            return false;
+        }
+        return true;
+    }
+
     function requestLeafJustification(nodeCode, btnEl) {
         if (!S.storedBusinessText) {
             B().showStatus('warning', t('analyze.no.text'));
             return;
         }
+        if (!canRequestFollowUp()) return;
         const originalText = btnEl.textContent;
         btnEl.disabled = true;
         btnEl.textContent = t('scoring.generating');
@@ -1267,7 +1296,9 @@
                 nodeCode: nodeCode,
                 businessText: S.storedBusinessText,
                 scores: S.currentScores || {},
-                reasons: S.currentReasons || {}
+                reasons: S.currentReasons || {},
+                provider: S.analysisProviderId || null,
+                operationId: S.analysisOperationId || null
             })
         })
             .then(r => {
@@ -2237,6 +2268,7 @@
         updateAnalysisLog: updateAnalysisLog,
         appendLlmLogEntry: appendLlmLogEntry,
         requestLeafJustification: requestLeafJustification,
+        canRequestFollowUp: canRequestFollowUp,
         showLeafJustificationModal: showLeafJustificationModal,
         renderRelationSearchReport: renderRelationSearchReport,
         renderArchitectureView: renderArchitectureView,

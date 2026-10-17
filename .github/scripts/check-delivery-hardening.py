@@ -80,13 +80,21 @@ def main() -> int:
 
     for needle in (
         "set -euo pipefail",
-        "python3 .github/scripts/test-generate-quality-site.py",
-        "python3 .github/scripts/test-verify-quality-publication.py",
-        "python3 .github/scripts/test-verify-deployment.py",
-        "node .github/scripts/test-taxonomy-base-path.mjs",
-        "python3 .github/scripts/check-delivery-hardening.py",
+        "PythonContractTest",
+        "JavascriptContractTest",
+        "CoreDeliveryContractsTest",
     ):
         require(core_contract, needle, CORE_CONTRACT, failures)
+    junit_root = ROOT / "taxonomy-tooling/src/test/java/com/taxonomy/tooling"
+    for owner, callbacks in {
+        "PythonContractTest.java": ("test-generate-quality-site.py", "test-verify-quality-publication.py", "test-verify-deployment.py"),
+        "CoreDeliveryContractsTest.java": ("check-delivery-hardening.py",),
+    }.items():
+        source = (junit_root / owner).read_text(encoding="utf-8")
+        for callback in callbacks:
+            require(source, callback, junit_root / owner, failures)
+    require((ROOT / ".mvn/javascript-junit-sources.txt").read_text(encoding="utf-8"),
+            ".github/scripts/test-taxonomy-base-path.mjs", ROOT / ".mvn/javascript-junit-sources.txt", failures)
 
     for needle in (
         "set -euo pipefail",

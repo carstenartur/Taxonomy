@@ -5,10 +5,51 @@ test through Maven with only Java and Maven installed. Test selection and
 pass/fail rules belong in Maven; GitHub Actions should call those owners and
 publish their results.
 
-**This requirement is not yet fulfilled.** The current commands below expose
-the existing Maven suites, but the combined `ci` profile does not reproduce
-every required Actions check. In particular, a successful `test-local` run is
-not proof of full CI parity. See the concrete remaining gaps below.
+Test selection and case outcomes for the required reactor, script contracts,
+browser scenarios, production image, real interoperability products,
+observability benchmark and rendered document E2E now have JUnit/Maven owners.
+The single canonical command below enables that complete local test scope.
+A successful `test-local` run still proves only its documented smaller scope.
+
+The separate requirement to provision every native prerequisite from only Java
+and Maven remains open: Docker, Helm and the native document/product runtimes must
+be available on the host. Remote deployment, publication and hosted security
+services also require their corresponding endpoints and CI credentials.
+
+## JUnit ownership of script contracts
+
+`./mvnw -B verify -Pci -DrunOnnxTests=true` is the local entry point for the
+required reactor, script contracts, browser scenarios, real product round trips,
+production image assertions, observability benchmark and rendered document E2E. It requires the native
+prerequisites below; the Java/Maven-only provisioning requirement remains open.
+CI selects the same JUnit owners in the existing independent lanes.
+
+`JavascriptContractTest` schedules every original callback from the explicit
+`.mvn/javascript-junit-sources.txt` inventory. Node supplies JavaScript/DOM drivers;
+`node:test` imports are redirected to callback registration and no Node test
+runner is invoked. Async callbacks, cleanup hooks and nested outcomes are retained
+as JUnit executions; unsupported APIs fail closed. The inventory checks `.github`
+and every module's JavaScript test sources, including future CommonJS files.
+The three legacy Python files retain all 22 assertion methods, called separately
+by `PythonContractTest` without a Python test runner. Every npm test command points
+to the JUnit owner.
+
+`UiScenarioIT` reports each selected browser scenario independently while sharing
+the existing application groups. `InteroperabilityProductsIT` reports StrictDoc
+and Archi independently. Driver failures retain observed per-case results;
+unexecuted cases are explicit aborted JUnit cases and a separate integrity case
+fails. `ProductionImageIT` builds the actual image and checks both OCI revision and
+runtime identity directly in JUnit. The standalone lane owners are
+`.github/ui-verification-pom.xml` profiles `contracts`, `shard`, `interoperability`
+and `image`; none adds a workflow or reduces a required status.
+
+Published XML counters must match actual testcase occurrences and terminal
+outcomes, including nested suite aggregates and parameterized/skipped cases.
+Misplaced outcomes, ambiguous multiple outcomes, rerun/flaky evidence and nonzero
+flake counters are rejected. Local and remote publication recount the raw XML
+against its manifest and summary before accepting it; no XML counter is repaired.
+Root `verify` independently invokes `check-junit-outcomes` after Failsafe to recount
+every original reactor XML, so malformed evidence also fails locally.
 
 ## Toolchain
 
@@ -162,16 +203,16 @@ module build-cache reuse so a warm result from another test scope cannot satisfy
 their evidence checks. GitHub's Maven dependency-download cache remains enabled;
 the standalone unsharded lifecycle retains its configured module cache behavior.
 
-### Remaining gaps in the Java/Maven-only requirement
+### Remaining gaps in the Java/Maven-only provisioning requirement
 
 | Gap | Current source of the difference |
 | --- | --- |
 | Container and database runtimes | Testcontainers needs an available container engine; Maven does not provision one. `ci` excludes SQL Server and Oracle, whose separate profiles still need it. |
 | Helm-dependent tests | `HelmArtemisContractTest`, `HelmConstrainedSmokeContractTest` and `SetupInfrastructureTest` depend on installed Helm. Some missing-tool decisions depend on `CI` or skip the test locally. |
-| Checks outside the root lifecycle | `ci-core-contracts.sh` executes additional Python, Node and shell checks. `verify-interoperability-products.mjs` verifies real external products and needs further native tools. |
-| Conditional integration tests | Actions separately enables the observability performance budget and document report E2E. The canonical `ci` profile does not enable both. |
-| Post-test acceptance rules | Several workflows separately validate required JUnit suite counts, rendered scenario documents and commit-bound browser artifacts. These rules are not all bound to root `verify`. |
-| Deployment and security execution | Production container validation, live Kubernetes/Artemis recovery, CodeQL and Trivy are additional required executions outside this Maven command. |
+| Native product prerequisites | The JUnit-owned interoperability round trips need pipx, StrictDoc dependencies, Xvfb and the pinned Archi runtime. Docker image and browser checks need their real native runtimes. |
+| Native rendering prerequisites | Canonical `ci` enables observability and document E2E including real DOCX rendering. LibreOffice and Poppler must be installed; the existing sliced document workflow remains its CI owner. |
+| Remote acceptance endpoints | Root `verify` recounts original reactor and native-browser XML after Failsafe. Remote publication and deployment checks additionally require the corresponding external endpoint and commit-bound CI artifacts. |
+| Deployment and hosted security services | Live Kubernetes deployment/recovery and hosted CodeQL/Trivy publication still depend on the corresponding infrastructure and credentials. Production image build/identity assertions are included in canonical Maven. |
 
 Closing these gaps must retain the actual tests, thresholds and positive-count
 checks. Adding exclusions, accepting missing tools as successful tests or
@@ -369,3 +410,40 @@ filesystem fixtures exercise the policy without relying on GitHub Actions.
 CodeQL, Trivy, publishing and deployment are deliberately not described as
 locally equivalent tests. Their evidence remains separate from Maven test
 reports.
+
+### Measured critical-path remediation (17 October 2026)
+
+The audited run spent 58m49s in core plus 8m22s aggregating coverage. Eleven
+existing source suites moved, without changing any assertions, into the existing
+browser (six suites, approximately 414 recorded suite seconds) and recovery
+(five suites, approximately 288 seconds) owners. `MeasuredShardBalanceTest` and the
+complete application inventory still require exactly one owner and matching
+source tags. These are expected critical-path savings, pending a new CI timing.
+
+The root POM no longer runs Boot's unconsumed duplicate aggregate SBOM; the package
+aggregate and packaged module SBOMs remain. Coverage replay retains its exact
+source/tree/archive/file/probe digest checks, then reuses the verified SBOM and
+frontend runtime instead of regenerating/reinstalling them. It still merges all
+shard probes, aggregates the full reactor and runs unchanged coverage thresholds.
+
+The unchanged 76 nonbrowser sources contain 1,214 original Node cases; the JUnit
+owner executes the same 1,214 cases with zero failures/skips. The three Python
+files contain 22 original methods and retain all 22 JUnit cases. The source
+inventory also owns the two native-browser files, whose actual execution requires
+the browser lane. A sampled full 1,214-case JUnit run held at most one Node source
+driver at once (16,892 KiB maximum combined sampled RSS, 100 ms sampling).
+
+The parser report discrepancy was reproduced locally: 51 declared cases versus
+54 actual cases. Surefire's enclosing-suite accounting collapsed three duplicated
+method names across nested provider classes. Giving those three methods distinct
+provider-specific names retains every assertion/invocation and produces 54/54;
+the original inconsistent CI XML remains rejected rather than repaired.
+
+Root npm provisioning is registered as `runAlways` because `node_modules` is not
+an attached cache output. A real warm-root-cache replay with that directory
+removed restored the root cache entry and still ran the pinned `npm ci`, restoring
+all six locked packages. Tooling-module cache reuse is disabled because its JUnit
+owners read repository and JavaScript inputs outside that module's cache key.
+The auxiliary UI/image/product POM imports the pinned Boot dependency BOM and has
+independent version `1`, so application release/next-development bumps cannot
+leave a stale parent reference.

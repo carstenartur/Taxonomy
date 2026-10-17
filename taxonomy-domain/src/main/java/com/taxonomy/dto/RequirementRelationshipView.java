@@ -34,7 +34,7 @@ public class RequirementRelationshipView {
     private RelationOrigin origin;
 
     /** Confidence score (0.0–1.0) for this relation. */
-    private double confidence;
+    private Double confidence;
 
     /** Human-readable reason why this relation was derived. */
     private String derivationReason;
@@ -101,8 +101,17 @@ public class RequirementRelationshipView {
         this.origin = origin;
     }
 
-    public double getConfidence() { return confidence; }
+    /** Legacy arithmetic accessor; zero here does not assert that a confidence was recorded. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public double getConfidence() { return confidence == null ? 0d : confidence; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public void setConfidence(double confidence) { this.confidence = confidence; }
+
+    /** Optional evidence uses the existing confidence wire name, retaining absence and explicit zero. */
+    @com.fasterxml.jackson.annotation.JsonProperty("confidence")
+    public Double getRecordedConfidence() { return confidence; }
+    @com.fasterxml.jackson.annotation.JsonProperty("confidence")
+    public void setRecordedConfidence(Double confidence) { this.confidence = confidence; }
 
     public String getDerivationReason() { return derivationReason; }
     public void setDerivationReason(String derivationReason) { this.derivationReason = derivationReason; }

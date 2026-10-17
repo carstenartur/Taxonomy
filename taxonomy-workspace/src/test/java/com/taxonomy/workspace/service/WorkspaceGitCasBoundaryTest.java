@@ -75,7 +75,8 @@ class WorkspaceGitCasBoundaryTest {
                 .thenReturn(RepositoryContext.workspace("source","workspace","main","alice"));
             when(merger.mergeContent(anyString(),anyString(),anyString()))
                 .thenReturn(new TaxDslMergeResult(MERGED,List.of()));
-            service = new GitNativeSyncIntegrationService(states,rows,catalog,repositories,merger,portfolio,resolver,DIRECT);
+            service = new GitNativeSyncIntegrationService(states,rows,catalog,repositories,merger,portfolio,resolver,DIRECT,
+                mock(RepositoryMembershipService.class, invocation -> true));
         }
         void initialized() throws IOException {
             destination.commitDsl("main",BASE,"alice","Working branch");

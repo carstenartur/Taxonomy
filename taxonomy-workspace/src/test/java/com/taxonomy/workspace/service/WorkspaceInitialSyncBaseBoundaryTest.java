@@ -70,7 +70,8 @@ class WorkspaceInitialSyncBaseBoundaryTest {
         when(merger.mergeContent(anyString(), anyString(), anyString()))
                 .thenReturn(new TaxDslMergeResult(LOCAL, List.of()));
         var service = new GitNativeSyncIntegrationService(syncRows, rows, catalog, factory,
-                merger, portfolio, mock(WorkspaceContextResolver.class), DIRECT);
+                merger, portfolio, mock(WorkspaceContextResolver.class), DIRECT,
+                mock(RepositoryMembershipService.class, invocation -> true));
 
         if (baseState == BaseState.EXISTING_TRACKING) {
             service.syncFromSharedToWorkspace("base-owner", "workspace-id");

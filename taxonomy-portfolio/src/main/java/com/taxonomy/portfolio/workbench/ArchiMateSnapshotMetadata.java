@@ -41,7 +41,9 @@ final class ArchiMateSnapshotMetadata {
         }
         for (String field : List.of("requirementText", "providerPayload", "prompt", "sourceEvidence", "warnings")) {
             losses.add(new ArchiMateLoss("model", id, field, "OMITTED",
-                    "Outside the authorized model exchange subset; use the canonical evidence report when separately authorized."));
+                    field.equals("sourceEvidence")
+                            ? "Raw model-level provider/source evidence is omitted; recorded scoped relationship evidence is retained where present."
+                            : "Outside the authorized model exchange subset; use the canonical evidence report when separately authorized."));
         }
         Map<String, Map<String, ArchiMateProperty>> elements = new LinkedHashMap<>();
         for (var node : graph.nodes()) {
@@ -80,8 +82,10 @@ final class ArchiMateSnapshotMetadata {
             put(values, "decisionAt", metadata.decisionAt());
             put(values, "decisionRationale", metadata.decisionComment());
             relations.put(edge.id(), values);
-            losses.add(new ArchiMateLoss("relationship", edge.id(), "presenceReason", "OMITTED",
-                    "Provider-derived explanation excluded; reviewed human rationale is retained."));
+            if (edge.metadata() == null || edge.metadata().presenceReason() == null) {
+                losses.add(new ArchiMateLoss("relationship", edge.id(), "presenceReason", "OMITTED",
+                        "No recorded neutral relationship presence reason is exported; reviewed human rationale is retained."));
+            }
         }
         return new ArchiMateExportMetadata("snapshot-" + id, properties, elements, relations, losses);
     }

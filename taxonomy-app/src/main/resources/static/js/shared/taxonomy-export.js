@@ -168,49 +168,10 @@
         );
     }
 
-    /**
-     * Resolve the semantic export target. Once an architecture result exists,
-     * PDF means the architecture diagram and must never silently degrade to the
-     * taxonomy tree or to a screenshot of the surrounding page.
-     */
-    function resolvePdfTarget(containerId, filename) {
-        if (containerId) {
-            return {
-                containerId: containerId,
-                filename: filename || 'taxonomy-view.pdf'
-            };
-        }
-
-        var state = window.TaxonomyState;
-        var architecturePanel = document.getElementById('architectureViewPanel');
-        var architectureActive = architecturePanel && architecturePanel.style.display !== 'none';
-        if (state && state.currentArchView && architectureActive) {
-            if (document.querySelector('#impactGraphView svg')) {
-                return {
-                    containerId: 'impactGraphView',
-                    filename: 'requirement-architecture.pdf'
-                };
-            }
-            return {
-                error: 'The architecture result has no vector graph to export. '
-                    + 'Open the Architecture view and select Network Graph first.'
-            };
-        }
-
-        return {
-            containerId: 'taxonomyTree',
-            filename: filename || 'taxonomy-view.pdf'
-        };
-    }
-
-    function exportPdf(containerId, filename) {
-        var target = resolvePdfTarget(containerId, filename);
-        if (target.error) return unavailable('export.pdf.failed', target.error);
-
-        var svg = standaloneSvg(target.containerId);
-        if (!svg) return unavailable('export.no.svg');
+    function renderPdf(svg, filename) {
         if (typeof window.jspdf === 'undefined') {
-            return unavailable('export.pdf.failed', 'PDF renderer is unavailable');
+            return Promise.reject(new Error(exportMessage(
+                'PDF renderer is unavailable', 'PDF-Renderer ist nicht verfügbar')));
         }
         var PDF = window.jspdf.jsPDF;
         var width = dimension(svg, 'width', 800);
@@ -221,12 +182,31 @@
             format: [width, height]
         });
         if (typeof documentPdf.svg !== 'function') {
-            return unavailable('export.pdf.failed', 'Vector SVG renderer is unavailable');
+            return Promise.reject(new Error(exportMessage(
+                'Vector SVG renderer is unavailable', 'Vektor-SVG-Renderer ist nicht verfügbar')));
         }
-        documentPdf.svg(svg, { x: 0, y: 0, width: width, height: height })
-            .then(function () { documentPdf.save(target.filename); })
+        return documentPdf.svg(svg, { x: 0, y: 0, width: width, height: height })
+            .then(function () { documentPdf.save(filename); return true; });
+    }
+
+    function exportPdf(containerId, filename) {
+        // The main action exports the accepted model, independent of the visible
+        // tab and its temporary pan/zoom. Explicit containers remain view captures.
+        if (!containerId && window.TaxonomyState?.currentArchView) {
+            var requirement = document.getElementById('businessText');
+            // The server paginates wide scenes and appends complete labels and
+            // relationship evidence that a browser SVG conversion cannot retain.
+            return diagramDownload('/api/diagram/current/pdf', requirement ? requirement.value : '',
+                filename || 'requirement-architecture.pdf', 'blob', null,
+                { id: 'pdf', contentType: 'application/pdf' });
+        }
+        var svg = standaloneSvg(containerId || 'taxonomyTree');
+        if (!svg) return unavailable('export.no.svg');
+        return Promise.resolve().then(function () {
+            return renderPdf(svg, filename || 'taxonomy-view.pdf');
+        })
             .catch(function (error) {
-                unavailable('export.pdf.failed', error.message);
+                return unavailable('export.pdf.failed', error.message);
             });
     }
 
@@ -253,7 +233,7 @@
         var rank = 0;
         var lines = ['Rank,Code,Name,Score,Path,Level' + (coverage ? ',Assessment,Subtree,Reason' : '') + ',AnalysisTaxonomies,AnalysisMode,TaxonomyContainer'];
         Object.entries(scores)
-            .filter(function (entry) { return Number.isFinite(entry[1]) && (coverage || entry[1] > 0); })
+            .filter(function (entry) { return Number.isFinite(entry[1]); })
             .sort(function (left, right) { return right[1] - left[1]; })
             .forEach(function (entry) {
                 var code = entry[0];
@@ -291,7 +271,9 @@
             analysisStatus: window.TaxonomyState?.lastAnalysisStatus || 'UNKNOWN',
             analysisCoverage: window.TaxonomyState?.analysisCoverage || null,
             analysisScope: window.TaxonomyState?.lastAnalysisScope || null,
-            rawScores: window.TaxonomyState?.currentRawScores || null
+            rawScores: window.TaxonomyState?.currentRawScores || null,
+            analysisOperationId: window.TaxonomyState?.analysisOperationId || null,
+            analysisProviderId: window.TaxonomyState?.analysisProviderId || null
         }).then(function (data) {
             downloadBlob(
                 new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }),
@@ -368,6 +350,7 @@
         var expected = filename.endsWith('.vsdx') ? ['application/vnd.ms-visio.drawing']
             : filename.endsWith('.zip') ? ['application/zip']
             : filename.endsWith('.svg') ? ['image/svg+xml']
+            : filename.endsWith('.pdf') ? ['application/pdf']
             : filename.endsWith('.xml') ? ['application/xml', 'text/xml'] : ['text/plain'];
         if (descriptor) expected = [descriptor.contentType.split(';')[0].trim().toLowerCase()];
         var htmlAttachment = descriptor && type === 'text/html';
@@ -422,6 +405,8 @@
         // A transport guard, not a replacement for the server's OPC/schema validation.
         // Read bounded ZIP metadata, never inflate arbitrary archive content.
         var zip = filename.endsWith('.vsdx') || filename.endsWith('.zip');
+        var pdf = filename.endsWith('.pdf') || (descriptor &&
+            descriptor.contentType.split(';')[0].trim().toLowerCase() === 'application/pdf');
         var invalid = !blob.size;
         if (zip && !invalid) {
             var head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
@@ -467,6 +452,10 @@
                         || ranges.some(function (range, index) { return index > 0 && ranges[index - 1].end > range.start; });
                 }
             }
+        } else if (pdf && !invalid) {
+            var signature = await blob.slice(0, 5).text();
+            var trailer = await blob.slice(-1024).text();
+            invalid = blob.size < 14 || signature !== '%PDF-' || !/%%EOF\s*$/.test(trailer);
         } else if (!invalid) {
             var prefix = (await blob.slice(0, 512).text()).trimStart();
             var declaredHtml = descriptor && descriptor.contentType.split(';')[0].trim().toLowerCase() === 'text/html';

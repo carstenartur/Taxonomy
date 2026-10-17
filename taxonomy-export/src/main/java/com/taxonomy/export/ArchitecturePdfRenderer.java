@@ -74,6 +74,27 @@ public final class ArchitecturePdfRenderer {
                 "Derived server layout · Git-authoritative architecture"));
     }
 
+    /** Supplied working data has no verified Git or persisted-snapshot authority. */
+    public byte[] renderWorkingView(DiagramScene scene) {
+        requireScene(scene);
+        return renderScene(scene, document -> {
+            var information = new PDDocumentInformation();
+            information.setTitle(scene.title());
+            information.setSubject("Client-provided working view");
+            information.setCreator("Taxonomy server-side vector renderer");
+            document.setDocumentInformation(information);
+        }, (stream, height) -> {
+            text(stream, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16,
+                    "Requirement architecture - working view");
+            text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33,
+                    "Client-provided working view; source authority has not been verified.");
+            text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 45,
+                    PdfDiagramText.wrap(scene.title(), REGULAR, 8,
+                            PDRectangle.A3.getHeight() - 2 * PAGE_MARGIN, 1).getFirst());
+        }, stream -> text(stream, REGULAR, 8, PAGE_MARGIN, 16,
+                "Generated server layout | Client-provided working view | No re-analysis or persistence"));
+    }
+
     private static void requireScene(DiagramScene scene) {
         if (scene == null || scene.isEmpty()) {
             throw new IllegalArgumentException("Architecture scene must not be empty");
@@ -171,18 +192,26 @@ public final class ArchitecturePdfRenderer {
             float y1 = diagramTop - (float) edge.sourceY() * scale;
             float x2 = diagramX + (float) edge.targetX() * scale;
             float y2 = diagramTop - (float) edge.targetY() * scale;
+            boolean proposed = edge.metadata() != null && edge.metadata().proposed();
+            stream.setStrokingColor(proposed ? new Color(147, 51, 234) : new Color(88, 97, 116));
+            stream.setLineDashPattern(proposed ? new float[]{6, 4} : new float[]{}, 0);
             stream.setLineWidth(Math.max(0.55f, (float) (0.8 + edge.relevance()) * scale));
             stream.moveTo(x1, y1);
             stream.lineTo(x2, y2);
             stream.stroke();
             drawArrow(stream, x1, y1, x2, y2, Math.max(4.0f, 7.0f * scale));
             if (edge.relationType() != null && !edge.relationType().isBlank()) {
-                text(stream, REGULAR, Math.max(5.5f, 7.5f * scale),
-                        (x1 + x2) / 2.0f - 12,
-                        (y1 + y2) / 2.0f + 4,
-                        edge.relationType());
+                float size = Math.max(5.5f, 7.5f * scale);
+                float captionWidth = Math.max(12, Math.min(210 * scale, Math.abs(x2 - x1) - 12 * scale));
+                String relation = PdfDiagramText.wrap(edge.relationType(), REGULAR, size, captionWidth, 1).getFirst();
+                String status = PdfDiagramText.wrap(DiagramPresentation.relationshipStatus(edge.metadata()), REGULAR, size, captionWidth, 1).getFirst();
+                text(stream, REGULAR, size, (x1 + x2 - PdfDiagramText.width(REGULAR, size, relation)) / 2,
+                        (y1 + y2) / 2 + 6, relation);
+                text(stream, REGULAR, size, (x1 + x2 - PdfDiagramText.width(REGULAR, size, status)) / 2,
+                        (y1 + y2) / 2 - 6, status);
             }
         }
+        stream.setLineDashPattern(new float[]{}, 0);
     }
 
     private static void drawNodes(PDPageContentStream stream,
@@ -285,10 +314,12 @@ public final class ArchitecturePdfRenderer {
         }
         lines.add("Relationship inventory | presence does not establish human confirmation");
         var seenEdges = new java.util.HashSet<String>();
-        for (var edge : scene.edges()) if (seenEdges.add(edge.id()))
+        for (var edge : scene.edges()) if (seenEdges.add(edge.id())) {
             lines.add(edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId()
                     + " | " + edge.relationType() + " | " + edge.relationCategory()
                     + " | D" + nodePages.get(edge.sourceId()) + " -> D" + nodePages.get(edge.targetId()));
+            lines.addAll(DiagramPresentation.relationshipDetails(edge.metadata()));
+        }
         var wrapped = new java.util.ArrayList<String>();
         float width = PDRectangle.A4.getWidth() - 2 * PAGE_MARGIN;
         for (String line : lines) wrapped.addAll(PdfDiagramText.wrap(line, REGULAR, 9, width, Integer.MAX_VALUE));

@@ -118,6 +118,7 @@ public class VisioDiagramService {
                 values.put("taxonomy.targetId", VisioProperty.text(edge.targetId()));
                 values.put("taxonomy.relevance", VisioProperty.number(edge.relevance()));
                 if (edge.relationCategory() != null) values.put("taxonomy.relationCategory", VisioProperty.text(edge.relationCategory()));
+                addProvenance(values, edge.metadata());
                 page.getConnects().add(connector);
             }
         }
@@ -135,8 +136,57 @@ public class VisioDiagramService {
                     .map(VisioDiagramService::copyConnect).forEach(impact.getConnects()::add);
             doc.getPages().add(impact);
         }
+        var statusCounts = new java.util.TreeMap<String, Integer>();
+        model.edges().forEach(edge -> statusCounts.merge(DiagramPresentation.relationshipStatus(edge.metadata()), 1, Integer::sum));
+        if (model.edges().stream().anyMatch(edge -> edge.metadata() != null)) {
+            statusCounts.forEach((status, count) -> doc.getProperties().put("taxonomy.relationships" + status.replaceAll("[^A-Za-z0-9]", ""), VisioProperty.number(count)));
+            String legend = "Relationships: " + model.edges().size() + " | " + statusCounts.entrySet().stream()
+                    .map(e -> e.getKey() + ": " + e.getValue()).collect(java.util.stream.Collectors.joining(" | "))
+                    + "\nDashed purple = AI-proposed. Solid = other/unrecorded origin.\nAI support is not human approval; supplied review metadata remains authoritative.";
+            double top = page.getShapes().stream().mapToDouble(shape -> shape.getY() + shape.getHeight() / 2).max().orElse(0);
+            page.setLegend(new com.taxonomy.visio.VisioTextBox(legend, 5.5, top + 1.3, 10, 1.5));
+        }
         VisioPresentation.apply(doc);
         return doc;
+    }
+
+    private static void addProvenance(Map<String, VisioProperty> values, com.taxonomy.diagram.DiagramRelationMetadata m) {
+        // Snapshot-origin/review attribution remains authoritative if supplied by the historical path.
+        if (m == null) return;
+        values.put("taxonomy.provenanceStatus", VisioProperty.text(DiagramPresentation.relationshipStatus(m)));
+        values.put("taxonomy.proposed", VisioProperty.bool(m.proposed()));
+        if (m.relationId() != null) values.put("taxonomy.relationId", VisioProperty.text(m.relationId().toString()));
+        if (m.origin() != null) values.putIfAbsent("taxonomy.origin", VisioProperty.text(m.origin().name()));
+        if (m.confidence() != null) {
+            values.putIfAbsent("taxonomy.confidence", VisioProperty.number(m.confidence()));
+            values.put("taxonomy.provenanceConfidence", VisioProperty.number(m.confidence()));
+        }
+        if (m.includedBecause() != null) values.put("taxonomy.includedBecause", VisioProperty.text(m.includedBecause()));
+        if (m.derivationReason() != null) values.put("taxonomy.derivationReason", VisioProperty.text(m.derivationReason()));
+        if (m.presenceReason() != null) values.put("taxonomy.presenceReason", VisioProperty.text(m.presenceReason()));
+        if (m.seedType() != null) values.put("taxonomy.seedType", VisioProperty.text(m.seedType().name()));
+        int index = 0;
+        for (var evidence : m.requirementEvidence()) {
+            String prefix = "taxonomy.evidence" + (++index);
+            values.put(prefix + "sourceId", VisioProperty.text(evidence.sourceId()));
+            values.put(prefix + "targetId", VisioProperty.text(evidence.targetId()));
+            values.put(prefix + "type", VisioProperty.text(evidence.type()));
+            values.put(prefix + "direction", VisioProperty.text(evidence.direction().name()));
+            values.put(prefix + "contribution", VisioProperty.text(evidence.contribution().text()));
+            values.put(prefix + "quote", VisioProperty.text(evidence.contribution().quote()));
+            values.put(prefix + "condition", VisioProperty.text(evidence.contribution().condition()));
+            var d = evidence.evidence();
+            if (d != null) {
+                values.put(prefix + "outcome", VisioProperty.text(String.valueOf(d.outcome())));
+                values.put(prefix + "necessity", VisioProperty.text(String.valueOf(d.necessity())));
+                if (d.contribution() != null) values.put(prefix + "decisionContribution", VisioProperty.text(d.contribution()));
+                if (d.quote() != null) values.put(prefix + "decisionQuote", VisioProperty.text(d.quote()));
+                if (d.condition() != null) values.put(prefix + "decisionCondition", VisioProperty.text(d.condition()));
+                if (d.alternativeGroup() != null) values.put(prefix + "alternativeGroup", VisioProperty.text(d.alternativeGroup()));
+                if (d.rationale() != null) values.put(prefix + "rationale", VisioProperty.text(d.rationale()));
+                if (d.question() != null) values.put(prefix + "question", VisioProperty.text(d.question()));
+            }
+        }
     }
 
     private static VisioShape copyShape(VisioShape source) {

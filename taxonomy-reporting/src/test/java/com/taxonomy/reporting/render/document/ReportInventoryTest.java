@@ -28,4 +28,15 @@ class ReportInventoryTest {
         String text = String.join("\n", ReportInventory.tree(tree, de));
         assertThat(text).contains(de ? "einschließlich Navigation): 2" : "including navigation): 2", "CP: 2");
     }
+
+    @org.junit.jupiter.api.Test
+    void countsRecordedRelationshipOriginsOnceWithoutInventingApproval() {
+        var metadata = new DiagramRelationMetadata(12L, com.taxonomy.dto.RelationOrigin.LLM_SUPPORTED,
+                .75, "AI reason", null, null, null, List.of());
+        var edge = new DiagramEdge("ai", "A", "B", "SUPPORTS", .5, "impact", metadata);
+        var legacy = new DiagramEdge("legacy", "A", "B", "SUPPORTS", .5, "trace");
+        var graph = new DiagramModel("Fixture", List.of(), List.of(edge, edge, legacy), new DiagramLayout("LR", true));
+        assertThat(String.join("\n", ReportInventory.diagram(graph, false)))
+                .contains("Relationships - AI-proposed: 1", "Relationships - Origin unrecorded: 1", "not approval");
+    }
 }

@@ -298,11 +298,12 @@ public class WorkspaceController {
             ContextRef left = readOnlyContextRef(leftBranch, leftCommit);
             ContextRef right = readOnlyContextRef(rightBranch, rightCommit);
 
+            var context = workspaceResolver.resolveCurrentContext();
             ContextComparison comparison;
             if (leftCommit != null || rightCommit != null) {
-                comparison = contextCompareService.compareContexts(left, right);
+                comparison = contextCompareService.compareContexts(left, right, context);
             } else {
-                comparison = contextCompareService.compareBranches(left, right);
+                comparison = contextCompareService.compareBranches(left, right, context);
             }
             return ResponseEntity.ok(applyFilter(comparison, filter));
         } catch (IOException e) {

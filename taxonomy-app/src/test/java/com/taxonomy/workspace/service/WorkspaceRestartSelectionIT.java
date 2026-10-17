@@ -1,5 +1,7 @@
 package com.taxonomy.workspace.service;
 
+import org.junit.jupiter.api.Tag;
+
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.mock;
 @SpringBootTest
 @TestPropertySource(properties = {"gemini.api.key=", "openai.api.key=", "deepseek.api.key=",
         "qwen.api.key=", "llama.api.key=", "mistral.api.key="})
+@Tag("ci-app-shard-recovery")
 class WorkspaceRestartSelectionIT {
     @Autowired UserWorkspaceRepository repository;
     private final String owner = "restart-" + UUID.randomUUID();

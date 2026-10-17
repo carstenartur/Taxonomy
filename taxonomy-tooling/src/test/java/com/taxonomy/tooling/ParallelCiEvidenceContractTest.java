@@ -111,8 +111,8 @@ class ParallelCiEvidenceContractTest {
         assertThat(planStart).isGreaterThan(imageStart);
         assertThat(appShardsStart).isGreaterThan(planStart);
         String image = workflow.substring(imageStart, planStart);
-        assertThat(image).contains("docker build \\")
-                .contains("org.opencontainers.image.revision");
+        assertThat(image).contains("verify -Pimage");
+        assertThat(Files.readString(root.resolve("taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java"))).contains("\"docker\",\"build\"").contains("org.opencontainers.image.revision");
         String appShards = workflow.substring(appShardsStart, coreStart);
         assertThat(appShards)
                 .contains("matrix: ${{ fromJSON(needs.app-test-plan.outputs.matrix) }}")
@@ -192,7 +192,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("<id>contracts</id>")
                 .contains("<id>shard</id>")
                 .contains("<id>evidence-gate</id>")
-                .contains("run verify:ui-shard")
+                .contains("**/UiScenarioIT.java")
                 .contains("run verify:ui-shards");
         assertThat(packageJson)
                 .contains("\"test:ui-shard-plan\"")

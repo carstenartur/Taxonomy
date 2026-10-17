@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("ui-acceptance")
 @Tag("docker-required")
+@Tag("ci-app-shard-browser")
 class CoreUiAcceptanceIT {
 
     private static final String ADMIN_PASSWORD = "Ui-Acceptance-Password-2026!";

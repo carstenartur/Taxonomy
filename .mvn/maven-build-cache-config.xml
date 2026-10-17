@@ -39,6 +39,7 @@
                 <execution groupId="com.github.eirslett" artifactId="frontend-maven-plugin">
                     <execIds>
                         <execId>install-pinned-node</execId>
+                        <execId>install-junit-javascript-driver-dependencies</execId>
                     </execIds>
                 </execution>
                 <execution groupId="org.cyclonedx" artifactId="cyclonedx-maven-plugin">

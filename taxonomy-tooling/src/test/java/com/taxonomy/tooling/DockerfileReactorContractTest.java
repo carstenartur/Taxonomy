@@ -81,8 +81,10 @@ class DockerfileReactorContractTest {
                 .contains("'taxonomy-*/pom.xml' \\")
                 .contains("- name: Verify production Docker image build")
                 .contains("if: github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true'")
-                .contains("docker build \\")
-                .contains("--build-arg VCS_REF=\"$GITHUB_SHA\" \\")
+                .contains("verify -Pimage");
+        assertThat(Files.readString(root.resolve("taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java")))
+                .contains("\"docker\",\"build\"")
+                .contains("VCS_REF=")
                 .contains("org.opencontainers.image.revision")
                 .contains("10001:10001");
 

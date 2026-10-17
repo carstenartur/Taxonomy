@@ -82,7 +82,7 @@ final class PdfDiagramPages {
                     n.selectedForImpact(), n.parentId(), n.container(), n.x() - x, n.y() - y, n.width(), n.height())).toList();
             List<DiagramSceneEdge> translatedEdges = edges.get(panels.size()).stream().map(e -> new DiagramSceneEdge(
                     e.id(), e.sourceId(), e.targetId(), e.relationType(), e.relevance(), e.relationCategory(),
-                    e.sourceX() - x, e.sourceY() - y, e.targetX() - x, e.targetY() - y)).toList();
+                    e.sourceX() - x, e.sourceY() - y, e.targetX() - x, e.targetY() - y, e.metadata())).toList();
             var panel = new DiagramScene(scene.title(), Math.max(760, width), Math.max(420, height),
                     scene.direction(), translated, translatedEdges);
             panels.add(new Panel(panel, crossing[panels.size()]));

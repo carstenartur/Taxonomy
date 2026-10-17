@@ -31,9 +31,10 @@ test('regular UI verification executes both relationship report suites', async (
   for (const name of ['relation-search-report.test.mjs', 'relation-search-confidence.test.mjs']) {
     assert.ok(scripts['test:requirement-relations'].includes(`scripts/${name}`), `missing regular suite: ${name}`);
   }
-  for (const owner of ['verify:ui', 'verify:ui-contracts']) {
-    assert.ok(scripts[owner].includes('npm run test:requirement-relations'), `missing suite owner: ${owner}`);
-  }
+  assert.match(scripts['verify:ui-contracts'], /-Dtest=JavascriptContractTest/);
+  assert.equal(scripts['verify:ui'], '../mvnw -B -f ui-verification-pom.xml verify -Pshard');
+  const inventory=await readFile(new URL('../../.mvn/javascript-junit-sources.txt', import.meta.url),'utf8');
+  for(const source of ['relation-search-report.test.mjs','relation-search-confidence.test.mjs']) assert.ok(inventory.includes(source));
 });
 
 test('source contributions remain inspectable without any verified edge', () => {

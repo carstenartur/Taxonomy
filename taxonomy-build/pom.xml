@@ -17,6 +17,7 @@
 
     <properties>
         <documentTemplateE2E>false</documentTemplateE2E>
+        <documentTemplateRenderPreview>false</documentTemplateRenderPreview>
         <!-- Repository-wide policy tests inspect current reactor outputs and shared files. -->
         <maven.build.cache.enabled>false</maven.build.cache.enabled>
     </properties>
@@ -178,6 +179,12 @@
                                 <lucene.version>${lucene.version}</lucene.version>
                                 <pdfbox.version>${pdfbox.version}</pdfbox.version>
                                 <documentTemplateE2E>${documentTemplateE2E}</documentTemplateE2E>
+                                <documentTemplateRenderPreview>${documentTemplateRenderPreview}</documentTemplateRenderPreview>
+                                <taxonomy.ui.skip>${taxonomy.ui.skip}</taxonomy.ui.skip>
+                                <taxonomy.ui.suite>${taxonomy.ui.suite}</taxonomy.ui.suite>
+                                <taxonomy.ui.profile.filter>${taxonomy.ui.profile.filter}</taxonomy.ui.profile.filter>
+                                <taxonomy.interoperability.skip>${taxonomy.interoperability.skip}</taxonomy.interoperability.skip>
+                                <taxonomy.production.image.skip>${taxonomy.production.image.skip}</taxonomy.production.image.skip>
                                 <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
                             </systemPropertyVariables>
                         </configuration>
@@ -212,33 +219,6 @@
                             <arguments>${taxonomy.playwright.install.arguments}</arguments>
                         </configuration>
                     </execution>
-                    <execution>
-                        <id>run-canonical-api-transport-contract</id>
-                        <phase>integration-test</phase>
-                        <goals><goal>npm</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.ui.skip}</skip>
-                            <!-- -DskipTests skips Java tests in the documented UI-only command. -->
-                            <skipTests>false</skipTests>
-                            <arguments>run test:api-transport</arguments>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>run-maven-owned-browser-verification</id>
-                        <phase>integration-test</phase>
-                        <goals><goal>npm</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.ui.skip}</skip>
-                            <!-- UI execution is governed by taxonomy.ui.skip, independently of Surefire. -->
-                            <skipTests>false</skipTests>
-                            <arguments>run verify:ui</arguments>
-                            <environmentVariables>
-                                <TAXONOMY_UI_SUITE>${taxonomy.ui.suite}</TAXONOMY_UI_SUITE>
-                                <TAXONOMY_UI_PROFILE_FILTER>${taxonomy.ui.profile.filter}</TAXONOMY_UI_PROFILE_FILTER>
-                                <TAXONOMY_UI_OUTPUT_ROOT>${maven.multiModuleProjectDirectory}/target/ui-verification</TAXONOMY_UI_OUTPUT_ROOT>
-                            </environmentVariables>
-                        </configuration>
-                    </execution>
                 </executions>
             </plugin>
 
@@ -247,6 +227,14 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>${exec-maven-plugin.version}</version>
                 <executions>
+                    <execution>
+                        <id>validate-original-reactor-junit-outcomes</id><phase>verify</phase><goals><goal>exec</goal></goals>
+                        <configuration><skip>${taxonomy.quality.skip}</skip>
+                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory><executable>${java.home}/bin/java</executable>
+                            <arguments><argument>-cp</argument><argument>${maven.multiModuleProjectDirectory}/taxonomy-tooling/target/classes</argument>
+                                <argument>com.taxonomy.tooling.TaxonomyTooling</argument><argument>check-junit-outcomes</argument></arguments>
+                        </configuration>
+                    </execution>
                     <execution>
                         <id>generate-sbom-companion</id>
                         <phase>verify</phase>
@@ -270,9 +258,26 @@
     </build>
 
     <profiles>
+        <profile><id>ci</id><properties><documentTemplateE2E>true</documentTemplateE2E><documentTemplateRenderPreview>true</documentTemplateRenderPreview></properties></profile>
+        <profile>
+            <id>ui-tests</id>
+            <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId>
+                <executions><execution><id>required-ui-scenarios</id>
+                    <goals><goal>integration-test</goal><goal>verify</goal></goals>
+                    <configuration><skipITs>false</skipITs><skipTests>false</skipTests>
+                        <includes><include>**/UiScenarioIT.java</include></includes>
+                        <failIfNoTests>true</failIfNoTests><failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                        <systemPropertyVariables><taxonomy.ui.skip>false</taxonomy.ui.skip></systemPropertyVariables>
+                    </configuration>
+                </execution></executions>
+            </plugin></plugins></build>
+        </profile>
         <profile>
             <id>ci-app-test-shards-core</id>
             <properties>
+                <!-- The existing document E2E workflow owns this sliced CI execution. -->
+                <documentTemplateE2E>false</documentTemplateE2E>
+                <documentTemplateRenderPreview>false</documentTemplateRenderPreview>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
             </properties>
         </profile>

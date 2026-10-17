@@ -41,7 +41,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private final WorkspacePortfolioGitPort portfolioGitPort;
     private final WorkspaceContextResolver contextResolver;
     private final WorkspaceArchitectureVersionPort editorVersions;
+    private final RepositoryMembershipService sourceMemberships;
 
+    /** Compatibility constructor: source operations fail closed without a current policy. */
     public GitNativeSyncIntegrationService(SyncStateRepository syncStateRepository,
                                            UserWorkspaceRepository workspaceRepository,
                                            SystemRepositoryService systemRepositoryService,
@@ -49,6 +51,19 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                            SemanticGitMergeService semanticMergeService,
                                            WorkspacePortfolioGitPort portfolioGitPort,
                                            WorkspaceContextResolver contextResolver, WorkspaceArchitectureVersionPort editorVersions) {
+        this(syncStateRepository, workspaceRepository, systemRepositoryService, repositoryFactory,
+                semanticMergeService, portfolioGitPort, contextResolver, editorVersions, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public GitNativeSyncIntegrationService(SyncStateRepository syncStateRepository,
+                                           UserWorkspaceRepository workspaceRepository,
+                                           SystemRepositoryService systemRepositoryService,
+                                           DslGitRepositoryFactory repositoryFactory,
+                                           SemanticGitMergeService semanticMergeService,
+                                           WorkspacePortfolioGitPort portfolioGitPort,
+                                           WorkspaceContextResolver contextResolver, WorkspaceArchitectureVersionPort editorVersions,
+                                           RepositoryMembershipService sourceMemberships) {
         super(syncStateRepository, workspaceRepository, systemRepositoryService, repositoryFactory);
         this.syncStateRepository = syncStateRepository;
         this.workspaceRepository = workspaceRepository;
@@ -58,6 +73,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         this.portfolioGitPort = portfolioGitPort;
         this.contextResolver = contextResolver;
         this.editorVersions = editorVersions;
+        this.sourceMemberships = sourceMemberships;
     }
 
     @Override
@@ -129,6 +145,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                             WorkspaceContext context,
                                             String userBranch,
                                             boolean takeSource) throws IOException {
+        requireSourceAuthority(username, context, false);
         RepositoryContext selected = RepositoryContext.workspace(
                 context.repositoryId(), context.workspaceId(), userBranch, username);
         return editorVersions.version(selected, "Integrate architecture versions from source",
@@ -142,6 +159,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
         requireMatchingRepository(context, sourceMetadata);
+        requireSourceAuthority(username, sourceMetadata, false);
         String sourceBranch = sourceBranch(workspaceMetadata, sourceMetadata);
         DslGitRepository sourceRepository =
                 repositoryFactory.getCentralRepository(sourceMetadata.getRepositoryId());
@@ -164,6 +182,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 : semanticMergeService.mergeContent(state.baseDsl(), ours, theirs);
         requireSuccess("Pull from source", merge);
         workspaceGit.verifyExpectedHead(TRACKING_BRANCH, state.baseHead());
+        requireSourceAuthority(username, sourceMetadata, false);
         sourceRepository.verifyExpectedHead(sourceBranch, sourceSnapshot.head());
         String localCommit = commitIfChanged(
                 workspaceGit,
@@ -197,6 +216,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                             WorkspaceContext context,
                                             String userBranch,
                                             boolean keepWorkspace) throws IOException {
+        requireSourceAuthority(username, context, true);
         RepositoryContext selected = RepositoryContext.workspace(
                 context.repositoryId(), context.workspaceId(), userBranch, username);
         return editorVersions.version(selected, "Publish architecture workspace",
@@ -210,6 +230,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
         requireMatchingRepository(context, sourceMetadata);
+        requireSourceAuthority(username, sourceMetadata, true);
         String sourceBranch = sourceBranch(workspaceMetadata, sourceMetadata);
         DslGitRepository sourceRepository =
                 repositoryFactory.getCentralRepository(sourceMetadata.getRepositoryId());
@@ -235,6 +256,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         // Detect a changed local input before updating the central repository.
         workspaceGit.verifyExpectedHead(userBranch, localSnapshot.head());
 
+        requireSourceAuthority(username, sourceMetadata, true);
         String sourceCommit = commitIfChanged(
                 sourceRepository,
                 sourceBranch,
@@ -258,6 +280,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 null,
                 sourceBranch,
                 requireRepositoryId(sourceMetadata));
+        requireSourceAuthority(username, sourceMetadata, true);
         portfolioGitPort.materializePortfolio(
                 merge.mergedText(), "shared", centralContext);
         portfolioGitPort.materializePortfolio(
@@ -268,6 +291,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         workspaceMetadata.setCurrentCommit(workspaceCommit);
         workspaceMetadata.setLastAccessedAt(Instant.now());
         workspaceRepository.save(workspaceMetadata);
+        requireSourceAuthority(username, sourceMetadata, true);
         sourceMetadata.setLastPushAt(Instant.now());
         systemRepositoryService.save(sourceMetadata);
         updateAfterPublish(username, sourceCommit);
@@ -279,6 +303,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                           String userBranch, boolean keepMine) throws IOException {
         SystemRepository metadata = systemRepositoryService.getRepository(context.repositoryId());
         requireMatchingRepository(context, metadata);
+        requireSourceAuthority(username, metadata, true);
         String centralBranch = metadata.getDefaultBranch();
         if (centralBranch == null || centralBranch.isBlank()) {
             throw new IllegalStateException("Selected repository has no default branch");
@@ -312,6 +337,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             throw new IllegalArgumentException(
                     "Central synchronization must not carry a workspaceId");
         }
+        requireSourceAuthority(username, context, true);
         DslGitRepository repository =
                 repositoryFactory.getCentralRepository(context.repositoryId());
         portfolioGitPort.commitPortfolio(userBranch,
@@ -429,6 +455,25 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 workspace.getWorkspaceId(),
                 branch,
                 requireRepositoryId(source));
+    }
+
+    private void requireSourceAuthority(String username, WorkspaceContext context, boolean publish) {
+        SystemRepository source = context.workspaceId() == null
+                ? systemRepositoryService.getRepository(context.repositoryId())
+                : requireSourceRepository(requireWorkspace(context.workspaceId()));
+        requireMatchingRepository(context, source);
+        requireSourceAuthority(username, source, publish);
+    }
+
+    private void requireSourceAuthority(String username, SystemRepository source, boolean publish) {
+        if (sourceMemberships == null || !sourceMemberships.canRead(source, username)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Current source repository read access is required");
+        }
+        if (publish && !sourceMemberships.canContribute(source, username)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Current source repository CONTRIBUTOR role is required");
+        }
     }
 
     private UserWorkspace requireWorkspace(String workspaceId) {

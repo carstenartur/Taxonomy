@@ -112,23 +112,18 @@ public final class ArchitectureReportDocxRenderer {
                                                         percent(e.getRelevance()),
                                                         value(e.getIncludedBecause())))
                                 .toList());
+            }
+            if (view != null && !view.getIncludedRelationships().isEmpty()) {
                 w.heading(labels.relations(), 1, null);
                 w.table(
-                        List.of(
-                                labels.identifier(),
-                                labels.source(),
-                                labels.target(),
-                                labels.type(),
-                                labels.category()),
-                        graph.edges().stream()
-                                .map(
-                                        e ->
-                                                List.of(
-                                                        e.id(),
-                                                        e.sourceId(),
-                                                        e.targetId(),
-                                                        value(e.relationType()),
-                                                        value(e.relationCategory())))
+                        List.of(labels.identifier(), labels.source(), labels.target(), labels.type(),
+                                labels.category(), labels.rationale()),
+                        view.getIncludedRelationships().stream()
+                                .map(e -> List.of(
+                                        e.getRelationId() == null ? "Unknown" : e.getRelationId().toString(),
+                                        value(e.getSourceCode()), value(e.getTargetCode()),
+                                        value(e.getRelationType()), value(e.getRelationCategory()),
+                                        ArchitectureReportTextRenderer.relationshipReasons(e)))
                                 .toList());
             }
             var gaps = report.getGapAnalysis();
@@ -186,41 +181,49 @@ public final class ArchitectureReportDocxRenderer {
             if (recommendation != null) {
                 w.heading(labels.recommendation(), 1, null);
                 recommendation.getReasoning().forEach(w::paragraph);
-                var all = new ArrayList<RecommendedElement>(recommendation.getConfirmedElements());
-                all.addAll(recommendation.getProposedElements());
-                w.table(
-                        List.of(
-                                labels.node(),
-                                labels.titleLabel(),
-                                labels.score(),
-                                labels.rationale()),
-                        all.stream()
-                                .map(
-                                        e ->
-                                                List.of(
-                                                        value(e.getNodeCode()),
-                                                        value(e.getTitle()),
-                                                        e.getScore() + "%",
-                                                        value(e.getReasoning())))
-                                .toList());
+                w.paragraph("Confidence: " + String.format(Locale.ROOT, "%.1f%%", recommendation.getConfidence()));
+                if (!recommendation.getConfirmedElements().isEmpty()) {
+                    w.heading("Matched Elements", 2, null);
+                    w.paragraph("High-score matches; human approval is not recorded.");
+                    recommendationElements(w, labels, recommendation.getConfirmedElements());
+                }
+                if (!recommendation.getProposedElements().isEmpty()) {
+                    w.heading("Proposed Elements", 2, null);
+                    recommendationElements(w, labels, recommendation.getProposedElements());
+                }
+                if (!recommendation.getSuggestedRelations().isEmpty()) {
+                    w.heading("Suggested Relations", 2, null);
+                    w.table(
+                            List.of(labels.source(), labels.target(), labels.type(), labels.rationale()),
+                            recommendation.getSuggestedRelations().stream()
+                                    .map(e -> List.of(value(e.getSourceCode()), value(e.getTargetCode()),
+                                            value(e.getRelationType()), value(e.getReasoning())))
+                                    .toList());
+                }
                 recommendation.getNotes().forEach(w::paragraph);
             }
             if (report.getPendingProposals() != null && !report.getPendingProposals().isEmpty()) {
                 w.heading("Pending relation proposals", 1, null);
                 w.table(
                         List.of(
+                                labels.identifier(),
                                 labels.source(),
                                 labels.target(),
                                 labels.type(),
+                                "Confidence",
+                                "Status",
                                 labels.rationale()),
                         report.getPendingProposals().stream()
                                 .map(
                                         e ->
                                                 List.of(
+                                                        e.getId() == null ? "Unknown" : e.getId().toString(),
                                                         value(e.getSourceCode()),
                                                         value(e.getTargetCode()),
                                                         value(e.getRelationType()),
-                                                        value(e.getRationale())))
+                                                        percent(e.getConfidence()),
+                                                        value(e.getStatus()),
+                                                        ArchitectureReportTextRenderer.proposalReasons(e)))
                                 .toList());
             }
             w.heading(labels.provenance(), 1, null);
@@ -238,6 +241,14 @@ public final class ArchitectureReportDocxRenderer {
             throw new IllegalStateException(
                     "Could not render legacy architecture Word report", exception);
         }
+    }
+
+    private static void recommendationElements(WordDocumentWriter writer, DecisionReportLabels labels,
+            List<RecommendedElement> elements) {
+        writer.table(
+                List.of(labels.node(), labels.titleLabel(), "Root", labels.score(), labels.rationale()),
+                elements.stream().map(e -> List.of(value(e.getNodeCode()), value(e.getTitle()),
+                        value(e.getTaxonomyRoot()), e.getScore() + "%", value(e.getReasoning()))).toList());
     }
 
     /** Pattern DTO percentages already use the 0–100 scale, unlike element relevance. */
