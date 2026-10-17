@@ -163,8 +163,11 @@ async function verifyProductScoreBrowser(target) {
       const originalFillText = CanvasRenderingContext2D.prototype.fillText;
       try {
         views.renderDecisionMap(container, tree, state.currentScores);
-        require([...container.querySelectorAll('.dm-label')].some(node =>
-          node.textContent.includes(product.code) && node.textContent.includes(label)),
+        require([...container.querySelectorAll('.dm-label')].some(node => {
+          // SVG textContent concatenates wrapped lines without their separating spaces.
+          const text = [...node.querySelectorAll('tspan')].map(line => line.textContent).join(' ');
+          return text.includes(product.code) && text.includes(label);
+        }),
         `${stage}: decision map retains product evidence`);
         if (state.currentScores[product.code] === 0 && state.currentScores[family.code] === 0) {
           require([...container.querySelectorAll('.dm-rank')].every(node => !node.textContent),

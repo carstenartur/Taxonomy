@@ -15,6 +15,8 @@ const durationBrowseSource = await readFile(new URL(
 const catalogue = JSON.parse(await readFile(new URL(
   '../../taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json',
   import.meta.url), 'utf8'));
+const reportBrowserSource = await readFile(new URL(
+  './document-template-report-download.mjs', import.meta.url), 'utf8');
 // These identities are taken from the real catalogue; no provider is called.
 const product = 'IP-1286';
 const family = 'IP-2072';
@@ -181,6 +183,43 @@ test('legacy LLM log renderer exposes copy controls for prompt and response', as
 });
 
 for (const language of ['en', 'de']) {
+  test(`${language}: report browser assertion reads wrapped decision-map score labels`, () => {
+    const h = harness(language);
+    h.score({ [product]: 80 }, { [product]: hint });
+    const assertionStart = reportBrowserSource.indexOf("require([...container.querySelectorAll('.dm-label')]");
+    assert.notEqual(assertionStart, -1);
+    const assertion = reportBrowserSource.slice(assertionStart,
+      reportBrowserSource.indexOf('if (state.currentScores', assertionStart));
+    const wrap = vm.runInNewContext('(' + viewsSource.slice(
+      viewsSource.indexOf('function decisionLines('),
+      viewsSource.indexOf('function decisionMeasure(')).trim() + ')');
+    const check = (label, renderedLabel = label, code = product) => {
+      const lines = wrap(`${code} Product · ${renderedLabel}`, text => text.length * 8, 226);
+      assert.ok(lines.length > 1, 'exercise the wrapped SVG label');
+      const node = {
+        textContent: lines.join(''),
+        querySelectorAll(selector) {
+          assert.equal(selector, 'tspan');
+          return lines.map(textContent => ({ textContent }));
+        }
+      };
+      vm.runInNewContext(assertion, {
+        container: { querySelectorAll: () => [node] },
+        product: { code: product }, label, stage: 'wrapped label',
+        require: (condition, message) => assert.ok(condition, message)
+      });
+    };
+    for (const familyScore of [undefined, 0, 40]) {
+      if (familyScore !== undefined) h.score({ [family]: familyScore });
+      const label = h.api.describeScore(product, h.state.currentScores[product]).label;
+      check(label);
+      assert.throws(() => check(label, 'missing score'), /decision map retains product evidence/);
+      assert.throws(() => check(label, label, family), /decision map retains product evidence/);
+    }
+    h.score({ [product]: 0 });
+    check(h.api.describeScore(product, h.state.currentScores[product]).label);
+  });
+
   test(`${language}: tree exports retain pending and zero-relevance product evidence`, () => {
     const h = harness(language);
     const productNode = catalogue.nodePatches.find(node => node.code === product);
