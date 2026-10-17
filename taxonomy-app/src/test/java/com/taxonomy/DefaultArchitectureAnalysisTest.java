@@ -47,7 +47,7 @@ class DefaultArchitectureAnalysisTest {
     void defaultRejectsInvalidRawEvidenceWithoutInventingLegacyEdges() throws Exception {
         // Inject a malformed response explicitly. The normal mock now speaks the
         // relation protocol and must not be relied upon as an error fixture.
-        doReturn("[]").when(llm).callLlmRaw(anyString());
+        doReturn("[]").when(llm).callLlmRaw(anyString(), org.mockito.ArgumentMatchers.any(com.taxonomy.analysis.service.LlmCompletionOptions.class));
         JsonNode result = analyze(true);
         assertThat(search.isEnabled()).isTrue();
         assertThat(result.path("status").asString()).isEqualTo("PARTIAL");
@@ -74,7 +74,7 @@ class DefaultArchitectureAnalysisTest {
         doAnswer(invocation -> {
             rawCalls.incrementAndGet();
             return sourceAndOpenRelationships(invocation.getArgument(0), selected);
-        }).when(llm).callLlmRaw(anyString());
+        }).when(llm).callLlmRaw(anyString(), org.mockito.ArgumentMatchers.any(com.taxonomy.analysis.service.LlmCompletionOptions.class));
         JsonNode result = analyze(true);
         assertThat(search.isEnabled()).isTrue();
         assertThat(selected.get()).isTrue();
@@ -111,7 +111,7 @@ class DefaultArchitectureAnalysisTest {
 
     @Test
     void hidingTheArchitectureViewDoesNotDisableDefaultEvidenceValidation() throws Exception {
-        doReturn("[]").when(llm).callLlmRaw(anyString());
+        doReturn("[]").when(llm).callLlmRaw(anyString(), org.mockito.ArgumentMatchers.any(com.taxonomy.analysis.service.LlmCompletionOptions.class));
         JsonNode result = analyze(false);
         assertThat(search.isEnabled()).isTrue();
         assertThat(result.path("status").asString()).isEqualTo("PARTIAL");

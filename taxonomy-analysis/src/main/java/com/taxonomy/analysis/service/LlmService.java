@@ -890,6 +890,8 @@ public class LlmService {
                 Integer.toString(minimumProductScore()), templates);
         String tokenContract = providerConfig.isMockMode() ? null : providerConfig.tokenContractRevision(provider);
         if (tokenContract != null) fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint, tokenContract);
+        String completionConfiguration = providerConfig.isMockMode() ? null : providerConfig.completionConfigurationRevision(provider);
+        if (completionConfiguration != null) fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint, completionConfiguration);
         // Numeric-policy changes invalidate old answer reuse; external transports
         // must never reuse checkpoints produced by another artifact or configuration.
         if (LlmProvider.builtin(provider).isEmpty()) {
@@ -1722,6 +1724,11 @@ public class LlmService {
      * @return the raw text response, or {@code null} if the LLM is unavailable or the call failed
      */
     public String callLlmRaw(String prompt) {
+        return callLlmRaw(prompt, null);
+    }
+
+    /** Sends an opted completion while retaining the same provider and execution boundary. */
+    public String callLlmRaw(String prompt, LlmCompletionOptions options) {
         if (providerConfig.isMockMode()) {
             recordSuccess();
             return MockRelationReplies.reply(prompt);
@@ -1741,8 +1748,12 @@ public class LlmService {
 
         try {
             LlmGateway gateway = gatewayRegistry.getGatewayById(provider);
-            String body = gateway.sendHttpRequest(prompt, apiKey);
+            String body = options == null ? gateway.sendHttpRequest(prompt, apiKey)
+                    : gateway.sendHttpRequest(prompt, apiKey, options);
             return body != null ? gateway.extractResponseText(body) : null;
+        } catch (LlmIncompleteResponseException incomplete) {
+            recordFailure(incomplete.getMessage());
+            throw incomplete;
         } catch (LlmRateLimitException e) {
             recordFailure(e.getMessage());
             throw e;
@@ -1759,4 +1770,5 @@ public class LlmService {
             return null;
         }
     }
+
 }

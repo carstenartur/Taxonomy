@@ -165,6 +165,7 @@ public class AiTargetCatalogService {
         String normalizedProvider = provider.toUpperCase(Locale.ROOT);
         String safeModel = model == null || model.isBlank() ? "unspecified" : model.strip();
         String safeEndpoint = endpointIdentity == null ? "" : endpointIdentity;
+        PromptBudget promptBudget = promptBudget(normalizedProvider);
         String fingerprintMaterial = String.join("\n",
                 normalizedProvider,
                 safeModel,
@@ -173,6 +174,11 @@ public class AiTargetCatalogService {
                 Integer.toString(promptBudget.maxInputCharacters()),
                 Integer.toString(promptBudget.maxInputBytes()),
                 Integer.toString(promptBudget.estimatedMaxInputTokens()));
+        if ("CUSTOM_OPENAI".equals(normalizedProvider)) {
+            fingerprintMaterial += "\n" + providerConfig.getCustomLlmContextWindowTokens()
+                    + "\n" + providerConfig.getCustomLlmMaxOutputTokens()
+                    + "\n" + providerConfig.isCustomLlmStructuredOutputEnabled();
+        }
         String fingerprint = sha256(fingerprintMaterial);
         String id = normalizedProvider.toLowerCase(Locale.ROOT).replace('_', '-')
                 + ":" + slug(safeModel)
@@ -192,6 +198,19 @@ public class AiTargetCatalogService {
                 promptBudget,
                 fingerprint,
                 unavailableReason);
+    }
+
+    private PromptBudget promptBudget(String provider) {
+        if (!"CUSTOM_OPENAI".equals(provider) || providerConfig.getCustomLlmContextWindowTokens() <= 0) {
+            return promptBudget;
+        }
+        int available = Math.max(0, providerConfig.getCustomLlmContextWindowTokens()
+                - Math.max(1, providerConfig.getCustomLlmMaxOutputTokens()));
+        // This is conservative admission guidance, never the quota authority's tokenizer contract.
+        long estimatedBytesAndCharacters = available * 4L;
+        return new PromptBudget((int) Math.min(promptBudget.maxInputCharacters(), estimatedBytesAndCharacters),
+                (int) Math.min(promptBudget.maxInputBytes(), estimatedBytesAndCharacters),
+                Math.min(promptBudget.estimatedMaxInputTokens(), available));
     }
 
     private String model(LlmProvider provider) {

@@ -108,6 +108,63 @@ missing fields, invalid enums, invented quotes and free text are errors, not zer
 scores. Logs use the existing scoped call observer, retaining prompts/responses
 under its existing memory and authorization rules.
 
+### Small-model requests and corrective assessments
+
+New source/navigation prompts name the original evidence `requirementQuote`.
+Only a verbatim substring of the immutable requirement is accepted. Catalogue
+descriptions are supplied separately as available functions: a matching node does
+not make all of its features required. Existing recorded `quote` responses remain
+readable under the same strict original-substring check. The persisted contribution
+continues to use `quote`; its source retains the complete catalogue description.
+
+Each phase has its own instructions and JSON schema. Verification returns a compact
+verdict and rationale; the application copies the previously proposed claim rather
+than asking the model to reproduce and potentially change its evidence and conditions.
+Capable OpenAI-compatible transports receive the schema as `response_format`.
+Structured generation constrains syntax and offered identifiers; it does not prove
+that a relationship or functional interpretation is correct.
+
+Source groups default to three nodes and keep taxonomy boundaries. Source and target
+groups are packed using the assembled prompt plus schema size (including UTF-8 bytes),
+subject to both count and configured input limits. Stable source cohorts also admit
+the partial last group at a source-limit boundary. Descriptions are never silently shortened. A single
+oversized description stays unassessed with a `PROMPT_BUDGET` diagnostic. Token
+admission is a character/byte estimate, not a claim to use the model's exact tokenizer.
+
+For an unambiguous complete candidate set, valid entries survive a malformed sibling.
+Only failed entries receive one corrective request each, with their validation error
+in the input data. Malformed or ambiguous whole responses cannot supply accepted
+entries; corrective requests instead reassess the known offered nodes individually.
+Every corrective request consumes the existing call/work allowance. Repeated source
+IDs do not consume the distinct-source limit twice. Failure remains unknown and can
+never become a fabricated negative decision or zero score.
+
+The original failed response remains verbatim in its `DECOMPOSED` checkpoint.
+When a valid sibling still needs semantic clarification, the parent retains
+`CLARIFICATION` so that question remains selectable for an explicit retry.
+Corrective questions have separate identities and raw responses. Replay reconstructs
+the accepted results from these checkpoints without issuing successful calls again.
+An unresolved corrective question remains available for explicit retry/leave-open;
+decomposition alone is not a successful model assessment. Backups retain this state.
+Conservative distributed grants cover adaptive splitting and each possible corrective
+request, rather than assuming that every count-based group fits a model request.
+Provider `finish_reason=length`, filtering and failed completion are diagnosed before
+using any partial text as evidence, including when the partial text resembles valid JSON.
+
+Configuration:
+
+| Property / environment variable | Default | Meaning |
+| --- | --- | --- |
+| `taxonomy.analysis.relations.hierarchical.batch-size` / `TAXONOMY_RELATION_BATCH_SIZE` | `3` | Maximum candidates per coherent group |
+| `taxonomy.analysis.relations.hierarchical.max-prompt-characters` / `TAXONOMY_RELATION_MAX_PROMPT_CHARACTERS` | `16000` | Prompt and schema packing limit; the selected target's lower limit also applies |
+| `custom.llm.context-window-tokens` / `CUSTOM_LLM_CONTEXT_WINDOW_TOKENS` | `0` | Operator-supplied actual context capacity; zero means unknown |
+| `custom.llm.max-output-tokens` / `CUSTOM_LLM_MAX_OUTPUT_TOKENS` | `4096` | Output allowance reserved when context capacity is known |
+| `custom.llm.structured-output-enabled` / `CUSTOM_LLM_STRUCTURED_OUTPUT_ENABLED` | `true` | Enable schema-constrained custom completions; disable for an endpoint without this capability |
+
+Smaller groups can consume more calls. The existing total-call limit is unchanged;
+exhausting it preserves partial results and unfinished work. These offline regression
+tests do not constitute a quality benchmark of a particular Gemma/vLLM deployment.
+
 ## Evidence, views and persistence
 
 The immutable DTOs live in `taxonomy-domain`; orchestration and provider/catalogue

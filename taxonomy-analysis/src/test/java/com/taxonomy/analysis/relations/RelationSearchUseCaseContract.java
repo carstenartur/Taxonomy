@@ -109,6 +109,7 @@ public final class RelationSearchUseCaseContract {
         LlmService llm = new LlmService(null, null, JsonMapper.builder().build(), null, null, null, null) {
             @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(Map.of("process", 1d)); r.setStatus("SUCCESS"); return r; }
             @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return complete.apply(prompt); }
+            @Override public String callLlmRaw(String prompt, com.taxonomy.analysis.service.LlmCompletionOptions options) { return callLlmRaw(prompt); }
             @Override public String getActiveProviderName() { return "TEST"; }
             @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
             @Override public void clearRequestProvider() { }

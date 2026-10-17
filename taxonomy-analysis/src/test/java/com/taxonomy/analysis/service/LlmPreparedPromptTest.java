@@ -21,6 +21,25 @@ class LlmPreparedPromptTest {
     private static final String PRIVATE_ERROR = "private transport address and credentials";
 
     @Test
+    void structuredBudgetMeasurementRetainsTheOriginalPreparedPrompt() {
+        var delegate = mock(LlmGateway.class);
+        when(delegate.providerName()).thenReturn("CUSTOM_OPENAI");
+        var policy = mock(AiPromptBudgetPolicy.class);
+        var rejection = new IllegalArgumentException("budget rejection");
+        when(policy.requireWithinBudget(anyString(), eq("CUSTOM_OPENAI"))).thenThrow(rejection);
+        var gateway = new PromptBudgetEnforcingLlmGateway(delegate, policy);
+        var options = OpenAiCompletionOptionsTest.options(1024);
+        try (var run = new Run()) {
+            assertSame(rejection, assertThrows(IllegalArgumentException.class,
+                    () -> AnalysisRunControl.call("CUSTOM_OPENAI", "IP",
+                            () -> gateway.sendHttpRequest("original prepared prompt", KEY, options),
+                            response -> new LlmCallDetail())));
+            assertEquals("original prepared prompt", run.detail(1).prompt());
+            assertEquals("", run.detail(1).response());
+        }
+    }
+
+    @Test
     void providerFailureRetainsBoundedPromptButNotCredentialsOrPrivateExceptionMessage() {
         var failure = new IllegalStateException(PRIVATE_ERROR);
         String prompt = "Requirement:\n" + "x".repeat(20_000);

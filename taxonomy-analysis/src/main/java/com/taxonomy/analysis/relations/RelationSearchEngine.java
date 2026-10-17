@@ -11,6 +11,7 @@ public final class RelationSearchEngine {
     private final Runnable checkpoint;
     private final Observer observer;
     private final boolean externalBudget;
+    private final int maxPromptCharacters;
 
     public interface Observer {
         default void started(Query query, int depth) { }
@@ -24,11 +25,16 @@ public final class RelationSearchEngine {
 
     public RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint,
                                 Observer observer, boolean externalBudget) {
+        this(catalogue, evaluator, checkpoint, observer, externalBudget, 16_000);
+    }
+    public RelationSearchEngine(Catalogue catalogue, Evaluator evaluator, Runnable checkpoint,
+                                Observer observer, boolean externalBudget, int maxPromptCharacters) {
         this.catalogue = Objects.requireNonNull(catalogue);
         this.evaluator = Objects.requireNonNull(evaluator);
         this.checkpoint = Objects.requireNonNull(checkpoint);
         this.observer = Objects.requireNonNull(observer);
         this.externalBudget = externalBudget;
+        this.maxPromptCharacters = maxPromptCharacters;
     }
 
     /** Malformed provider output is distinct from a negative semantic decision. */
@@ -121,7 +127,7 @@ public final class RelationSearchEngine {
                     switch (decision.outcome()) {
                         case REJECT -> { /* Pruned by policy; trace retains the negative assessment. */ }
                         case UNRESOLVED -> unfinished.add(new Unfinished(q.contribution().source().id(),
-                                q.type(), q.direction(), List.of(node.id()), "UNRESOLVED", decision.question()));
+                                q.type(), q.direction(), List.of(node.id()), unfinishedReason(decision.question()), decision.question()));
                         case MATCH -> enqueue(q.contribution(), q.type(), q.direction(), Phase.VERIFY,
                                 List.of(node), decision, work.depth(), work.path());
                         case VERIFIED -> {
@@ -193,9 +199,9 @@ public final class RelationSearchEngine {
             for (Node node : candidates) unique.put(node.id(), node);
             List<Node> ordered = List.copyOf(unique.values());
             List<Query> batches = new ArrayList<>();
-            for (int i = 0; i < ordered.size(); i += limits.batchSize()) {
-                batches.add(new Query(original, contribution, type, direction, phase,
-                        ordered.subList(i, Math.min(i + limits.batchSize(), ordered.size())), proposal));
+            for (List<Node> batch : RelationCandidateBatches.split(ordered, limits.batchSize(), maxPromptCharacters,
+                    offered -> RelationSearchProtocol.requestCharacters(RelationSearchProtocol.decisionPrompt(new Query(original, contribution, type, direction, phase, offered, proposal), Map.of())))) {
+                batches.add(new Query(original, contribution, type, direction, phase, batch, proposal));
             }
             return batches;
         }
@@ -269,5 +275,11 @@ public final class RelationSearchEngine {
                 && Objects.equals(a.condition(), b.condition()) && Objects.equals(a.alternativeGroup(), b.alternativeGroup());
     }
     private static boolean blank(String s) { return s == null || s.isBlank(); }
+    private static String unfinishedReason(String question) {
+        if (!question.startsWith("TECHNICAL_ASSESSMENT_FAILURE:")) return "UNRESOLVED";
+        for (String reason : List.of("CALL_BUDGET", "WORK_LIMIT", "SOURCE_LIMIT"))
+            if (question.startsWith("TECHNICAL_ASSESSMENT_FAILURE: " + reason + ":")) return reason;
+        return "INVALID_RESPONSE";
+    }
     private static void invalid(String reason) { throw new InvalidResponseException(reason); }
 }

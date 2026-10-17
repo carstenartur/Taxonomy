@@ -287,11 +287,12 @@ class FrozenClusterRelationComputationTest {
         Runnable afterResponse = () -> { };
         OpenAiCompatibleGateway physicalGateway;
         final LlmService llm = new LlmService(providers, null, JSON, taxonomy, mock(PromptTemplateService.class), null, null) {
-            @Override public String callLlmRaw(String prompt) {
+            @Override public String callLlmRaw(String prompt) { return callLlmRaw(prompt, null); }
+            @Override public String callLlmRaw(String prompt, LlmCompletionOptions options) {
                 if (physicalGateway != null) {
                     assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
                     prompts.add(prompt);
-                    return physicalGateway.extractResponseText(physicalGateway.sendHttpRequest(prompt, "fixture"));
+                    return physicalGateway.extractResponseText(physicalGateway.sendHttpRequest(prompt, "fixture", options));
                 }
                 assertThat(providers.isMockMode()).isTrue();
                 assertThat(AnalysisRunControl.currentOperationId()).isEqualTo(store.context.operationId());

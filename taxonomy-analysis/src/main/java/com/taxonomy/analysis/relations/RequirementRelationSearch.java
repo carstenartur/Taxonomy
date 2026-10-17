@@ -19,10 +19,13 @@ public final class RequirementRelationSearch {
         Node find(String id);
         List<Node> roots();
     }
-    public record Options(Limits limits, int maxSources) {
+    public record Options(Limits limits, int maxSources, int maxPromptCharacters) {
+        public Options(Limits limits, int maxSources) { this(limits, maxSources, 16_000); }
         public Options {
             Objects.requireNonNull(limits);
             if (maxSources < 1 || maxSources > 256) throw new IllegalArgumentException("maxSources must be 1..256");
+            if (maxPromptCharacters == 0) maxPromptCharacters = 16_000; // Historical frozen plans.
+            if (maxPromptCharacters < 1 || maxPromptCharacters > 120_000) throw new IllegalArgumentException("Invalid relation prompt budget");
         }
     }
     private final InputCatalogue catalogue;
@@ -78,8 +81,8 @@ public final class RequirementRelationSearch {
             plan = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
             plan.restore(previous);
             budget.plan = plan;
-            var protocol = new RelationSearchProtocol(budget::complete, provider);
-            assessSources(original, nodes, options, protocol, plan, sources, warnings, batch -> { });
+            var protocol = new RelationSearchProtocol(budget::complete, provider, (step, ids) -> {}, options.maxPromptCharacters());
+            assessSources(original, nodes, options, protocol, plan, sources, warnings);
             List<Intent> intents = intents(sources, roots, warnings);
             Limits l = options.limits();
             plan.expect(intents);
@@ -89,7 +92,7 @@ public final class RequirementRelationSearch {
                     throw new IllegalStateException("CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy");
                 }
                 return children;
-            }, protocol::evaluate, checkpoint, plan, true);
+            }, protocol::evaluateRecovering, checkpoint, plan, true, options.maxPromptCharacters());
             result = engine.search(original, intents, l);
         } catch (RelationSearchEngine.InterruptedSearchException interrupted) {
             result = interrupted.partialResult();
@@ -147,14 +150,16 @@ public final class RequirementRelationSearch {
             roots = offered.stream().sorted(Comparator.comparing(Node::id)).toList();
             nodes = sourceNodes(scores, warnings);
             var progress = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
-            var protocol = new RelationSearchProtocol((step, ids, prompt) -> completion.apply(prompt), provider);
-            assessSources(original, nodes, options, protocol, progress, sources, warnings, batch -> {
+            Set<String> admittedSources = new HashSet<>();
+            var protocol = new RelationSearchProtocol((step, ids, prompt) -> completion.apply(prompt), provider, (step, ids) -> {
                 if (charged[0] >= options.limits().maxCalls())
                     throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
-                if (charged[1] + batch.size() > options.maxSources())
+                long additional = ids.stream().filter(id -> !admittedSources.contains(id)).count();
+                if (admittedSources.size() + additional > options.maxSources())
                     throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
-                charged[0]++; charged[1] += batch.size(); progress.calls(charged[0]);
-            });
+                charged[0]++; admittedSources.addAll(ids); charged[1] = admittedSources.size(); progress.calls(charged[0]);
+            }, options.maxPromptCharacters());
+            assessSources(original, nodes, options, protocol, progress, sources, warnings);
             List<Intent> intents = intents(sources, roots, warnings);
             Map<String, Integer> bounds = new HashMap<>();
             int cap = Math.min(options.limits().maxCalls(), options.limits().maxWorkItems()) + 1;
@@ -205,7 +210,11 @@ public final class RequirementRelationSearch {
         var protocol = new RelationSearchProtocol((step, ids, prompt) -> {
             if (step == Step.SOURCES) throw new IllegalStateException("Prepared source extraction cannot repeat");
             return completion.apply(prompt);
-        }, provider);
+        }, provider, (step, ids) -> {
+            if (calls[0] >= work.maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
+            if (calls[0] >= work.maxWorkItems()) throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
+            calls[0]++;
+        }, plan.options().maxPromptCharacters());
         Limits limits = plan.options().limits();
         var engine = new RelationSearchEngine(node -> {
             if (!node.root().equals(work.targetRoot().code())) throw new IllegalArgumentException("Foreign target node");
@@ -213,12 +222,7 @@ public final class RequirementRelationSearch {
             if (children.stream().anyMatch(child -> !child.root().equals(work.targetRoot().code())))
                 throw new IllegalStateException("CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy");
             return children;
-        }, query -> {
-            if (calls[0] >= work.maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
-            if (calls[0] >= work.maxWorkItems()) throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
-            calls[0]++;
-            return protocol.evaluate(query);
-        }, checkpoint, new RelationSearchEngine.Observer() { }, true);
+        }, protocol::evaluateRecovering, checkpoint, new RelationSearchEngine.Observer() { }, true, plan.options().maxPromptCharacters());
         Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);
         String stop = "";
         try {
@@ -233,11 +237,14 @@ public final class RequirementRelationSearch {
     private int queryBound(List<Node> candidates, int depth, Set<String> path, Limits limits,
                            int cap, Map<String, List<Node>> childrenCache) {
         ChildAssessmentContract.validateCandidates(candidates.stream().map(Node::id).toList());
-        int total = (candidates.size() + limits.batchSize() - 1) / limits.batchSize();
+        // Whole-description packing can need one navigation request per node,
+        // plus its single corrective request. Grants must cover both even when
+        // the usual count-based batch would have fit in one request.
+        int total = (int) Math.min(cap, 2L * candidates.size());
         for (Node node : candidates) {
             if (total >= cap) return cap;
             checkpoint.run();
-            int branch = node.container() ? 0 : 1; // An admitted concrete match requires verification.
+            int branch = node.container() ? 0 : 2; // Verification and at most one correction.
             if (depth < limits.maxDepth()) {
                 List<Node> children = childrenCache.computeIfAbsent(node.id(), unused -> List.copyOf(catalogue.children(node)));
                 ChildAssessmentContract.validateCandidates(children.stream().map(Node::id).toList());
@@ -254,30 +261,38 @@ public final class RequirementRelationSearch {
     }
 
     private void assessSources(String original, List<Node> nodes, Options options, RelationSearchProtocol protocol,
-                               RelationWorkPlan plan, List<SourceAssessment> sources, List<String> warnings,
-                               java.util.function.Consumer<List<Node>> admission) {
-        int size = options.limits().batchSize();
-        for (int i = 0; i < nodes.size();) {
+                               RelationWorkPlan plan, List<SourceAssessment> sources, List<String> warnings) {
+        int processed = 0;
+        List<List<Node>> batches = new ArrayList<>();
+        // Stable source cohorts preserve the partial last group at a source-limit
+        // boundary, including across replay. A group of three must not strand two
+        // available source slots or force already accepted requests to change keys.
+        for (int offset = 0; offset < nodes.size(); offset += options.maxSources()) {
+            var cohort = nodes.subList(offset, Math.min(offset + options.maxSources(), nodes.size()));
+            batches.addAll(RelationCandidateBatches.split(cohort, options.limits().batchSize(), options.maxPromptCharacters(),
+                    offered -> RelationSearchProtocol.requestCharacters(RelationSearchProtocol.sourcePrompt(original, offered, Map.of()))));
+        }
+        for (var batch : batches) {
             checkpoint.run();
-            int length = Math.min(size, options.maxSources() - i % options.maxSources());
-            var batch = nodes.subList(i, Math.min(i + length, nodes.size()));
             plan.sourceBatch(batch.stream().map(Node::id).toList());
             try {
-                admission.accept(batch);
-                var assessments = protocol.contributions(original, batch);
-                sources.addAll(assessments);
-                for (var assessment : assessments) {
+                var result = protocol.contributionsRecovering(original, batch);
+                sources.addAll(result.accepted());
+                result.failures().forEach((id, error) -> warnings.add("INVALID_SOURCE_RESPONSE [" + id + "]: " + error));
+                result.failures().values().stream().filter(error -> error.startsWith("CALL_BUDGET:") || error.startsWith("SOURCE_LIMIT:")
+                        || error.startsWith("WORK_LIMIT:")).findFirst().ifPresent(warnings::add);
+                for (var assessment : result.accepted()) {
                     plan.assessed(assessment);
                     if (!assessment.question().isBlank()) warnings.add("SOURCE_UNRESOLVED "
                             + assessment.node().id() + ": " + assessment.question());
                 }
             } catch (AnalysisCheckpointSession.DeferredException deferred) {
-                warnings.add(deferred.getMessage() + ": " + (nodes.size() - i) + " sources remain unassessed.");
+                warnings.add(deferred.getMessage() + ": " + (nodes.size() - processed) + " sources remain unassessed.");
                 break;
             } catch (RelationSearchEngine.InvalidResponseException invalid) {
                 warnings.add("INVALID_SOURCE_RESPONSE " + batch.stream().map(Node::id).toList() + ": " + invalid.getMessage());
             }
-            i += batch.size();
+            processed += batch.size();
         }
     }
 
@@ -311,16 +326,17 @@ public final class RequirementRelationSearch {
 
     private final class Budget {
         private final Options options;
-        private int calls, newSources, newWork;
+        private int calls, newWork;
+        private final Set<String> newSources = new HashSet<>();
         private RelationWorkPlan plan;
         Budget(Options options) { this.options = options; }
         String complete(Step step, List<String> nodes, String prompt) {
             if (calls >= options.limits().maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
-            if (step == Step.SOURCES && newSources + nodes.size() > options.maxSources())
+            if (step == Step.SOURCES && newSources.size() + nodes.stream().filter(id -> !newSources.contains(id)).count() > options.maxSources())
                 throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
             if (step != Step.SOURCES && newWork >= options.limits().maxWorkItems())
                 throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
-            if (step == Step.SOURCES) newSources += nodes.size();
+            if (step == Step.SOURCES) newSources.addAll(nodes);
             else newWork++;
             calls++; plan.calls(calls);
             return completion.apply(prompt);

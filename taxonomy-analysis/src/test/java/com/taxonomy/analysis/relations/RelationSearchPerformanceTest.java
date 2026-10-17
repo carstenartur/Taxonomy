@@ -56,6 +56,7 @@ class RelationSearchPerformanceTest {
             @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return LlmProvider.CUSTOM_OPENAI.id(); }
             @Override public String getActiveProviderName() { return "TEST"; }
             @Override public String callLlmRaw(String prompt) { prompts.add(prompt); return answer(prompt); }
+            @Override public String callLlmRaw(String prompt, com.taxonomy.analysis.service.LlmCompletionOptions options) { return callLlmRaw(prompt); }
         };
         var budget = new AiPromptBudgetPolicy(null) {
             @Override public com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor requireWithinBudget(String text, String provider) { return null; }

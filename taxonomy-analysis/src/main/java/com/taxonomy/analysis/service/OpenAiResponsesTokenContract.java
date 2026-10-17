@@ -22,13 +22,25 @@ final class OpenAiResponsesTokenContract {
     record Prepared(String countBody, String generationBody) {}
     static Prepared prepare(LlmProvider provider, String endpoint, String model,
                             ProviderRateQuotas.TokenBudget budget, String prompt, ObjectMapper json) {
+        return prepare(provider, endpoint, model, budget, prompt, json, null);
+    }
+    static Prepared prepare(LlmProvider provider, String endpoint, String model,
+                            ProviderRateQuotas.TokenBudget budget, String prompt, ObjectMapper json,
+                            LlmCompletionOptions options) {
         requireContract(provider, endpoint, model, budget);
         if (prompt == null || prompt.isBlank() || prompt.length() > MAX_REQUEST_BYTES) throw rejected();
         var input = List.of(Map.of("role", "user", "content", List.of(Map.of("type", "input_text", "text", prompt))));
         var count = new LinkedHashMap<String, Object>();
         count.put("model", MODEL); count.put("input", input); count.put("truncation", "disabled");
+        if (options != null && options.schema() != null) {
+            count.put("text", Map.of("format", Map.of("type", "json_schema", "name", options.schemaName(),
+                    "strict", true, "schema", options.schema())));
+        }
         var generation = new LinkedHashMap<String, Object>(count);
-        generation.put("max_output_tokens", budget.maximumOutputTokens()); generation.put("store", false);
+        generation.put("max_output_tokens", options == null ? budget.maximumOutputTokens()
+                : Math.min(options.maxOutputTokens(), budget.maximumOutputTokens()));
+        generation.put("store", false);
+        if (options != null) generation.put("temperature", 0);
         String countBody = json.writeValueAsString(count), generationBody = json.writeValueAsString(generation);
         if (countBody.getBytes(StandardCharsets.UTF_8).length > MAX_REQUEST_BYTES
                 || generationBody.getBytes(StandardCharsets.UTF_8).length > MAX_REQUEST_BYTES) throw rejected();
@@ -51,6 +63,20 @@ final class OpenAiResponsesTokenContract {
     static String extractText(String body, ObjectMapper json) {
         var root = read(body, MAX_GENERATION_RESPONSE_BYTES, json);
         var output = root.get("output");
+        if ("response".equals(root.path("object").asText())
+                && ("incomplete".equals(root.path("status").asText()) || "failed".equals(root.path("status").asText()))) {
+            var partial = new StringBuilder();
+            if (output != null && output.isArray()) for (var item : output) {
+                var parts = item.path("content");
+                if (!"message".equals(item.path("type").asText())
+                        || !"assistant".equals(item.path("role").asText()) || !parts.isArray()) continue;
+                for (var part : parts) if ("output_text".equals(part.path("type").asText()) && part.path("text").isString()) {
+                    partial.append(part.path("text").stringValue());
+                }
+            }
+            throw new LlmIncompleteResponseException(partial.toString(), "failed".equals(root.path("status").asText())
+                    ? "error" : root.path("incomplete_details").path("reason").asText());
+        }
         if (!"response".equals(root.path("object").asText()) || !"completed".equals(root.path("status").asText())
                 || output == null || !output.isArray() || output.size() != 1) throw rejected();
         var message = output.get(0); var content = message.get("content");

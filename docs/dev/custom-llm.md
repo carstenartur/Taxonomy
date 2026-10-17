@@ -130,6 +130,22 @@ The admin-only `/api/diagnostics` endpoint distinguishes provider configuration 
 
 Configuration and call failures are reported with their real causes, including missing `CUSTOM_LLM_URL`, missing `CUSTOM_LLM_MODEL`, invalid URI or path, endpoint unreachable, and HTTP 401/403. Authentication errors mention only the optional `CUSTOM_LLM_API_KEY` variable.
 
+## Completion and context limits
+
+Relation discovery requests opt in to a strict JSON schema, `temperature=0`, and an explicit output token limit. Other requests retain their existing wire format. Configure the custom endpoint with:
+
+| Environment variable | Spring property | Default | Meaning |
+| --- | --- | --- | --- |
+| `CUSTOM_LLM_CONTEXT_WINDOW_TOKENS` | `custom.llm.context-window-tokens` | `0` | Model context size. Zero means unknown. |
+| `CUSTOM_LLM_MAX_OUTPUT_TOKENS` | `custom.llm.max-output-tokens` | `4096` | Reserved output allowance and ceiling for opted completion requests. |
+| `CUSTOM_LLM_STRUCTURED_OUTPUT_ENABLED` | `custom.llm.structured-output-enabled` | `true` | Send `response_format.type=json_schema` for opted requests. Disable for servers that do not support it. |
+
+Set the context window to the value configured on the model server, for example `8192` for a small deployment. The prompt budget reserves the configured output allowance first and uses the existing four-characters-per-token estimate for input admission. This estimate is not a tokenizer count; multilingual text, schema overhead, and model templates can consume more tokens. Leave room when setting the limits. The provider's actual context enforcement remains authoritative.
+
+Context configuration accepts `0` (unknown) through `1000000000`; output accepts `1` through `1000000`. A known context window must exceed the output allowance. Invalid capacities make the custom provider unavailable with an actionable configuration status and reject explicit custom requests before HTTP.
+
+Unsupported schema requests fail with the normal bounded provider error. Taxonomy does not retry unrelated HTTP 400 or authentication failures without the schema. Set the structured-output flag explicitly for incompatible servers. A `length`, `content_filter`, or error finish reason is incomplete output, and its partial text remains diagnostic data instead of a successful relation answer.
+
 ## Rate limit and timeout
 
 The custom provider has no outgoing RPM limit by default. A runtime preference can set one with:
