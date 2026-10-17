@@ -26,10 +26,10 @@ public class RequirementRelationSearchService {
     private int maxCalls = 24;
     @Value("${taxonomy.analysis.relations.hierarchical.max-depth:8}")
     private int maxDepth = 8;
-    @Value("${taxonomy.analysis.relations.hierarchical.batch-size:3}")
-    private int batchSize = 3;
-    @Value("${taxonomy.analysis.relations.hierarchical.max-prompt-characters:16000}")
-    private int maxPromptCharacters = 16_000;
+    @Value("${taxonomy.analysis.relations.hierarchical.batch-size:${TAXONOMY_RELATION_BATCH_SIZE:#{null}}}")
+    private Integer batchSize;
+    @Value("${taxonomy.analysis.relations.hierarchical.max-prompt-characters:${TAXONOMY_RELATION_MAX_PROMPT_CHARACTERS:#{null}}}")
+    private Integer maxPromptCharacters;
     @Value("${custom.llm.max-output-tokens:4096}")
     private int maxOutputTokens = 4096;
     @Value("${taxonomy.analysis.relations.hierarchical.max-work-items:512}")
@@ -43,14 +43,17 @@ public class RequirementRelationSearchService {
     }
     public boolean isEnabled() { return enabled; }
     @PostConstruct
-    void validate() { options(); }
-    private RequirementRelationSearch.Options options() {
-        return new RequirementRelationSearch.Options(new Limits(maxCalls, maxDepth, batchSize, maxWorkItems), maxSources, maxPromptCharacters);
+    void validate() { options(false); }
+    private RequirementRelationSearch.Options options(boolean custom) {
+        int batch = batchSize == null ? custom ? 3 : 10 : batchSize;
+        int prompt = maxPromptCharacters == null ? custom ? 16_000 : 120_000 : maxPromptCharacters;
+        return new RequirementRelationSearch.Options(new Limits(maxCalls, maxDepth, batch, maxWorkItems), maxSources, prompt);
     }
 
     private RequirementRelationSearch.Options runtimeOptions() {
-        var configured = options();
-        var target = promptBudget.requireWithinBudget("", llm.getActiveProviderId().value());
+        String provider = budgetProvider();
+        var configured = options("CUSTOM_OPENAI".equals(provider));
+        var target = promptBudget.requireWithinBudget("", provider);
         int cap = target == null ? configured.maxPromptCharacters()
                 : Math.min(configured.maxPromptCharacters(), Math.min(target.promptBudget().maxInputCharacters(), target.promptBudget().maxInputBytes()));
         if (cap < 1) throw new IllegalArgumentException("Configured model context leaves no input budget after reserving the answer");
@@ -59,7 +62,7 @@ public class RequirementRelationSearchService {
 
     public RelationSearchReport search(String original, Map<String,Double> scores) {
         if (!llm.supportsGenerativeCompletion()) {
-            return RequirementRelationSearch.unassessed(original, options().limits().maxCalls(),
+            return RequirementRelationSearch.unassessed(original, maxCalls,
                     "GENERATION_UNSUPPORTED: " + llm.getActiveProviderId().value()
                             + " provides embeddings, not requirement-scoped relation assessments; "
                             + "all relationships remain unassessed.");
@@ -112,7 +115,10 @@ public class RequirementRelationSearchService {
     }
 
     public String recoveryPolicyFingerprint() {
-        return "relation-downwalk-v3/scoped-quotes/adaptive-recovery/" + enabled + "/" + options() + "/output=" + maxOutputTokens;
+        // Request/provider scope owns model identity separately. Keep the policy identity
+        // stable when a background worker restores that scope after admission.
+        return "relation-downwalk-v4/provider-profiles/custom-defaults=3,16000/" + enabled
+                + "/" + options(false) + "/batch-override=" + batchSize + "/prompt-override=" + maxPromptCharacters;
     }
 
     public String scoringPolicyFingerprint(String provider) { return llm.recoveryPolicyFingerprint(provider); }
@@ -121,16 +127,21 @@ public class RequirementRelationSearchService {
         String provider = llm.getActiveProviderName();
         // Presentation labels (notably Custom OpenAI-compatible and Local ONNX)
         // are not stable provider keys. Preserve them in logs, not in budget lookup.
-        promptBudget.requireWithinBudget(prompt, llm.getActiveProviderId().value());
+        String budgetProvider = budgetProvider();
+        promptBudget.requireWithinBudget(prompt, budgetProvider);
         return AnalysisRunControl.call(provider, "RELATION_SEARCH", () -> {
             LlmCallDetail detail = new LlmCallDetail();
             detail.setPrompt(prompt); detail.setProvider(provider);
-            int outputLimit = "CUSTOM_OPENAI".equals(llm.getActiveProviderId().value()) ? maxOutputTokens : 4096;
+            int outputLimit = "CUSTOM_OPENAI".equals(budgetProvider) ? maxOutputTokens : 4096;
             String raw = llm.callLlmRaw(prompt, RelationSearchProtocol.completionOptions(prompt, outputLimit));
             detail.setRawResponse(raw);
             if (raw == null || raw.isBlank()) detail.setError("Missing relation-search response");
             return detail;
         }).getRawResponse();
+    }
+
+    private String budgetProvider() {
+        return llm.isMockMode() ? "MOCK" : llm.getActiveProviderId().value();
     }
 
     private List<Node> scalars(List<TaxonomyNode> nodes) {

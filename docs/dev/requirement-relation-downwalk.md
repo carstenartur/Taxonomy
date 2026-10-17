@@ -124,7 +124,8 @@ Capable OpenAI-compatible transports receive the schema as `response_format`.
 Structured generation constrains syntax and offered identifiers; it does not prove
 that a relationship or functional interpretation is correct.
 
-Source groups default to three nodes and keep taxonomy boundaries. Source and target
+Custom OpenAI-compatible requests default to three nodes; other providers retain
+groups of ten. Groups keep taxonomy boundaries. Source and target
 groups are packed using the assembled prompt plus schema size (including UTF-8 bytes),
 subject to both count and configured input limits. Stable source cohorts also admit
 the partial last group at a source-limit boundary. Descriptions are never silently shortened. A single
@@ -155,8 +156,8 @@ Configuration:
 
 | Property / environment variable | Default | Meaning |
 | --- | --- | --- |
-| `taxonomy.analysis.relations.hierarchical.batch-size` / `TAXONOMY_RELATION_BATCH_SIZE` | `3` | Maximum candidates per coherent group |
-| `taxonomy.analysis.relations.hierarchical.max-prompt-characters` / `TAXONOMY_RELATION_MAX_PROMPT_CHARACTERS` | `16000` | Prompt and schema packing limit; the selected target's lower limit also applies |
+| `taxonomy.analysis.relations.hierarchical.batch-size` / `TAXONOMY_RELATION_BATCH_SIZE` | Automatic: custom `3`, other `10` | Maximum candidates per coherent group; an explicit value overrides either profile |
+| `taxonomy.analysis.relations.hierarchical.max-prompt-characters` / `TAXONOMY_RELATION_MAX_PROMPT_CHARACTERS` | Automatic: custom `16000`, other up to `120000` | Prompt and schema packing limit; the selected target's lower limit also applies; explicit values override either profile |
 | `custom.llm.context-window-tokens` / `CUSTOM_LLM_CONTEXT_WINDOW_TOKENS` | `0` | Operator-supplied actual context capacity; zero means unknown |
 | `custom.llm.max-output-tokens` / `CUSTOM_LLM_MAX_OUTPUT_TOKENS` | `4096` | Output allowance reserved when context capacity is known |
 | `custom.llm.structured-output-enabled` / `CUSTOM_LLM_STRUCTURED_OUTPUT_ENABLED` | `true` | Enable schema-constrained custom completions; disable for an endpoint without this capability |
@@ -164,6 +165,9 @@ Configuration:
 Smaller groups can consume more calls. The existing total-call limit is unchanged;
 exhausting it preserves partial results and unfinished work. These offline regression
 tests do not constitute a quality benchmark of a particular Gemma/vLLM deployment.
+Full-lifecycle scenario fixtures explicitly choose a larger request profile for
+their simulated large-context model. The bounded real-catalogue continuation test
+still exercises groups of three and the 16,000 input allowance.
 
 ## Evidence, views and persistence
 

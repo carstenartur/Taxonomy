@@ -212,6 +212,9 @@ public class LlmService {
         return providerConfig.getActiveProviderId();
     }
 
+    /** Execution mode remains explicit when a MOCK request hides the worker's transport. */
+    public boolean isMockMode() { return providerConfig != null && providerConfig.isMockMode(); }
+
     /** Mock mode supplies explicit synthetic JSON independently of the selected transport. */
     public boolean supportsGenerativeCompletion() {
         return (providerConfig != null && providerConfig.isMockMode())
