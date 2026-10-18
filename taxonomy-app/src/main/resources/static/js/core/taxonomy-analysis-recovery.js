@@ -66,6 +66,45 @@
             && baseline.evidence === currentNodeEvidence());
     }
     function stopped() { return S.analysisRecovery?.state === 'CANCELLED' || current()?.followupState === 'CANCELLED'; }
+    function statusKnown() { return !current()?.syncState && !current()?.observationError; }
+    function decisionsAvailable() {
+        return !busy && !decisionBusy && statusKnown() && reading?.context !== current()
+            && ['PAUSED', 'STOPPED', 'COMPLETED_WITH_GAPS'].includes(S.analysisRecovery?.state);
+    }
+    function errorStatus(error) { return Number(error.httpStatus || error.status) || 0; }
+    function connectionFailure(error) {
+        return ['NETWORK_ERROR', 'TIMEOUT'].includes(error.code)
+            || !errorStatus(error) && /failed to fetch|network request failed|networkerror|load failed/i.test(error.message || '');
+    }
+    function recoveryGuidance(context) {
+        if (context.syncState === 'CHECKING') return text(
+            'Der aktuelle Laufstatus wird geladen. Es wird keine weitere KI-Anfrage gesendet.',
+            'Loading the current run status. No additional model request is being sent.');
+        if (context.syncState === 'UNAVAILABLE') {
+            if ([401, 403].includes(context.observationStatus)) return text(
+                'Der Laufstatus kann mit den aktuellen Zugriffsrechten nicht geladen werden. Prüfe den Zugang zu diesem Arbeitsbereich. Weitere Bewertungen bleiben bis zur Statusklärung gesperrt.',
+                'The run status cannot be loaded with the current access rights. Check access to this workspace. Further assessments remain unavailable until the status is confirmed.');
+            if (context.observationKind !== 'CONNECTION') return text(
+                'Die Statusantwort konnte nicht verarbeitet werden. Der zuletzt geladene Ergebnisstand bleibt sichtbar. Lade den Status erneut; weitere Bewertungen bleiben bis zur Statusklärung gesperrt. Die technischen Angaben enthalten den Fehler.',
+                'The status response could not be processed. The last loaded result remains visible. Load the status again; further assessments remain unavailable until it is confirmed. Technical details contain the error.');
+            return text(
+                'Die Verbindung zur Anwendung ist gestört; der aktuelle Laufstatus ist unbekannt. Der Server könnte noch weiterarbeiten. Der zuletzt geladene Ergebnisstand bleibt sichtbar. Prüfe zuerst die Verbindung und lade den Status, bevor du weitere Bewertungen anforderst.',
+                'The connection to the application is interrupted; the current run status is unknown. The server may still be working. The last loaded result remains visible. Check the connection and load the status before requesting further assessments.');
+        }
+        if (context.recoveryEvent === 'CONFLICT') return text(
+            'Die letzte Aktion wurde wegen eines Konflikts mit dem gespeicherten Lauf abgewiesen. Wir haben den aktuellen Stand geladen. Prüfe die aktualisierten Ergebnisse und offenen Bewertungen und wähle dann die passende Aktion. Die Aktion wurde nicht automatisch wiederholt.',
+            'The last action was rejected because it conflicted with the saved run. We have loaded the current state. Review the updated results and open assessments before choosing the next action. The action was not repeated automatically.');
+        if (context.recoveryEvent === 'UNCONFIRMED' || context.recoveryEvent === 'RECONNECTED') return text(
+            'Der aktuelle Stand wurde vom Server geladen. Nach der Verbindungsunterbrechung wurde keine KI-Anfrage automatisch wiederholt. Richte die nächste Aktion nach dem angezeigten Laufstatus aus.',
+            'The current state has been loaded from the server. No model request was repeated automatically after the connection interruption. Choose the next action according to the displayed run status.');
+        if (context.recoveryEvent === 'REJECTED') return text(
+            'Die letzte Aktion wurde vom Server abgewiesen. Der gespeicherte Laufstatus wurde neu geladen. Die technischen Angaben enthalten den Ablehnungsgrund.',
+            'The server rejected the last action. The saved run status has been reloaded. Technical details contain the rejection reason.');
+        if (S.analysisRecovery?.state === 'RUNNING') return text(
+            'Die Analyse wird auf dem Server bearbeitet. Du kannst den Status aktualisieren oder den Lauf abbrechen.',
+            'The analysis is being processed on the server. You can refresh its status or cancel the run.');
+        return '';
+    }
     function setBusy(value) {
         busy = value;
         if (!value) liveWork = '';
@@ -136,13 +175,18 @@
         if (c?.followupState === 'COMPLETED') label = text('Copilot abgeschlossen', 'Copilot complete');
         if (c?.followupState === 'COMPLETED_SCOPED') label = text('Gewählte Analyse abgeschlossen', 'Selected analysis complete');
         if (c?.followupState === 'COMPLETED_WITH_GAPS') label = text('Copilot beendet – Teilergebnis', 'Copilot finished – partial result');
+        if (c?.syncState === 'CHECKING') label = text('Aktuellen Laufstatus laden', 'Loading current run status');
+        if (c?.syncState === 'UNAVAILABLE') label = c.observationKind === 'CONNECTION'
+            ? text('Verbindung gestört – Status unbekannt', 'Connection interrupted – status unknown')
+            : text('Status unbekannt – erneute Prüfung erforderlich', 'Run status unknown – check again');
         var openCount = (r.openQuestions || []).length;
         var relations = S.currentRelationSearchReport?.progress?.verifiedRelations;
         var detail = (openCount ? ' · ' + openCount + text(' Prüfungen offen', ' assessments open') : '')
             + (Number.isFinite(relations) ? ' · ' + relations + text(' Beziehungen bestätigt', ' relations verified') : '');
-        if (busy && liveWork) return liveWork + detail;
-        return label + ' · ' + (r.completedCalls || 0) + text(' Abfragen abgeschlossen', ' requests complete') + detail
-            + (r.currentNode && r.state === 'RUNNING' ? ' · ' + r.currentNode : '');
+        if (busy && liveWork && statusKnown()) return liveWork + detail;
+        return label + ' · ' + (r.completedCalls || 0) + (c?.syncState
+            ? text(' Abfragen zuletzt bestätigt', ' requests last confirmed') : text(' Abfragen abgeschlossen', ' requests complete')) + detail
+            + (r.currentNode && r.state === 'RUNNING' && statusKnown() ? ' · ' + r.currentNode : '');
     }
     function update() {
         var r = S.analysisRecovery;
@@ -153,11 +197,13 @@
     }
     function recordedPauseReason(result) {
         if (!['PAUSED', 'STOPPED'].includes(result.recovery?.state)) return null;
-        var report = result.relationSearchReport || result.architectureView?.relationSearchReport;
+        var report = Object.prototype.hasOwnProperty.call(result, 'relationSearchReport')
+            ? result.relationSearchReport : result.architectureView?.relationSearchReport;
         // Budget exhaustion can be recorded only in the relation report, while
         // errorMessage contains a partial-result summary or is absent entirely.
         var budget = /^(CALL_BUDGET|SOURCE_LIMIT|WORK_LIMIT)(:|$)/;
-        var reasons = [report?.stopReason, result.errorMessage]
+        var summary = result.errorMessage?.startsWith('RELATION_SEARCH_PARTIAL:');
+        var reasons = [report?.stopReason, summary ? null : result.errorMessage]
             .concat((report?.warnings || []).filter(function (warning) { return budget.test(warning); }))
             .concat((report?.result?.unfinished || []).map(function (work) { return work.reason; })
                 .filter(function (reason) { return budget.test(reason); }));
@@ -215,39 +261,75 @@
         window.TaxonomyScoring?.renderArchitectureView(S.currentArchView);
         window.TaxonomyScoring?.renderSuggestedRelations(result.provisionalRelations || []);
     }
-    async function refresh() {
+    function refresh(options) {
+        options = options || {};
         var c = current();
-        if (!inScope(c) || reading) return;
-        reading = true;
-        try {
-            var snapshot = await request(c, '');
-            if (!inScope(c)) return;
-            if (snapshot.recovery?.id && snapshot.recovery.id !== c.id) throw new Error(text(
-                'Die Antwort gehört zu einer anderen Analyse.', 'The response belongs to another analysis.'));
-            c.confirmed = true;
-            S.analysisRecovery = snapshot.recovery;
-            if (snapshot.clusterOperationId) { c.distributed = true; c.operationId = snapshot.clusterOperationId; }
-            c.observationError = null;
-            // Refresh may report a RUNNING new attempt plus an older paused result. Never hydrate it.
-            if (!busy && snapshot.recovery.state !== 'RUNNING') hydrate(snapshot.result, c);
-            c.request = snapshot.request;
-            if (snapshot.request.relationSourceContinuationId) c.noFollowups = true;
-            update();
-            if (snapshot.recovery.state === 'RUNNING') scheduleRead();
-            else if (!busy) { await save(); if (snapshot.recovery.state === 'PAUSED' && !ui.isDismissed()) open(); }
-        } catch (error) {
-            if (inScope(c)) {
-                c.observationError = error.message;
-                ui.update(text('Laufstatus nicht abrufbar: ', 'Cannot read operation status: ') + error.message, busy, true);
-                // Only retry observation. Never turn an ambiguous POST into another provider call.
-                if (busy && ![401, 403, 404].includes(error.status)) scheduleRead();
+        if (!inScope(c)) return Promise.resolve(false);
+        if (reading?.context === c) {
+            // A read sent before a rejected/lost write cannot confirm its outcome.
+            return options.afterDecision ? reading.promise.then(function () {
+                return inScope(c) ? refresh(Object.assign({}, options, { afterDecision: false })) : false;
+            }) : reading.promise;
+        }
+        var observation = { context: c, version: S.analysisRecovery?.version, installedVersion: null };
+        var wasOpen = Boolean(ui.isOpen?.()), recovering = Boolean(c.syncState || c.observationError);
+        var reopen = wasOpen || Boolean(options.afterDecision);
+        reading = observation;
+        if (recovering || options.afterDecision || wasOpen && !options.background) {
+            c.syncState = 'CHECKING'; update();
+            if (wasOpen) open();
+        }
+        observation.promise = Promise.resolve().then(async function () {
+            try {
+                var snapshot = await request(c, '');
+                if (!inScope(c)) return false;
+                if (snapshot.recovery?.id !== c.id || !Number.isSafeInteger(snapshot.recovery?.version)
+                        || snapshot.request?.businessText !== c.request.businessText) throw new Error(text(
+                    'Keine bestätigte Statusantwort für diese Analyse.', 'No confirmed status response for this analysis.'));
+                if (snapshot.recovery.version < (S.analysisRecovery?.version || 0)) {
+                    // A completed write may have overtaken this older observation.
+                    if ((S.analysisRecovery?.version || 0) > observation.version) return false;
+                    throw new Error(text('Die Statusantwort ist veraltet. Lade den aktuellen Stand erneut.',
+                        'The status response is outdated. Load the current state again.'));
+                }
+                var previousState = S.analysisRecovery?.state, previousVersion = S.analysisRecovery?.version;
+                observation.installedVersion = snapshot.recovery.version;
+                c.confirmed = true; c.syncState = null;
+                if (recovering && !c.recoveryEvent) c.recoveryEvent = 'RECONNECTED';
+                S.analysisRecovery = snapshot.recovery;
+                if (snapshot.clusterOperationId) { c.distributed = true; c.operationId = snapshot.clusterOperationId; }
+                c.observationError = null; c.observationStatus = null; c.observationKind = null;
+                // A running new attempt can still carry an older paused result.
+                if (!busy && snapshot.recovery.state !== 'RUNNING') hydrate(snapshot.result, c);
+                c.request = snapshot.request;
+                if (snapshot.request.relationSourceContinuationId) c.noFollowups = true;
+                if (options.background && previousState === snapshot.recovery.state && previousVersion === snapshot.recovery.version && !recovering)
+                    reopen = false; // Progress heartbeats do not rebuild an open dialog.
+                if (!busy && snapshot.recovery.state !== 'RUNNING') {
+                    await save();
+                    if (snapshot.recovery.state === 'PAUSED' && !ui.isDismissed?.()) reopen = true;
+                }
+                return true;
+            } catch (error) {
+                if (!inScope(c) || (S.analysisRecovery?.version || 0) > (observation.installedVersion ?? observation.version)) return false;
+                c.syncState = 'UNAVAILABLE'; c.observationError = error.message;
+                c.observationStatus = errorStatus(error); c.observationKind = connectionFailure(error) ? 'CONNECTION' : 'STATUS';
+                return false;
+            } finally {
+                if (reading === observation) reading = false;
+                if (inScope(c)) {
+                    update();
+                    if (reopen && !busy) open();
+                    if (S.analysisRecovery?.state === 'RUNNING' && statusKnown()) scheduleRead();
+                }
             }
-        } finally { reading = false; }
+        });
+        return observation.promise;
     }
     function scheduleRead() {
-        if (current()?.distributed) return; // Durable cluster progress is event-driven; refresh is explicit on reconnect.
+        if (current()?.distributed || !statusKnown()) return; // Reconnect is a read-only explicit action.
         clearTimeout(poll);
-        poll = setTimeout(function () { poll = null; refresh(); }, 1200);
+        poll = setTimeout(function () { poll = null; refresh({ background: true }); }, 1200);
     }
     // Capture presentation before scoring touches lastAnalyzedText or hides its panels.
     // Only the same continuation may retain this view; do not attach it to new evidence.
@@ -265,9 +347,21 @@
             });
         };
     }
+    async function recoverDecision(context, error) {
+        context.rejectionStatus = errorStatus(error) || null; context.rejectionMessage = error.message;
+        context.decisionDiagnostic = error.message;
+        context.recoveryEvent = context.rejectionStatus === 409 ? 'CONFLICT' : context.rejectionStatus ? 'REJECTED' : 'UNCONFIRMED';
+        context.syncState = 'CHECKING'; update(); open();
+        // Confirm the same identity without resubmitting the decision.
+        await refresh({ afterDecision: true });
+        if (inScope(context)) open();
+    }
     async function run(action, question, newOperation) {
         var c = current();
         if (!inScope(c) || busy || decisionBusy || stopped()) return;
+        if (action !== 'START' && (!decisionsAvailable() || action === 'CONTINUE' && S.analysisRecovery?.state !== 'STOPPED')) {
+            open(); return;
+        }
         if (!window.TaxonomyAnalysisSession?.state?.().ready) {
             ui.error(text('Arbeitsbereich ist noch nicht bereit.', 'Workspace is not ready.')); return;
         }
@@ -277,6 +371,7 @@
             continuationQuestions: Array.isArray(question) && question.length > 1 ? question.slice() : [] });
         var restoreArchitecture = retainArchitecture(c, body.continuationAction);
         ui.close(); setBusy(true); c.followupState = null; c.followups = {};
+        c.recoveryEvent = null; c.decisionDiagnostic = null;
         S.analysisRecovery = Object.assign({}, S.analysisRecovery, { state: 'RUNNING' });
         update(); remember(); scheduleRead();
         try {
@@ -292,7 +387,8 @@
             S.analysisRecovery = result.recovery; S.analysisCoverage = result.analysisCoverage;
             rememberNodeEvidence(result, c);
             S.lastAnalysisStatus = result.status || 'UNKNOWN';
-            c.observationError = null;
+            c.confirmed = true; c.syncState = null; c.recoveryEvent = null; c.decisionDiagnostic = null;
+            c.observationError = null; c.observationStatus = null;
             c.pauseReason = recordedPauseReason(result);
             setBusy(false); update(); await save();
             if (['PAUSED', 'STOPPED'].includes(result.recovery.state)) open();
@@ -302,9 +398,7 @@
             return result;
         } catch (error) {
             if (!inScope(c)) return;
-            setBusy(false); c.observationError = error.message; c.rejectionStatus = error.httpStatus || null; c.rejectionMessage = error.message;
-            // A rejected write may never have started. Keep its identity; do not fabricate a new run.
-            await refresh(); if (!inScope(c)) return; open(); ui.error(error.message);
+            setBusy(false); await recoverDecision(c, error);
         } finally {
             clearTimeout(poll); poll = null;
             if (inScope(c)) { restoreArchitecture(); setBusy(false); update(); if (S.analysisRecovery?.state === 'RUNNING') scheduleRead(); }
@@ -312,7 +406,7 @@
     }
     async function followups() {
         var c = current();
-        if (!inScope(c) || busy || stopped()) return;
+        if (!inScope(c) || busy || stopped() || !statusKnown()) return;
         if ((S.analysisCoverage?.failedOrBlockedNodes || 0) > 0 || S.lastAnalysisStatus === 'PARTIAL'
                 || S.analysisRecovery?.state === 'COMPLETED_WITH_GAPS' || S.analysisRecovery?.openQuestions?.length) {
             // Existing gap/recommendation algorithms infer absence from missing scores. They
@@ -342,6 +436,7 @@
         var c = current();
         if (!c) return operation(); // Compatibility path for explicitly entered manual scores.
         if (!inScope(c)) throw new Error(text('Laufkontext geändert.', 'Operation context changed.'));
+        if (!statusKnown()) throw new Error(text('Lade zuerst den aktuellen Laufstatus.', 'Load the current run status first.'));
         if (stopped()) throw new Error(text('Lauf abgebrochen.', 'Run cancelled.'));
         c.followups = c.followups || {};
         var saved = c.followups[key];
@@ -365,13 +460,18 @@
             var snapshot = await request(c, '/cancel', 'POST');
             if (!inScope(c)) return;
             S.analysisRecovery = snapshot.recovery;
+            c.confirmed = true; c.syncState = null; c.recoveryEvent = null; c.decisionDiagnostic = null;
+            c.observationError = null; c.observationStatus = null; c.observationKind = null;
             c.followupState = 'CANCELLED';
             if (!busy && snapshot.result) hydrate(Object.assign({}, snapshot.result, { recovery: snapshot.recovery,
                 status: snapshot.recovery.state === 'CANCELLED' ? 'CANCELLED' : snapshot.result.status }), c);
             clearTimeout(poll); poll = null;
             ui.close(); update(); await save();
-        } catch (error) { if (inScope(c)) ui.error(error.message); }
-        finally { decisionBusy = false; }
+        } catch (error) { if (inScope(c)) await recoverDecision(c, error); }
+        finally {
+            decisionBusy = false;
+            if (inScope(c) && !busy && ui.isOpen?.()) open();
+        }
     }
     function open() {
         var c = current(), r = S.analysisRecovery;
@@ -398,22 +498,37 @@
             return text('Diese Bewertung konnte nicht abgeschlossen werden. Andere verwertbare Ergebnisse bleiben erhalten.',
                 'This assessment could not be completed. Other usable results are retained.');
         }
-        if (!busy && !stopped() && selected) {
-            options.push({ id: 'analysisRecoveryRetry', shortLabel: text('Wiederholen', 'Retry'), label: text('LLM-Anfrage wiederholen und fortsetzen', 'Retry LLM request and continue'),
-                handler: function () { if (selectedKeys.size) run('RETRY', Array.from(selectedKeys)); } });
-            if (!selected.skipped) options.push({ id: 'analysisRecoverySkip', shortLabel: text('Offenlassen', 'Leave open'), label: text('Bereich offenlassen und fortfahren', 'Leave area unassessed and continue'),
-                handler: function () { if (selectedKeys.size) run('SKIP', Array.from(selectedKeys)); } });
+        var version = r.version;
+        function decide(action, keys) {
+            if (!inScope(c)) return;
+            if (S.analysisRecovery?.version !== version || !decisionsAvailable()) { open(); return; }
+            return run(action, keys);
         }
-        if (!busy && r.state === 'STOPPED' && !stopped() ) {
-            options.push({ id: 'analysisRecoveryContinue', label: text('Gespeicherten Stand fortsetzen', 'Continue saved progress'), handler: function () { run('CONTINUE'); } });
-        } else if (!busy && r.state === 'COMPLETED' && !stopped()) {
+        var ready = decisionsAvailable();
+        var refreshOption = { id: 'analysisRecoveryRefresh', shortLabel: text('Status laden', 'Load status'),
+            label: c.syncState === 'UNAVAILABLE' ? text('Verbindung prüfen und Status laden', 'Check connection and load status')
+                : text('Status aktualisieren', 'Refresh status'),
+            disabled: reading?.context === c, handler: function () { return refresh(); } };
+        if (!statusKnown()) options.push(refreshOption);
+        if (ready && r.state === 'STOPPED') {
+            options.push({ id: 'analysisRecoveryContinue', shortLabel: text('Fortsetzen', 'Continue'),
+                label: text('Gespeicherten Stand fortsetzen', 'Continue saved progress'), handler: function () { return decide('CONTINUE'); } });
+        } else if (!busy && statusKnown() && r.state === 'COMPLETED' && !stopped()) {
             options.push({ id: 'analysisRecoveryRetryStage', label: text('Copilot fortsetzen', 'Continue Copilot'), handler: followups });
+        }
+        if (ready && !stopped() && selected) {
+            options.push({ id: 'analysisRecoveryRetry', shortLabel: text('Neu bewerten', 'Reassess'), label: text('Neue KI-Bewertung anfordern', 'Request a new AI assessment'),
+                handler: function () { if (selectedKeys.size) return decide('RETRY', Array.from(selectedKeys)); } });
+            if (!selected.skipped) options.push({ id: 'analysisRecoverySkip', shortLabel: text('Offenlassen', 'Leave open'), label: text('Bereich offenlassen und fortfahren', 'Leave area unassessed and continue'),
+                handler: function () { if (selectedKeys.size) return decide('SKIP', Array.from(selectedKeys)); } });
         }
         if (!stopped() && (['RUNNING', 'PAUSED', 'STOPPED'].includes(r.state) || ['RUNNING', 'PAUSED'].includes(c.followupState)))
             options.push({ id: 'analysisRecoveryCancelDialog', shortLabel: text('Abbrechen', 'Cancel'), label: text('Lauf abbrechen', 'Cancel run'), handler: cancel });
-        if (c.observationError || r.state === 'RUNNING') options.push({ id: 'analysisRecoveryRefresh', shortLabel: text('Aktualisieren', 'Refresh'), label: text('Status aktualisieren', 'Refresh status'), handler: refresh });
+        if (statusKnown()) options.push(refreshOption);
         ui.open('Copilot', message(), function (body, el) {
-            if (['PAUSED', 'STOPPED'].includes(r.state)) {
+            var guidance = recoveryGuidance(c);
+            if (guidance) { var statusNote = el('p', guidance); statusNote.id = 'analysisRecoveryGuidance'; statusNote.setAttribute('role', 'status'); body.append(statusNote); }
+            if (statusKnown() && ['PAUSED', 'STOPPED'].includes(r.state)) {
                 // A semantic question is independent of why execution stopped.
                 // Always retain the actual stop diagnostics above the selection.
                 var reason = el('p', text('Grund der Unterbrechung: ', 'Reason for interruption: ')
@@ -427,16 +542,18 @@
             body.append(note);
             body.append(el('p', text('Gültige Bewertungen bleiben erhalten. Unbekannt bedeutet nicht „nicht relevant“.',
                 'Valid assessments are retained. Unknown does not mean irrelevant.')));
-            if (c.observationError) body.append(el('p', c.observationError));
+            if (c.observationError || c.decisionDiagnostic) {
+                var diagnostics = el('details'); diagnostics.id = 'analysisRecoveryTechnical';
+                diagnostics.append(el('summary', text('Technische Angaben', 'Technical details')),
+                    el('pre', Array.from(new Set([c.decisionDiagnostic, c.observationError].filter(Boolean))).join('\n')));
+                body.append(diagnostics);
+            }
             if (c.followupError) body.append(el('p', c.followupError));
             if (!selected) return;
-            body.append(el('p', text(
-                'Die Auswahl bezeichnet eine interne LLM-Anfrage und ihre betroffenen Knoten. Prompt und Antwort enthalten die Bewertungsdetails.',
-                'The selection identifies an internal LLM request and its affected nodes. The prompt and response contain the assessment details.')));
-            if (!stopped()) body.append(el('p', text(
-                'Wiederholen sendet eine neue LLM-Anfrage für die gewählte Bewertung und setzt die Analyse fort. Offenlassen setzt die weitere Analyse fort; der betroffene Bereich bleibt nicht bewertet.',
-                'Retry sends a new LLM request for the selected assessment and continues the analysis. Leave open continues the remaining analysis; the affected area stays unassessed.')));
-            var assessmentState = el('p'), attempts = el('p'), uncertain = el('p');
+            if (!stopped() && ready) body.append(el('p', text(
+                'Neu bewerten sendet eine neue KI-Anfrage für die gewählte Bewertung und setzt die Analyse fort. Offenlassen setzt die weitere Analyse fort; der betroffene Bereich bleibt nicht bewertet.',
+                'Reassess sends a new AI request for the selected assessment and continues the analysis. Leave open continues the remaining analysis; the affected area stays unassessed.')));
+            var assessmentState = el('p'), attempts = el('p'), uncertain = el('p'), clarification = el('p');
             function updateSelected() {
                 note.textContent = explanation(selected);
                 if (technical) technical.textContent = selected.error || '';
@@ -450,6 +567,11 @@
                     'Der Anbieter könnte die letzte Anfrage bereits verarbeitet oder berechnet haben. Nach einer Worker-Unterbrechung ist eine explizite Entscheidung erforderlich: wiederholen oder offenlassen. Gespeicherte gültige Antworten werden ohne erneute Anbieteranfrage wiederverwendet.',
                     'The provider may already have processed or billed the last request. After a worker interruption, an explicit decision is required: retry or leave open. Saved validated answers are reused without another provider request.') : '';
                 uncertain.hidden = !selected.outcomeUncertain;
+                var semantic = selected.error?.startsWith('RELATION_UNRESOLVED:');
+                clarification.textContent = semantic ? text(
+                    'Die fachliche Zuordnung ist offen. Du kannst den Bereich offenlassen und die übrige Analyse fortsetzen oder die Anforderung ergänzen und neu analysieren. Eine erneute KI-Bewertung kann ohne zusätzliche Informationen zur gleichen Unsicherheit führen.',
+                    'The semantic assignment remains open. You can leave this area unassessed and continue the remaining analysis, or refine the requirement and start a new analysis. Another model assessment without additional information may lead to the same uncertainty.') : '';
+                clarification.hidden = !semantic;
             }
             if (questions.length > 1) {
                 var label = el('label', text('Offene LLM-Bewertung – betroffene Knoten: ', 'Open LLM assessment – affected nodes: '));
@@ -511,8 +633,10 @@
                 selectionPage = el('div'); multiple.append(selectionSummary, selectionPage); body.append(multiple);
                 multiple.addEventListener('toggle', function () { if (multiple.open) renderSelectionPage(); });
             }
-            updateSelection(); updateSelected(); body.append(assessmentState, attempts, uncertain);
-            var details = el('details'); details.append(el('summary', text('Prompt und Antwort anzeigen', 'Show prompt and response')));
+            updateSelection(); updateSelected(); body.append(assessmentState, clarification, attempts, uncertain);
+            var details = el('details'); details.append(el('summary', text('Prompt und Antwort anzeigen', 'Show prompt and response')),
+                el('p', text('Die Auswahl bezeichnet eine interne LLM-Anfrage und ihre betroffenen Knoten. Prompt und Antwort enthalten die Bewertungsdetails.',
+                    'The selection identifies an internal LLM request and its affected nodes. The prompt and response contain the assessment details.')));
             var technical = el('p', selected.error || '');
             var detailBody = el('div'); details.append(technical, detailBody); body.append(details); var loadedKey = null;
             details.addEventListener('toggle', async function () {
@@ -573,6 +697,7 @@
     }
     function startAnalysis(manual) {
         if (busy || decisionBusy) return;
+        if (inScope(current()) && (!statusKnown() || S.analysisRecovery?.state === 'RUNNING')) { open(); return; }
         if (!manual && inScope(current()) && S.analysisRecovery) { open(); return; }
         if (!input()) { window.TaxonomyBrowse?.showStatus('warning', text('Bitte eine Anforderung eingeben.', 'Enter a requirement.')); return; }
         var ready = window.TaxonomyAnalysisSession?.state?.();
@@ -596,6 +721,7 @@
     function startManagedAnalysis() { return startAnalysis(true); }
     function extendRelations() {
         var source = current(), recovery = S.analysisRecovery, sourceStatus = S.lastAnalysisStatus;
+        if (inScope(source) && (!statusKnown() || reading?.context === source)) { open(); return; }
         if (busy || decisionBusy || !inScope(source) || !crypto?.randomUUID
                 || source.request.analysisScope?.mode !== 'TAXONOMIES_ONLY'
                 || !['COMPLETED', 'COMPLETED_WITH_GAPS'].includes(recovery?.state)
@@ -677,7 +803,8 @@
         extendRelations: extendRelations, nodeEvidenceMatches: nodeEvidenceMatches, stage: stage, open: open,
         refresh: refresh, cancel: cancel, renderCoverage: renderCoverage, partialResultMessage: partialResultMessage,
         isManaged: function () { return inScope(current()); },
-        hasOpenEvaluations: function () { return Boolean(S.analysisCoverage?.failedOrBlockedNodes)
+        isStatusKnown: function () { return statusKnown() && reading?.context !== current(); },
+        hasOpenEvaluations: function () { return !statusKnown() || Boolean(S.analysisCoverage?.failedOrBlockedNodes)
             || Boolean(S.analysisRecovery?.openQuestions?.length)
             || ['PAUSED', 'STOPPED', 'CANCELLED', 'COMPLETED_WITH_GAPS'].includes(S.analysisRecovery?.state); } };
 }());
