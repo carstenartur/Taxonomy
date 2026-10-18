@@ -41,16 +41,21 @@ public final class LlmTransportMeter {
     private LlmTransportMeter() {}
 
     public static Scope open(Consumer<Observation> observer) {
-        return new Scope(Objects.requireNonNull(observer, "observer"), journal(), quota());
+        return new Scope(Objects.requireNonNull(observer, "observer"), journal(), quota(), capacity());
     }
 
     public static Scope openJournal(Journal journal) {
-        return new Scope(observer(), Objects.requireNonNull(journal, "journal"), quota());
+        return new Scope(observer(), Objects.requireNonNull(journal, "journal"), quota(), capacity());
     }
 
     /** Binds exactly the already committed debit to its physical transport attempt. */
     static Scope openQuota(ProviderRateQuotas.Reservation reservation) {
-        return new Scope(observer(), journal(), Objects.requireNonNull(reservation, "reservation"));
+        return new Scope(observer(), journal(), Objects.requireNonNull(reservation, "reservation"), capacity());
+    }
+
+    /** Capacity ownership is per physical admission, never inherited by captured work. */
+    static Scope openCapacity(ProviderConcurrencyPermits.Permit capacity) {
+        return new Scope(observer(), journal(), quota(), Objects.requireNonNull(capacity, "capacity"));
     }
 
     /** Explicit capture only: pooled threads do not inherit another request's observer. */
@@ -59,7 +64,7 @@ public final class LlmTransportMeter {
         Consumer<Observation> observer = observer();
         Journal journal = journal();
         return () -> {
-            try (var ignored = new Scope(observer, journal, null)) { return operation.get(); }
+            try (var ignored = new Scope(observer, journal, null, null)) { return operation.get(); }
         };
     }
 
@@ -92,7 +97,8 @@ public final class LlmTransportMeter {
         Consumer<Observation> observer = observer();
         Journal journal = journal();
         var reservation = quota();
-        if (observer == null && journal == null && reservation == null) return operation.get();
+        var capacity = capacity();
+        if (observer == null && journal == null && reservation == null && capacity == null) return operation.get();
         if (invocationId == null) invocationId = UUID.randomUUID().toString();
         Attempt attempt = begin(journal, invocationId, provider, Source.HTTP, retryIndex, reservation);
         // A worker/DB pause after durable START cannot revive an expired or already consumed debit.
@@ -109,12 +115,14 @@ public final class LlmTransportMeter {
             if (failure instanceof RestClientResponseException http) {
                 status = http.getStatusCode().value();
                 outcome = Outcome.HTTP_ERROR;
+                if (capacity != null) capacity.responseReceived(status);
                 usage = inferenceUsage ? usage(json, provider, http.getResponseBodyAsString()) : UNKNOWN;
             }
             completed(journal, attempt, observer, reservation, new Observation(invocationId, provider, Source.HTTP, retryIndex,
                     status, outcome, elapsed(started), usage));
             throw failure;
         }
+        if (capacity != null) capacity.responseReceived(response.getStatusCode().value());
         completed(journal, attempt, observer, reservation, new Observation(invocationId, provider, Source.HTTP, retryIndex,
                 response.getStatusCode().value(), response.getStatusCode().isError()
                         ? Outcome.HTTP_ERROR : Outcome.RESPONSE,
@@ -151,6 +159,11 @@ public final class LlmTransportMeter {
     private static ProviderRateQuotas.Reservation quota() {
         Scope scope = CURRENT.get();
         return scope == null ? null : scope.reservation;
+    }
+
+    private static ProviderConcurrencyPermits.Permit capacity() {
+        Scope scope = CURRENT.get();
+        return scope == null ? null : scope.capacity;
     }
 
     private static Journal journal() {
@@ -225,9 +238,12 @@ public final class LlmTransportMeter {
         private final Consumer<Observation> observer;
         private final Journal journal;
         private final ProviderRateQuotas.Reservation reservation;
+        private final ProviderConcurrencyPermits.Permit capacity;
         private boolean closed;
-        private Scope(Consumer<Observation> observer, Journal journal, ProviderRateQuotas.Reservation reservation) {
-            this.observer = observer; this.journal = journal; this.reservation = reservation; CURRENT.set(this);
+        private Scope(Consumer<Observation> observer, Journal journal, ProviderRateQuotas.Reservation reservation,
+                      ProviderConcurrencyPermits.Permit capacity) {
+            this.observer = observer; this.journal = journal; this.reservation = reservation;
+            this.capacity = capacity; CURRENT.set(this);
         }
         @Override public void close() {
             if (Thread.currentThread() != owner) throw new IllegalStateException("Meter scope closed on another thread");

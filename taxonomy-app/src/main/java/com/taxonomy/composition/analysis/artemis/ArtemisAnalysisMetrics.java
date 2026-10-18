@@ -14,7 +14,6 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -142,18 +141,11 @@ public final class ArtemisAnalysisMetrics {
                 activity.enter();
                 outcome = "ACQUIRED";
                 long acquired = registry.config().clock().monotonicTime();
-                var closed = new AtomicBoolean();
-                return () -> {
-                    if (!closed.compareAndSet(false, true)) return;
-                    String returned = "FAILED";
-                    try {
-                        permit.close();
-                        returned = "RETURNED";
-                    } finally {
-                        activity.leave();
-                        recordDuration("provider.lease", tags.and("outcome", returned), acquired);
-                    }
-                };
+                return ProviderConcurrencyPermits.observeClose(permit, completed -> {
+                    activity.leave();
+                    // Local closure is not proof that a quarantined broker slot returned.
+                    recordDuration("provider.lease", tags.and("outcome", completed ? "CLOSED" : "FAILED"), acquired);
+                });
             } catch (AnalysisStoppedException stopped) {
                 outcome = "STOPPED";
                 throw stopped;

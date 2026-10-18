@@ -3,15 +3,23 @@
 The P08 provider boundary uses `ProviderConcurrencyPermits` in `taxonomy-analysis`.
 `LlmGatewayRegistry` injects the optional implementation into every Gemini and
 OpenAI-compatible gateway. Every physical attempt, including a retry, acquires
-capacity after local admission and returns it before retry backoff. Recording
-replay makes no HTTP attempt and acquires no permit.
+capacity after local admission. Unused and proven-complete capacity returns before
+retry backoff; uncertain capacity stays unavailable. Recording replay makes no
+HTTP attempt and acquires no permit.
 
-`ArtemisProviderConcurrencyPermits` in the application adapter receives one durable
-message in a transacted JMS session. Completion sends one replacement carrying
-the same permit ID and commits the send and original consumption together. An
-uncommitted or lost holder rolls back; a failed or uncertain commit never triggers
-a compensating send. Capacity is determined by the durable token count, not by the
-number of application pods.
+`ArtemisProviderConcurrencyPermits` receives an available schema-1 token in a
+transacted JMS session. Before the admitted physical request, it atomically consumes
+that token and publishes a persistent schema-2 `IN_FLIGHT` receipt in the same queue.
+Normal consumers select `permitState IS NULL` and cannot use a receipt as capacity.
+Worker/broker loss after this commit therefore redelivers an unavailable receipt,
+not an available slot. A complete synchronous response permits an exact-receipt
+return in a fresh transaction; an unconfirmed return never causes a compensating send.
+
+Transport failures, cancellation, asynchronous responses and ambiguous server/proxy
+errors leave the receipt for explicit operator reconciliation. Failed cleanup does
+not discard a successfully obtained answer or force another provider call.
+See [quarantine protocol and operator recovery](provider-capacity-quarantine.md)
+for the exact response policy, coordinated upgrade and acceptance boundaries.
 
 ## Configuration and initialization
 
@@ -40,7 +48,8 @@ or its administrative `main(<quota-group>, <capacity>)`. The command uses the
 `TAXONOMY_ANALYSIS_ARTEMIS_*` broker/TLS/credential environment and optional
 `TAXONOMY_ANALYSIS_PROVIDER_PERMITS_DESTINATION_PREFIX`. It does not launch the
 Spring application. Use separate administrative credentials with queue-creation
-permission; application consumers only need send/consume access to their queues.
+permission; application consumers only need send/consume access to their queues. Inspection
+uses a separate administrative account with browse access, not worker credentials.
 
 For the packaged Spring Boot application (replace the JAR path as needed):
 
@@ -61,9 +70,12 @@ same stopped-consumer procedure.
 
 Broker permit-address policy must preserve capacity: durable queues, no auto-delete,
 no purge-on-no-consumers, no expiry or expiry-delay, unlimited redelivery,
-and non-dropping address-full policy. The broker transaction timeout must exceed
-the maximum physical HTTP duration. A permit message contains only schema version,
-quota group and a random permit ID; no prompt, response, API key or task payload.
+and non-dropping address-full policy. The broker transaction timeout should exceed
+the maximum physical HTTP duration. Transactional journal synchronization must be
+enabled. Available tokens contain schema version, quota group and random permit
+ID; in-flight receipts add only state, a random attempt ID and a start timestamp.
+No prompt, response, API key or task payload enters these messages. All consumers
+must be upgraded together; old workers do not implement the receipt selector.
 
 With the separate `taxonomy.analysis.provider-quotas.enabled` feature disabled,
 RPM remains **process local**. This document describes concurrency permits, not
@@ -82,15 +94,16 @@ for the distinction between admitted attempts and outstanding remote computation
 
 Cancellation/deadline checkpoints run before and after bounded 100 ms JMS receives.
 Broker connection/control calls remain bounded by the existing Artemis connection
-timeouts. No broker-backed semaphore can fence a request already accepted by an
-external provider: if a broker connection is lost while the HTTP peer continues
-work, token redelivery alone cannot prove that upstream work has stopped. Strict
-upstream execution fencing across network partitions needs provider support.
+timeouts. A timeout or connection loss does not prove an accepted external request stopped.
+The receipt remains unavailable without an automatic expiry; this favors bounded
+admission over availability. It does not remotely cancel or fence provider work.
+Operator recovery requires stopped workers AND independently confirmed upstream
+completion. Target-environment fault acceptance remains necessary.
 
 ## Architecture boundary
 
 The application composition layer implements the analysis-owned
-`ProviderConcurrencyPermits` port. The dependency baseline registers exactly eight
+`ProviderConcurrencyPermits` port. The original P08 review recorded these eight
 direct class pairs from `com.taxonomy.composition.analysis.artemis` to
 `com.taxonomy.analysis.service`:
 
@@ -101,7 +114,9 @@ direct class pairs from `com.taxonomy.composition.analysis.artemis` to
 | `ArtemisProviderPermitSettings` | `LlmProvider` |
 | `ArtemisProviderPermitsConfiguration` | `LlmProvider` |
 
-These dependencies implement the port, bind explicit provider aliases and preserve
+The current package/class-pair ratchet, not this historical P08 inventory, owns
+the allowed dependencies of the complete application. The original dependencies
+implement the port, bind explicit provider aliases and preserve
 the analysis cancellation contract. JMS and Artemis remain in the application
 adapter; the analysis module has no dependency on this implementation. The entry
 records this reviewed composition direction without changing architecture rules,

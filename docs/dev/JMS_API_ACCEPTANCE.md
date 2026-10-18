@@ -1,6 +1,6 @@
 # JMS and REST API acceptance boundaries
 
-Status reconciled on 2026-10-18 against main `2d2609b6c058a86099bbe38886400a8da7621993`.
+Status reconciled on 2026-10-18 against baseline `44a8ee8228cca1bb0f90b264a1aab617f75b8874` plus the provider-quarantine change.
 This is an implementation/acceptance index, not a deployment certificate and not
 a statement that every endpoint's complete schema has been audited.
 
@@ -10,6 +10,7 @@ a statement that every endpoint's complete schema has been audited.
 | --- | --- |
 | Durable root/relation workers, frozen input, cancellation and replay | [Task DAG](ANALYSIS_TASK_DAG.md), [durable execution](CLUSTER_ANALYSIS_EXECUTION.md) and the existing broker/database/cluster suites. |
 | Distributed continuation and saved answers | `AnalysisContinuationService.beginDistributed`, frozen worker checkpoint binding and `FrozenClusterContinuationTest`. Local execution deliberately keeps its own path. |
+| Conservative provider capacity after loss | [Durable receipt quarantine](../testing/provider-capacity-quarantine.md), lifecycle/transaction regressions and a separate real-broker/worker-JVM acceptance test. Execution of that acceptance remains required. |
 | Durable call diagnostics | `AnalysisProgressController.detail` delegates to `cluster.callDetail` for an owned cluster run; summaries do not load complete prompt/response bodies. |
 | Shared RPM/RPD and provider cooldown | Separate opt-in `ArtemisProviderRateQuotas`, explicit credential groups and durable state provisioning; see [operator contract](../en/OPERATIONS_GUIDE.md#cluster-wide-physical-attempt-rate-quotas). |
 | Supported hard TPM accounting | Only the explicitly supported [Responses token adapter](../en/OPERATIONS_GUIDE.md#supported-openai-responses-tpm-adapter). Unsupported transports reject before HTTP when hard TPM is enabled. |
@@ -41,11 +42,14 @@ remote computations after worker/broker loss. A local timeout, closed connection
 returned JMS permit or restored database cannot establish that the remote peer
 stopped. Recovery must not interpret UNKNOWN as no usage or as a validated answer.
 
-A stronger guarantee requires a separately reviewed mechanism: for example,
-provider-supported job identity/cancellation/fencing, or durable quarantine of
-uncertain capacity with explicit reconciliation. No such quarantine mechanism is
-introduced by this documentation/REST change. Merely increasing a timeout or
-turning on existing permits is not that mechanism.
+The provider-permit adapter now implements durable quarantine of uncertain capacity
+and exact-receipt operator reconciliation. This closes the former unconditional
+return in the implementation: failure after confirmed receipt creation cannot make
+that receipt an available slot. It does not prove a remote job stopped, replace
+provider-supported cancellation/fencing, or certify a deployment. Mixed worker
+versions, destructive broker resets and unconfirmed operator release invalidate
+that safety contract. The real-broker, worker-loss and deployment acceptance above
+remain separate gates; a deterministic transaction model is not their substitute.
 
 ## Reproduction and closure
 
