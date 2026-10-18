@@ -183,7 +183,7 @@ public final class RelationSearchDistribution {
         if (progress != null) progress = new com.taxonomy.dto.RelationSearchProgress(progress.totalSources(), progress.assessedSources(),
                 progress.totalSearches(), progress.completedSearches(), progress.unresolvedSearches(), progress.pendingSearches(),
                 progress.calls(), progress.maxCalls(), (int) edges.stream().filter(edge -> edge.evidence().outcome() == Outcome.VERIFIED).count(),
-                progress.step(), progress.current(), progress.taxonomies());
+                progress.step(), progress.current(), progress.taxonomies(), progress.sourceTaxonomies());
         return new RelationSearchReport(current.schemaVersion(), current.originalSha256(), current.policy(), current.sources(),
                 new Result(List.copyOf(edges), result.unfinished(), result.trace(), result.calls(), result.visitedBatches(), result.durationMillis()),
                 current.totalCalls(), current.maxCalls(), current.durationMillis(), current.warnings(), current.stopReason(), progress, current.tasks());

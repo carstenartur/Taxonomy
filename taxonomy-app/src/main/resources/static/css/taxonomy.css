@@ -331,6 +331,14 @@
 #analysisWorkProgress {
     min-width: 0;
     overflow-wrap: anywhere;
+    --analysis-segment-open: var(--bs-tertiary-bg, #f8f9fa);
+    --analysis-segment-excluded: #adb5bd;
+    --analysis-segment-zero: #59636e;
+    --analysis-segment-unknown: #7c8490;
+    --analysis-segment-positive: #0d6efd;
+    --analysis-segment-active: #7047b9;
+    --analysis-segment-relation-complete: #198754;
+    --analysis-segment-relation-open: #b45e00;
 }
 #analysisWorkProgress .analysis-work-meter {
     min-width: 0;
@@ -374,11 +382,11 @@
     border-radius: inherit;
 }
 #analysisWorkProgress .analysis-work-bar::-webkit-progress-value {
-    background: var(--analysis-work-fill);
+    background: var(--analysis-work-segments, var(--analysis-work-fill));
     border-radius: inherit;
 }
 #analysisWorkProgress .analysis-work-bar::-moz-progress-bar {
-    background: var(--analysis-work-fill);
+    background: var(--analysis-work-segments, var(--analysis-work-fill));
     border-radius: inherit;
 }
 #analysisWorkProgress .analysis-work-bar:not([value]) {
@@ -430,6 +438,64 @@
     font-size: 0.8125em;
     line-height: 1.3;
 }
+#analysisWorkProgress .analysis-work-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.85rem;
+    margin-block: 0.4rem;
+    font-size: 0.75rem;
+}
+#analysisWorkProgress .analysis-taxonomy-counts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.8fr);
+    gap: 0.2rem 0.4rem;
+    margin: 0.15rem 0;
+    font-variant-numeric: tabular-nums;
+}
+#analysisWorkProgress .analysis-taxonomy-counts dt {
+    font-size: 0.85em;
+    font-weight: 400;
+}
+#analysisWorkProgress .analysis-taxonomy-counts dd {
+    margin: 0;
+    font-weight: 600;
+}
+#analysisLiveProgress .analysis-progress-diagnostics {
+    margin-block: 0.35rem;
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+}
+#analysisWorkProgress .analysis-work-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+#analysisWorkProgress .analysis-work-swatch {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 1px solid currentColor;
+    border-radius: 0.1rem;
+}
+#analysisWorkProgress .analysis-segment-open { background: var(--analysis-segment-open); }
+#analysisWorkProgress .analysis-segment-excluded { background: var(--analysis-segment-excluded); }
+#analysisWorkProgress .analysis-segment-zero { background: var(--analysis-segment-zero); }
+#analysisWorkProgress .analysis-segment-unknown { background: var(--analysis-segment-unknown); }
+#analysisWorkProgress .analysis-segment-positive { background: var(--analysis-segment-positive); }
+#analysisWorkProgress .analysis-segment-active { background: var(--analysis-segment-active); }
+#analysisWorkProgress .analysis-segment-relation-complete { background: var(--analysis-segment-relation-complete); }
+#analysisWorkProgress .analysis-segment-relation-open { background: var(--analysis-segment-relation-open); }
+#analysisWorkProgress .analysis-work-meter[data-active="true"] {
+    border-inline-start-color: var(--analysis-segment-active);
+    border-inline-start-width: 4px;
+}
+#analysisWorkProgress .analysis-current-work {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    font-size: 0.875em;
+    padding-block: 0.3rem;
+}
 #analysisTaxonomyProgressToggle {
     margin-block: 0.5rem 0;
     cursor: pointer;
@@ -450,6 +516,7 @@
         accent-color: Highlight;
         /* Only the native meter paint is explicit, using the user's system colors. */
         forced-color-adjust: none;
+        --analysis-work-segments: linear-gradient(Highlight, Highlight) !important;
     }
     #analysisWorkProgress .analysis-work-bar:not([value]) {
         background: Canvas;

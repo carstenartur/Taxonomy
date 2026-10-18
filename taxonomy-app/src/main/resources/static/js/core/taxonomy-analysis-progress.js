@@ -333,8 +333,7 @@
             + ' · ' + p.pendingSearches + text(' offen', ' pending');
     }
     var namedTaxonomy = null, names = new Map();
-    function nodeLabel(code) {
-        if (!code) return '';
+    function refreshNames() {
         var roots = window.TaxonomyState?.taxonomyData;
         if (roots !== namedTaxonomy) {
             namedTaxonomy = roots;
@@ -349,6 +348,10 @@
                 if (Array.isArray(item.children)) item.children.forEach(function (child) { pending.push(child); });
             }
         }
+    }
+    function nodeLabel(code) {
+        if (!code) return '';
+        refreshNames();
         var entry = names.get(code);
         var name = entry && (german() ? entry.nameDe || entry.name || entry.nameEn : entry.nameEn || entry.name);
         return name && name !== code ? name + ' (' + code + ')' : code;
@@ -378,7 +381,7 @@
     }
     function workSummary(snapshot) {
         var r = snapshot.relationProgress, n = snapshot.nodeProgress;
-        if (r) return relationLabel(r) + (r.current ? ' · ' + currentRelation(r) : '');
+        if (r) return relationLabel(r);
         var relations = clusterRelationCounts(snapshot);
         if (relations) return text('Relationsprüfung – Suchaufträge: ', 'Relationship search – tasks: ')
             + relations.completed + text(' erledigt · ', ' complete · ')
@@ -411,6 +414,91 @@
             + p.completed + text(' erledigt · ', ' complete · ')
             + p.failed + text(' fehlgeschlagen', ' failed');
     }
+    function percent(value) {
+        return typeof value === 'number' && Number.isFinite(value) && value >= 0
+            ? value.toLocaleString(german() ? 'de-DE' : 'en-GB', { maximumSignificantDigits: 6 }) + '%' : '—';
+    }
+    function scoreCoverage(part) {
+        return text('Nichtnull: ', 'Non-zero: ') + (Number.isSafeInteger(part.positive) ? part.positive : text('nicht aufgezeichnet', 'not recorded'))
+            + text(' · Verteilt: ', ' · Allocated: ') + percent(part.allocatedPercent) + ' / ' + percent(part.rootPercent);
+    }
+    function sourceCoverage(part) {
+        if (part.total === 0) return text('Keine konkreten Relations-Ausgangsknoten', 'No concrete relationship source nodes');
+        return part.completed + text(' von ', ' of ') + part.total + text(' Ausgangsknoten erledigt · ', ' source nodes complete · ')
+            + part.unresolved + text(' ungeklärt', ' unresolved');
+    }
+    function taxonomyCounts(part) {
+        var list = node('dl', undefined, 'analysis-taxonomy-counts');
+        list.id = 'analysis-taxonomy-counts-' + part.root;
+        [[text('Gesamt', 'Total'), part.total], [text('Verarbeitet', 'Processed'), part.assessed + part.excluded],
+            [text('Nichtnull', 'Non-zero'), Number.isSafeInteger(part.positive) ? part.positive : '—'],
+            [text('Verteilt', 'Allocated'), percent(part.allocatedPercent) + ' / ' + percent(part.rootPercent)]].forEach(function (metric, index) {
+            var field = node('div');
+            field.append(node('dt', metric[0]), node('dd', metric[1]));
+            if (index === 1) field.setAttribute('title', nodeCoverage(part));
+            if (index === 3) field.setAttribute('title', text(
+                'Bis zu Blättern bzw. Produktfamilien verteiltes Bewertungsgewicht / Gewicht der Teiltaxonomie. Produkteignungen werden nicht addiert.',
+                'Assessment weight allocated to leaves or product families / taxonomy weight. Product suitability scores are not added.'));
+            list.append(field);
+        });
+        return list;
+    }
+    function sourceRoot(r, root) {
+        var current = r?.current;
+        if (!current) return false;
+        refreshNames();
+        return (current.candidates && r.step === 'SOURCES' ? current.candidates : [current.sourceId]).some(function (id) {
+            return id === root || id.startsWith(root + '-') || names.get(id)?.taxonomyRoot === root;
+        });
+    }
+    function colourNodeBar(bar, part, sources, relations) {
+        var positive = part.positive, covered = part.assessed + part.excluded;
+        var scoreKnown = Number.isSafeInteger(positive) && positive >= 0 && positive <= part.assessed;
+        var sourceKnown = !relations || Boolean(sources);
+        if (scoreKnown) bar.setAttribute('data-positive', positive);
+        if (sourceKnown) {
+            bar.setAttribute('data-relations-completed', sources ? sources.completed : 0);
+            bar.setAttribute('data-relations-unresolved', sources ? sources.unresolved : 0);
+        }
+        var detail = bar.getAttribute('aria-valuetext') + ' · ' + (part.root ? scoreCoverage(part)
+            : text('Nichtnull: ', 'Non-zero: ') + (scoreKnown ? positive : text('nicht aufgezeichnet', 'not recorded')));
+        if (relations) detail += ' · ' + (sources ? sourceCoverage(sources)
+            : text('Relations-Ausgangsknoten nicht aufgezeichnet', 'Relationship source nodes not recorded'));
+        bar.setAttribute('aria-valuetext', detail);
+        bar.setAttribute('data-score-state', scoreKnown ? 'known' : 'unknown');
+        if (covered <= 0) return;
+        var completed = Math.min(scoreKnown ? positive : 0, sources ? sources.completed : 0);
+        var unresolved = Math.min(positive - completed, sources ? sources.unresolved : 0);
+        // The current-work pointer does not say whether that source is already
+        // counted as unresolved/completed. Highlight its row without counting it twice.
+        var segments = scoreKnown ? [['relation-complete', completed], ['relation-open', unresolved],
+            ['positive', positive - completed - unresolved], ['zero', part.assessed - positive], ['excluded', part.excluded]]
+            : [['unknown', part.assessed], ['excluded', part.excluded]];
+        var position = 0, stops = [];
+        segments.forEach(function (segment) {
+            var end = position + segment[1] / covered * 100;
+            if (segment[1] > 0) stops.push('var(--analysis-segment-' + segment[0] + ') ' + position + '% ' + end + '%');
+            position = end;
+        });
+        // Only the covered portion is painted by the native progress element;
+        // every segment therefore remains a count of catalogue nodes.
+        bar.setAttribute('style', '--analysis-work-segments:linear-gradient(to right,' + stops.join(',') + ')');
+    }
+    function workLegend(container) {
+        var legend = node('div', undefined, 'analysis-work-legend');
+        legend.setAttribute('aria-label', text('Bedeutung der Balkenfarben', 'Bar colour legend'));
+        legend.append(node('strong', text('Knotenbalken:', 'Node bars:')));
+        [['open', 'Offen', 'Unassessed'], ['excluded', 'Ausgeschlossen', 'Excluded'], ['zero', 'Bewertet: 0', 'Assessed: 0'],
+            ['positive', 'Bewertet: > 0', 'Assessed: > 0'], ['unknown', 'Trefferzahl unbekannt', 'Positive count unknown'],
+            ['active', 'Aktueller Suchbereich (Rand)', 'Current search scope (border)'],
+            ['relation-complete', 'Relationssuche erledigt', 'Relationship search complete'],
+            ['relation-open', 'Relationssuche ungeklärt', 'Relationship search unresolved']].forEach(function (entry) {
+            var item = node('span', undefined, 'analysis-work-legend-item');
+            var swatch = node('span', undefined, 'analysis-work-swatch analysis-segment-' + entry[0]);
+            swatch.setAttribute('aria-hidden', 'true'); item.append(swatch, node('span', text(entry[1], entry[2]))); legend.append(item);
+        });
+        container.append(legend);
+    }
     // Native progress semantics remain available independently of the visual theme.
     // An absent value means the denominator is unknown, never a fabricated 100%.
     function workMeter(container, kind, root, label, done, total, detail, empty, unknown, visibleDetail) {
@@ -439,6 +527,7 @@
         row.append(header, progress);
         if (detail) row.append(node('div', visibleDetail === undefined ? detail : visibleDetail, 'analysis-work-meter-detail'));
         container.append(row);
+        return { bar: progress, row: row, header: header };
     }
     function diagnosticCopyButton(title, raw) {
         var button = node('button', text('Kopieren', 'Copy'),
@@ -545,6 +634,8 @@
         work.setAttribute('aria-live', 'off');
         var expandedTaxonomies = true;
         var lastWorkSignature = null;
+        var taxonomyOrder = [];
+        var lastNodeProgress = null;
         function renderWork(snapshot) {
             var signature = JSON.stringify([snapshot.nodeProgress, snapshot.relationProgress, snapshot.cluster,
                 snapshot.phase, snapshot.status, german()]);
@@ -555,7 +646,8 @@
             var focusedSummary = document.activeElement?.id === 'analysisTaxonomyProgressToggle';
             work.replaceChildren();
             work.setAttribute('data-run-status', snapshot.status || '');
-            var n = snapshot.nodeProgress, r = snapshot.relationProgress;
+            if (snapshot.nodeProgress) lastNodeProgress = snapshot.nodeProgress;
+            var n = lastNodeProgress, r = snapshot.relationProgress;
             var outcome = { ERROR: ['Analyse fehlgeschlagen; unvollständiger Fortschritt bleibt erhalten.',
                 'Analysis failed; incomplete progress is retained.'],
                 CANCELLED: ['Analyse abgebrochen; unvollständiger Fortschritt bleibt erhalten.',
@@ -594,22 +686,40 @@
                 work.append(clusterParts);
             }
             if (n) {
-                workMeter(work, 'nodes', '', text('Knotenbewertung', 'Node assessment'), n.assessed + n.excluded, n.total,
+                var overall = workMeter(work, 'nodes', '', text('Knotenbewertung', 'Node assessment'), n.assessed + n.excluded, n.total,
                     nodeCoverage(n), text('Keine Katalogknoten vorhanden', 'No catalogue nodes available'));
+                var positiveKnown = n.taxonomies?.length && n.taxonomies.every(function (part) { return Number.isSafeInteger(part.positive); });
+                var positive = positiveKnown ? n.taxonomies.reduce(function (sum, part) { return sum + part.positive; }, 0) : null;
+                var sourceTotals = r && ((r.sourceTaxonomies || []).length || r.totalSources === 0 && r.step === 'FINISHED')
+                    ? (r.sourceTaxonomies || []).reduce(function (sum, part) {
+                        sum.total += part.total; sum.completed += part.completed; sum.unresolved += part.unresolved; return sum;
+                    }, { total: 0, completed: 0, unresolved: 0 }) : null;
+                colourNodeBar(overall.bar, Object.assign({}, n, { positive: positive }), sourceTotals, r);
                 var details = node('details'); details.id = 'analysisTaxonomyProgressDetails'; details.open = expandedTaxonomies;
                 var summary = node('summary', text('Fortschritt je Teiltaxonomie', 'Progress by taxonomy'));
                 summary.id = 'analysisTaxonomyProgressToggle';
                 details.append(summary);
                 var parts = node('div', undefined, 'analysis-taxonomy-progress');
-                (n.taxonomies || []).forEach(function (part) {
+                if (!taxonomyOrder.length) taxonomyOrder = (window.TaxonomyState?.taxonomyData || []).map(function (root) { return root.code; });
+                (n.taxonomies || []).forEach(function (part) { if (taxonomyOrder.indexOf(part.root) < 0) taxonomyOrder.push(part.root); });
+                (n.taxonomies || []).slice().sort(function (a, b) { return taxonomyOrder.indexOf(a.root) - taxonomyOrder.indexOf(b.root); }).forEach(function (part) {
                     var name = german() ? part.nameDe || part.nameEn : part.nameEn || part.nameDe;
-                    workMeter(parts, 'nodes', part.root, name && name !== part.root ? name + ' (' + part.root + ')' : nodeLabel(part.root),
+                    var meter = workMeter(parts, 'nodes', part.root, name && name !== part.root ? name + ' (' + part.root + ')' : nodeLabel(part.root),
                         part.assessed + part.excluded, part.total, nodeCoverage(part),
-                        text('Keine Katalogknoten vorhanden', 'No catalogue nodes available'), null, nodeCoverage(part, true));
+                        text('Keine Katalogknoten vorhanden', 'No catalogue nodes available'), null,
+                        nodeCoverage(part, true) + ' · ' + scoreCoverage(part));
+                    var source = (r?.sourceTaxonomies || []).find(function (entry) { return entry.root === part.root; });
+                    if (!source && r && ((r.sourceTaxonomies || []).length || r.totalSources === 0 && r.step === 'FINISHED'))
+                        source = { root: part.root, total: 0, completed: 0, unresolved: 0 };
+                    colourNodeBar(meter.bar, part, source, r);
+                    meter.row.children[2].replaceChildren(taxonomyCounts(part));
+                    if (r && source) meter.row.append(node('div', sourceCoverage(source), 'analysis-work-meter-detail analysis-source-progress'));
+                    if (sourceRoot(r, part.root)) meter.row.setAttribute('data-active', 'true');
                 });
                 details.append(parts);
                 details.addEventListener('toggle', function () { expandedTaxonomies = details.open; });
                 work.append(details);
+                workLegend(work);
             }
             if (r) {
                 var empty = r.step === 'FINISHED' ? text('Keine Suchaufträge erforderlich', 'No search tasks required') : null;
@@ -619,16 +729,24 @@
                 work.append(node('div', text('Fortschritt zählt Suchaufträge, nicht gefundene Beziehungen.',
                     'Progress counts search tasks, not relationships found.'), 'analysis-work-note'));
                 work.append(node('div', r.assessedSources + text(' von ', ' of ') + r.totalSources
-                    + text(' Ausgangsknoten geprüft · ', ' source contributions assessed · ')
+                    + text(' Quellenbeiträge bewertet · ', ' source contributions assessed · ')
                     + r.verifiedRelations + text(' geprüfte Relationsvorschläge', ' relationship proposals checked')));
-                if (r.current) work.append(node('div', currentRelation(r)));
-                var targets = node('div', undefined, 'analysis-taxonomy-progress');
-                (r.taxonomies || []).forEach(function (part) {
-                    workMeter(targets, 'relations', part.root, text('Ziel: ', 'Target: ') + nodeLabel(part.root),
-                        part.completed, part.total, relationRemaining(part), empty,
-                        text('Gesamter Suchumfang noch nicht bekannt', 'Total search work not yet known'));
-                });
-                work.append(targets);
+                if (r.current) {
+                    var current = node('div', undefined, 'analysis-current-work');
+                    current.append(node('strong', text('Aktuell: ', 'Current: ')), node('span', currentRelation(r)));
+                    work.append(current);
+                }
+                // Older runs without node coverage retain their truthful target-task
+                // meters. Modern runs keep exactly one catalogue row per taxonomy.
+                if (!n) {
+                    var targets = node('div', undefined, 'analysis-taxonomy-progress');
+                    (r.taxonomies || []).forEach(function (part) {
+                        workMeter(targets, 'relations', part.root, text('Ziel: ', 'Target: ') + nodeLabel(part.root),
+                            part.completed, part.total, relationRemaining(part), empty,
+                            text('Gesamter Suchumfang noch nicht bekannt', 'Total search work not yet known'));
+                    });
+                    work.append(targets);
+                }
                 work.append(node('div', text('Aufrufbudget dieses Durchlaufs: ', 'Call budget for this execution: ')
                     + r.calls + ' / ' + r.maxCalls, 'small'));
                 if (r.step === 'PAUSED') work.append(node('div', text(
@@ -650,6 +768,10 @@
                 : Math.floor(value / 60000) + ' min ' + String(Math.floor(value / 1000) % 60).padStart(2, '0') + ' s');
         }
         var resources = node('div');
+        var diagnostics = node('details', undefined, 'analysis-progress-diagnostics');
+        diagnostics.id = 'analysisProgressDiagnostics'; diagnostics.open = false;
+        diagnostics.setAttribute('aria-live', 'off');
+        diagnostics.append(node('summary', text('Technische Details', 'Technical details')), resources);
         var warning = node('div', '', 'fw-bold');
         var button = node('button', text('Analyse abbrechen', 'Cancel analysis'), 'btn btn-sm btn-danger mt-2');
         button.type = 'button';
@@ -662,7 +784,7 @@
             button.className = 'btn btn-sm mt-2 ' + (disabled ? 'btn-outline-secondary' : 'btn-danger');
             button.textContent = label;
         }
-        panel.append(title, state, work, queueDuration, duration, resources, warning, button, retryResult);
+        panel.append(title, state, work, queueDuration, duration, diagnostics, warning, button, retryResult);
         var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');
         if (anchor) anchor.insertAdjacentElement('afterend', panel);
         var log = document.getElementById('llmCommLogContent');
@@ -751,7 +873,7 @@
                 var phase = phases[snapshot.phase];
                 if (snapshot.phase === 'RELATIONS' && snapshot.relationProgress && ['SOURCES', 'NAVIGATE', 'VERIFY'].indexOf(snapshot.relationProgress.step) >= 0)
                     phase = ['Relationen bewerten', 'Assessing relationships'];
-                title.textContent = phase ? text(phase[0], phase[1]) : snapshot.phase;
+                title.textContent = phase ? text(phase[0], phase[1]) : text('Analyse läuft', 'Analysis running');
                 var isTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
                 var measuredExecution = Number.isSafeInteger(snapshot.executionMillis) && snapshot.executionMillis >= 0;
                 var elapsedMillis = measuredExecution ? snapshot.executionMillis : Number.isSafeInteger(snapshot.elapsedMillis) && snapshot.elapsedMillis >= 0
@@ -765,23 +887,44 @@
                     + Math.floor(snapshot.queueWaitMillis / 1000) + ' s' : '';
                 var elapsed = elapsedMillis === null ? '?' : Math.floor(elapsedMillis / 1000);
                 var quiet = Math.max(0, Math.floor((snapshot.serverTime - snapshot.lastActivityAt) / 1000));
+                var statuses = { RUNNING: ['Läuft', 'Running'], COMPLETED: ['Abgeschlossen', 'Completed'],
+                    PARTIAL: ['Unvollständig', 'Incomplete'], ERROR: ['Fehlgeschlagen', 'Failed'],
+                    CANCELLED: ['Abgebrochen', 'Cancelled'], CANCELLING: ['Abbruch angefordert', 'Cancellation requested'] };
+                var status = statuses[snapshot.status];
                 state.textContent = snapshot.status === 'QUEUED'
                     ? text('Auftrag angenommen; wartet auf freien Analyseplatz. Noch keine LLM-Anfrage gestartet.',
                         'Request accepted; waiting for an analysis slot. No LLM request started yet.')
-                    : snapshot.status + ' · ' + (snapshot.cluster || snapshot.nodeProgress || snapshot.relationProgress ? workSummary(snapshot)
-                        : snapshot.evaluatedNodes + text(' Knoten bewertet', ' nodes evaluated')) + ' · ' + elapsed + ' s · '
-                    + text('letzter Arbeitsschritt vor ', 'last activity ') + quiet + ' s'
-                    + (snapshot.node ? ' · ' + snapshot.node : '')
-                    + text(' · Server-Lebenszeichen empfangen', ' · server heartbeat received');
+                    : (status ? text(status[0], status[1]) : text('Status wird geprüft', 'Checking status')) + ' · '
+                    + (snapshot.cluster || snapshot.nodeProgress || snapshot.relationProgress ? workSummary(snapshot)
+                        : snapshot.evaluatedNodes + text(' Knoten bewertet', ' nodes evaluated'))
+                    + (quiet >= 15 ? text(' · Letzte Aktivität vor ', ' · Last activity ') + quiet + ' s' : '');
                 var memory = snapshot.memory || {};
-                resources.textContent = 'Heap: ' + (memory.percent >= 0 ? memory.percent + '%' : text('unbekannt', 'unknown'))
-                    + ' · DB: ' + snapshot.databaseStorage + ' · Index: ' + snapshot.indexStorage;
-                warning.textContent = snapshot.stopReason || (memory.warning
-                    ? text('Speicherwarnung: Weitere Schritte werden bei anhaltendem Druck gestoppt.',
-                        'Memory warning: further steps will stop if pressure persists.')
+                resources.textContent = snapshot.status + ' · Heap: ' + (memory.percent >= 0 ? memory.percent + '%' : text('unbekannt', 'unknown'))
+                    + ' · DB: ' + snapshot.databaseStorage + ' · Index: ' + snapshot.indexStorage
+                    + ' · ' + elapsed + ' s · ' + (snapshot.node || '')
+                    + (snapshot.stopReason ? ' · ' + snapshot.stopReason : '')
+                    + text(' · Server-Lebenszeichen empfangen', ' · server heartbeat received');
+                var stopMessages = {
+                    CALL_BUDGET: ['Aufrufbudget erreicht. Erledigte Arbeit bleibt erhalten; die Relationssuche ist noch unvollständig.',
+                        'Call budget reached. Completed work is retained; relationship search is incomplete.'],
+                    WORK_LIMIT: ['Arbeitsgrenze dieses Durchlaufs erreicht. Erledigte Arbeit bleibt erhalten; weitere Prüfungen sind noch offen.',
+                        'Work limit for this execution reached. Completed work is retained; further assessments remain open.'],
+                    TIME_LIMIT: ['Zeitlimit erreicht. Erledigte Arbeit bleibt erhalten; offene Prüfungen sind noch nicht abgeschlossen.',
+                        'Time limit reached. Completed work is retained; open assessments have not completed.'],
+                    MEMORY_PRESSURE: ['Zum Schutz vor Speichermangel angehalten. Erledigte Arbeit bleibt erhalten.',
+                        'Stopped to prevent memory exhaustion. Completed work is retained.'],
+                    CANCELLED: ['Abgebrochen. Erledigte Arbeit bleibt erhalten.', 'Cancelled. Completed work is retained.']
+                };
+                var stopMessage = stopMessages[snapshot.stopReason];
+                warning.textContent = snapshot.stopReason ? (stopMessage ? text(stopMessage[0], stopMessage[1]) : text(
+                    'Analyse angehalten. Erledigte Arbeit bleibt erhalten; Details und offene Prüfungen stehen im Analysestatus.',
+                    'Analysis stopped. Completed work is retained; details and open assessments are available in the analysis status.')) : (memory.warning
+                    ? text('Speicherwarnung: ', 'Memory warning: ') + memory.percent + text(
+                        '% belegt. Weitere Schritte werden bei anhaltendem Druck gestoppt.',
+                        '% used. Further steps will stop if pressure persists.')
                     : snapshot.databaseStorage === 'IN_MEMORY' || snapshot.indexStorage === 'IN_MEMORY'
-                        ? text('Flüchtiger Speicher: Für große Analysen das Profil hsqldb-file verwenden.',
-                            'Volatile storage: use the hsqldb-file profile for large analyses.') : '');
+                        ? text('Ergebnisse liegen in flüchtigem Speicher und können bei einem Serverneustart verloren gehen.',
+                            'Results use volatile storage and may be lost when the server restarts.') : '');
                 panel.className = 'alert mt-2 ' + (memory.warning || snapshot.stopReason ? 'alert-warning' : 'alert-info');
                 var cancellable = snapshot.status === 'RUNNING' || snapshot.status === 'QUEUED';
                 cancelState(!cancellable, cancellable

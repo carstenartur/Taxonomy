@@ -26,6 +26,34 @@ class RelationSearchPerformanceTest {
     private static final Node ROOT = RequirementRelationSearchContract.ROOT;
     private static final Node TARGET = RequirementRelationSearchContract.TARGET;
 
+    @Test void sourceProgressCompletesANodeOnlyAfterEveryTargetAndTypeAndKeepsUnknownSourcesOpen() {
+        var a = new Node("BP-a", "BP", "A", "", false);
+        var b = new Node("BP-b", "BP", "B", "", false);
+        var c = new Node("CP-c", "CP", "C", "", false);
+        var otherRoot = new Node("CR", "CR", "Services", "", true);
+        var plan = new RelationWorkPlan(List.of(a, b, c), List.of(ROOT, otherRoot), new RelationCompatibilityMatrix(), 24);
+        plan.assessed(new SourceAssessment(a, List.of(contribution(a)), "Required", ""));
+        plan.assessed(new SourceAssessment(b, List.of(), "Uncertain", "Which function?"));
+        plan.assessed(new SourceAssessment(c, List.of(), "Not requested", ""));
+        var first = new Intent(contribution(a), "CONSUMES", Direction.OUTGOING, List.of(ROOT));
+        var second = new Intent(contribution(a), "PRODUCES", Direction.OUTGOING, List.of(ROOT));
+        var last = new Intent(contribution(a), "USES", Direction.OUTGOING, List.of(otherRoot));
+        plan.expect(List.of(first, second, last)); plan.finished(first, true); plan.finished(second, true);
+        var parts = JSON.valueToTree(plan.snapshot()).path("sourceTaxonomies");
+        assertEquals(2, parts.size());
+        assertEquals("BP", parts.get(0).path("root").asText());
+        assertEquals(2, parts.get(0).path("total").asInt());
+        assertEquals(0, parts.get(0).path("completed").asInt());
+        assertEquals(1, parts.get(0).path("unresolved").asInt());
+        assertEquals(1, parts.get(1).path("completed").asInt(), "A rejected contribution is assessed, not a found relation");
+        plan.finished(last, true); plan.finished(last, true);
+        parts = JSON.valueToTree(plan.snapshot()).path("sourceTaxonomies");
+        assertEquals(1, parts.get(0).path("completed").asInt(), "Repeating a completed query cannot complete a second source");
+        assertEquals(0, plan.snapshot().verifiedRelations());
+        plan.assessed(new SourceAssessment(b, List.of(), "Not requested", ""));
+        assertEquals(2, JSON.valueToTree(plan.snapshot()).path("sourceTaxonomies").get(0).path("completed").asInt());
+    }
+
     @Test void repeatedDescentsLoadScalarsOnceAndPreserveEveryAssessment() {
         assertCatalogueWork(true, 13);
     }

@@ -79,14 +79,22 @@ final class ClusterAnalysisProgress {
             if (task.resultJson != null) scores.putAll(json.readValue(task.resultJson, AnalysisResult.class).getRawScores());
             var byCode = new HashMap<String, RootCatalogueSnapshot.Node>(); root.nodes().forEach(node -> byCode.put(node.code(), node));
             var pruning = new HashMap<String, Boolean>();
-            int direct = 0, pruned = 0;
+            var budgetParents = new HashSet<String>();
+            root.nodes().stream().filter(node -> !"PRODUCT".equals(node.analysisRole()))
+                    .map(RootCatalogueSnapshot.Node::parentCode).filter(Objects::nonNull).forEach(budgetParents::add);
+            int direct = 0, pruned = 0, positive = 0;
+            double allocated = 0;
             for (var node : root.nodes()) {
                 if (scores.containsKey(node.code())) direct++;
                 else if (excluded(node.parentCode(), byCode, scores, pruning)) pruned++;
+                Double score = scores.get(node.code());
+                if (score != null && score > 0) positive++;
+                if (score != null && !"PRODUCT".equals(node.analysisRole()) && !budgetParents.contains(node.code()))
+                    allocated += score;
             }
             var name = byCode.get(task.root);
             parts.add(new AnalysisNodeProgress.Taxonomy(task.root, name.nameEn(), name.nameDe(), root.nodes().size(),
-                    direct, pruned, root.nodes().size() - direct - pruned));
+                    direct, pruned, root.nodes().size() - direct - pruned, positive, allocated, scores.get(task.root)));
             total += root.nodes().size(); assessed += direct; excluded += pruned;
         }
         return parts.isEmpty() ? null : new AnalysisNodeProgress(total, assessed, excluded, total - assessed - excluded, parts);
@@ -132,7 +140,7 @@ final class ClusterAnalysisProgress {
                                                         RelationSearchProgress.Current current, int calls) {
         return new RelationSearchProgress(progress.totalSources(), progress.assessedSources(), progress.totalSearches(),
                 progress.completedSearches(), progress.unresolvedSearches(), progress.pendingSearches(), calls, progress.maxCalls(),
-                progress.verifiedRelations(), step, current, progress.taxonomies());
+                progress.verifiedRelations(), step, current, progress.taxonomies(), progress.sourceTaxonomies());
     }
 
     static void validateRelations(RelationSearchProgress p) {
@@ -142,7 +150,18 @@ final class ClusterAnalysisProgress {
                 || p.totalSearches() < 0 || p.completedSearches() < 0 || p.unresolvedSearches() < 0 || p.pendingSearches() < 0
                 || (long) p.completedSearches() + p.unresolvedSearches() + p.pendingSearches() != p.totalSearches()
                 || p.calls() < 0 || p.maxCalls() < 0 || p.calls() > p.maxCalls() || p.verifiedRelations() < 0
-                || p.taxonomies().size() > 8) throw new IllegalArgumentException("Invalid relation progress counts");
+                || p.taxonomies().size() > 8 || p.sourceTaxonomies().size() > 8)
+            throw new IllegalArgumentException("Invalid relation progress counts");
+        int sources = 0; var sourceRoots = new HashSet<String>();
+        for (var source : p.sourceTaxonomies()) {
+            if (!TaxonomyShardRoot.of(source.root()).defaultCatalogueRoot() || !sourceRoots.add(source.root())
+                    || source.total() < 0 || source.completed() < 0 || source.unresolved() < 0
+                    || (long) source.completed() + source.unresolved() > source.total())
+                throw new IllegalArgumentException("Invalid relation source progress");
+            sources += source.total();
+        }
+        if (!p.sourceTaxonomies().isEmpty() && sources != p.totalSources())
+            throw new IllegalArgumentException("Relation source totals differ from plan");
         int total = 0, completed = 0, unresolved = 0, pending = 0; var roots = new HashSet<String>();
         for (var root : p.taxonomies()) {
             if (!TaxonomyShardRoot.of(root.root()).defaultCatalogueRoot() || !roots.add(root.root()) || root.total() < 0

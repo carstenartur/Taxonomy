@@ -120,6 +120,9 @@ public record RootCatalogueSnapshot(int schemaVersion, CatalogueSourceIdentity s
                     node.getSortOrder(), node.getState(), metadata, parentPatch);
         }
 
+        /** Frozen role for analysis consumers without depending on overlay implementation types. */
+        public String analysisRole() { return metadata.analysisRole(); }
+
         TaxonomyNode detached() {
             TaxonomyNode node = new TaxonomyNode();
             node.setId(id);

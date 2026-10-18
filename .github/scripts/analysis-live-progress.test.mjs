@@ -353,6 +353,111 @@ function relationshipWork() {
         ] };
 }
 
+test('one catalogue-ordered node bar per taxonomy survives relation work and recolours only completed positive sources', async () => {
+    let value = { ...snapshot(), nodeProgress: coverage() };
+    value.nodeProgress.taxonomies[0] = { ...value.nodeProgress.taxonomies[0], positive: 2, allocatedPercent: 0.125, rootPercent: 80 };
+    value.nodeProgress.taxonomies[1] = { ...value.nodeProgress.taxonomies[1], positive: 1, allocatedPercent: 20, rootPercent: 20 };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    f.window.TaxonomyState = { taxonomyData: [{ code: 'BP' }, { code: 'IP' }] };
+    await f.step(0);
+    const before = workBar(f, 'nodes', 'BP');
+    assert.equal(before.getAttribute('data-positive'), '2');
+    assert.equal(before.getAttribute('data-relations-completed'), '0');
+    assert.match(before.getAttribute('aria-valuetext'), /0\.125%.*80%/);
+    value = { ...value, sequence: 2, relationProgress: { ...relationshipWork(),
+        taxonomies: relationshipWork().taxonomies.slice().reverse(),
+        sourceTaxonomies: [{ root: 'IP', total: 1, completed: 0, unresolved: 0 },
+            { root: 'BP', total: 2, completed: 1, unresolved: 1 }] } };
+    value.nodeProgress = { ...value.nodeProgress, taxonomies: value.nodeProgress.taxonomies.slice().reverse() };
+    await f.step(1000);
+    const parts = descendants(f.elements.get('analysisWorkProgress')).filter(element => element.tag === 'progress'
+        && element.getAttribute('data-taxonomy-root'));
+    assert.deepEqual(parts.map(element => element.getAttribute('data-taxonomy-root')), ['BP', 'IP']);
+    assert.ok(parts.every(element => element.getAttribute('data-progress-kind') === 'nodes'));
+    const after = workBar(f, 'nodes', 'BP');
+    assert.equal(after.getAttribute('max'), '8');
+    assert.equal(after.getAttribute('value'), '5');
+    assert.equal(after.getAttribute('data-positive'), '2');
+    assert.equal(after.getAttribute('data-relations-completed'), '1');
+    assert.equal(after.getAttribute('data-relations-unresolved'), '1');
+    assert.match(after.getAttribute('aria-valuetext'), /1 of 2.*source/);
+    assert.equal(workBar(f, 'relations', 'BP'), undefined, 'Target work must not create a second taxonomy list');
+    f.monitor.stop();
+});
+
+test('legacy previews never invent positive totals or completed source counts from search task percentages', async () => {
+    const f = fixture(async () => response({ ...snapshot(), nodeProgress: coverage(), relationProgress: relationshipWork(),
+        scoresTruncated: true, rawScores: { BP: 80 } }), 'workspace-a', true);
+    await f.step(0);
+    const bar = workBar(f, 'nodes', 'BP');
+    assert.equal(bar.getAttribute('data-positive'), null);
+    assert.equal(bar.getAttribute('data-relations-completed'), null);
+    assert.match(bar.getAttribute('aria-valuetext'), /not recorded/);
+    assert.match(bar.getAttribute('style'), /analysis-segment-unknown/);
+    assert.doesNotMatch(bar.getAttribute('style'), /analysis-segment-positive/);
+    f.monitor.stop();
+});
+
+test('the current source is never double-counted as active after it has become unresolved', async () => {
+    const nodes = coverage(); nodes.taxonomies[0] = { ...nodes.taxonomies[0], positive: 3 };
+    const f = fixture(async () => response({ ...snapshot(), nodeProgress: nodes,
+        relationProgress: { ...relationshipWork(), sourceTaxonomies: [{ root: 'BP', total: 2, completed: 0, unresolved: 1 }],
+            current: { sourceId: 'BP-1', targetRoot: 'IP', type: 'CONSUMES', direction: 'OUTGOING', depth: 1, candidates: ['IP-1'] } }
+    }), 'workspace-a', true);
+    await f.step(0);
+    const bar = workBar(f, 'nodes', 'BP');
+    assert.match(bar.getAttribute('style'), /analysis-segment-relation-open/);
+    assert.doesNotMatch(bar.getAttribute('style'), /analysis-segment-active/,
+        'The current pointer cannot prove which aggregate source class owns the node');
+    assert.equal(bar.getAttribute('data-relations-unresolved'), '1');
+    f.monitor.stop();
+});
+
+test('the first relation snapshot marks source membership from catalogue metadata without an ID prefix', async () => {
+    const value = { ...snapshot(), nodeProgress: coverage(), relationProgress: { ...relationshipWork(),
+        current: { sourceId: 'catalogue-item', targetRoot: 'IP', type: 'CONSUMES', direction: 'OUTGOING', depth: 1, candidates: ['IP-1'] } } };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    f.window.TaxonomyState = { taxonomyData: [{ code: 'BP', children: [{ code: 'catalogue-item', taxonomyRoot: 'BP', nameEn: 'Time tracking' }] },
+        { code: 'IP', children: [] }] };
+    await f.step(0);
+    const rows = descendants(f.elements.get('analysisWorkProgress')).filter(element => element.children.some(child => child.tag === 'progress'
+        && child.getAttribute('data-progress-kind') === 'nodes' && child.getAttribute('data-taxonomy-root')));
+    assert.equal(rows.length, 2);
+    const active = rows.filter(row => row.getAttribute('data-active') === 'true');
+    assert.equal(active.length, 1, 'The first render must identify the active source taxonomy');
+    assert.ok(active[0].children.some(child => child.tag === 'progress' && child.getAttribute('data-taxonomy-root') === 'BP'));
+    await f.step(1000);
+    assert.equal(active[0].getAttribute('data-active'), 'true', 'An unchanged work snapshot must retain the source marker');
+    f.monitor.stop();
+});
+
+test('resource and raw status details are opt-in while the live line stays concise', async () => {
+    const f = fixture(async () => response({ ...snapshot(), databaseStorage: 'IN_MEMORY', indexStorage: 'IN_MEMORY',
+        startedAt: 1000, serverTime: 2000, lastActivityAt: 2000, nodeProgress: coverage() }), 'workspace-a', true);
+    await f.step(0);
+    const details = f.elements.get('analysisProgressDiagnostics');
+    assert.ok(details, 'Technical details need their own disclosure');
+    assert.equal(details.open, false);
+    assert.match(details.textContent, /Heap.*81%/);
+    const state = f.elements.get('analysisLiveProgress').children[1];
+    assert.doesNotMatch(state.textContent, /RUNNING|heartbeat|IN_MEMORY|Heap/);
+    assert.ok(state.textContent.length < 180);
+    const metrics = f.elements.get('analysis-taxonomy-counts-BP');
+    assert.ok(metrics);
+    assert.match(metrics.textContent, /Total.*8.*Processed.*5.*Non-zero.*Allocated/);
+    f.monitor.stop();
+});
+
+test('a budget stop explains retained work without exposing a raw stop code as the user message', async () => {
+    const f = fixture(async () => response({ ...snapshot(1, 'PARTIAL'), stopReason: 'CALL_BUDGET' }), 'workspace-a', true);
+    await f.step(0);
+    const warning = f.elements.get('analysisLiveProgress').children.find(child => child.className === 'fw-bold');
+    assert.match(warning.textContent, /budget.*retained/i);
+    assert.doesNotMatch(warning.textContent, /CALL_BUDGET/);
+    assert.match(f.elements.get('analysisProgressDiagnostics').textContent, /CALL_BUDGET/);
+    f.monitor.stop();
+});
+
 test('every taxonomy has a visible labelled bar while direct and excluded node coverage stay distinct', async () => {
     const value = { ...clusterSnapshot(), nodeProgress: coverage(), relationProgress: relationshipWork() };
     value.cluster = { ...value.cluster, completedRoots: 8, totalRoots: 8 };
@@ -371,7 +476,7 @@ test('every taxonomy has a visible labelled bar while direct and excluded node c
     assert.equal(descendants(f.elements.get('analysisWorkProgress')).filter(element => element.tag === 'progress'
         && element.getAttribute('data-progress-kind') === 'nodes').length, 3, 'Distributed DTOs do not duplicate node coverage');
     const bars = descendants(f.elements.get('analysisWorkProgress')).filter(element => element.tag === 'progress');
-    assert.equal(bars.length, 6, 'Only the detailed node and relationship DTO bars are primary');
+    assert.equal(bars.length, 4, 'Node rows are shared with relation source progress, alongside the two overall meters');
     assert.equal(workBar(f, 'cluster-nodes'), undefined);
     assert.equal(workBar(f, 'cluster-relations'), undefined);
     assert.ok(bars.every(bar => Number(bar.getAttribute('value')) < Number(bar.getAttribute('max'))));
@@ -385,7 +490,7 @@ test('taxonomy count rows stay compact while accessible values retain the assess
     const bar = workBar(f, 'nodes', 'BP');
     const row = descendants(f.elements.get('analysisWorkProgress')).find(element => element.children.includes(bar));
     assert.equal(row.children[0].children[1].textContent, '5/8');
-    assert.match(row.textContent, /3 assessed · 2 excluded · 3 open/);
+    assert.match(row.textContent, /Total.*8.*Processed.*5.*Non-zero/);
     assert.match(bar.getAttribute('aria-valuetext'), /3 directly assessed · 2 excluded by parent decision · 3 open/);
     f.monitor.stop();
 });
