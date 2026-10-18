@@ -4,7 +4,7 @@
 
 Schema 2 stores repeated explanation text once under a named `rationales` entry. A rule chooses either `rationaleRef` or its own complete `rationale`, never both. Scope lists stay next to each decision; a shared explanation never adds sources, candidates or descendants. Small scalar lists use one line.
 
-The three explicit defaults are `phases`, `sourceContributionIds` and `candidateIds`. Each is copied before the rule's explicit fields are applied. Sources and candidate subtrees cannot be defaults. For this corpus every original rule used both NAVIGATE and VERIFY; the default does not infer a new phase.
+The three explicit defaults are `phases`, `sourceContributionIds` and `candidateIds`. Each is copied before the rule's explicit fields are applied. Sources and candidate subtrees cannot be defaults. A `candidateIds` default must be an empty array, so it cannot add exact targets outside an individual rule's authored subtree. For this corpus every original rule used both NAVIGATE and VERIFY; the default does not infer a new phase.
 
 `ScenarioExclusionResource.expand` reconstructs schema 1 for the existing semantic validator. Unknown rationale references, conflicting inline/shared reasons and unsupported defaults fail. The active scenario starts using this resource in a separate PR.
 

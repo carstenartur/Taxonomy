@@ -16,6 +16,8 @@ final class ScenarioExclusionResource {
         require(defaults.isObject() && rationales.isObject(), "Missing explicit exclusion defaults or rationales");
         defaults.propertyNames().forEach(key -> require(Set.of("phases", "sourceContributionIds", "candidateIds")
                 .contains(key), "Unsupported exclusion default: " + key));
+        require(!defaults.has("candidateIds") || (defaults.path("candidateIds").isArray()
+                && defaults.path("candidateIds").isEmpty()), "Shared candidateIds default must be an empty array");
         rationales.properties().forEach(entry -> require(entry.getValue().isString()
                 && !entry.getValue().asString().isBlank(), "Empty shared exclusion rationale: " + entry.getKey()));
         ObjectNode expanded = ((ObjectNode) resource).deepCopy();

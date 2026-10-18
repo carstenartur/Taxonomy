@@ -50,6 +50,16 @@ class ScenarioExclusionResourceTest {
                 () -> ScenarioExclusionResource.expand(resource)).getMessage().contains("Unsupported exclusion default"));
     }
 
+    @Test
+    void sharedCandidatesCannotAddRejectionsOutsideAnIndividualAuthoredSubtree() throws Exception {
+        var resource = JSON.readTree("""
+                {"schemaVersion":2,"defaults":{"candidateIds":["outside-subtree"]},"rationales":{},
+                 "rules":[{"id":"scoped","candidateSubtreeIds":["authored-subtree"],
+                           "rationale":"This authored reason covers only its stated subtree"}],"openScopes":[]}
+                """);
+        assertThrows(IllegalArgumentException.class, () -> ScenarioExclusionResource.expand(resource));
+    }
+
     private static String sha256(String text) throws Exception {
         return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
                 .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
