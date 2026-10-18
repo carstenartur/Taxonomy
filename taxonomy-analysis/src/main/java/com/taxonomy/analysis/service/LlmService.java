@@ -891,7 +891,8 @@ public class LlmService {
     public String recoveryPolicyFingerprint(String requestedProvider) {
         try (var reasons = withAnalysisReasonLength(null)) {
             return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
-                    recoveryProviderPolicyFingerprint(requestedProvider), AnalysisReasonContext.POLICY,
+                    recoveryProviderPolicyFingerprint(requestedProvider), PromptTemplateService.childAllocationContract(100),
+                    AnalysisReasonContext.POLICY,
                     AnalysisReasonContext.current().value());
         }
     }
