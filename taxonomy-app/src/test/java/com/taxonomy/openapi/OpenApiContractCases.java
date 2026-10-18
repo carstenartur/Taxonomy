@@ -9,6 +9,8 @@ import com.taxonomy.composition.analysis.artemis.AnalysisDispatchAdminController
 import com.taxonomy.composition.reformulation.ReformulationAdoptionController;
 import com.taxonomy.export.controller.ExportApiController;
 import com.taxonomy.shared.config.OpenApiConfig;
+import com.taxonomy.security.controller.AccountApiController;
+import com.taxonomy.security.service.PasswordChangeService;
 import com.taxonomy.templates.DocumentTemplateAdminController;
 import org.springdoc.core.configuration.SpringDocConfiguration;
 import org.springdoc.webmvc.core.configuration.SpringDocWebMvcConfiguration;
@@ -42,6 +44,8 @@ import java.util.List;
  * security suites; this fixture does not replace them.
  */
 public final class OpenApiContractCases {
+    private static final List<String> HTTP_METHODS =
+            List.of("get", "post", "put", "patch", "delete", "head", "options", "trace");
     private static final String ADOPTION =
             "/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}";
     private static final String TEMPLATES = "/api/admin/document-templates";
@@ -50,28 +54,42 @@ public final class OpenApiContractCases {
     private OpenApiContractCases() { }
 
     public static void verify() throws Exception {
+        var current = document();
+        checkDocument(current);
+        verifyContractMutations(current);
+        for (String setting : List.of("--taxonomy.security.change-password-enabled=false",
+                "--spring.profiles.active=keycloak")) {
+            require(!document(setting).path("paths").has("/api/account/change-password"),
+                    "Disabled local-account API must not be advertised: " + setting);
+        }
+    }
+
+    private static JsonNode document(String... settings) throws Exception {
         var app = new SpringApplication(ApiFixture.class);
         app.setWebApplicationType(WebApplicationType.SERVLET);
         app.setRegisterShutdownHook(false);
         app.setAdditionalProfiles("openapi-contract-fixture");
-        try (var context = app.run(
+        var arguments = new ArrayList<>(List.of(
                 "--spring.config.location=optional:classpath:/openapi-contract-only.properties",
                 "--server.port=0", "--server.address=127.0.0.1",
                 "--spring.main.banner-mode=off",
                 "--springdoc.api-docs.enabled=true", "--springdoc.swagger-ui.enabled=false",
                 "--springdoc.api-docs.version=OPENAPI_3_0",
                 "--taxonomy.analysis.transport.mode=artemis", "--taxonomy.backup.enabled=true",
-                "--logging.level.root=WARN")) {
+                "--logging.level.root=WARN"));
+        arguments.addAll(List.of(settings));
+        try (var context = app.run(arguments.toArray(String[]::new))) {
             int port = ((ServletWebServerApplicationContext) context).getWebServer().getPort();
-            var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-            var response = client.send(HttpRequest.newBuilder(URI.create(
-                    "http://127.0.0.1:" + port + "/v3/api-docs"))
-                    .timeout(Duration.ofSeconds(60)).GET().build(), HttpResponse.BodyHandlers.ofString());
-            require(response.statusCode() == 200, "OpenAPI generation returned " + response.statusCode());
-            JsonNode document = JsonMapper.builder().build().readTree(response.body());
-            checkDocument(document);
-            checkRegisteredMappings(document, context.getBean(
-                    org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class));
+            try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
+                var response = client.send(HttpRequest.newBuilder(URI.create(
+                        "http://127.0.0.1:" + port + "/v3/api-docs"))
+                        .timeout(Duration.ofSeconds(60)).GET().build(), HttpResponse.BodyHandlers.ofString());
+                require(response.statusCode() == 200, "OpenAPI generation returned " + response.statusCode());
+                JsonNode document = JsonMapper.builder().build().readTree(response.body());
+                checkRegisteredMappings(document, context.getBean(
+                        org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class));
+                return document;
+            }
         }
     }
 
@@ -93,7 +111,7 @@ public final class OpenApiContractCases {
         for (var path : document.path("paths").properties()) {
             if (!path.getKey().startsWith("/api/")) continue;
             for (var method : path.getValue().properties()) {
-                if (List.of("get", "post", "put", "patch", "delete").contains(method.getKey())) {
+                if (HTTP_METHODS.contains(method.getKey())) {
                     check(seen.contains(method.getKey() + " " + path.getKey()),
                             "OpenAPI advertises an unregistered mapping: " + method.getKey() + " " + path.getKey(), errors);
                 }
@@ -105,22 +123,30 @@ public final class OpenApiContractCases {
 
     static void checkDocument(JsonNode document) {
         var errors = new ArrayList<String>();
+        checkLocalReferences(document, document, errors);
+        var operationIds = new java.util.HashSet<String>();
         for (var path : document.path("paths").properties()) {
             if (!path.getKey().startsWith("/api/")) continue;
             for (var method : path.getValue().properties()) {
-                if (!List.of("get", "post", "put", "patch", "delete").contains(method.getKey())) continue;
+                if (!HTTP_METHODS.contains(method.getKey())) continue;
                 var operation = method.getValue();
                 String name = method.getKey().toUpperCase() + " " + path.getKey();
                 check(!operation.path("summary").asText("").isBlank(), name + ": missing summary", errors);
                 check(!operation.path("description").asText("").isBlank(), name + ": missing description", errors);
                 check(!operation.path("operationId").asText("").isBlank(), name + ": missing operationId", errors);
+                check(operationIds.add(operation.path("operationId").asText("")), name + ": duplicate operationId", errors);
                 check(operation.path("responses").size() > 0, name + ": missing responses", errors);
+                for (var response : operation.path("responses").properties()) {
+                    check(!resolve(document, response.getValue()).path("description").asText("").isBlank(),
+                            name + ": undocumented response " + response.getKey(), errors);
+                }
                 for (var parameter : operation.path("parameters")) {
                     check(!parameter.path("description").asText("").isBlank(),
                             name + ": undocumented " + parameter.path("name").asText(), errors);
                 }
             }
         }
+        checkAccountContract(document, errors);
         for (String suffix : List.of("/adoption-previews", "/adoptions")) {
             var operation = operation(document, ADOPTION + suffix, "post", errors);
             var header = parameter(operation, "If-Match", "header");
@@ -187,6 +213,111 @@ public final class OpenApiContractCases {
         require(errors.isEmpty(), errors.size() + " OpenAPI contract failures:\n" + String.join("\n", errors));
     }
 
+    private static void verifyContractMutations(JsonNode current) {
+        String account = "/paths/~1api~1account~1change-password/post";
+        rejectsMutation(current, copy -> object(copy.at(account + "/responses")).remove("401"),
+                "Password change response missing: 401");
+        rejectsMutation(current, copy -> object(copy.at(account + "/responses/200")).put("description", ""),
+                "undocumented response 200");
+        rejectsMutation(current, copy -> object(copy.at(account)).put("operationId",
+                copy.path("paths").path(TEMPLATES + "/{templateId}").path("put").path("operationId").asText()),
+                "duplicate operationId");
+        rejectsMutation(current, copy -> object(copy.at(account + "/responses/400/content/application~1json/schema/anyOf/0"))
+                        .put("$ref", "#/components/schemas/absent-contract-fixture"),
+                "Unresolved local OpenAPI reference");
+        rejectsMutation(current, copy -> object(resolve(copy,
+                copy.at(account + "/requestBody/content/application~1json/schema"))).remove("required"),
+                "Required password field missing");
+        rejectsMutation(current, copy -> object(resolve(copy,
+                copy.at(account + "/requestBody/content/application~1json/schema"))
+                .path("properties").path("newPassword")).put("writeOnly", false),
+                "Password must be write-only");
+        rejectsMutation(current, copy -> object(resolve(copy,
+                copy.at(account + "/requestBody/content/application~1json/schema"))
+                .path("properties").path("newPassword")).put("minLength", 12),
+                "JSON Schema code-point length");
+    }
+
+    private static tools.jackson.databind.node.ObjectNode object(JsonNode node) {
+        return (tools.jackson.databind.node.ObjectNode) node;
+    }
+
+    private static void rejectsMutation(JsonNode original,
+            java.util.function.Consumer<tools.jackson.databind.node.ObjectNode> mutate, String expected) {
+        var damaged = object(original.deepCopy());
+        mutate.accept(damaged);
+        try {
+            checkDocument(damaged);
+        } catch (AssertionError failure) {
+            require(failure.getMessage().contains(expected), "Mutation failed for the wrong reason: " + failure.getMessage());
+            return;
+        }
+        throw new AssertionError("Invalid OpenAPI document was accepted: " + expected);
+    }
+
+    private static void checkLocalReferences(JsonNode document, JsonNode node, List<String> errors) {
+        if (node.isObject()) {
+            String ref = node.path("$ref").asText("");
+            if (ref.startsWith("#/")) {
+                check(!document.at(ref.substring(1)).isMissingNode(), "Unresolved local OpenAPI reference: " + ref, errors);
+            }
+            for (var property : node.properties()) checkLocalReferences(document, property.getValue(), errors);
+        } else if (node.isArray()) {
+            for (var child : node) checkLocalReferences(document, child, errors);
+        }
+    }
+
+    private static void checkAccountContract(JsonNode document, List<String> errors) {
+        var account = operation(document, "/api/account/change-password", "post", errors);
+        for (String status : List.of("200", "400", "401", "403")) {
+            check(account.path("responses").has(status), "Password change response missing: " + status, errors);
+        }
+        check(account.path("requestBody").path("required").asBoolean(false),
+                "Password change body must be required", errors);
+        var request = resolve(document, account.path("requestBody").path("content")
+                .path("application/json").path("schema"));
+        check(request.path("required").size() == 3 && request.path("properties").size() == 3,
+                "Password request must describe exactly the three known fields", errors);
+        check("string".equals(request.path("additionalProperties").path("type").asText()),
+                "Additional string fields must retain the existing open-map binding", errors);
+        for (String name : List.of("currentPassword", "newPassword", "confirmPassword")) {
+            var property = request.path("properties").path(name);
+            check(contains(request.path("required"), name), "Required password field missing: " + name, errors);
+            check("string".equals(property.path("type").asText()), "Password must be a string: " + name, errors);
+            check("password".equals(property.path("format").asText()), "Password format missing: " + name, errors);
+            check(property.path("writeOnly").asBoolean(false), "Password must be write-only: " + name, errors);
+            check(!property.path("description").asText("").isBlank(), "Password description missing: " + name, errors);
+        }
+        var replacement = request.path("properties").path("newPassword");
+        check(replacement.path("description").asText("").contains("UTF-16"),
+                "Password length must describe the actual Java UTF-16 policy", errors);
+        check(!replacement.has("minLength"),
+                "JSON Schema code-point length must not misrepresent Java UTF-16 length", errors);
+        check(!contains(request.path("required"), "username"), "Account comes from authentication, not request username", errors);
+        var success = resolve(document, account.path("responses").path("200")
+                .path("content").path("application/json").path("schema"));
+        check(success.path("properties").size() == 2, "Password success must not advertise echoed input secrets", errors);
+        check(contains(success.path("required"), "status") && contains(success.path("required"), "message"),
+                "Password success must describe both actual response fields", errors);
+        check(contains(success.path("properties").path("status").path("enum"), "PASSWORD_CHANGED"),
+                "Password success status missing", errors);
+        var badRequest = account.path("responses").path("400")
+                .path("content").path("application/json").path("schema");
+        check(badRequest.path("anyOf").size() == 2,
+                "400 must distinguish domain validation from framework binding errors", errors);
+        check("object".equals(resolve(document, badRequest.path("anyOf").path(1)).path("type").asText()),
+                "Framework binding errors need a separate error-object alternative", errors);
+        var rejection = resolve(document, badRequest.path("anyOf").path(0));
+        check(contains(rejection.path("required"), "error") && contains(rejection.path("required"), "message"),
+                "Password domain rejection must describe error and message", errors);
+        var codes = rejection.path("properties").path("error").path("enum");
+        check(codes.size() == 5, "Password domain rejection must enumerate exactly five error codes", errors);
+        for (String code : List.of("USER_NOT_FOUND", "CURRENT_PASSWORD_INCORRECT", "TOO_SHORT",
+                "CONFIRMATION_MISMATCH", "SAME_AS_CURRENT")) {
+            check(contains(codes, code), "Password rejection code missing: " + code, errors);
+        }
+    }
+
     private static JsonNode operation(JsonNode doc, String path, String method, List<String> errors) {
         var value = doc.path("paths").path(path).path(method);
         check(!value.isMissingNode(), "Missing " + method + " " + path, errors);
@@ -230,8 +361,12 @@ public final class OpenApiContractCases {
             WebMvcAutoConfiguration.class, SpringDocConfiguration.class, SpringDocWebMvcConfiguration.class
     })
     @org.springframework.boot.context.properties.EnableConfigurationProperties(org.springdoc.core.properties.SpringDocConfigProperties.class)
-    @Import(OpenApiConfig.class)
+    @Import({OpenApiConfig.class, AccountApiController.class})
     static class ApiFixture {
+        // Import the real controller so its profile/property conditions remain effective.
+        @Bean PasswordChangeService passwordChangeService() {
+            return new PasswordChangeService(null, null, null);
+        }
         @Bean BackupJobController backupController() {
             return new BackupJobController(null, null);
         }
