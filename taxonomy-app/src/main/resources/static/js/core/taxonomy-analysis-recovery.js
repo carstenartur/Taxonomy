@@ -784,6 +784,7 @@
     });
     document.addEventListener('taxonomy:analysis-invalidated', function () {
         clearTimeout(poll); poll = null; setBusy(false); ui.close(); ui.update('', false, false);
+        remember();
     });
     // Observe live activity, without a timer which changes focus, scroll position or score values.
     document.addEventListener('taxonomy:analysis-progress', function (event) {

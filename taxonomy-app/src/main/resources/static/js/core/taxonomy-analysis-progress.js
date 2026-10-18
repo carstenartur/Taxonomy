@@ -976,6 +976,9 @@
             document.addEventListener(name, function () {
                 if (active) { active.cancelAndStop(); active = null; }
                 clearRecent();
+                if (name === 'taxonomy:analysis-invalidated') {
+                    document.getElementById('analysisLiveProgress')?.remove();
+                }
             });
         });
         document.addEventListener('taxonomy:analysis-draft-restored', function () {

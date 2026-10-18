@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftStatus;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -22,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 /**
@@ -62,6 +64,14 @@ public class AnalysisWorkingDraftService {
                 .map(draft -> toView(draft, scope.branch()));
     }
 
+    @Transactional(readOnly = true)
+    public Optional<AnalysisDraftStatus> status(String username, String workspaceId) {
+        DraftScope scope = resolveScope(username, workspaceId);
+        return repository.findProjectedByScopeKeyAndUsername(scope.scopeKey(), scope.username())
+                .map(revision -> new AnalysisDraftStatus(scope.workspaceId(), scope.branch(),
+                        revision.getRowVersion(), revision.getUpdatedAt()));
+    }
+
     @Transactional
     public AnalysisDraftView save(String username,
                                   String workspaceId,
@@ -82,7 +92,9 @@ public class AnalysisWorkingDraftService {
         AnalysisWorkingDraft draft = repository
                 .findByScopeKeyAndUsername(scope.scopeKey(), scope.username())
                 .orElse(null);
-        Instant now = Instant.now();
+        // Match timestamp(6) storage so an acknowledged save keeps exactly the
+        // same revision fingerprint when the browser later observes the database.
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
         if (draft == null) {
             if (request.expectedVersion() != null) {
@@ -127,7 +139,7 @@ public class AnalysisWorkingDraftService {
         AnalysisWorkingDraft draft = repository
                 .findByScopeKeyAndUsername(scope.scopeKey(), scope.username())
                 .orElse(null);
-        Instant now = Instant.now();
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         if (draft == null) {
             draft = new AnalysisWorkingDraft(
                     scope.scopeKey(), scope.workspaceId(), scope.username(), payloadJson, now);

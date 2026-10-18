@@ -480,3 +480,14 @@ test('retained provider evidence does not authorize newly entered unknown keys',
         assert.equal(f.state.currentRawScores.__new_unknown_key__, undefined);
     }
 });
+
+
+test('an unconfirmed analysis session blocks leaf-justification model requests with retained provider bindings', () => {
+    const f = fixture();
+    f.window.TaxonomyAnalysisSession = { state: () => ({ ready: false }) };
+    f.state.analysisProviderId = 'GEMMA';
+    const button = { textContent: 'Explain', disabled: false };
+    f.window.TaxonomyScoring.requestLeafJustification('CP', button);
+    assert.equal(f.calls.length, 0);
+    assert.equal(button.disabled, false);
+});

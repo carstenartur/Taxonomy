@@ -19,6 +19,8 @@
     var showActionAlert = C.showActionAlert;
     var showStaleActions = C.showStaleActions;
     var inputEditRevision = 0;
+    var statusRead = null;
+    var loadEpoch = 0;
     var DECISION_CONTROL_SELECTOR = [
         '#analyzeBtn',
         '#copilotBtn',
@@ -38,7 +40,7 @@
 
     function queueSave(delay) {
         if (runtime.restoring || runtime.invalidating || runtime.resetting
-                || runtime.conflict) return;
+                || runtime.conflict || runtime.serverUnconfirmed) return;
         window.clearTimeout(runtime.saveTimer);
         runtime.saveTimer = window.setTimeout(saveDraft, delay === undefined
             ? AUTOSAVE_DELAY_MS : delay);
@@ -127,6 +129,7 @@
             method: 'POST',
             body: JSON.stringify({ analysisOptions: options })
         }).then(function (view) {
+            confirmDraft(view);
             runtime.version = view.version;
             runtime.restoredPayload = view.payload;
             runtime.lastSavedComparable = comparable(view.payload);
@@ -164,7 +167,7 @@
         runtime.saveTimer = null;
         var endpoint = draftEndpoint();
         if (!endpoint || runtime.restoring || runtime.invalidating || runtime.resetting
-                || runtime.conflict) {
+                || runtime.conflict || runtime.serverUnconfirmed) {
             return Promise.resolve(false);
         }
         if (runtime.saveInFlight) {
@@ -190,6 +193,7 @@
                 expectedVersion: runtime.version
             })
         }).then(function (view) {
+            confirmDraft(view);
             runtime.version = view.version;
             runtime.lastSavedComparable = serialized;
             runtime.conflict = false;
@@ -209,6 +213,123 @@
             return false;
         });
         return finishMutation(operation);
+    }
+
+    function revision(view) {
+        return JSON.stringify(view ? [view.workspaceId || runtime.workspaceId,
+            view.branch || null, view.version, view.updatedAt || null] : null);
+    }
+
+    function confirmDraft(view) {
+        if (!view) runtime.acknowledgedDraftWrites = [];
+        runtime.confirmedDraftRevision = revision(view);
+        runtime.confirmedBusinessText = view?.payload?.businessText || '';
+        runtime.serverUnconfirmed = false;
+    }
+
+    function unsavedInput() {
+        return (businessTextElement()?.value || '') !== (runtime.confirmedBusinessText || '');
+    }
+
+    function missingDraft(options, inputRevisionAtStart) {
+        var keepInput = inputEditRevision !== inputRevisionAtStart
+            || (!options.discardLocalInput && unsavedInput());
+        C.invalidate({ keepText: keepInput, skipSave: true, silent: true,
+            reason: 'server-draft-missing' });
+        confirmDraft(null);
+        runtime.version = null;
+        runtime.lastSavedComparable = keepInput ? null : comparable(currentPayload());
+        runtime.lastObservedComparable = comparable(currentPayload());
+        runtime.restoring = keepInput;
+        setDraftDecisionPending(keepInput);
+        showActionAlert('warning', text('serverDraftMissingTitle'),
+            text(keepInput ? 'serverDraftMissingLocalBody' : 'serverDraftMissingBody'), keepInput ? [
+                { id: 'load-saved', label: text('useServerState'), className: 'btn btn-sm btn-outline-dark',
+                    handler: function () { return loadDraft({ force: true, reconcile: true, discardLocalInput: true }); } },
+                { id: 'keep-local', label: text('saveLocalInput'), className: 'btn btn-sm btn-primary',
+                    handler: function () {
+                        runtime.restoring = false;
+                        if (runtime.serverUnconfirmed) return retryServerState();
+                        setDraftDecisionPending(false);
+                        queueSave(0);
+                    } }
+            ] : [], 'server-draft-missing');
+    }
+
+    function serverUnavailable(error) {
+        runtime.serverUnconfirmed = true;
+        window.clearTimeout(runtime.saveTimer);
+        runtime.saveTimer = null;
+        setDraftDecisionPending(true);
+        if (runtime.restoring || runtime.conflict) return;
+        showActionAlert('warning', text('serverUnavailableTitle'), text('serverUnavailableBody'), [
+            { id: 'check-server', label: text('checkServer'), className: 'btn btn-sm btn-primary',
+                handler: function () { return retryServerState(); } }
+        ], 'server-unconfirmed');
+    }
+
+    function retryServerState() {
+        return C.retryServerState ? C.retryServerState() : reconcileDraft();
+    }
+
+    function recoverWorkspace() {
+        C.invalidate({ keepText: unsavedInput(), skipSave: true, silent: true,
+            reason: 'server-workspace-unavailable' });
+        confirmDraft(null);
+        runtime.serverUnconfirmed = true;
+        runtime.version = null;
+        runtime.workspaceId = null;
+        C.rememberWorkspaceId?.(null);
+        showActionAlert('warning', text('serverWorkspaceMissingTitle'), text('serverWorkspaceMissingBody'), [], 'server-workspace-missing');
+        return C.resolveActiveWorkspaceAndLoad({ reconcile: true, probe: true }).catch(function (error) {
+            runtime.restoring = false;
+            serverUnavailable(error);
+            return false;
+        });
+    }
+
+    // Triggered by the existing server observation and browser lifecycle events.
+    // Only revision metadata is read while the saved draft is unchanged.
+    function reconcileDraft() {
+        if (statusRead) return statusRead;
+        var endpoint = draftEndpoint();
+        if (!endpoint || !runtime.workspaceResolved || runtime.restoring || runtime.invalidating
+                || runtime.resetting || runtime.conflict || runtime.saveInFlight) return Promise.resolve(false);
+        var workspace = runtime.workspaceId;
+        var version = runtime.version;
+        var generation = runtime.analysisGeneration;
+        var confirmed = runtime.confirmedDraftRevision;
+        function current() {
+            return runtime.workspaceId === workspace && runtime.version === version
+                && runtime.analysisGeneration === generation && runtime.confirmedDraftRevision === confirmed
+                && !runtime.resetting && !runtime.invalidating;
+        }
+        function failedObservation(error) {
+            runtime.restoring = false;
+            if (error.status === 403) return recoverWorkspace();
+            serverUnavailable(error);
+            return false;
+        }
+        statusRead = jsonRequest(endpoint + '/status', { method: 'GET', cache: 'no-store' })
+            .then(function (status) {
+                if (!current() || runtime.saveInFlight) return false;
+                if (revision(status) === confirmed && !runtime.restorationPending) {
+                    var reconnected = runtime.serverUnconfirmed || runtime.draftDecisionPending;
+                    runtime.serverUnconfirmed = false;
+                    setDraftDecisionPending(false);
+                    if (reconnected) {
+                        showActionAlert('info', text('serverReconnectedTitle'), text('serverReconnectedBody'), [], 'server-reconnected');
+                        queueSave();
+                    }
+                    return true;
+                }
+                if (!status) { missingDraft({}, inputEditRevision); return true; }
+                return loadDraft({ reconcile: true, onCurrentFailure: failedObservation });
+            }).catch(function (error) {
+                if (current()) return failedObservation(error);
+                return false;
+            }).finally(function () { statusRead = null; });
+        return statusRead;
     }
 
     function localStateIsPristine() {
@@ -261,6 +382,8 @@
             return;
         }
         var payload = view.payload;
+        confirmDraft(view);
+        runtime.restorationPending = true;
         runtime.restoring = true;
         setDraftDecisionPending(true);
         runtime.version = view.version;
@@ -315,6 +438,17 @@
     }
 
     function restoreRenderedState(payload, attempt) {
+        if (runtime.restoredPayload !== payload) return;
+        try {
+            renderRestoredState(payload, attempt);
+        } catch (error) {
+            if (runtime.restoredPayload !== payload) return;
+            runtime.restoring = false;
+            serverUnavailable(error);
+        }
+    }
+
+    function renderRestoredState(payload, attempt) {
         var ready = window.TaxonomyBrowse && window.TaxonomyScoring
             && Array.isArray(S.taxonomyData) && S.taxonomyData.length > 0;
         if (!ready) {
@@ -324,7 +458,7 @@
                 }, 100);
             } else {
                 runtime.restoring = false;
-                setDraftDecisionPending(false);
+                serverUnavailable(new Error('Analysis draft renderers did not become ready'));
             }
             return;
         }
@@ -342,6 +476,7 @@
             document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-restored', {
                 detail: { workspaceId: runtime.workspaceId, version: runtime.version }
             }));
+            runtime.restorationPending = false;
             return;
         }
 
@@ -375,12 +510,28 @@
         document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-restored', {
             detail: { workspaceId: runtime.workspaceId, version: runtime.version }
         }));
+        runtime.restorationPending = false;
     }
 
     function loadDraft(options) {
         options = options || {};
         var endpoint = draftEndpoint();
         if (!endpoint) return Promise.resolve(null);
+        var epoch = ++loadEpoch;
+        var workspaceAtStart = runtime.workspaceId;
+        var versionAtStart = runtime.version;
+        var generationAtStart = runtime.analysisGeneration;
+        function stillCurrent() {
+            return epoch === loadEpoch && workspaceAtStart === runtime.workspaceId
+                && generationAtStart === runtime.analysisGeneration;
+        }
+        function abandon() {
+            if (epoch === loadEpoch) {
+                runtime.restoring = false;
+                if (!runtime.conflict && !runtime.serverUnconfirmed) setDraftDecisionPending(false);
+            }
+            return null;
+        }
         var inputAtStart = businessTextElement();
         var inputValueAtStart = inputAtStart ? inputAtStart.value : '';
         var inputRevisionAtStart = inputEditRevision;
@@ -392,8 +543,14 @@
         // optimistic revision.
         runtime.restoring = true;
         setDraftDecisionPending(true);
-        return jsonRequest(endpoint, { method: 'GET' }).then(function (view) {
+        return jsonRequest(endpoint, { method: 'GET', cache: 'no-store' }).then(function (view) {
+            if (!stillCurrent()) return abandon();
             if (!view) {
+                if (versionAtStart !== null || options.reconcile) {
+                    missingDraft(options, inputRevisionAtStart);
+                    return null;
+                }
+                confirmDraft(null);
                 runtime.version = null;
                 var payload = currentPayload();
                 var serialized = comparable(payload);
@@ -419,7 +576,16 @@
             // history as well as values so editing away and back remains an edit.
             var reloadStillAuthorized = !options.force
                 || forcedStateAtStart === comparable(currentPayload());
-            if (inputUnchanged && reloadStillAuthorized
+            if (options.reconcile) {
+                var preserveInput = !options.discardLocalInput && unsavedInput();
+                C.invalidate({ keepText: true, skipSave: true, silent: true,
+                    reason: 'server-draft-changed' });
+                // This transaction owns that invalidation. Its rendering failures
+                // must not be mistaken for a response superseded by another task.
+                generationAtStart = runtime.analysisGeneration;
+                if (inputUnchanged && reloadStillAuthorized && !preserveInput) applyDraft(view);
+                else showResumeChoice(view);
+            } else if (inputUnchanged && reloadStillAuthorized
                     && (options.force || localStateIsPristine())) {
                 applyDraft(view);
             } else {
@@ -429,9 +595,12 @@
             }
             return view;
         }).catch(function (error) {
+            if (!stillCurrent()) return abandon();
+            if (options.onCurrentFailure) return options.onCurrentFailure(error);
             if (options.probe) throw error;
             runtime.restoring = false;
             setDraftDecisionPending(false);
+            serverUnavailable(error);
             if (window.console) window.console.warn('[Taxonomy] Draft load failed', error);
             return null;
         });
@@ -444,13 +613,19 @@
                 id: 'load-saved',
                 label: text('loadSaved'),
                 className: 'btn btn-sm btn-primary',
-                handler: function () { applyDraft(view); }
+                handler: function () {
+                    if (runtime.serverUnconfirmed) return loadDraft({ force: true, reconcile: true, discardLocalInput: true });
+                    applyDraft(view);
+                }
             },
             {
                 id: 'keep-local',
                 label: text('keepLocal'),
                 className: 'btn btn-sm btn-outline-secondary',
                 handler: function () {
+                    var needsCheck = runtime.serverUnconfirmed;
+                    confirmDraft(view);
+                    runtime.serverUnconfirmed = needsCheck;
                     runtime.version = view.version;
                     runtime.lastSavedComparable = comparable(view.payload);
                     runtime.conflict = false;
@@ -462,6 +637,7 @@
                         delete area.dataset.analysisSessionMessage;
                     }
                     if (isStale()) showStaleActions();
+                    if (needsCheck) return retryServerState();
                     queueSave(0);
                 }
             }
@@ -500,6 +676,8 @@
     document.addEventListener('change', recordInputEdit);
 
     Object.assign(C, {
+        reconcileDraft: reconcileDraft,
+        serverUnavailable: serverUnavailable,
         queueSave: queueSave,
         setDraftDecisionPending: setDraftDecisionPending,
         deleteDraft: deleteDraft,

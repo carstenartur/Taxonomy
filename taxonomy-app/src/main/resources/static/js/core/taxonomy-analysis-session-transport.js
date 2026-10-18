@@ -8,6 +8,7 @@
     var DRAFT_WRITE_HISTORY_LIMIT = 1;
     var DRAFT_TRACE_LIMIT = 48;
     runtime.analysisGeneration = Number(runtime.analysisGeneration) || 0;
+    runtime.draftGeneration = Number(runtime.draftGeneration) || 0;
     runtime.activeAnalysisControllers = runtime.activeAnalysisControllers || new Set();
     runtime.copilotIntervals = runtime.copilotIntervals || new Set();
     runtime.draftMutationQueue = runtime.draftMutationQueue || Promise.resolve();
@@ -86,6 +87,13 @@
         function guardedFetch(input, init) {
             if (!derivedAnalysisRequest(input)) {
                 return nativeFetch(input, init);
+            }
+            if (runtime.serverUnconfirmed || runtime.draftDecisionPending) {
+                return Promise.reject(Object.assign(new Error(C.language() === 'de'
+                    ? 'Bitte zuerst den gespeicherten Analysestand abgleichen.'
+                    : 'Confirm the saved analysis state before continuing.'), {
+                    code: 'ANALYSIS_SESSION_NOT_READY'
+                }));
             }
 
             var generation = runtime.analysisGeneration;
@@ -256,7 +264,7 @@
 
     function reconcileDraftConflict(
             url, request, body, serializedPayload,
-            expectedVersion, originalError, mutationId) {
+            expectedVersion, originalError, mutationId, assertCurrent) {
         var endpoint = draftEndpoint(url);
         var readUrl = endpoint ? endpoint.pathname : url;
         traceDraftMutation(mutationId, 'conflict', {
@@ -265,6 +273,7 @@
             requestId: originalError.requestId || null
         });
         return C.nativeJsonRequest(readUrl, { method: 'GET' }).then(function (remote) {
+            assertCurrent();
             var remoteVersion = remote ? numericVersion(remote.version) : null;
             var remotePayload = remote && remote.payload
                 ? comparablePayload(remote.payload) : null;
@@ -302,6 +311,7 @@
                 requestId: originalError.requestId || null
             });
             return C.nativeJsonRequest(url, retryRequest).then(function (view) {
+                assertCurrent();
                 runtime.version = view && view.version !== undefined
                     ? numericVersion(view.version) : runtime.version;
                 rememberAcknowledgedDraft(view);
@@ -318,7 +328,8 @@
         });
     }
 
-    function currentDraftMutation(url, options) {
+    function currentDraftMutation(url, options, assertCurrent) {
+        assertCurrent();
         var request = Object.assign({}, options || {});
         var method = methodOf(url, request);
         var target = draftEndpoint(url);
@@ -348,6 +359,7 @@
             requestId: null
         });
         return C.nativeJsonRequest(url, request).then(function (view) {
+            assertCurrent();
             // The queue owns revision advancement. Callers may mirror this state,
             // but the next queued mutation cannot start before this update.
             if ((method === 'PUT' || method === 'POST')
@@ -372,10 +384,11 @@
             });
             return view;
         }).catch(function (error) {
+            assertCurrent();
             if (method === 'PUT' && error && error.status === 409) {
                 return reconcileDraftConflict(
                     url, request, body, serializedPayload,
-                    expectedVersion, error, mutationId);
+                    expectedVersion, error, mutationId, assertCurrent);
             }
             if (method === 'POST' && isDraftReset(url)
                     && error && error.status === 409) {
@@ -386,6 +399,7 @@
                     requestId: error.requestId || null
                 });
                 return C.nativeJsonRequest(url, request).then(function (view) {
+                    assertCurrent();
                     runtime.version = view && view.version !== undefined
                         ? numericVersion(view.version) : runtime.version;
                     rememberAcknowledgedDraft(view);
@@ -417,8 +431,22 @@
             if (!isDraftOperation(url, options)) {
                 return C.nativeJsonRequest(url, options);
             }
+            var workspace = runtime.workspaceId;
+            var generation = runtime.draftGeneration;
+            var analysisGeneration = runtime.analysisGeneration;
+            var readingDraft = methodOf(url, options) === 'GET';
+            function assertCurrent() {
+                // Cancellation retains write acknowledgements. Full reads must
+                // still share the loader's analysis scope before advancing it.
+                if (workspace !== runtime.workspaceId || generation !== runtime.draftGeneration
+                        || (readingDraft && analysisGeneration !== runtime.analysisGeneration)) {
+                    throw Object.assign(new Error('The draft context has changed'), {
+                        name: 'AbortError', code: 'STALE_DRAFT_CONTEXT'
+                    });
+                }
+            }
             var execute = function () {
-                return currentDraftMutation(url, options);
+                return currentDraftMutation(url, options, assertCurrent);
             };
             var task = runtime.draftMutationQueue.then(execute, execute);
             runtime.draftMutationQueue = task.catch(function () { /* keep queue usable */ });
@@ -448,6 +476,7 @@
     }
 
     function restoreOptions(payload, attempt) {
+        if (runtime.restoredPayload !== payload) return;
         var options = payload && payload.analysisOptions;
         if (!options) return;
         var interactive = document.getElementById('interactiveMode');

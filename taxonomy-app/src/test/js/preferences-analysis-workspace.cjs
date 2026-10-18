@@ -40,7 +40,7 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
     function element(id, extra = {}) {
         const handlers = new Map(), attrs = new Map(), classes = new Set(id === 'tab-preferences' ? ['d-none'] : []);
         return {id, value: '', disabled: false, dataset: {}, placeholder: '', type: 'button',
-            className: '', textContent: '', ...extra,
+            className: '', textContent: '', style: {}, ...extra,
             classList: {add: x => classes.add(x), remove: x => classes.delete(x),
                 contains: x => classes.has(x)},
             addEventListener: (name, fn) => handlers.set(name, fn),

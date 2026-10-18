@@ -95,7 +95,8 @@ function createProbeHarness(request) {
 }
 
 function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
-  const pendingStates = [];
+  const pendingStates = [], documentListeners = new Map(), windowListeners = new Map();
+  const observations = [];
   const runtime = {
     initialized: false,
     workspaceId: null,
@@ -116,7 +117,7 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
     jsonRequest(url, options) {
       assert.equal(url, '/api/workspace/current');
       assert.equal(options.method, 'GET');
-      return workspaceResponse;
+      return typeof workspaceResponse === 'function' ? workspaceResponse() : workspaceResponse;
     },
     rememberedWorkspaceId: () => null,
     rememberWorkspaceId() {},
@@ -132,7 +133,15 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
     queueSave() {},
     deleteDraft: async () => undefined,
     saveDraft: async () => undefined,
-    loadDraft,
+    loadDraft(options) {
+      return Promise.resolve(loadDraft(options)).then(view => {
+        runtime.restoring = false;
+        context.setDraftDecisionPending(false);
+        return view;
+      });
+    },
+    reconcileDraft() { observations.push("check"); return Promise.resolve(true); },
+    serverUnavailable() { observations.push("unavailable"); },
     setDraftDecisionPending(pending) {
       runtime.draftDecisionPending = pending;
       pendingStates.push(pending);
@@ -141,7 +150,10 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
   const document = {
     readyState: 'complete',
     visibilityState: 'visible',
-    addEventListener() {},
+    addEventListener(name, listener) {
+      if (!documentListeners.has(name)) documentListeners.set(name, []);
+      documentListeners.get(name).push(listener);
+    },
     getElementById() {
       return null;
     }
@@ -154,7 +166,10 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
     setInterval() {
       return 1;
     },
-    addEventListener() {}
+    addEventListener(name, listener) {
+      if (!windowListeners.has(name)) windowListeners.set(name, []);
+      windowListeners.get(name).push(listener);
+    }
   };
   class MutationObserver {
     observe() {}
@@ -177,7 +192,11 @@ function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
     encodeURIComponent
   }, { filename: 'taxonomy-analysis-session-projects.js' });
 
-  return { runtime, pendingStates, session: window.TaxonomyAnalysisSession };
+  return { context, runtime, pendingStates, observations, document, session: window.TaxonomyAnalysisSession,
+    async emit(name, detail, target = 'document') {
+      const listeners = (target === 'document' ? documentListeners : windowListeners).get(name) || [];
+      for (const listener of listeners) await listener({ type: name, detail, persisted: true });
+    } };
 }
 
 test('remembered-workspace probe failure keeps the restoration barrier active', async () => {
@@ -244,7 +263,7 @@ test('workspace readiness closes again for every unresolved mutation or conflict
   await workspace.promise;
   await Promise.resolve();
   assert.equal(harness.session.state().ready, true);
-  for (const barrier of ['restoring', 'invalidating', 'resetting', 'conflict']) {
+  for (const barrier of ['restoring', 'invalidating', 'resetting', 'conflict', 'serverUnconfirmed']) {
     harness.runtime[barrier] = true;
     assert.equal(harness.session.state().ready, false, barrier);
     harness.runtime[barrier] = false;
@@ -306,4 +325,89 @@ test('mandatory session module failure settles loader readiness as false', async
   assert.equal(typeof h.window.TaxonomyAnalysisSessionReady?.then, 'function');
   h.scripts[0].dispatchEvent(new Event('error'));
   assert.equal(await h.window.TaxonomyAnalysisSessionReady, false);
+});
+
+
+test('server observation, visible-tab return and reconnection trigger read-only draft checks', async () => {
+  const h = createStartupHarness(Promise.resolve({ workspaceId: 'ws-ready' }));
+  await h.session.whenInitialized();
+  await h.emit('taxonomy:server-contact', { available: true });
+  await h.emit('visibilitychange');
+  await h.emit('online', null, 'window');
+  await h.emit('pageshow', null, 'window');
+  assert.deepEqual(h.observations, ['check', 'check', 'check', 'check']);
+  h.document.visibilityState = 'hidden';
+  await h.emit('visibilitychange');
+  assert.equal(h.observations.length, 4);
+  h.document.visibilityState = 'visible';
+  await h.emit('taxonomy:server-contact', { available: false });
+  assert.equal(h.observations.at(-1), 'unavailable');
+});
+
+
+test('an initial workspace outage is retried when server observation reconnects', async () => {
+  const initial = deferred();
+  let connected = false;
+  const h = createStartupHarness(() => connected
+    ? Promise.resolve({ workspaceId: 'reconnected-workspace' }) : initial.promise);
+  initial.reject(new Error('server offline during page load'));
+  await h.session.whenInitialized();
+  assert.equal(h.session.state().ready, false);
+  connected = true;
+  await h.emit('taxonomy:server-contact', { available: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().ready, true);
+  assert.equal(h.runtime.workspaceId, 'reconnected-workspace');
+});
+
+const gitStatusSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/workspace/taxonomy-git-status.js', import.meta.url), 'utf8');
+function gitStatusHarness(fetcher) {
+  const events = [], documentListeners = new Map();
+  const bar = { innerHTML: '', classList: { remove() {} } };
+  const document = {
+    addEventListener(name, listener) { documentListeners.set(name, listener); },
+    getElementById: () => bar,
+    dispatchEvent(event) { events.push(event); }
+  };
+  const window = { addEventListener() {}, TaxonomyUtils: { escapeHtml: String },
+    TaxonomyI18n: { t: key => key } };
+  const sandbox = { window, document, fetch: fetcher, TaxonomyUtils: window.TaxonomyUtils,
+    TaxonomyI18n: window.TaxonomyI18n, AbortController, CustomEvent,
+    setInterval() { return 1; }, clearInterval() {} };
+  vm.runInNewContext(gitStatusSource, sandbox);
+  return { events, refresh: () => { documentListeners.get('DOMContentLoaded')(); }, window };
+}
+
+test('existing git observation publishes successful and failed server contact without caching', async () => {
+  let connected = false;
+  const h = gitStatusHarness(async (url, options) => {
+    assert.equal(options.cache, 'no-store');
+    if (!connected) return { ok: false, status: 403 };
+    return { ok: true, json: async () => ({}) };
+  });
+  h.refresh();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.events.length, 1);
+  assert.equal(h.events[0].type, 'taxonomy:server-contact');
+  assert.equal(h.events[0].detail.available, false);
+  assert.equal(h.events[0].detail.status, 403);
+  connected = true;
+  h.window.TaxonomyGitStatus.refresh();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.events[1].detail.available, true);
+});
+
+test('an obsolete git observation cannot report loss of the current connection', async () => {
+  const first = deferred();
+  let calls = 0;
+  const h = gitStatusHarness(async () => ++calls === 1 ? first.promise
+    : { ok: true, json: async () => ({}) });
+  h.refresh();
+  h.window.TaxonomyGitStatus.refresh();
+  await new Promise(resolve => setImmediate(resolve));
+  first.reject(new Error('late failure from old connection'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.events.length, 1);
+  assert.equal(h.events[0].detail.available, true);
 });

@@ -30,6 +30,18 @@
 
     var labels = {
         en: {
+            serverDraftMissingTitle: 'The saved analysis is no longer present on the server',
+            serverDraftMissingBody: 'The previous results and progress were cleared to match the server.',
+            serverDraftMissingLocalBody: 'The previous results and progress were cleared. Your unsaved requirement text is kept locally. Choose whether to save it as a new draft or use the empty server state.',
+            useServerState: 'Use server state',
+            saveLocalInput: 'Save input as a new draft',
+            serverUnavailableTitle: 'The server state is currently unconfirmed',
+            serverUnavailableBody: 'The last confirmed results remain visible. Saving and analysis actions are paused until the connection and saved state have been checked. You can continue editing the requirement text.',
+            checkServer: 'Check connection and load status',
+            serverReconnectedTitle: 'Server state confirmed',
+            serverReconnectedBody: 'The saved revision is unchanged. Local edits have been retained.',
+            serverWorkspaceMissingTitle: 'The previous workspace is no longer available',
+            serverWorkspaceMissingBody: 'Its analysis results were cleared. The application is loading the current server workspace; local requirement edits are retained.',
             staleTitle: 'The requirement text has changed',
             staleBody: 'The scores, architecture view, relationship hypotheses, gap, pattern, recommendation, impact and export data still belong to the previously analysed text.',
             discardEdit: 'Discard text change',
@@ -82,6 +94,18 @@
             draftSavedNowBody: 'The current working state was saved in this workspace.'
         },
         de: {
+            serverDraftMissingTitle: 'Die gespeicherte Analyse ist auf dem Server nicht mehr vorhanden',
+            serverDraftMissingBody: 'Die bisherigen Ergebnisse und Fortschrittsanzeigen wurden an den leeren Serverstand angeglichen.',
+            serverDraftMissingLocalBody: 'Die bisherigen Ergebnisse und Fortschrittsanzeigen wurden entfernt. Ihr ungespeicherter Anforderungstext bleibt lokal erhalten. Wählen Sie, ob Sie ihn als neuen Entwurf speichern oder den leeren Serverstand übernehmen möchten.',
+            useServerState: 'Serverstand übernehmen',
+            saveLocalInput: 'Eingabe als neuen Entwurf speichern',
+            serverUnavailableTitle: 'Der Serverstand ist derzeit nicht bestätigt',
+            serverUnavailableBody: 'Die zuletzt bestätigten Ergebnisse bleiben sichtbar. Speichern und Analyseaktionen pausieren, bis Verbindung und gespeicherter Stand geprüft sind. Sie können den Anforderungstext weiter bearbeiten.',
+            checkServer: 'Verbindung prüfen und Status laden',
+            serverReconnectedTitle: 'Serverstand bestätigt',
+            serverReconnectedBody: 'Die gespeicherte Revision ist unverändert. Lokale Änderungen wurden beibehalten.',
+            serverWorkspaceMissingTitle: 'Der bisherige Arbeitsbereich ist nicht mehr verfügbar',
+            serverWorkspaceMissingBody: 'Seine Analyseergebnisse wurden entfernt. Die Anwendung lädt den aktuellen Arbeitsbereich vom Server; lokale Texteingaben bleiben erhalten.',
             staleTitle: 'Der Anforderungstext wurde geändert',
             staleBody: 'Bewertungen, Architekturansicht, Relationshypothesen, Gap-, Pattern-, Empfehlungs-, Impact- und Exportdaten gehören noch zum zuvor analysierten Text.',
             discardEdit: 'Textänderung verwerfen',
