@@ -1,30 +1,66 @@
 # Produktneutraler Bestands- und Planungsabgleich
 
-Stand: 18. Oktober 2026. Status: ausgearbeiteter Entwurf zur fachlichen Prüfung.
+Stand: 18. Oktober 2026. Präzisiert nach Nutzerrückmeldung: Analyse und/oder
+Architektur, frei ausgewählte Teiltaxonomien und reale zeitbezogene Produktplanungen.
+Status: ausgearbeiteter Entwurf zur fachlichen Prüfung.
 Die Konzeption wurde beauftragt; dieser Text ist noch keine freigegebene Implementierung.
 Geprüfte Codebasis: `dce3bf00a2240412f9feefd3e02b0997f194b7a5`.
 
 ## 1. Zweck und erster nutzbarer Umfang
 
-Taxonomy soll einen ausgewählten Architekturbedarf gegen autorisierte Bestands- und
-Planungsinformationen prüfen. Ergebnis sind nachvollziehbare Wiederverwendungs-,
-Änderungs- und Klärungsvorschläge, nicht lediglich importierte Datensätze.
-Alfabet ist die erste vorgesehene Quelle, nicht das fachliche Referenzmodell.
-Unternehmen sowie Landes- und Bundesbehörden sollen andere oder mehrere Quellen
-anschließen können, ohne die Eignungsprüfung erneut zu implementieren.
+Taxonomy soll **gespeicherte Analysen und/oder Architekturstände in ausgewählten
+Teiltaxonomien** gegen reale, autorisierte Produktbestände und Produktplanungen für
+bestimmte Zeiträume prüfen. Eine fertige Gesamtarchitektur, vollständige Relations-
+generierung oder vollständige Analyse aller Teiltaxonomien ist keine Voraussetzung.
+IP und UA sind naheliegende Beispiele, keine fest codierte Beschränkung.
+LeanIX, USU, Alfabet sowie andere freigegebene Bestands-, Planungs- und Dokumentquellen
+können Informationen beitragen. Ihre Namen dürfen die fachliche Verarbeitung nicht
+bestimmen; insbesondere ist Alfabet nicht das gemeinsame Referenzmodell.
 
-Der Architekt wählt Projekt, unveränderlichen Architektur-/Anforderungsstand,
-Zielorganisation, Zielumgebung und optional Einsatzdatum oder Einsatzjahr.
-Er wählt aus serverseitig freigegebenen Quellenbereichen und startet den Abgleich.
-Die Oberfläche zeigt pro Bedarf Kandidaten, belegte Eigenschaften, Gegenargumente,
-fehlende Nachweise und notwendige Beziehungen. Eine begründete Auswahl wird im
-bestehenden Portfolio gespeichert; kein externer Abruf bestätigt sie automatisch.
+Der Benutzer wählt den gespeicherten Analyse- und/oder Architekturstand, eine oder
+mehrere Teiltaxonomien beziehungsweise konkrete offizielle Knoten, Zielorganisation,
+gegebenenfalls Zielumgebung und die Zeitfrage. Er wählt serverseitig freigegebene
+Quellenbereiche und startet den Abgleich. Ohne Projektbindung bleibt das Ergebnis
+ein Nachweis am gespeicherten Analyse-/Workspace-Kontext; eine spätere Portfolioauswahl
+verlangt den dafür autorisierten Projektkontext. Kein künstliches Projekt nur zum Lesen.
+
+**Erstes sichtbares Ergebnis:** Je ausgewähltem Analyse-/Architekturbedarf erscheint
+eine Gegenüberstellung aus Knoten, begründeter Produktzuordnung, realem Produkt oder
+Fachverfahren, gegebenenfalls Version/Service/Bereitstellung, Bestands- oder
+Planungsstatus, belegtem Zeitraum, Quelle und nächstem Klärungs-/Änderungsschritt.
+„Produkt passt begrifflich“, „Produkt ist vorgesehen“ und „Produkt steht diesem
+Vorhaben im Zeitraum zur Verfügung“ sind getrennte Aussagen. Das Ergebnis ist bereits
+ohne Übernahme in die Architektur nutzbar und als begrenzter Abgleichbericht ausgebbar.
+
+### 1.1 Analyseabgleich und Architekturabgleich
+
+Beim **Analyseabgleich** bleiben Originalanforderung, Analyseergebnis, Begründungen
+und Knotenbewertungen unverändert. Produkte werden über belegte oder ausdrücklich
+geprüfte Zuordnungen gegenübergestellt; ein Taxonomiewert in Prozent ist weder
+Produkt-Eignungsgrad noch Nutzungswahrscheinlichkeit. Ein Realprodukt kann mehrere
+Knoten abdecken, ein Knoten kann mehrere Produkte/Kandidaten haben. Keine Produktanlage
+für jedes Blatt, keine Normierung der Scores auf die ausgewählten Teiltaxonomien.
+Ein abweichender Bestandsnachweis kann einen nachvollziehbaren Hinweis zur erneuten
+Prüfung der Analyse begründen, aber keine automatische Neubewertung.
+
+Beim **Architekturabgleich** kommen die ausgewählten konkreten Elemente und deren
+vorhandene Beziehungen hinzu. Fehlende Relationsgenerierung verhindert den
+Produktabgleich nicht; Anschlussfähigkeit bleibt dann ausdrücklich ungeprüft.
+Außerhalb der Auswahl liegende Knoten, fehlgeschlagene Analysen und noch nicht
+analysierte Bereiche sind NICHT_GEPRÜFT, nicht Nullbedarf oder Produktlücke.
+Widersprüchliche oder nicht zusammengehörige Analyse-/Architekturstände werden nicht
+stillschweigend vereinigt. Ein Vergleich nennt die tatsächlich verwendeten Stände.
 
 Erste Stufe: lesender, manuell ausgelöster Abgleich mit lokaler menschlicher Prüfung.
-Kein externes Schreiben, kein automatischer Hintergrundabgleich, keine vollständige
-CMDB-Kopie, kein zusätzlicher Modell-Editor und keine automatische Beschaffung.
-Originalanforderungen und offizieller Taxonomiekatalog bleiben unverändert.
-Der Bestand beeinflusst nicht rückwirkend die ursprüngliche Bedarfsermittlung.
+Keine gleichzeitige Pflichtimplementierung aller Herstelleradapter. Kein externes
+Schreiben, automatischer Hintergrundabgleich, vollständiger CMDB-Spiegel, zusätzlicher
+Modell-Editor oder automatische Beschaffung. Originaltaxonomie und Bedarf bleiben
+unverändert. Begründete Auswahlentscheidungen nutzen die bestehenden Portfolioabläufe.
+
+Die [öffentlich belegten Praxisfälle](2026-10-18-inventory-planning-sources-real-cases.md)
+motivieren den Ablauf mit tatsächlichen Produkten, Umstellungen und Quellenrollen.
+Öffentliche Nachweise, daraus abgeleitete Prüffragen und noch benötigte interne
+Pilotdaten sind dort ausdrücklich getrennt.
 
 ## 2. Entscheidungen und verworfene Alternativen
 
@@ -69,8 +105,15 @@ Sie beschreiben Transport- und Nachweiswerte, kein zweites kanonisches Architekt
 |---|---|
 | Quellenbeschreibung | Stabile administrative Instanz-ID, Produkt/Edition/Version soweit bekannt, Quellrepository/Mandant, Fähigkeiten, Profil-ID und unveränderliche Profilversion. |
 | Objektidentität | Tupel aus Instanz-ID, dem vom Profil erklärten ID-Namensraum und originaler externer ID. Verbindung, Bezeichnung, Profilversion und Abruf sind nicht Bestandteil der fachlichen Identität. |
-| Abgleichauftrag | Vorhandener Repository-/Workspace-/Projektkontext und exakter interner Stand; ausgewählte Quellenbereiche, Bedarf, Zielorganisation/-umgebung/-zeit; feste Budgets und Bewertungsversion. |
+| Abgleichauftrag | Autorisierter Repository-/Workspace-Kontext, gegebenenfalls Projekt; eingefrorener Analyse- und/oder Architekturstand samt Anforderungsversion und Katalogstand; ausgewählte Teiltaxonomien/offizielle Knoten, Quellenbereiche und Zeitfrage; feste Budgets und Bewertungsversion. |
 | Quellenbeobachtung | Operations-ID, eingefrorene Profilversion, Selektor-Fingerprint, Abrufbeginn/-ende, Datensätze, Nachweise, Verluste sowie getrennte Abruf- und Vollständigkeitsangaben. |
+
+Die Bedarfsauswahl und der externe Quellselektor sind verschiedene Dinge.
+Der Bedarf benennt reale Katalogidentitäten aus dem gespeicherten Katalogstand sowie
+die Analyse-/Elementidentitäten und Begründungen. Eine Root-Bezeichnung oder das
+Namenspräfix eines Herstellerobjekts beweist keine fachliche Zuordnung.
+Ein gespeicherter Filter „relevante Knoten“ muss festhalten, ob er explizite Nullwerte,
+fehlende und nicht ausgeführte Bewertungen ausschließt; diese Zustände bleiben erhalten.
 
 Ein Selektor benennt erlaubte Objektarten, organisatorischen Umfang und freigegebene
 Abfrage-/Berichtsparameter. Er ist keine frei übertragbare Suchsprache. Eine Änderung
@@ -116,15 +159,34 @@ Originalwert und Normalisierung werden für die freigegebenen relevanten Felder
 bewahrt. Originalquelle, menschliche Ergänzung und maschinelle Ableitung bleiben
 unterscheidbar. Abrufzeit ist weder Änderungszeit noch fachliche Gültigkeit.
 
-Lebenszyklus-/Planungsangaben erklären `OBSERVED`, `DECLARED` oder `PLANNED`, Zeitraum
-und Präzision. Statuszuordnungen behalten den Rohwert. Unbekannte Statuswerte werden
-nicht `ACTIVE`. Ein fehlendes Enddatum ist nicht unbegrenzte Nutzbarkeit.
-Ein Jahresziel 2030 wird als möglicher Einsatzzeitraum `[2030-01-01, 2031-01-01)`
-behandelt, nicht als erfundenes genaues Datum. Deckt ein belegter Nutzungszeitraum
-alle möglichen Zieltermine, kann das Zeitkriterium belegt sein; bei Überschneidung
-bleibt es ungeklärt; bei belegtem Ausschluss aller Zieltermine ist es widerlegt.
-Eine geplante Nutzbarkeit bleibt dabei geplant, auch wenn der Zeitraum passt.
-Normverweise belegen einen Bezug, niemals allein Konformität.
+Lebenszyklus-/Planungsangaben erklären `OBSERVED`, `DECLARED` oder `PLANNED`,
+Zeitraum, Präzision und betroffenen Organisations-/Betriebskontext. Statuszuordnungen
+behalten den Rohwert. Unbekannte Statuswerte werden nicht `ACTIVE`. Produktfreigabe
+durch den Hersteller, organisatorischer Rollout und konkrete Inbetriebnahme sind
+unterschiedliche Ereignisse. Ein fehlendes Enddatum ist nicht unbegrenzte Nutzbarkeit.
+
+**Die Zeitfrage ist Teil des Auftrags, nicht nur ein Anzeigefilter:**
+
+| Zeitfrage | Semantik |
+|---|---|
+| Stichtag | Nutzbarkeit an einem konkret gewählten Datum. |
+| Startfenster | Beispielsweise „Einführung irgendwann 2030“; mögliche Termine `[2030-01-01, 2031-01-01)`, kein erfundener Start am 1. Januar. |
+| Nutzungszeitraum | Beispielsweise „durchgehend 2028 bis einschließlich 2030“; belegte Abdeckung des ganzen Intervalls `[2028-01-01, 2031-01-01)` erforderlich. |
+
+Vollständige belegte Abdeckung kann das Zeitkriterium stützen. Nur teilweise
+Überschneidung beziehungsweise ein unbekannter Anfang oder ein unbekanntes Ende
+belegen keine vollständige Abdeckung. Widerlegt ein belegtes Ende bereits einen
+Teil eines geforderten durchgängigen Nutzungszeitraums, ist dessen vollständige
+Abdeckung `CONTRADICTED`. Beim offenen Startfenster bleibt teilweise Überlappung
+`UNKNOWN`; nur Ausschluss sämtlicher möglicher Starttermine widerlegt dieses Kriterium.
+Zeitlücken, Nachfolger und bekannte Überlappungen erscheinen als Teilbefunde.
+Keine unbelegte automatische Migration zwischen zwei Produkten.
+
+Eine geplante Nutzbarkeit bleibt geplant, auch wenn der Zeitraum passt. Ein historischer
+Nachweis wird nicht zur aktuellen Bestätigung oder Zukunftszusage. Publikationsdatum
+und Abrufdatum ersetzen weder Anfang noch Ende eines Einsatzzeitraums. Öffentlich
+belegter Zuschlag belegt nicht den produktiven Rollout. Fehlende genaue Termine werden
+nicht ergänzt. Normverweise belegen einen Bezug, niemals allein Konformität.
 
 ### 4.4 Beziehungen
 
@@ -225,9 +287,14 @@ kein Heaplimit. Den Speicherbedarf muss eine spätere Messung separat belegen.
 Budgetende erzeugt `LIMIT_REACHED`; eine begrenzte Kandidatenliste zeigt ihre Begrenzung.
 Kein unbegrenzter Bestandsabruf pro Architekturblatt und keine verdeckten Wiederholungen.
 
-Die vorhandene Integrations-/Portfoliooberfläche erhält eine gemeinsame Aktion
-„Bestand abgleichen“, nicht Herstellerknöpfe neben jedem Diagramm. Ergebnis und Bericht
-zeigen Auswahlstand, Zielzeit, Quellenalter/-umfang, Kandidaten und Kriterienbefunde.
+Die vorhandene Analyse-/Integrations-/Portfoliooberfläche erhält die gemeinsame
+Aktion „Mit Bestand und Planung abgleichen“, nicht Herstellerknöpfe neben jedem
+Diagramm. Sie ist auch aus einer gespeicherten Teiltaxonomie-Analyse erreichbar.
+Ergebnis und Bericht nennen Analyse-/Architekturstand, Katalogstand, ausgewählte
+Teiltaxonomien/Knoten, Zeitfrage, Quellenalter/-umfang, Kandidaten und Kriterienbefunde.
+Zählwerte unterscheiden geprüfte Bedarfe, gefundene Produkte, belegte/geplante
+Zeiträume, Gegenargumente, offene Nachweise und nicht geprüfte Bereiche; kein pauschaler
+Prozentwert suggeriert eine vollständige Architekturprüfung.
 Bestätigen/Verwerfen verlangt Begründung, aktuelle Zugriffsrechte und exakten internen
 Stand. Wiederholtes Bestätigen derselben Entscheidung erzeugt keine Duplikate.
 Ein veralteter Preview verlangt erneute Prüfung. Dabei werden lokal bekannte neue
@@ -257,7 +324,7 @@ Codebezüge: [Integrationsverträge](../../../taxonomy-extension-api/src/main/ja
 [Lösungsservice](../../../taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/service/SolutionPortfolioService.java),
 [Portfoliozustände](../../../taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/model/PortfolioTypes.java).
 
-## 8. Alfabet zuerst, weitere Wege erst nach Bedarf
+## 8. Ein erster Pilot, weitere Wege erst nach Bedarf
 
 [PR #1260](https://github.com/carstenartur/Taxonomy/pull/1260) enthält bei Head
 `7405443f479843bf5ac0a94bbe821c6350a47bea` eine noch nicht aktivierte Bibliotheksvorbereitung.
@@ -266,11 +333,21 @@ Vor Aktivierung fehlen insbesondere autorisierte Instanzbindung, Zuordnungsprofi
 gemeinsame Nachweise, Portfolioablauf und Produktabnahme. Der offene PR wird durch
 dieses Dokument weder als geprüft noch als mergebereit erklärt.
 
-Zuerst werden gemeinsamer Vertrag und Gegenproben fachlich geprüft. Danach folgen
-ein Implementierungsplan und ein begrenzter durchgängiger Alfabet-Anwendungsfall.
-LeanIX und CMDB/Servicekatalog dienen zunächst nur als Gegenmodelle; keine drei
-Live-Adapter, keine fingierten Herstellerzugänge. Produktivfreigabe erfordert die
-konkrete Edition/Version, echte freigegebene Daten und demonstrierte Zugriffsgrenzen.
+Zuerst werden gemeinsamer Vertrag, Gegenproben und reale Praxisfälle fachlich
+geprüft. Danach folgen Implementierungsplan und ein begrenzter durchgängiger Pilot:
+gespeicherte Analyse oder Architektur auswählen → reale Produkt-/Planungsnachweise
+beziehen → ausgewählte Knoten zeitbezogen abgleichen → Ergebnisse und nächste Schritte
+anzeigen. Die Wahl der ersten Quelle richtet sich nach tatsächlich freigegebenen
+Pilotdaten. Alfabet bleibt durch #1260 ein vorbereiteter Kandidat, aber kein
+fachlicher Zwang. LeanIX und USU können denselben Vertrag später beliefern;
+keine drei parallelen Live-Adapter und keine fingierten Herstellerzugänge.
+
+Vor Pilotstart werden mit dem Datenverantwortlichen wenige echte, freigegebene
+Produkte/Fachverfahren und deren relevante Zeit-/Versions-/Nutzungsnachweise samt
+bekannten Gegenbeispielen ausgewählt. Fehlende Angaben bleiben Teil der Abnahme.
+Öffentliche Praxisfälle ersetzen diese vertraulichen Auszüge nicht und belegen
+keinen API-Zugang. Produktivfreigabe erfordert konkrete Edition/Version, echte
+freigegebene Daten und demonstrierte Zugriffsgrenzen.
 
 Spätere, getrennt zu beauftragende Ausbaustufen sind Änderungsfolgen auf bestehende
 Entscheidungen, weitergehende Zeitplanung und die Übergabe bestätigter Neubedarfe.
@@ -283,7 +360,7 @@ sichere Wiederholung; kein blindes bidirektionales Spiegeln.
 Die [drei ausgearbeiteten Gegenproben](2026-10-18-inventory-planning-sources-probes.md)
 zeigen normalisierte Erwartungen und Unterschiede an einem kleinen synthetischen
 Fall. Sie sind eine nachvollzogene Konzeptprüfung, keine ausgeführten Adaptertests.
-Die dortigen Fälle sind die fachliche Grundlage späterer gewöhnlicher JUnit-Tests
+Die dortigen 24 Fälle sind die fachliche Grundlage späterer gewöhnlicher JUnit-Tests
 in den vorhandenen Maven-Suiten; kein zusätzliches Testsystem und keine QA-Rohdatenserie.
 Gleiche belegte Semantik muss bei gleichem Bedarf gleiche Kriterienbefunde erzeugen;
 unterschiedliche Aussagen, fehlende Felder und andere Bereitstellungen dürfen nicht

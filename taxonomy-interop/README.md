@@ -31,4 +31,7 @@ From the repository root:
 The [product-neutral design](../docs/superpowers/specs/2026-10-18-inventory-planning-sources-design.md)
 and its [three conceptual probes](../docs/superpowers/specs/2026-10-18-inventory-planning-sources-probes.md)
 define the proposed read-only inventory comparison before application binding.
+The [publicly sourced practical cases](../docs/superpowers/specs/2026-10-18-inventory-planning-sources-real-cases.md)
+motivate comparison of saved analysis and/or architecture in selected sub-taxonomies
+against real product inventories and plans for explicit time windows.
 They are design/review material, not implemented connectors or product acceptance.

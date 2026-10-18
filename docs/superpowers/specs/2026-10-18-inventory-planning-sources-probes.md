@@ -2,7 +2,10 @@
 
 Stand: 18. Oktober 2026. Begleitende Konzeptprüfung zum
 [Bestands- und Planungsabgleich](2026-10-18-inventory-planning-sources-design.md).
-Alle Kennungen, Namen, Zustände und Inhalte der Beispiele sind synthetisch. Sie sind
+Die folgenden drei Quellenabbildungen sind synthetisch. Zusätzlich motivieren die
+[separaten realen Praxisfälle](2026-10-18-inventory-planning-sources-real-cases.md)
+den Einstieg aus einer Teilanalyse; sie werden nicht als Herstellerexports ausgegeben.
+Alle Kennungen, Namen, Zustände und Inhalte der folgenden Gegenmodelle sind synthetisch. Sie sind
 keine offiziellen Taxonomie-IDs, keine Exporte realer Installationen und kein
 Hersteller-Kompatibilitätsnachweis. Es wird hier kein ausführbarer Adapter geliefert.
 
@@ -12,6 +15,9 @@ Vor irgendeiner Quellabbildung wird festgelegt: Der Bedarf `example:need` verlan
 Arbeitszeiterfassung mit Korrekturfreigabe und Anmeldung am zentralen Identitätsdienst,
 für `example:org-north` in Produktion, Einsatzjahr 2030. Ein genauer Termin ist offen.
 Alle Varianten betrachten denselben Bedarf und dieselbe synthetische Quellenalter-Policy.
+Er kann aus einer gespeicherten Teilanalyse stammen; eine vollständige Architektur ist
+nicht nötig. Offizielle Knoten sind erst gegen den tatsächlichen Katalog zuzuordnen.
+IP/UA sind Beispiele, keine festgelegten Produktklassen oder erforderlichen Rootfilter.
 
 | Beispielobjekt | Vorgegebene Nachweise | Gemeinsame Art | Erwarteter Befund |
 |---|---|---|---|
@@ -148,13 +154,22 @@ festgelegt und müssen später durch echte Produktionspfade geprüft werden.
 | B12 | Zwei Quellen widersprechen bei gleicher Aussage und Zeit | CONFLICT, beide zulässigen Nachweise sichtbar; kein Last-write-wins. |
 | B13 | Zugriff entzogen oder anderer Mandant | Kein alter Nachweis, Cacheeintrag, Trefferzähler oder Export als Datenleck. |
 | B14 | Preview bestätigt, dann identisch wiederholt | Genau eine begründete lokale Entscheidung; kein externer Schreibaufruf. |
-| B15 | Architektur, Profil, lokal bekannter Quellenstand oder Zugriffsstand nach Preview geändert | Erneute Prüfung, keine stille Übernahme alter Autorität. |
+| B15 | Analyse-/Architekturstand, Profil, lokal bekannter Quellenstand oder Zugriffsstand nach Preview geändert | Erneute Prüfung, keine stille Übernahme alter Autorität. |
 | B16 | Auswahl mit Normbezug oder reinem Suchtreffer | Weder Konformität noch Eignung/Umsetzung automatisch bestätigt. |
+| B17 | Gespeicherte Analyse nur ausgewählter Teiltaxonomien; keine Architektur/Relationen vorhanden | Produkt-/Planungsabgleich möglich; Relationskriterien ungeprüft, keine Vollarchitektur voraussetzen. |
+| B18 | Auswahl IP oder UA, dann anderer tatsächlich vorhandener Root/Knoten | Kein IP-/UA-Sondercode; nur die explizite Auswahl geprüft, offizielle Katalogidentitäten erhalten. |
+| B19 | Gleicher gespeicherter Bedarf, einmal aus Analyse und einmal aus Architektur ausgewählt | Gleiche Produkt-/Zeitbefunde bei gleichen Nachweisen; zusätzliche Relationsbefunde nur bei vorhandener Grundlage. |
+| B20 | 1 Produkt deckt mehrere Knoten, mehrere Produkte decken 1 Knoten; ursprüngliche Prozentwerte vorhanden | Viele-zu-viele-Zuordnung mit Begründungen; keine Blattduplikate, keine veränderten Analysewerte oder Teilmengen-Normierung. |
+| B21 | Startfenster überlappt Nutzbarkeit teilweise; durchgehender Nutzungszeitraum umfasst belegte Stilllegung | Startfenster UNKNOWN; durchgehende Abdeckung CONTRADICTED. Zeitfrage muss unterscheidbar sein. |
+| B22 | Öffentliche Meldung benennt Rollout/Zuschlag, aber keinen genauen Nutzungszeitraum | Ereignis mit Quelle und Datum erhalten; keinen Nutzungsbeginn, vollständigen Rollout oder API-Bestand erfinden. |
+| B23 | Quellen-/Produktversion oder Organisationsbereich unterscheiden sich trotz gleicher Produktfamilie | Getrennte Befunde; Herstellerverfügbarkeit und konkreter Behörden-/Firmenbestand nicht gleichsetzen. |
+| B24 | Analyse nicht ausgeführt, fehlgeschlagen oder außerhalb Auswahl; Altbeleg von 2019, Ziel 2030 | NICHT_GEPRÜFT beziehungsweise Zeit UNKNOWN; kein Nullbedarf, keine dauerhafte Gültigkeit und kein Neubeschaffungsautomatismus. |
 
-Produktabnahme bleibt zusätzlich erforderlich: mindestens ein echtes, erlaubtes
-mehrseitiges Alfabet-Objekt-/Beziehungsbeispiel, bekannte Nichttreffer, ein Rechtefehler
-und ein fehlgeschlagener Refresh. Herstellerzugang und sensible Daten gehören nicht
-in öffentliche Fixtures. Die übrigen Gegenmodelle benötigen zunächst keinen Live-Adapter.
+Produktabnahme bleibt für die erste tatsächlich angeschlossene Quelle zusätzlich
+erforderlich: echte erlaubte mehrseitige Objekt-/Beziehungsdaten (bei Alfabet aus den
+freigegebenen Berichten), bekannte Nichttreffer, ein Rechtefehler und ein
+fehlgeschlagener Refresh. Herstellerzugang und sensible Daten gehören nicht in
+öffentliche Fixtures. Die übrigen Gegenmodelle benötigen zunächst keinen Live-Adapter.
 
 ## 7. Quellen und Aussagegrenzen
 
