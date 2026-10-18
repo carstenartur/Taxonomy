@@ -333,8 +333,7 @@
             + ' · ' + p.pendingSearches + text(' offen', ' pending');
     }
     var namedTaxonomy = null, names = new Map();
-    function nodeLabel(code) {
-        if (!code) return '';
+    function refreshNames() {
         var roots = window.TaxonomyState?.taxonomyData;
         if (roots !== namedTaxonomy) {
             namedTaxonomy = roots;
@@ -349,6 +348,10 @@
                 if (Array.isArray(item.children)) item.children.forEach(function (child) { pending.push(child); });
             }
         }
+    }
+    function nodeLabel(code) {
+        if (!code) return '';
+        refreshNames();
         var entry = names.get(code);
         var name = entry && (german() ? entry.nameDe || entry.name || entry.nameEn : entry.nameEn || entry.name);
         return name && name !== code ? name + ' (' + code + ')' : code;
@@ -421,7 +424,7 @@
     }
     function sourceCoverage(part) {
         if (part.total === 0) return text('Keine konkreten Relations-Ausgangsknoten', 'No concrete relationship source nodes');
-        return countLabel(part.completed, part.total) + text(' Ausgangsknoten · ', ' source nodes · ')
+        return part.completed + text(' von ', ' of ') + part.total + text(' Ausgangsknoten erledigt · ', ' source nodes complete · ')
             + part.unresolved + text(' ungeklärt', ' unresolved');
     }
     function taxonomyCounts(part) {
@@ -443,6 +446,7 @@
     function sourceRoot(r, root) {
         var current = r?.current;
         if (!current) return false;
+        refreshNames();
         return (current.candidates && r.step === 'SOURCES' ? current.candidates : [current.sourceId]).some(function (id) {
             return id === root || id.startsWith(root + '-') || names.get(id)?.taxonomyRoot === root;
         });

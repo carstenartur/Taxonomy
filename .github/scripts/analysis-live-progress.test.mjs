@@ -413,6 +413,24 @@ test('the current source is never double-counted as active after it has become u
     f.monitor.stop();
 });
 
+test('the first relation snapshot marks source membership from catalogue metadata without an ID prefix', async () => {
+    const value = { ...snapshot(), nodeProgress: coverage(), relationProgress: { ...relationshipWork(),
+        current: { sourceId: 'catalogue-item', targetRoot: 'IP', type: 'CONSUMES', direction: 'OUTGOING', depth: 1, candidates: ['IP-1'] } } };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    f.window.TaxonomyState = { taxonomyData: [{ code: 'BP', children: [{ code: 'catalogue-item', taxonomyRoot: 'BP', nameEn: 'Time tracking' }] },
+        { code: 'IP', children: [] }] };
+    await f.step(0);
+    const rows = descendants(f.elements.get('analysisWorkProgress')).filter(element => element.children.some(child => child.tag === 'progress'
+        && child.getAttribute('data-progress-kind') === 'nodes' && child.getAttribute('data-taxonomy-root')));
+    assert.equal(rows.length, 2);
+    const active = rows.filter(row => row.getAttribute('data-active') === 'true');
+    assert.equal(active.length, 1, 'The first render must identify the active source taxonomy');
+    assert.ok(active[0].children.some(child => child.tag === 'progress' && child.getAttribute('data-taxonomy-root') === 'BP'));
+    await f.step(1000);
+    assert.equal(active[0].getAttribute('data-active'), 'true', 'An unchanged work snapshot must retain the source marker');
+    f.monitor.stop();
+});
+
 test('resource and raw status details are opt-in while the live line stays concise', async () => {
     const f = fixture(async () => response({ ...snapshot(), databaseStorage: 'IN_MEMORY', indexStorage: 'IN_MEMORY',
         startedAt: 1000, serverTime: 2000, lastActivityAt: 2000, nodeProgress: coverage() }), 'workspace-a', true);

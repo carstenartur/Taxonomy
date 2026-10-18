@@ -347,7 +347,8 @@ for(const locale of ['de','en']){
             if(process.env.BOOTSTRAP_CSS) await page.addStyleTag({path:process.env.BOOTSTRAP_CSS});
             const roots=['BP','BR','CP','CI','CO','CR','IP','UA'];
             await page.evaluate(roots=>{
-                TaxonomyState.taxonomyData=roots.map(code=>({code,name:code,children:[]}));
+                TaxonomyState.taxonomyData=roots.map(code=>({code,name:code,children:code==='BP'
+                    ? [{code:'source-time-capture',taxonomyRoot:'BP',nameDe:'Zeiterfassung',nameEn:'Time tracking'}] : []}));
                 const taxonomies=roots.map(root=>({root,nameDe:'Teiltaxonomie '+root,nameEn:'Taxonomy '+root,
                     total:100,assessed:35,excluded:25,open:40,positive:20,allocatedPercent:37.5,rootPercent:80}));
                 progressSnapshot.phase='RELATIONS';
@@ -355,7 +356,7 @@ for(const locale of ['de','en']){
                 progressSnapshot.relationProgress={totalSources:40,assessedSources:32,totalSearches:80,
                     completedSearches:32,unresolvedSearches:8,pendingSearches:40,calls:12,maxCalls:24,
                     verifiedRelations:7,step:'NAVIGATE',
-                    current:{sourceId:'BP-1',targetRoot:'IP',type:'CONSUMES',direction:'OUTGOING',depth:1,candidates:['IP-1']},
+                    current:{sourceId:'source-time-capture',targetRoot:'IP',type:'CONSUMES',direction:'OUTGOING',depth:1,candidates:['IP-1']},
                     taxonomies:roots.slice().reverse().map(root=>({root,total:10,completed:4,unresolved:1,pending:5})),
                     sourceTaxonomies:roots.slice().reverse().map(root=>({root,total:5,completed:2,unresolved:1}))};
                 window.progressMonitor=TaxonomyAnalysisProgress.start('ux-progress');
@@ -372,6 +373,7 @@ for(const locale of ['de','en']){
             assert.equal(await first.evaluate(e=>e.position),0.6);
             assert.equal(await first.getAttribute('data-relations-completed'),'2');
             assert.equal(await first.getAttribute('data-relations-unresolved'),'1');
+            assert.equal(await page.locator('.analysis-work-meter[data-active="true"] progress').getAttribute('data-taxonomy-root'),'BP');
             assert.match(await first.getAttribute('aria-valuetext'),locale==='de'?/37,5%.*80%/:/37\.5%.*80%/);
             assert.equal(await page.locator('#analysis-taxonomy-counts-BP dt').count(),4);
             for(const width of [1280,390]){

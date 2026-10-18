@@ -80,7 +80,7 @@ final class ClusterAnalysisProgress {
             var byCode = new HashMap<String, RootCatalogueSnapshot.Node>(); root.nodes().forEach(node -> byCode.put(node.code(), node));
             var pruning = new HashMap<String, Boolean>();
             var budgetParents = new HashSet<String>();
-            root.nodes().stream().filter(node -> !"PRODUCT".equals(node.metadata().analysisRole()))
+            root.nodes().stream().filter(node -> !"PRODUCT".equals(node.analysisRole()))
                     .map(RootCatalogueSnapshot.Node::parentCode).filter(Objects::nonNull).forEach(budgetParents::add);
             int direct = 0, pruned = 0, positive = 0;
             double allocated = 0;
@@ -89,7 +89,7 @@ final class ClusterAnalysisProgress {
                 else if (excluded(node.parentCode(), byCode, scores, pruning)) pruned++;
                 Double score = scores.get(node.code());
                 if (score != null && score > 0) positive++;
-                if (score != null && !"PRODUCT".equals(node.metadata().analysisRole()) && !budgetParents.contains(node.code()))
+                if (score != null && !"PRODUCT".equals(node.analysisRole()) && !budgetParents.contains(node.code()))
                     allocated += score;
             }
             var name = byCode.get(task.root);
