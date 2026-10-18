@@ -153,6 +153,49 @@ class SourceContinuationEvidenceTest {
         }
     }
 
+    @ParameterizedTest @EnumSource(Phase.class)
+    void deliberatelySkippingATargetRetainsItsEarlierSemanticQuestion(Phase clarificationPhase) {
+        var previous = new RelationSearchReport[1];
+        var resumed = new java.util.concurrent.atomic.AtomicBoolean();
+        var journal = new AnalysisCheckpointSession.Store() {
+            public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question question) {
+                var input = JSON.readTree(question.prompt().substring(question.prompt().indexOf("INPUT\n") + 6));
+                boolean skipped = resumed.get() && !input.has("nodes")
+                        && JSON.treeToValue(input, Query.class).type().equals("CONSUMES")
+                        && JSON.treeToValue(input, Query.class).phase() == clarificationPhase;
+                return new AnalysisCheckpointSession.Checkpoint(question, skipped ? "SKIPPED" : "ATTEMPT", null);
+            }
+            public void finish(AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) { }
+            public void checkActive() { }
+            public RelationSearchReport previousRelations() { return previous[0]; }
+        };
+        java.util.function.Function<String, String> complete = prompt -> {
+            var input = JSON.readTree(prompt.substring(prompt.indexOf("INPUT\n") + 6));
+            if (!input.has("nodes")) {
+                Query query = JSON.treeToValue(input, Query.class);
+                if (query.type().equals("CONSUMES") && query.phase() == clarificationPhase) {
+                    assertFalse(resumed.get(), "A deliberately skipped assessment cannot issue another model request");
+                    return unresolved(query);
+                }
+            }
+            return answer(prompt);
+        };
+        try (var session = new AnalysisCheckpointSession(journal)) {
+            previous[0] = session(complete).search(READ, Map.of(SOURCE.id(), 10d), OPTIONS);
+        }
+        assertTrue(previous[0].result().unfinished().stream().anyMatch(q -> q.question().equals(QUESTION)));
+        resumed.set(true);
+        try (var session = new AnalysisCheckpointSession(journal)) {
+            var skipped = session(complete).search(READ, Map.of(SOURCE.id(), 10d), OPTIONS);
+            assertTrue(skipped.result().unfinished().stream().anyMatch(q -> q.question().equals(QUESTION)),
+                    "Leaving an assessment open cannot answer or erase its original semantic question");
+            assertTrue(skipped.result().unfinished().stream().anyMatch(q -> q.reason().equals("LEFT_OPEN")));
+            assertTrue(skipped.result().edges().isEmpty());
+            assertFalse(skipped.isSearchExhausted());
+            assertEquals(1, skipped.progress().unresolvedSearches());
+        }
+    }
+
     @ParameterizedTest @ValueSource(booleans = {false, true})
     void retainedQuestionsAndTaskCountsAgreeWhenAnotherRootRemainsOpen(boolean legacyReport) {
         var serviceRoot = new Node("CR", "CR", "Services", "Service category", true);

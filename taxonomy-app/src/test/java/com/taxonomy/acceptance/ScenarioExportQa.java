@@ -142,7 +142,8 @@ public final class ScenarioExportQa {
                 assertThat(document.getTables().size()).isGreaterThanOrEqualTo(4);
                 assertThat(document.getAllPictures().size()).isGreaterThanOrEqualTo(3);
                 String xml = document.getDocument().xmlText();
-                assertThat(xml).contains("Heading1", "TOC ", "Caption", "SEQ Figure", "tblHeader", "cantSplit", "architecture-overview", "architecture-detail-");
+                assertThat(xml).contains("Heading1", "Caption", "SEQ Figure", "tblHeader", "cantSplit", "architecture-overview", "architecture-detail-");
+                verifyReadyContents(document, file.equals("decision.docx") ? 2 : 3);
                 for (var node : expected.nodes()) assertThat(text).contains(node.id());
                 for (var edge : expected.edges()) assertThat(text).contains(edge.id());
                 assertThat(document.getParagraphs()).noneMatch(p -> p.getText().contains("\t"));
@@ -214,6 +215,41 @@ public final class ScenarioExportQa {
         artifacts.forEach((name, bytes) -> hashes.put(name, sha256(bytes)));
         report.put("artifactSha256", hashes);
         return report;
+    }
+
+    private static void verifyReadyContents(XWPFDocument document, int depth) {
+        assertThat(document.getSettings().getCTSettings().isSetUpdateFields()).isFalse();
+        assertThat(document.getDocument().xmlText()).doesNotContain("TOC ");
+        var body = document.getBodyElements();
+        int headingIndex = -1;
+        for (int i = 0; i < body.size(); i++) {
+            if (body.get(i) instanceof org.apache.poi.xwpf.usermodel.XWPFParagraph paragraph
+                    && "TOCHeading".equals(paragraph.getStyle())) {
+                headingIndex = i;
+                break;
+            }
+        }
+        assertThat(headingIndex).as("A ready-to-read contents section is present").isGreaterThanOrEqualTo(0);
+        assertThat(headingIndex + 1).isLessThan(body.size());
+        assertThat(body.get(headingIndex + 1)).isInstanceOf(org.apache.poi.xwpf.usermodel.XWPFTable.class);
+        var contents = (org.apache.poi.xwpf.usermodel.XWPFTable) body.get(headingIndex + 1);
+        var headings = body.subList(headingIndex + 2, body.size()).stream()
+                .filter(org.apache.poi.xwpf.usermodel.XWPFParagraph.class::isInstance)
+                .map(org.apache.poi.xwpf.usermodel.XWPFParagraph.class::cast)
+                .filter(paragraph -> paragraph.getStyle() != null && paragraph.getStyle().matches("Heading[1-" + depth + "]"))
+                .toList();
+        assertThat(headings).isNotEmpty();
+        assertThat(contents.getRows()).hasSize(headings.size() + 1);
+        for (int i = 0; i < headings.size(); i++) {
+            var heading = headings.get(i);
+            var row = contents.getRow(i + 1);
+            assertThat(row.getCell(0).getText()).isEqualTo(heading.getText());
+            var links = row.getCell(1).getParagraphs().getFirst().getCTP().getHyperlinkList();
+            assertThat(links).hasSize(1);
+            String anchor = links.getFirst().getAnchor();
+            assertThat(anchor).isNotBlank();
+            assertThat(heading.getCTP().getBookmarkStartList()).extracting(bookmark -> bookmark.getName()).contains(anchor);
+        }
     }
 
     public static Map<String, byte[]> unzip(byte[] bytes) throws Exception {

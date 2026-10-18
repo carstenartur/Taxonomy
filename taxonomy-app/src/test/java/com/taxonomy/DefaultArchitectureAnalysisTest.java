@@ -53,10 +53,12 @@ class DefaultArchitectureAnalysisTest {
         assertThat(result.path("status").asString()).isEqualTo("PARTIAL");
         assertThat(result.path("relationSearchReport").isObject()).isTrue();
         var report = result.path("relationSearchReport");
-        assertThat(report.path("warnings").isEmpty()).isFalse();
-        for (JsonNode warning : report.path("warnings")) {
-            assertThat(warning.asString()).startsWith("INVALID_SOURCE_RESPONSE ");
-        }
+        List<String> warnings = new ArrayList<>();
+        report.path("warnings").forEach(warning -> warnings.add(warning.asString()));
+        assertThat(warnings).anyMatch(warning -> warning.startsWith("INVALID_SOURCE_RESPONSE "))
+                .allMatch(warning -> warning.startsWith("INVALID_SOURCE_RESPONSE ")
+                        || warning.startsWith("SOURCE_LIMIT:"));
+        assertThat(report.path("totalCalls").asInt()).isPositive().isLessThanOrEqualTo(24);
         assertThat(report.path("result").path("edges")).isEmpty();
         assertThat(result.path("provisionalRelations").isEmpty()).isTrue();
         var view = result.path("architectureView");

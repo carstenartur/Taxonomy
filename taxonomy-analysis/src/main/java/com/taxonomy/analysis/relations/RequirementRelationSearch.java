@@ -182,12 +182,12 @@ public final class RequirementRelationSearch {
 
     private static List<Unfinished> retainedUnfinished(Result previous, Result current, Set<List<String>> completedTasks,
             Set<String> completedSources, Set<String> retainedLegacySources) {
-        Set<List<String>> technicalFailures = new HashSet<>(), revisited = new HashSet<>();
+        Set<List<String>> unassessedTargets = new HashSet<>(), revisited = new HashSet<>();
         current.unfinished().stream().filter(q -> q.contributionKey() != null
-                && q.question().startsWith("TECHNICAL_ASSESSMENT_FAILURE:"))
-                .forEach(q -> q.targets().forEach(target -> technicalFailures.add(List.of(q.contributionKey(), target))));
+                && (q.question().startsWith("TECHNICAL_ASSESSMENT_FAILURE:") || q.question().equals("RELATION_LEFT_OPEN")))
+                .forEach(q -> q.targets().forEach(target -> unassessedTargets.add(List.of(q.contributionKey(), target))));
         current.trace().stream().filter(t -> t.contributionKey() != null && t.outcome() != Outcome.MATCH
-                && !(t.outcome() == Outcome.UNRESOLVED && technicalFailures.contains(List.of(t.contributionKey(), t.targetId()))))
+                && !(t.outcome() == Outcome.UNRESOLVED && unassessedTargets.contains(List.of(t.contributionKey(), t.targetId()))))
                 .forEach(t -> revisited.add(List.of(t.contributionKey(), t.targetId())));
         var retained = new LinkedHashSet<Unfinished>();
         for (Unfinished question : previous.unfinished()) {
