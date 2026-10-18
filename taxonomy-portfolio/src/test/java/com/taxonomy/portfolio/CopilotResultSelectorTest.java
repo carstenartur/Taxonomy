@@ -3,6 +3,7 @@ package com.taxonomy.portfolio;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.CopilotResultSelector;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,8 @@ class CopilotResultSelectorTest {
                 .get()
                 .extracting(detail -> detail.summary().id())
                 .isEqualTo("broad");
+        assertThat(selector.selectForOperation(List.of(selection(partial), selection(sparse), selection(broad))))
+                .get().extracting(SnapshotSelection::id).isEqualTo("broad");
     }
 
     @Test
@@ -44,6 +47,8 @@ class CopilotResultSelectorTest {
 
         assertThat(selector.select(List.of(failed))).isEmpty();
         assertThat(selector.select(null)).isEmpty();
+        assertThat(selector.selectForOperation(List.of(selection(failed)))).isEmpty();
+        assertThat(selector.selectForOperation(null)).isEmpty();
     }
 
     @Test
@@ -88,6 +93,22 @@ class CopilotResultSelectorTest {
                 .get()
                 .extracting(detail -> detail.summary().id())
                 .isEqualTo(expectedId);
+        assertThat(selector.selectForOperation(List.of(selection(first), selection(second))))
+                .get().extracting(SnapshotSelection::id).isEqualTo(expectedId);
+    }
+
+    @Test
+    void equalSelectionQualityKeepsTheSameFirstPassAndOrderedScoreInput() {
+        var first = snapshot("first", AnalysisStatus.PARTIAL, Map.of("A", 10d, "B", 20d), 0, 1, 1, -1L);
+        var second = snapshot("second", AnalysisStatus.PARTIAL, Map.of("A", 10d, "B", 20d), 0, 1, 1, 0L);
+        assertPreferred(first, second, "first");
+        assertThat(selection(first).scores().keySet()).containsExactlyElementsOf(first.analysis().getScores().keySet());
+    }
+
+    private static SnapshotSelection selection(SnapshotDetail detail) {
+        return new SnapshotSelection(detail.summary().id(), detail.summary().status(), detail.summary().durationMs(),
+                detail.analysis().getScores(), detail.analysis().getWarnings().size(),
+                detail.elementMappings().size(), detail.relationMappings().size());
     }
 
     private static SnapshotDetail snapshot(

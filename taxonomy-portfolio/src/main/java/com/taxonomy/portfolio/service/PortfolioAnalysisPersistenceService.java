@@ -19,6 +19,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.ScoreChange;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDiff;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.model.ArchitectureProject;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.MappingOrigin;
@@ -30,6 +31,8 @@ import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.model.RequirementElementMapping;
 import com.taxonomy.portfolio.model.RequirementRelationMapping;
 import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
+import com.taxonomy.portfolio.repository.AnalysisJobReadRow;
+import com.taxonomy.portfolio.repository.AnalysisSnapshotReadRow;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
@@ -77,6 +80,7 @@ public class PortfolioAnalysisPersistenceService {
     private final RequirementRelationMappingRepository relationRepository;
     private final AnalysisHypothesisLinkPort hypothesisLinks;
     private final PortfolioJsonCodec jsonCodec;
+    private final PortfolioSnapshotSelectionReader snapshotSelectionReader;
     private final ProjectProviderBinding providerBinding;
 
     public PortfolioAnalysisPersistenceService(ArchitectureProjectRepository projectRepository,
@@ -89,6 +93,7 @@ public class PortfolioAnalysisPersistenceService {
                                                RequirementRelationMappingRepository relationRepository,
                                                AnalysisHypothesisLinkPort hypothesisLinks,
                                                PortfolioJsonCodec jsonCodec,
+                                               PortfolioSnapshotSelectionReader snapshotSelectionReader,
                                                org.springframework.beans.factory.ObjectProvider<ProjectProviderBinding> providerBindings) {
         this.projectRepository = projectRepository;
         this.requirementRepository = requirementRepository;
@@ -100,6 +105,7 @@ public class PortfolioAnalysisPersistenceService {
         this.relationRepository = relationRepository;
         this.hypothesisLinks = hypothesisLinks;
         this.jsonCodec = jsonCodec;
+        this.snapshotSelectionReader = snapshotSelectionReader;
         this.providerBinding = providerBindings.getIfAvailable(() -> ProjectProviderBinding.NONE);
     }
 
@@ -321,18 +327,9 @@ public class PortfolioAnalysisPersistenceService {
         if (failedItems.isEmpty()) {
             throw PortfolioException.conflict("Analysis job has no failed items to retry: " + jobId);
         }
-        // A retry re-admits the current versions: a bound project must still admit the job's recorded provider.
-        var bound = providerBinding.admittedProvider(projectId,
-                targets(failedItems.stream().map(RequirementAnalysisJobItem::getRequirement).toList()), null, username, context);
-        if (bound.isEmpty() && providerConfiguration != null && providerConfiguration.isScenarioReplay(job.getProvider())) {
-            throw new PortfolioException(PortfolioException.Kind.CONFLICT, "PROVIDER_REQUIRES_PROJECT_BINDING",
-                    "Replay job " + jobId + " can be retried only while its project binding is present", null);
-        }
-        if (bound.isPresent() && !bound.get().equalsIgnoreCase(job.getProvider())) {
-            throw new PortfolioException(PortfolioException.Kind.CONFLICT, "PROVIDER_BINDING_CHANGED",
-                    "Retry would use " + job.getProvider() + " but the project now admits " + bound.get()
-                            + "; start a new analysis", null);
-        }
+        // A retry re-admits the current versions with the job's recorded provider.
+        requireRetainedProviderBinding(projectId, job.getId(), job.getProvider(),
+                targets(failedItems.stream().map(RequirementAnalysisJobItem::getRequirement).toList()), username, context);
         for (RequirementAnalysisJobItem item : failedItems) {
             item.prepareRetry(requireCurrentVersion(item.getRequirement()));
         }
@@ -340,12 +337,41 @@ public class PortfolioAnalysisPersistenceService {
         return toJobView(job);
     }
 
+    /**
+     * Re-admit exact requirement versions without selecting or changing the saved
+     * provider. Binding implementations retain their admission lock until the
+     * caller's write transaction ends.
+     */
+    @Transactional
+    public void requireRetainedProviderBinding(Long projectId, String jobId, String recordedProvider,
+            List<ProjectProviderBinding.Target> targets, String username, WorkspaceContext context) {
+        var bound = providerBinding.admittedProvider(projectId, targets, null, username, context);
+        if (bound.isEmpty() && providerConfiguration != null && providerConfiguration.isScenarioReplay(recordedProvider)) {
+            throw new PortfolioException(PortfolioException.Kind.CONFLICT, "PROVIDER_REQUIRES_PROJECT_BINDING",
+                    "Replay job " + jobId + " can continue only while its project binding is present", null);
+        }
+        if (bound.isPresent() && !bound.get().equalsIgnoreCase(recordedProvider)) {
+            throw new PortfolioException(PortfolioException.Kind.CONFLICT, "PROVIDER_BINDING_CHANGED",
+                    "Provider binding changed: job " + jobId + " records " + recordedProvider
+                            + " but the project now admits " + bound.get()
+                            + "; start a new analysis", null);
+        }
+    }
+
+    /** A rejected read check must not mark its enclosing snapshot-read transaction rollback-only. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void checkRetainedProviderBindingForRead(Long projectId, String jobId, String recordedProvider,
+            List<ProjectProviderBinding.Target> targets, String username, WorkspaceContext context) {
+        requireRetainedProviderBinding(projectId, jobId, recordedProvider, targets, username, context);
+    }
+
     @Transactional(readOnly = true)
     public AnalysisJobView getJob(String jobId,
                                   Long projectId,
                                   String username,
                                   WorkspaceContext context) {
-        return toJobView(requireScopedJob(jobId, projectId, username, context));
+        requireScopedProject(projectId, username, context);
+        return requireJobView(jobId, projectId, PortfolioScope.key(username, context));
     }
 
     @Transactional(readOnly = true)
@@ -354,11 +380,9 @@ public class PortfolioAnalysisPersistenceService {
                                          WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
-        return jobRepository
-                .findByProjectIdAndScopeKeyOrderByCreatedAtDesc(projectId, scopeKey)
-                .stream()
-                .map(this::toJobView)
-                .toList();
+        return jobRepository.findReadRowsByProjectIdAndScopeKey(projectId, scopeKey).stream()
+                .collect(Collectors.groupingBy(AnalysisJobReadRow::id, LinkedHashMap::new, Collectors.toList()))
+                .values().stream().map(this::toJobView).toList();
     }
 
     @Transactional(readOnly = true)
@@ -367,13 +391,13 @@ public class PortfolioAnalysisPersistenceService {
                                                          String username,
                                                          WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
-        requireScopedRequirement(projectId, requirementId, username, context);
-        return snapshotRepository
-                .findByRequirementIdAndProjectIdAndScopeKeyOrderByCreatedAtDesc(
-                        requirementId, projectId, scopeKey)
-                .stream()
-                .map(this::toSnapshotSummary)
-                .toList();
+        requireScopedProject(projectId, username, context);
+        if (!requirementRepository.existsByIdAndProjectIdAndScopeKey(requirementId, projectId, scopeKey)) {
+            throw PortfolioException.notFound(
+                    "Requirement " + requirementId + " was not found in project " + projectId);
+        }
+        return List.copyOf(snapshotRepository
+                .findSummariesByRequirementIdAndProjectIdAndScopeKey(requirementId, projectId, scopeKey));
     }
 
     @Transactional(readOnly = true)
@@ -383,11 +407,20 @@ public class PortfolioAnalysisPersistenceService {
                                       WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
-        RequirementAnalysisSnapshot snapshot = snapshotRepository
-                .findByIdAndProjectIdAndScopeKey(snapshotId, projectId, scopeKey)
+        AnalysisSnapshotReadRow snapshot = snapshotRepository
+                .findReadRowByIdAndProjectIdAndScopeKey(snapshotId, projectId, scopeKey)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Analysis snapshot not found: " + snapshotId));
-        return toSnapshotDetail(snapshot);
+        return toSnapshotDetail(snapshot, scopeKey);
+    }
+
+    @Transactional(readOnly = true)
+    public SnapshotSelection getSnapshotSelection(Long projectId, String snapshotId,
+                                                   String username, WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
+        requireScopedProject(projectId, username, context);
+        return snapshotSelectionReader.read(projectId, snapshotId, scopeKey)
+                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found: " + snapshotId));
     }
 
     @Transactional(readOnly = true)
@@ -627,68 +660,53 @@ public class PortfolioAnalysisPersistenceService {
     }
 
     private AnalysisJobView toJobView(RequirementAnalysisJob job) {
-        List<AnalysisJobItemView> items = itemRepository
-                .findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
-                        job.getId(), job.getProjectId(), job.getScopeKey())
-                .stream()
-                .map(this::toItemView)
+        // The query also flushes pending job/item mutations in this transaction. Do not mix
+        // a previously loaded job header with items read after a concurrent continuation.
+        return requireJobView(job.getId(), job.getProjectId(), job.getScopeKey());
+    }
+
+    private AnalysisJobView requireJobView(String jobId, Long projectId, String scopeKey) {
+        List<AnalysisJobReadRow> rows = jobRepository.findReadRowsByIdAndProjectIdAndScopeKey(
+                jobId, projectId, requireScope(scopeKey));
+        if (rows.isEmpty()) {
+            throw PortfolioException.notFound("Analysis job not found: " + jobId);
+        }
+        return toJobView(rows);
+    }
+
+    private AnalysisJobView toJobView(List<AnalysisJobReadRow> rows) {
+        AnalysisJobReadRow job = rows.getFirst();
+        List<AnalysisJobItemView> items = rows.stream().filter(row -> row.itemId() != null)
+                .map(row -> new AnalysisJobItemView(row.itemId(), row.requirementId(), row.requirementKey(),
+                        row.requirementVersionId(), row.requirementVersionNumber(), row.itemStatus(),
+                        row.snapshotId(), row.attempt(), row.itemStartedAt(), row.itemCompletedAt(), row.itemErrorMessage()))
                 .toList();
         return new AnalysisJobView(
-                job.getId(),
-                job.getProjectId(),
-                job.getStatus(),
-                visibleIdempotencyKey(job),
-                job.getProvider(),
-                job.getMaxArchitectureNodes(),
-                job.getRequestedBy(),
-                job.getWorkspaceId(),
-                job.getCreatedAt(),
-                job.getStartedAt(),
-                job.getCompletedAt(),
-                job.getTotalItems(),
-                job.getSuccessfulItems(),
-                job.getPartialItems(),
-                job.getFailedItems(),
-                job.getErrorSummary(),
-                items, job.getProviderBinding(), job.getAnalysisReasonLength());
+                job.id(), job.projectId(), job.status(), visibleIdempotencyKey(job.id(), job.idempotencyKey()),
+                job.provider(), job.maxArchitectureNodes(), job.requestedBy(), job.workspaceId(),
+                job.createdAt(), job.startedAt(), job.completedAt(), job.totalItems(), job.successfulItems(),
+                job.partialItems(), job.failedItems(), job.errorSummary(), items,
+                providerBinding(job), job.analysisReasonLength());
     }
 
-    private AnalysisJobItemView toItemView(RequirementAnalysisJobItem item) {
-        return new AnalysisJobItemView(
-                item.getId(),
-                item.getRequirementId(),
-                item.getRequirement().getRequirementKey(),
-                item.getRequirementVersionId(),
-                item.getRequirementVersion().getVersionNumber(),
-                item.getStatus(),
-                item.getSnapshotId(),
-                item.getAttempt(),
-                item.getStartedAt(),
-                item.getCompletedAt(),
-                item.getErrorMessage());
+    private static com.taxonomy.extension.api.plugin.PluginInvocation providerBinding(AnalysisJobReadRow job) {
+        if (job.providerPluginId() == null && job.providerPluginVersion() == null
+                && job.providerPluginSha256() == null && job.providerConfigRevision() == null) return null;
+        return new com.taxonomy.extension.api.plugin.PluginInvocation(
+                new com.taxonomy.extension.api.plugin.PluginIdentity(job.providerPluginId(),
+                        job.providerPluginVersion(), job.providerPluginSha256()), job.providerConfigRevision());
     }
 
-    private SnapshotDetail toSnapshotDetail(RequirementAnalysisSnapshot snapshot) {
-        String scopeKey = snapshot.getScopeKey();
+    private SnapshotDetail toSnapshotDetail(AnalysisSnapshotReadRow snapshot, String scopeKey) {
         return new SnapshotDetail(
-                toSnapshotSummary(snapshot),
-                jsonCodec.read(snapshot.getAnalysisPayload(), AnalysisResult.class),
-                jsonCodec.read(snapshot.getGapAnalysisPayload(), GapAnalysisView.class),
-                jsonCodec.read(snapshot.getPatternDetectionPayload(), PatternDetectionView.class),
+                snapshot.summary(),
+                jsonCodec.read(snapshot.analysisPayload(), AnalysisResult.class),
+                jsonCodec.read(snapshot.gapAnalysisPayload(), GapAnalysisView.class),
+                jsonCodec.read(snapshot.patternDetectionPayload(), PatternDetectionView.class),
                 jsonCodec.read(
-                        snapshot.getRecommendationPayload(), ArchitectureRecommendation.class),
-                elementRepository
-                        .findBySnapshotIdAndScopeKeyOrderByTaxonomyRootAscNodeCodeAsc(
-                                snapshot.getId(), scopeKey)
-                        .stream()
-                        .map(this::toElementView)
-                        .toList(),
-                relationRepository
-                        .findBySnapshotIdAndScopeKeyOrderBySourceCodeAscTargetCodeAsc(
-                                snapshot.getId(), scopeKey)
-                        .stream()
-                        .map(this::toRelationView)
-                        .toList());
+                        snapshot.recommendationPayload(), ArchitectureRecommendation.class),
+                List.copyOf(elementRepository.findViewsBySnapshotIdAndScopeKey(snapshot.id(), scopeKey)),
+                List.copyOf(relationRepository.findViewsBySnapshotIdAndScopeKey(snapshot.id(), scopeKey)));
     }
 
     private SnapshotSummary toSnapshotSummary(RequirementAnalysisSnapshot snapshot) {
@@ -841,10 +859,9 @@ public class PortfolioAnalysisPersistenceService {
         return normalized;
     }
 
-    private static String visibleIdempotencyKey(RequirementAnalysisJob job) {
-        String value = job.getIdempotencyKey();
+    private static String visibleIdempotencyKey(String jobId, String value) {
         return value != null
-                && value.equals(AUTOMATIC_IDEMPOTENCY_PREFIX + job.getId())
+                && value.equals(AUTOMATIC_IDEMPOTENCY_PREFIX + jobId)
                 ? null : value;
     }
 

@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.service;
 
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import org.springframework.stereotype.Component;
 
@@ -21,19 +22,37 @@ public class CopilotResultSelector {
                 .max(Comparator.comparing(this::quality));
     }
 
+    public Optional<SnapshotSelection> selectForOperation(List<SnapshotSelection> candidates) {
+        if (candidates == null) return Optional.empty();
+        return candidates.stream()
+                .filter(candidate -> candidate != null && usable(candidate.status(), candidate.scores()))
+                .max(Comparator.comparing(candidate -> quality(candidate.status(), candidate.durationMs(),
+                        candidate.scores(), candidate.elementMappingCount(), candidate.relationMappingCount(),
+                        candidate.warningCount())));
+    }
+
     private boolean usable(SnapshotDetail detail) {
         return detail != null
                 && detail.summary() != null
                 && detail.analysis() != null
-                && detail.analysis().getScores() != null
-                && !detail.analysis().getScores().isEmpty()
-                && (detail.summary().status() == AnalysisStatus.SUCCESS
-                    || detail.summary().status() == AnalysisStatus.PARTIAL);
+                && usable(detail.summary().status(), detail.analysis().getScores());
+    }
+
+    private boolean usable(AnalysisStatus status, Map<String, Double> scores) {
+        return scores != null && !scores.isEmpty()
+                && (status == AnalysisStatus.SUCCESS || status == AnalysisStatus.PARTIAL);
     }
 
     private Quality quality(SnapshotDetail detail) {
         AnalysisResult analysis = detail.analysis();
-        Map<String, Double> scores = analysis.getScores();
+        return quality(detail.summary().status(), detail.summary().durationMs(), analysis.getScores(),
+                detail.elementMappings() == null ? 0 : detail.elementMappings().size(),
+                detail.relationMappings() == null ? 0 : detail.relationMappings().size(),
+                analysis.getWarnings() == null ? 0 : analysis.getWarnings().size());
+    }
+
+    private Quality quality(AnalysisStatus status, long durationMs, Map<String, Double> scores,
+                            long mappedElements, long mappedRelations, int warnings) {
         int positive = (int) scores.values().stream()
                 .filter(value -> value != null && value > 0)
                 .count();
@@ -41,28 +60,22 @@ public class CopilotResultSelector {
                 .filter(java.util.Objects::nonNull)
                 .mapToDouble(Double::doubleValue)
                 .sum();
-        int mappedElements = detail.elementMappings() != null
-                ? detail.elementMappings().size() : 0;
-        int mappedRelations = detail.relationMappings() != null
-                ? detail.relationMappings().size() : 0;
-        int warnings = analysis.getWarnings() != null
-                ? analysis.getWarnings().size() : 0;
         return new Quality(
-                detail.summary().status() == AnalysisStatus.SUCCESS ? 2 : 1,
+                status == AnalysisStatus.SUCCESS ? 2 : 1,
                 positive,
                 scoreSum,
                 mappedElements,
                 mappedRelations,
                 -warnings,
-                -Math.max(0L, detail.summary().durationMs()));
+                -Math.max(0L, durationMs));
     }
 
     private record Quality(
             int status,
             int positiveScores,
             double scoreSum,
-            int mappedElements,
-            int mappedRelations,
+            long mappedElements,
+            long mappedRelations,
             int warningPreference,
             long durationPreference) implements Comparable<Quality> {
 
@@ -74,9 +87,9 @@ public class CopilotResultSelector {
             if (result != 0) return result;
             result = Double.compare(scoreSum, other.scoreSum);
             if (result != 0) return result;
-            result = Integer.compare(mappedElements, other.mappedElements);
+            result = Long.compare(mappedElements, other.mappedElements);
             if (result != 0) return result;
-            result = Integer.compare(mappedRelations, other.mappedRelations);
+            result = Long.compare(mappedRelations, other.mappedRelations);
             if (result != 0) return result;
             result = Integer.compare(warningPreference, other.warningPreference);
             if (result != 0) return result;

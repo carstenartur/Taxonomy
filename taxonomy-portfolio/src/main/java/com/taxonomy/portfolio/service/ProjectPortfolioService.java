@@ -22,6 +22,7 @@ import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
 import com.taxonomy.portfolio.repository.ProjectConflictRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementReadRow;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.repository.ProjectSolutionRepository;
 import com.taxonomy.portfolio.reformulation.ReformulationPositiveReviewGuard;
@@ -238,10 +239,9 @@ public class ProjectPortfolioService {
                                                   WorkspaceContext context) {
         ArchitectureProject project = requireProject(projectId, username, context);
         return requirementRepository
-                .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(
-                        projectId, project.getScopeKey())
+                .findReadRowsByProjectIdAndScopeKey(projectId, project.getScopeKey())
                 .stream()
-                .map(requirement -> toRequirementView(requirement, currentVersion(requirement)))
+                .map(this::toRequirementView)
                 .toList();
     }
 
@@ -271,11 +271,10 @@ public class ProjectPortfolioService {
         if (page < 0 || page > 100000 || pageSize < 1 || pageSize > 100)
             throw PortfolioException.validation("Requirement page is outside supported bounds");
         ArchitectureProject project = requireProject(projectId, username, context);
-        var slice = requirementRepository.findByProjectIdAndScopeKeyAndStatusOrderByRequirementKeyAscIdAsc(
+        var slice = requirementRepository.findReadRowsByProjectIdAndScopeKeyAndStatus(
                 projectId, project.getScopeKey(), RequirementStatus.APPROVED, PageRequest.of(page, pageSize));
         return new RequirementPage(slice.getContent().stream()
-                .map(requirement -> toRequirementView(requirement, requirement.getCurrentVersion() != null
-                        ? requirement.getCurrentVersion() : currentVersion(requirement)))
+                .map(this::toRequirementView)
                 .toList(), slice.hasNext());
     }
 
@@ -284,8 +283,13 @@ public class ProjectPortfolioService {
                                           Long requirementId,
                                           String username,
                                           WorkspaceContext context) {
-        ProjectRequirement requirement = requireRequirement(projectId, requirementId, username, context);
-        return toRequirementView(requirement, currentVersion(requirement));
+        ArchitectureProject project = requireProject(projectId, username, context);
+        if (requirementId == null) throw PortfolioException.validation("requirementId is required");
+        return requirementRepository
+                .findReadRowByIdAndProjectIdAndScopeKey(requirementId, projectId, project.getScopeKey())
+                .map(this::toRequirementView)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Requirement " + requirementId + " was not found in project " + projectId));
     }
 
     @Transactional
@@ -471,6 +475,23 @@ public class ProjectPortfolioService {
                 requirement.getCreatedAt(),
                 requirement.getUpdatedAt(),
                 currentVersion != null ? toVersionView(currentVersion) : null);
+    }
+
+    private RequirementView toRequirementView(ProjectRequirementReadRow row) {
+        if (row.versionId() == null) {
+            throw PortfolioException.notFound(row.currentVersionId() != null
+                    ? "Current requirement version not found: " + row.currentVersionId()
+                    : "Requirement has no text version: " + row.requirementKey());
+        }
+        var version = new RequirementVersionView(
+                row.versionId(), row.versionNumber(), row.text(), row.contentHash(), row.changeReason(),
+                row.createdBy(), row.versionCreatedAt(), new SourceReference(
+                        row.sourceArtifactId(), row.sourceVersionId(), jsonCodec.readLongList(row.sourceFragmentIdsJson()),
+                        row.sectionReference(), row.pageNumber(), row.originalText()));
+        return new RequirementView(
+                row.id(), row.projectId(), row.requirementKey(), row.title(), row.status(), row.priority(),
+                row.criticality(), row.requirementType(), row.reviewStatus(), row.ownerUsername(),
+                row.currentVersionId(), row.currentAnalysisSnapshotId(), row.createdAt(), row.updatedAt(), version);
     }
 
     public RequirementVersionView toVersionView(ProjectRequirementVersion version) {
