@@ -102,7 +102,8 @@ public final class RelationSearchDistribution {
                 || grant.maxWorkItems() > item.maxQueries()) throw new IllegalArgumentException("Invalid failed relation grant");
         Intent intent = intent(plan, item);
         var unfinished = new Unfinished(intent.contribution().source().id(), item.type(), item.direction(),
-                intent.roots().stream().map(Node::id).toList(), reason, "");
+                intent.roots().stream().map(Node::id).toList(), reason, "",
+                RelationSearchEngine.contributionKey(intent.contribution(), item.type(), item.direction()), item.targetRoot().code());
         return new WorkResult(grant, new Result(List.of(), List.of(unfinished), List.of(), 0, 0, 0),
                 Math.min(grant.maxCalls(), grant.maxWorkItems()), reason);
     }
@@ -142,7 +143,8 @@ public final class RelationSearchDistribution {
             Intent intent = intent(plan, item);
             if (completed == null) {
                 unfinished.add(new Unfinished(intent.contribution().source().id(), item.type(), item.direction(),
-                        intent.roots().stream().map(Node::id).toList(), schedule.pendingReason(), ""));
+                        intent.roots().stream().map(Node::id).toList(), schedule.pendingReason(), "",
+                        RelationSearchEngine.contributionKey(intent.contribution(), item.type(), item.direction()), item.targetRoot().code()));
                 if (deniedFrontier) {
                     engineCalls++; progress.finished(intent, false); deniedFrontier = false;
                 }

@@ -87,13 +87,21 @@ public final class RelationSearchModel {
         public String targetId() { return direction == Direction.OUTGOING ? target.id() : contribution.source().id(); }
     }
 
+    /** Optional replay context is absent in legacy reports; never infer that missing context. */
     public record Unfinished(String sourceId, String type, Direction direction, List<String> targets,
-                             String reason, String question) {
+                             String reason, String question, String contributionKey, String targetRoot) {
+        public Unfinished(String sourceId, String type, Direction direction, List<String> targets, String reason, String question) {
+            this(sourceId, type, direction, targets, reason, question, null, null);
+        }
         public Unfinished { targets = List.copyOf(targets); }
     }
 
     public record Trace(String sourceId, String type, Direction direction, Phase phase,
-                        String targetId, Outcome outcome, String rationale) { }
+                        String targetId, Outcome outcome, String rationale, String contributionKey) {
+        public Trace(String sourceId, String type, Direction direction, Phase phase, String targetId, Outcome outcome, String rationale) {
+            this(sourceId, type, direction, phase, targetId, outcome, rationale, null);
+        }
+    }
 
     public record Result(List<Edge> edges, List<Unfinished> unfinished, List<Trace> trace,
                          int calls, int visitedBatches, long durationMillis) {

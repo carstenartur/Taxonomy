@@ -64,8 +64,17 @@ public final class AnalysisContinuationBackupRestorer {
             } else if("SUCCESS".equals(question.sourceState()))throw invalid();
             String storedPrompt=checkpointPayload.encodePrompt(question.prompt());
             String storedDetail=checkpointPayload.encodeDetail(question.detailJson(),question.prompt());
+            String storedNodes=checkpointPayload.encodeNodes(Arrays.asList(nodes));
+            // Layout selects the decoding of both fields. Keep a valid legacy pair
+            // together when compression/base64 would increase its retained size.
+            long clearSize=(question.prompt()==null?0L:question.prompt().length())
+                    +(question.detailJson()==null?0L:question.detailJson().length());
+            long encodedSize=(storedPrompt==null?0L:storedPrompt.length())+(storedDetail==null?0L:storedDetail.length());
+            if(encodedSize>clearSize) {
+                storedNodes=question.nodeCodesJson();storedPrompt=question.prompt();storedDetail=question.detailJson();
+            }
             payload=addStored(payload,storedPrompt);payload=addStored(payload,storedDetail);
-            preparedQuestions.add(new PreparedQuestion(question,checkpointPayload.encodeNodes(Arrays.asList(nodes)),storedPrompt,storedDetail,detailError));
+            preparedQuestions.add(new PreparedQuestion(question,storedNodes,storedPrompt,storedDetail,detailError));
         }
         result.setRawScores(scores);result.setReasons(reasons);
         var warnings=new ArrayList<>(result.getWarnings());

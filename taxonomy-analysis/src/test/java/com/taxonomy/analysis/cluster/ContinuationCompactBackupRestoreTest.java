@@ -54,6 +54,48 @@ class ContinuationCompactBackupRestoreTest {
     }
 
     @Test
+    void validLegacyArchiveKeepsBothCleartextFieldsWhenTranscodingWouldExceedItsQuota() {
+        var random = new Random(171_2026);
+        char[] characters = new char[1_000_000];
+        for (int i = 0; i < characters.length; i++) characters[i] = (char) (0x1000 + random.nextInt(0xc000));
+        String prompt = new String(characters);
+        var detail = new LlmCallDetail(); detail.setProvider("MOCK"); detail.setScores(Map.of("CP", 75.0));
+        String raw = JSON.writeValueAsString(detail); // A valid legacy detail need not duplicate its prompt.
+        var records = new ArrayList<QuestionRecord>();
+        for (int i = 1; i <= 10; i++) {
+            String key = "%064x".formatted(i);
+            records.add(new QuestionRecord(new SourceRecordId("analysis.question", SOURCE.value() + ":" + key),
+                    SOURCE, key, "d".repeat(64), "MOCK", "[\"CP\"]", raw, prompt, "SUCCESS", 1, i));
+        }
+        var codec = new com.taxonomy.analysis.recovery.AnalysisCheckpointPayloadCodec(JSON);
+        assertThat((long) codec.encodePrompt(prompt).length() * records.size()).isGreaterThan(24_000_000L);
+        long originalSize = records.stream().mapToLong(q -> (long) q.prompt().length() + q.detailJson().length()).sum();
+        assertThat(originalSize).isLessThan(24_000_000L);
+        String id = UUID.randomUUID().toString();
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            new AnalysisContinuationBackupRestorer(db.em, db.transactions, JSON).restore(
+                    source("PAUSED", com.taxonomy.analysis.backup.AnalysisBackupContributor.ResumePolicy.REVIEW_REQUIRED), records, id, TARGET);
+            var stored = tx(db).execute(status -> db.em.createQuery("""
+                    select q.nodeCodes, q.prompt, q.detailJson from AnalysisQuestionCheckpoint q where q.run.id=?1
+                    """, Object[].class).setParameter(1, id).getResultList());
+            assertThat(stored).hasSize(10);
+            for (Object row : stored) {
+                Object[] fields = (Object[]) row;
+                assertThat(fields[0].toString()).isEqualTo("[\"CP\"]");
+                assertThat(fields[1].toString()).isEqualTo(prompt);
+                assertThat(fields[2].toString()).isEqualTo(raw);
+            }
+            Number retained = tx(db).execute(status -> (Number) db.em.createNativeQuery(
+                    "select payload_characters from analysis_continuation where id=?1").setParameter(1, id).getSingleResult());
+            assertThat(retained.longValue()).isEqualTo(originalSize);
+            var reopened = tx(db).execute(status -> new AnalysisContinuationStore(db.em, JSON).detail(id, records.getFirst().questionKey(), TARGET));
+            assertThat(reopened.getPrompt()).isEqualTo(prompt);
+            assertThat(reopened.getScores()).containsEntry("CP", 75.0);
+            assertThat(db.sent).isEmpty();
+        }
+    }
+
+    @Test
     void incompressibleEvidenceStillFailsTheSameStoredPayloadLimitBeforePersistence() {
         var random = new Random(170_2026);
         char[] characters = new char[1_000_000];

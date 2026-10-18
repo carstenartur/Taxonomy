@@ -69,8 +69,17 @@ public class RequirementRelationSearchService {
         }
         var adapter = new RequirementRelationSearch.InputCatalogue() {
             private final Map<String, List<Node>> children = new HashMap<>();
-            public Node find(String id) { return scalar(catalogue.getNodeByCode(id)); }
-            public List<Node> roots() { return scalars(catalogue.getRootNodes()); }
+            private final Map<String, Node> sources = new HashMap<>();
+            private List<Node> roots;
+            public Node find(String id) {
+                // Include absent IDs: a later cohort cannot change this request's input.
+                if (!sources.containsKey(id)) sources.put(id, scalar(catalogue.getNodeByCode(id)));
+                return sources.get(id);
+            }
+            public List<Node> roots() {
+                if (roots == null) roots = scalars(catalogue.getRootNodes());
+                return roots;
+            }
             public List<Node> children(Node node) {
                 // Retain only successfully materialized immutable scalars, including
                 // empty lists. This adapter and its cache belong to one search.

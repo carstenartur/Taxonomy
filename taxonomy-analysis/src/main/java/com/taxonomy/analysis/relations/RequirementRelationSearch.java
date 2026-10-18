@@ -148,8 +148,18 @@ public final class RequirementRelationSearch {
             sources = new ArrayList<>(retainedSources.values());
             var edges = new LinkedHashSet<>(previous.result().edges()); edges.addAll(result.edges());
             var trace = new LinkedHashSet<>(previous.result().trace()); trace.addAll(result.trace());
-            result = new Result(List.copyOf(edges), result.unfinished(), List.copyOf(trace),
-                    result.calls(), result.visitedBatches(), result.durationMillis());
+            var currentTasks = plan == null ? List.<com.taxonomy.dto.RelationSearchProgress.Task>of() : plan.tasks();
+            Set<List<String>> completedTasks = new HashSet<>();
+            Set<String> completedSources = new HashSet<>(), retainedLegacySources = new HashSet<>();
+            currentTasks.forEach(t -> completedSources.add(t.sourceId()));
+            currentTasks.forEach(t -> {
+                if (t.state() == com.taxonomy.dto.RelationSearchProgress.State.COMPLETED)
+                    completedTasks.add(List.of(t.sourceId(), t.targetRoot()));
+                else completedSources.remove(t.sourceId());
+            });
+            result = new Result(List.copyOf(edges), retainedUnfinished(previous.result(), result, completedTasks,
+                    completedSources, retainedLegacySources), List.copyOf(trace), result.calls(), result.visitedBatches(), result.durationMillis());
+            if (plan != null) plan.retainUnresolved(previous.tasks(), retainedLegacySources);
         }
         sortSourcesByRank(sources, nodes);
         if (plan != null) plan.finish(warnings.isEmpty() && stop.isEmpty() && result.searchExhausted());
@@ -165,6 +175,31 @@ public final class RequirementRelationSearch {
                 sources, result, budget.calls, options.limits().maxCalls(),
                 (System.nanoTime() - start) / 1_000_000, warnings, stop,
                 progress, tasks);
+    }
+
+    private static List<Unfinished> retainedUnfinished(Result previous, Result current, Set<List<String>> completedTasks,
+            Set<String> completedSources, Set<String> retainedLegacySources) {
+        Set<List<String>> technicalFailures = new HashSet<>(), revisited = new HashSet<>();
+        current.unfinished().stream().filter(q -> q.contributionKey() != null
+                && q.question().startsWith("TECHNICAL_ASSESSMENT_FAILURE:"))
+                .forEach(q -> q.targets().forEach(target -> technicalFailures.add(List.of(q.contributionKey(), target))));
+        current.trace().stream().filter(t -> t.contributionKey() != null && t.outcome() != Outcome.MATCH
+                && !(t.outcome() == Outcome.UNRESOLVED && technicalFailures.contains(List.of(t.contributionKey(), t.targetId()))))
+                .forEach(t -> revisited.add(List.of(t.contributionKey(), t.targetId())));
+        var retained = new LinkedHashSet<Unfinished>();
+        for (Unfinished question : previous.unfinished()) {
+            if (completedSources.contains(question.sourceId()) || question.targetRoot() != null
+                    && completedTasks.contains(List.of(question.sourceId(), question.targetRoot()))) continue;
+            List<String> targets = question.targets().stream().filter(target -> question.contributionKey() == null
+                    || !revisited.contains(List.of(question.contributionKey(), target))).toList();
+            if (!targets.isEmpty()) {
+                retained.add(new Unfinished(question.sourceId(), question.type(), question.direction(), targets,
+                        question.reason(), question.question(), question.contributionKey(), question.targetRoot()));
+                if (question.targetRoot() == null) retainedLegacySources.add(question.sourceId());
+            }
+        }
+        retained.addAll(current.unfinished());
+        return List.copyOf(retained);
     }
 
     /**
