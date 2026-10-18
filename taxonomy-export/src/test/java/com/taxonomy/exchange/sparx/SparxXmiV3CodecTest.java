@@ -7,6 +7,7 @@ import com.taxonomy.model.RelationType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -222,6 +223,21 @@ class SparxXmiV3CodecTest {
         assertTrue(returned.losses().stream().anyMatch(loss -> loss.code().equals("SPARX_CONSTRUCT_EXCLUDED")
                         && loss.field().equals("ownedComment") && loss.disposition() == LossDisposition.UNSUPPORTED),
                 "Profile 3 must report the model note it cannot bind to declared requirement evidence");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"abcdefff-abcd-4abc-8def-abcdef123456", "{abcdefff-abcd-4abc-8def-abcdef123456}",
+            "EAID_abcdefff_abcd_4abc_8def_abcdef123456", "EAPK_abcdefff_abcd_4abc_8def_abcdef123456"})
+    void equivalentModelGuidSpellingsSurviveWriteReadBack(String identifier) {
+        var original = document("3", relation(RelationType.USES, "Source -> Destination"));
+        var metadata = new TreeMap<>(original.metadata()); metadata.put("identifier", identifier);
+        var aliased = new ExchangeDocument(original.profile(), original.profileVersion(), original.externalVersion(), original.completeScope(),
+                original.source(), original.artifacts(), original.relations(), original.placements(), metadata, original.losses());
+        var codec = new SparxXmiCodec("3");
+        var returned = codec.read(codec.write(aliased), "aliased-model", true);
+        assertEquals(SparxMappingProfile.guid(identifier), returned.metadata().get("identifier"));
+        assertEquals(original.artifacts(), returned.artifacts());
+        assertEquals(original.relations(), returned.relations());
     }
 
     private static Relation relation(RelationType type, String direction) {
