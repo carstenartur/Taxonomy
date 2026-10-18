@@ -100,6 +100,7 @@ public final class WordDocumentWriter {
                     link(row.getCell(1).getParagraphs().getFirst(), anchor, labels.openChapter());
                     row.setCantSplitRow(true);
                 });
+        columnWidths(table, 80, 20);
     }
 
     /** Materialize the requested heading levels after every report section has been written. */
@@ -135,6 +136,9 @@ public final class WordDocumentWriter {
             link(row.getCell(1).getParagraphs().getFirst(), anchor, labels.openChapter());
             row.setCantSplitRow(true);
         }
+        // Complete headings can be much longer than the short chapter action.
+        // Reapply widths after rebuilding so every dynamic row uses the same grid.
+        columnWidths(contentsTable, 80, 20);
     }
 
     public XWPFTable table(List<String> headers, List<List<String>> values) {
