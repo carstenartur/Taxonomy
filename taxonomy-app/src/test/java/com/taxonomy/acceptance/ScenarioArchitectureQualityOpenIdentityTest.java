@@ -118,8 +118,8 @@ class ScenarioArchitectureQualityOpenIdentityTest {
         if (bothDirections) addQuestion(unfinished, trace, questions, "IP-1116", "BP-1017", "INCOMING", "b");
         for (var task : search.path("tasks")) {
             ObjectNode mutable = (ObjectNode) task; String source = task.path("sourceId").asText();
-            if (source.equals("BP-1017")) { mutable.put("targetRoot", "IP"); mutable.put("state", "UNRESOLVED"); }
-            if (bothDirections && source.equals("IP-1116")) mutable.put("state", "UNRESOLVED");
+            if (source.equals("BP-1017") && task.path("targetRoot").asText().equals("IP")) mutable.put("state", "UNRESOLVED");
+            if (bothDirections && source.equals("IP-1116") && task.path("targetRoot").asText().equals("BP")) mutable.put("state", "UNRESOLVED");
         }
         search.put("searchExhausted", false); search.put("totalCalls", 50); search.put("maxCalls", 256);
         progress.put("completedSearches", progress.path("totalSearches").asInt() - unfinished.size());

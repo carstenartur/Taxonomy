@@ -124,6 +124,14 @@ class ScenarioArchitectureQualityTest {
         assertRejected(example("C19"), "Retain auditable platform logs.");
     }
 
+    @Test void negatingOfficialWarningChannelRetentionCannotDischargeC15() {
+        assertRejected(example("C15"), "Do not retain the official warning channels.");
+    }
+
+    @Test void negatingAuditableDeliveryHistoryCannotDischargeC19() {
+        assertRejected(example("C19"), "Do not retain an auditable history of delivery attempts and their outcomes.");
+    }
+
     @Test void officialAlertsCannotBeReplacedByTheSupplementaryService() {
         assertRejected(example("C20"), "The supplementary service is a safety-critical replacement for official alerts.");
     }

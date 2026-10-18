@@ -2,6 +2,8 @@ package com.taxonomy.acceptance;
 
 import com.taxonomy.archimate.exchange.ArchiMateRelationProvenance;
 import com.taxonomy.diagram.DiagramRelationMetadata;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import com.taxonomy.dto.RelationSearchModel.*;
 import com.taxonomy.exchange.sparx.SparxXmiCodec;
 import com.taxonomy.extension.api.integration.IntegrationContracts.Artifact;
@@ -192,6 +194,18 @@ public final class ScenarioArchitectureQuality {
                 }
                 if (section.equals("coverageConstraints")) for (String endpoint : strings(object(entry, "binding").path("elementIds")))
                     endpointClauses.computeIfAbsent(endpoint, ignored -> new LinkedHashSet<>()).addAll(quoteIds);
+                if (section.endsWith("Relations")) {
+                    for (String role : List.of("source", "target")) {
+                        Set<String> roleQuotes = strings(array(object(entry, "endpointQuoteIds"), role));
+                        check(!roleQuotes.isEmpty() && quoteIds.containsAll(roleQuotes), id + ": invalid directed " + role + " quote role");
+                        for (JsonNode term : array(object(entry, "endpointTerms"), role)) Pattern.compile(term.asText());
+                    }
+                    if (section.equals("allowedRelations")) {
+                        check(!array(entry, "conditionTerms").isEmpty(), id + ": missing permitted selection/function boundary");
+                        for (String field : List.of("conditionTerms", "excludedClaims"))
+                            for (JsonNode term : array(entry, field)) Pattern.compile(term.asText());
+                    }
+                }
                 if (section.endsWith("Relations") && entry.has("necessity")) {
                     check(Set.of("REQUIRED", "OPTIONAL", "ALTERNATIVE").contains(text(entry, "necessity")), id + ": unknown reference necessity");
                     check(!section.equals("requiredRelations") || value(entry, "necessity").equals("REQUIRED"), id + ": a core relation has a conflicting necessity");
@@ -216,9 +230,10 @@ public final class ScenarioArchitectureQuality {
                         text(entry, "id") + ": open identity lacks its independent noncore disposition");
                 text(entry, "question"); text(entry, "rationale");
             });
-            for (JsonNode entry : array(tree, "allowedRelations")) for (String field : List.of("sourceId", "targetId")) {
+            for (String section : List.of("requiredRelations", "allowedRelations")) for (JsonNode entry : array(tree, section))
+                    for (String field : List.of("sourceId", "targetId")) {
                 String endpoint = text(entry, field);
-                if (!endpointClauses.containsKey(endpoint)) endpointClauses.put(endpoint, new LinkedHashSet<>(strings(entry.path("quoteIds"))));
+                endpointClauses.computeIfAbsent(endpoint, ignored -> new LinkedHashSet<>()).addAll(strings(entry.path("quoteIds")));
             }
             return new Reference(tree, sha256(bytes), original, clauses, required, allowed, openIdentities, endpointClauses);
         } catch (IOException failure) { throw new AssertionError("Cannot read independent architecture quality reference", failure); }
@@ -315,11 +330,33 @@ public final class ScenarioArchitectureQuality {
                 check(openTasks.contains(key), "Unreferenced unresolved search task " + key); retainedOpenTasks.add(key);
             }
         }
+        Set<String> expectedKeys = expectedTaskKeys(sources);
+        check(keys.equals(expectedKeys), "Retained search task keys differ from the exact compatible source/root plan; missing="
+                + difference(expectedKeys, keys) + "; unexpected=" + difference(keys, expectedKeys));
         check(completedTasks == completed && retainedOpenTasks.equals(openTasks), "Search task counters differ from their retained states");
         var openPoints = observations.entrySet().stream().map(e -> new OpenIdentity(reference.openIdentities().get(e.getKey()), List.copyOf(e.getValue()))).toList();
         same(openPoints.isEmpty() ? "SUCCESS" : "PARTIAL", value(analysis, "status"), "analysis completion status for the retained identity evidence");
         verifyCompletionDiagnostics(search, analysis, openPoints);
         return new SearchEvidence(Map.copyOf(sources), openPoints);
+    }
+
+    private static Set<String> expectedTaskKeys(Map<String, SourceAssessment> sources) {
+        var rules = new RelationCompatibilityMatrix(); var keys = new LinkedHashSet<String>();
+        Set<String> roots = Set.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA");
+        for (SourceAssessment source : sources.values()) {
+            check(roots.contains(source.node().root()), "Source has an unknown catalogue root: " + source.node().id());
+            for (String root : roots) for (RelationType type : RelationType.values()) {
+                if (rules.allowedTargetRoots(source.node().root(), type).contains(root)
+                        || rules.allowedTargetRoots(root, type).contains(source.node().root())) {
+                    keys.add(source.node().id() + "|" + root); break;
+                }
+            }
+        }
+        return keys;
+    }
+
+    private static Set<String> difference(Set<String> first, Set<String> second) {
+        var result = new LinkedHashSet<>(first); result.removeAll(second); return result;
     }
 
     private static void verifyCompletionDiagnostics(JsonNode search, JsonNode analysis, List<OpenIdentity> openPoints) {
@@ -413,8 +450,16 @@ public final class ScenarioArchitectureQuality {
                 String meaning = ENDPOINT_MEANINGS.get(witness.endpointId());
                 check(meaning == null || matches(meaning, interpretation(witness, reference.clauses())),
                         id + ": contribution does not describe the bound endpoint " + witness.endpointId());
+                String role = witness.endpointId().equals(triple.source()) ? "source" : "target";
+                Set<String> roleQuotes = strings(object(expected, "endpointQuoteIds").path(role));
+                check(!roleQuotes.isEmpty() && roleQuotes.containsAll(quoteIds),
+                        id + ": wrong " + role + " contribution role/quote binding for " + witness.endpointId());
+                for (JsonNode term : object(expected, "endpointTerms").path(role))
+                    check(matches(term.asText(), declaration(witness.text(), reference.clauses())),
+                            id + ": contribution does not describe its " + role + " role at " + witness.endpointId());
                 observedQuotes.addAll(quoteIds); witnesses.add(witness);
             }
+            if (!required) verifyPermittedBoundary(id, expected, decision.condition(), witnesses, reference.clauses());
             if (decision.necessity() == Necessity.REQUIRED) requiredEvidence = true;
         }
         check(!required || requiredEvidence, id + ": required relation has no REQUIRED evidence");
@@ -434,6 +479,20 @@ public final class ScenarioArchitectureQuality {
                     id + ": relationship necessity differs from the independently specified " + necessity);
         }
         return witnesses;
+    }
+
+    /** Every permitted binding retains its own selection scope and exclusions, independently of global coverage. */
+    private static void verifyPermittedBoundary(String id, JsonNode expected, String condition,
+            List<Witness> witnesses, Map<String, String> clauses) {
+        check(!blank(condition), id + ": permitted relationship has no locally declared boundary");
+        for (JsonNode term : array(expected, "conditionTerms"))
+            check(matches(term.asText(), condition), id + ": permitted relationship condition omits its selection/function boundary: " + term.asText());
+        for (JsonNode forbidden : array(expected, "excludedClaims")) for (Witness witness : witnesses)
+            for (String claim : interpretation(witness, clauses).split("[.;]|(?i)\\bbut\\b|(?i)\\bhowever\\b")) {
+                // Explicitly negated exclusions are allowed; inspect affirmative clauses separately.
+                String affirmative = claim.replaceAll("(?i)\\b(?:no|not|never|without|does not|do not|must not)\\b[^.;]*", "");
+                check(!matches(forbidden.asText(), affirmative), id + ": permitted relationship asserts an excluded function: " + claim);
+            }
     }
 
     /** Only the independent L04/F1 selection boundary; not unrestricted English equivalence. */
@@ -640,14 +699,14 @@ public final class ScenarioArchitectureQuality {
                 "source context", "source|origin", "observation-time context", TIME);
         add(result, "C14", false, List.of("(?:do(?:es)? not|never)[^.;]{0,30}(?:show|display)[^.;]{0,30}unavailable"),
                 "a visible unavailable indication", "show|display|indicat|flag|mark|present", "unavailability", "unavailable", "observations or data", "observation|data");
-        add(result, "C15", false, List.of(), "retained official channels", "retain|preserv|keep", "official authority", "official", "warning channels", "warning|alert", "channels", "channel");
+        add(result, "C15", false, List.of("(?:do(?:es)? not|cannot|must not|need not|will not|never|no longer)[^.;]{0,40}(?:retain|preserv|keep)[^.;]{0,65}(?:official|warning|alert)|(?:retain|preserv|keep)[^.;]{0,65}(?:official|warning|alert)[^.;]{0,40}(?:not required|optional)"), "retained official channels", "retain|preserv|keep", "official authority", "official", "warning channels", "warning|alert", "channels", "channel");
         add(result, "C16", true, List.of("durab[^.;]{0,30}(?:optional|not required)|(?:not|non)[ -]durab"),
                 "durability", "durab", "a delivery queue", "queue", "delivery work", "deliver|notification");
         add(result, "C17", true, List.of("idempoten[^.;]{0,30}(?:optional|not required)|(?:not|non)[ -]idempoten|end.to.end exactly.once"),
                 "retries", "retr(?:y|ies)|repeat[^.;]{0,30}work", "idempotence or duplicate-safe processing", "idempoten|(?:no|without|not cause)[^.;]{0,30}duplicate[^.;]{0,40}process", "delivery work", "deliver");
         add(result, "C18", true, List.of(), "subscriber data", "subscriber[^.;]{0,30}(?:data|detail)|(?:data|detail)[^.;]{0,30}subscriber",
                 "data protection", "protect|restrict|authoriz|authoris", "entitled access or actions", "entitl|authoriz|authoris|access control");
-        add(result, "C19", true, List.of(), "auditability", "audit", "a retained history", "history|record", "delivery work", "deliver", "delivery outcomes", "outcomes?|results?|statuses|status|attempts?");
+        add(result, "C19", true, List.of("(?:do(?:es)? not|cannot|must not|need not|will not|never|no longer)[^.;]{0,40}(?:retain|preserv|keep|record|maintain)[^.;]{0,85}(?:audit|history|deliver)|(?:audit|history)[^.;]{0,55}(?:not required|optional)"), "auditability", "audit", "a retained history", "history|record", "delivery work", "deliver", "delivery outcomes", "outcomes?|results?|statuses|status|attempts?");
         add(result, "C20", false, List.of("(?:is|as) a safety[ -]critical replacement"), "a supplementary service", "supplementary",
                 "the safety-critical replacement boundary", "not[^.;]{0,35}safety[ -]critical[^.;]{0,35}replacement|not[^.;]{0,35}replacement[^.;]{0,35}safety[ -]critical",
                 "official alert authority", "official[^.;]{0,30}(?:alerts?|warnings?)");
@@ -661,7 +720,11 @@ public final class ScenarioArchitectureQuality {
     }
 
     private static String interpretation(Witness witness, Map<String, String> clauses) {
-        String result = witness.text() + " " + witness.condition();
+        return declaration(witness.text() + " " + witness.condition(), clauses);
+    }
+
+    private static String declaration(String text, Map<String, String> clauses) {
+        String result = text;
         // Original quotations are evidence of origin, never witnesses of a component's behavior.
         for (String clause : clauses.values()) result = result.replace(clause, "");
         return result;
