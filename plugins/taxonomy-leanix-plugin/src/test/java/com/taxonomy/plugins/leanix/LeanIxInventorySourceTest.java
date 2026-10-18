@@ -246,14 +246,16 @@ class LeanIxInventorySourceTest {
         assertEquals(2, server.calls.size());
     }
     @Test void httpFailuresAndRedirectsAreNotRetried() throws Exception {
-        start((q, v) -> objects(false, null)); server.dataStatus = 307;
-        assertThrows(ReadFailure.class, () -> read(false)); assertEquals(2, server.calls.size());
+        start((q, v) -> objects(false, null)); server.dataStatus = 307; server.expectDataWriteAbort = true;
+        assertEquals("REDIRECT_REJECTED", assertThrows(ReadFailure.class, () -> read(false)).code()); assertEquals(2, server.calls.size());
         assertTrue(server.calls.stream().allMatch(c -> Set.of("/services/mtm/v1/oauth2/token", "/services/pathfinder/v1/graphql").contains(c.path())));
     }
     @Test void refusesAnOversizedResponse() throws Exception {
         start((q, v) -> objects(false, null, app("a1", 1, "x".repeat(20000))));
-        assertThrows(ReadFailure.class, () -> new LeanIxInventorySource().read(request(projections(), false, Set.of(),
-                new Limits(10, 20, 100, 100, 1024, 2048, 10)), access(true)));
+        server.expectDataWriteAbort = true;
+        assertEquals("READ_LIMIT", assertThrows(ReadFailure.class, () -> new LeanIxInventorySource().read(
+                request(projections(), false, Set.of(), new Limits(10, 20, 100, 100, 1024, 2048, 10)), access(true))).code());
+        assertEquals(2, server.calls.size());
     }
     @Test void oversizedChunkedResponseIsAbortedWithoutDraining() throws Exception {
         startPausedResponse();
@@ -285,12 +287,12 @@ class LeanIxInventorySourceTest {
     }
 
     @Test void permissionErrorsRemainExplicitAndAreNotRetried() throws Exception {
-        start((q, v) -> objects(false, null)); server.dataStatus = 403;
+        start((q, v) -> objects(false, null)); server.dataStatus = 403; server.expectDataWriteAbort = true;
         assertEquals("UNAUTHORIZED", assertThrows(ReadFailure.class, () -> read(false)).code());
         assertEquals(2, server.calls.size());
     }
     @Test void rateLimitsRemainExplicitAndAreNotRetried() throws Exception {
-        start((q, v) -> objects(false, null)); server.dataStatus = 429;
+        start((q, v) -> objects(false, null)); server.dataStatus = 429; server.expectDataWriteAbort = true;
         assertEquals("RATE_LIMITED", assertThrows(ReadFailure.class, () -> read(false)).code());
         assertEquals(2, server.calls.size());
     }
@@ -328,6 +330,25 @@ class LeanIxInventorySourceTest {
             public boolean allowPrivateNetworks() { return true; }
         });
         assertArrayEquals(new char[API.length()], owned);
+    }
+
+    @Test void fixtureAcceptsOnlyExplicitlyExpectedBodyWriteDisconnects() {
+        var attempted = new AtomicInteger();
+        assertDoesNotThrow(() -> Server.writeBody(() -> {
+            attempted.incrementAndGet();
+            throw new IOException("Synthetic peer reset while sending a rejected response");
+        }, true));
+        assertEquals(1, attempted.get(), "A rejected response must not be retried");
+    }
+    @Test void fixtureRetainsUnexpectedBodyWriteFailures() {
+        var failure = new IOException("Unexpected response write failure");
+        assertSame(failure, assertThrows(IOException.class,
+                () -> Server.writeBody(() -> { throw failure; }, false)));
+    }
+    @Test void fixtureNeverSuppressesAssertionsEvenWhenBodyAbortIsExpected() {
+        var failure = new AssertionError("Request contract mismatch");
+        assertSame(failure, assertThrows(AssertionError.class,
+                () -> Server.writeBody(() -> { throw failure; }, true)));
     }
 
     private static List<TypeProjection> projections() {
@@ -397,6 +418,9 @@ class LeanIxInventorySourceTest {
         final AtomicInteger dataBytesWritten = new AtomicInteger();
         volatile int dataStatus = 200;
         volatile int tokenExpires = 3599;
+        // Opt in only when the test asserts a specific header-rejection code.
+        // Authentication and request/handler assertions always remain strict.
+        volatile boolean expectDataWriteAbort;
         volatile boolean pauseData;
         volatile boolean chunkedData = true;
         volatile String dataMediaType = "application/json";
@@ -438,13 +462,36 @@ class LeanIxInventorySourceTest {
                         } catch (IOException expectedCancellation) { /* Rejected responses must abort the socket. */ }
                         finally { dataPrefixSent.countDown(); }
                     } else {
-                        ex.sendResponseHeaders(status, bytes.length); ex.getResponseBody().write(bytes);
+                        ex.sendResponseHeaders(status, bytes.length);
+                        writeBody(() -> ex.getResponseBody().write(bytes), data && expectDataWriteAbort);
                     }
                 } catch (Throwable e) { failure.compareAndSet(null, e); ex.sendResponseHeaders(500, -1); }
                 finally { ex.close(); }
             }); http.start();
         }
+        @FunctionalInterface interface BodyWrite { void run() throws IOException; }
+        static void writeBody(BodyWrite body, boolean expectAbort) throws IOException {
+            try { body.run(); }
+            catch (IOException writeFailure) {
+                // Cancelling a rejected response may reset the socket before the
+                // server has sent the body. Do not hide other fixture failures.
+                if (!expectAbort) throw writeFailure;
+            }
+        }
         URI origin() { return URI.create("https://127.0.0.1:" + http.getAddress().getPort() + "/"); }
-        public void close() { http.stop(0); threads.shutdownNow(); if (failure.get() != null) throw new AssertionError(failure.get()); }
+        public void close() {
+            http.stop(0); releaseData.countDown(); threads.shutdown();
+            try {
+                if (!threads.awaitTermination(5, TimeUnit.SECONDS)) {
+                    threads.shutdownNow();
+                    throw new AssertionError("HTTPS fixture handlers did not terminate");
+                }
+            } catch (InterruptedException interrupted) {
+                threads.shutdownNow(); Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
+            // Inspect failures only after every handler has had a chance to report them.
+            if (failure.get() != null) throw new AssertionError(failure.get());
+        }
     }
 }
