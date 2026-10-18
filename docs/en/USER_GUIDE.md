@@ -722,7 +722,7 @@ The Export tab provides a dedicated panel with all available export formats orga
 
 This earlier overview shows the general export groups. See [Configure a decision report](#configurable-decision-report) below for the current decision-report controls and new illustrations.
 
-The [scenario reference workflow](../testing/scenario-acceptance.md) explains Copilot and Workbench controls using a sourced flood-information requirement and describes the corresponding export QA (German guide).
+The [scenario reference workflow](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) explains Copilot and Workbench controls using a sourced flood-information requirement and describes the corresponding export QA (German guide).
 
 > **Support boundary:** Browser/SVG/vector-PDF views are human-readable views of the selected result. Mermaid and JSON are special-purpose projections. ArchiMate 3.1 and Visio 2012 downloads are experimental bounded subsets; named-tool interoperability and Microsoft Visio desktop open/edit/save/reopen behavior are not certified. These controls do not by themselves prove equivalence with a persisted snapshot; use an explicitly snapshot-bound Architecture Workbench endpoint for that authority. See the [Architecture export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary), [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966), and [#967](https://github.com/carstenartur/Taxonomy/issues/967).
 
@@ -889,7 +889,7 @@ The same dialog is available on narrow screens. Common choices appear first; ope
 
 If a download fails, your settings remain in the open dialog. Read the message, adjust the page layout if needed and click **Download** again. If the saved scope could not be loaded, use **Retry loading**. **Cancel** or Escape closes the dialog while no download is running.
 
-See the [export contracts and verification evidence](../testing/contextual-exports.md) for source handling, format limits and screenshot provenance.
+See the [export contracts and verification evidence](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/contextual-exports.md) for source handling, format limits and screenshot provenance.
 
 ---
 
@@ -2055,8 +2055,8 @@ A subsequent offer preserves the adopted decisions and their evidence.
 Download a selected saved revision or adoption receipt as JSON, Markdown, HTML or
 Word. Downloads exclude unsaved typing and retain the historical source, decisions
 and architecture. Save a separate project checkpoint when you want portable Git
-history. See the [complete workflow](../features/requirement-reformulation.md) and
-[verification boundaries](../testing/requirement-reformulation.md).
+history. See the [complete workflow](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/requirement-reformulation.md) and
+[verification boundaries](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/requirement-reformulation.md).
 
 ### Distributed continuation
 

@@ -6,7 +6,7 @@ The numbers below are worked examples, not measured results from a current model
 run. Retained tree/impact-map images illustrate older example states and may show
 different scores or controls. The in-page impact map is separate from the immutable
 snapshot workbench. Use the [user guide](USER_GUIDE.md) for current navigation and
-[scenario acceptance](../testing/scenario-acceptance.md) for version-bound evidence.
+[scenario acceptance](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) for version-bound evidence.
 
 ---
 

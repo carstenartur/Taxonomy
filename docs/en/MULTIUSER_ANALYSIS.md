@@ -96,5 +96,5 @@ pods would multiply capacity and may route live status to the wrong instance.
 A shared database alone does not turn these limits into cluster-wide limits.
 The profile documents this boundary; it does not detect or prohibit extra pods.
 
-See [verification evidence](../testing/multiuser-analysis-admission.md) and
+See [verification evidence](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/multiuser-analysis-admission.md) and
 [existing portfolio operations](PROJECT_PORTFOLIO_OPERATIONS.md).

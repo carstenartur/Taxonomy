@@ -728,7 +728,7 @@ Der Export-Tab bietet ein dediziertes Panel mit allen verfügbaren Exportformate
 
 Diese ältere Übersicht zeigt die allgemeinen Exportgruppen. Die aktuelle Auswahl für Entscheidungsberichte ist unten unter [Entscheidungsbericht konfigurieren](#configurable-decision-report) mit neuen Abbildungen beschrieben.
 
-Der [Referenzablauf](../testing/scenario-acceptance.md) erklärt die Copilot- und Workbench-Bedienelemente an einer nachvollziehbaren Hochwasseranforderung und beschreibt die zugehörige Export-QA.
+Der [Referenzablauf](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) erklärt die Copilot- und Workbench-Bedienelemente an einer nachvollziehbaren Hochwasseranforderung und beschreibt die zugehörige Export-QA.
 
 > **Unterstützungsgrenze:** Browser-/SVG-/Vektor-PDF-Ansichten sind menschenlesbare Ansichten des ausgewählten Ergebnisses. Mermaid und JSON sind zweckgebundene Projektionen. ArchiMate-3.1- und Visio-2012-Downloads sind experimentelle begrenzte Teilmengen; Interoperabilität mit benannten Drittwerkzeugen sowie Öffnen/Bearbeiten/Speichern/erneutes Öffnen in Microsoft Visio Desktop sind nicht zertifiziert. Diese Bedienelemente belegen allein keine Gleichheit mit einem persistierten Snapshot; dafür ist ein ausdrücklich Snapshot-gebundener Architektur-Workbench-Endpunkt zu verwenden. Siehe die [Unterstützungsgrenze der Architekturexporte](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) sowie [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966) und [#967](https://github.com/carstenartur/Taxonomy/issues/967).
 
@@ -896,7 +896,7 @@ Auf einem schmalen Bildschirm bleibt derselbe Dialog verfügbar. Die häufig ben
 
 Schlägt ein Download fehl, bleiben Ihre Einstellungen im geöffneten Dialog erhalten. Lesen Sie den Hinweis, passen Sie gegebenenfalls das Seitenformat an und wählen Sie erneut **Herunterladen**. Wenn der gespeicherte Umfang nicht geladen werden konnte, verwenden Sie **Erneut laden**. **Abbrechen** oder die Escape-Taste schließen den Dialog, solange kein Download läuft.
 
-Weitere Einzelheiten zu Quellen, Formatgrenzen und Screenshot-Herkunft stehen in den [Exportverträgen und Prüfnachweisen](../testing/contextual-exports.md).
+Weitere Einzelheiten zu Quellen, Formatgrenzen und Screenshot-Herkunft stehen in den [Exportverträgen und Prüfnachweisen](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/contextual-exports.md).
 
 ---
 
@@ -2065,8 +2065,8 @@ Entscheidungen samt Belegen.
 Laden Sie eine gespeicherte Revision oder einen Übernahmebeleg als JSON, Markdown,
 HTML oder Word herunter. Ungespeicherte Eingaben sind nicht enthalten; historische
 Quelle, Entscheidungen und Architektur bleiben erhalten. Erstellen Sie für portable
-Git-Historie einen eigenen Projekt-Checkpoint. Weitere Details: [Ablauf](../features/requirement-reformulation.md)
-und [Prüfgrenzen](../testing/requirement-reformulation.md).
+Git-Historie einen eigenen Projekt-Checkpoint. Weitere Details: [Ablauf](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/requirement-reformulation.md)
+und [Prüfgrenzen](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/requirement-reformulation.md).
 
 ### Verteilte Fortsetzung
 

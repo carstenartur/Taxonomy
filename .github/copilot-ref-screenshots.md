@@ -91,12 +91,12 @@ A current test-owner path is a reproduction recipe, not proof of an older PNG's
 source revision. Without matching capture metadata, describe the image as an
 illustration and leave its exact source version unverified.
 
-The older `73`–`77-civilian-*.png` names are historical, not outputs of the current
-scenario owner. Their retained bytes do not match the hashes in
-`docs/qa/civilian-acceptance-evidence.json`; that manifest cannot currently establish
-their provenance. Recover the matching source artifacts or remove unsupported
-image attribution before citing that run. Do not replace manifest hashes merely
-to make the retained images appear verified.
+The five images listed in the [historical screenshot appendix](../docs/qa/scenario-screenshots-history.md)
+are not outputs of the current scenario owner. Their retained bytes do not match
+the hashes in the [historical evidence manifest](../docs/qa/civilian-acceptance-evidence.json);
+that manifest cannot currently establish their provenance. Recover the matching
+source artifacts or remove unsupported image attribution before citing that run.
+Do not replace manifest hashes merely to make the retained images appear verified.
 
 ## Adding a new screenshot
 

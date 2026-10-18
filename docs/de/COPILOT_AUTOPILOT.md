@@ -42,7 +42,7 @@ Der normale Lesefluss zeigt sechs anbieterneutrale Kennzahlen, die wichtigsten A
 
 
 Der vorhandene `CompleteCopilotSessionIT` besitzt die Aufnahme des persistierten
-Endzustands; die [Screenshot-Anleitung](../../.github/copilot-ref-screenshots.md)
+Endzustands; die [Screenshot-Anleitung](https://github.com/carstenartur/Taxonomy/blob/main/.github/copilot-ref-screenshots.md)
 beschreibt die Aktualisierung. Frühere Bilder mit getrennten Word-/HTML-/JSON-Buttons
 werden nicht mehr als aktuelle Bedienungsanleitung verwendet. Das Ergebnis öffnet
 jetzt den gemeinsamen Dialog für den Entscheidungsbericht.

@@ -43,7 +43,7 @@ After a full analysis reaches an authoritative terminal state, Taxonomy reloads 
 The normal reading flow presents six provider-neutral indicators, the highest-priority architecture gaps, detected patterns and recommendation reasoning. Complete technical payloads remain available in the collapsed diagnostics section and the JSON report instead of being dumped into the result page.
 
 
-The existing `CompleteCopilotSessionIT` owns complete-result screenshot generation from the persisted terminal state. Use the [screenshot instructions](../../.github/copilot-ref-screenshots.md) when refreshing this evidence. Earlier images with separate Word/HTML/JSON buttons are no longer used as current UI guidance; the result now opens the shared decision-report dialog.
+The existing `CompleteCopilotSessionIT` owns complete-result screenshot generation from the persisted terminal state. Use the [screenshot instructions](https://github.com/carstenartur/Taxonomy/blob/main/.github/copilot-ref-screenshots.md) when refreshing this evidence. Earlier images with separate Word/HTML/JSON buttons are no longer used as current UI guidance; the result now opens the shared decision-report dialog.
 
 ## Architecture-node limits
 

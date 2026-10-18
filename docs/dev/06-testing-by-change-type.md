@@ -15,8 +15,8 @@ publication are documented separately in
 | Export model/serializer | `./mvnw test -pl taxonomy-export -am` | App endpoint tests when adapters change |
 | Spring service/controller | `./mvnw test -pl taxonomy-app -am` | `./mvnw verify` |
 | Architecture boundary | `./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` | `./mvnw -B verify -Pci` |
-| Document import | `./mvnw test -Pdocument-import-tests -pl taxonomy-app -am` | `./mvnw -B verify -Pci` |
-| ArchiMate import | `./mvnw test -Parchimate-import-tests -pl taxonomy-app -am` | `./mvnw -B verify -Pci` |
+| Document import | `./mvnw test -Pdocument-import-tests -pl taxonomy-app -am -Dsurefire.failIfNoSpecifiedTests=false` | `./mvnw -B verify -Pci` |
+| ArchiMate import | `./mvnw test -Parchimate-import-tests -pl taxonomy-app -am -Dsurefire.failIfNoSpecifiedTests=false` | `./mvnw -B verify -Pci` |
 | Persistence/core containers | `./mvnw -B verify -Pcore-integration` | `./mvnw -B verify -Pci` |
 | PostgreSQL mapping | `./mvnw -B verify -Pdatabase-postgres` | separate pull-request/tag/scheduled/manual database matrix |
 | SQL Server mapping | `./mvnw -B verify -Pdatabase-mssql` | separate pull-request/tag/scheduled/manual database matrix |
@@ -44,7 +44,7 @@ when reproducing that gate.
 
 The profile currently does not reproduce every required Actions check with
 only Java and Maven installed. The remaining runtime and lifecycle gaps are
-listed in [Maven Verification Authority](MAVEN_VERIFICATION.md#remaining-gaps-in-the-javamaven-only-requirement);
+listed in [Maven Verification Authority](MAVEN_VERIFICATION.md#remaining-gaps-in-the-javamaven-only-provisioning-requirement);
 a passing focused profile must not be reported as full CI parity.
 
 The module-extraction gate lives in `taxonomy-build`, downstream of

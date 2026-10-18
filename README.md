@@ -232,8 +232,8 @@ Focused profiles include:
 
 ```bash
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
-./mvnw verify -Pdocument-import-tests
-./mvnw verify -Parchimate-import-tests
+./mvnw verify -Pdocument-import-tests -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw verify -Parchimate-import-tests -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw verify -Pdatabase-postgres
 ./mvnw verify -Ponnx
 ./mvnw verify -Pui-tests

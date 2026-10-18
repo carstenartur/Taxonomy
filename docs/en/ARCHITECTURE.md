@@ -120,7 +120,7 @@ after worker or broker loss.
 
 See [durable execution](../dev/CLUSTER_ANALYSIS_EXECUTION.md),
 [Artemis operations](OPERATIONS_GUIDE.md#external-artemis-analysis-operations),
-[the Helm example](../../deploy/helm/taxonomy/values-artemis.yaml) and
+[the Helm example](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-artemis.yaml) and
 [remaining acceptance boundaries](../dev/JMS_API_ACCEPTANCE.md).
 
 ## Plugin Runtime
@@ -199,7 +199,7 @@ split does not invent separate services or promise additional completed extracti
 | Interoperability | Reviewed exchange, mappings, connector profiles, loss evidence, integration operations, and synchronization checkpoints. |
 | Application composition | HTTP workflows spanning contexts, authorization/scope resolution, source provenance, preferences, wiring, migrations, and packaging. |
 
-Exact package ownership is recorded in [the context map](../../.github/architecture-contexts.json).
+Exact package ownership is recorded in [the context map](https://github.com/carstenartur/Taxonomy/blob/main/.github/architecture-contexts.json).
 Historical dependency counts are evidence about their named migration step, not current
 runtime measurements; see [the extraction history](../internal/MODULE_BOUNDARIES_HISTORY_EN.md).
 
@@ -353,7 +353,7 @@ DSL, workspace journal, and portfolio authorities rather than a second model sto
 or one Git commit per accepted edit. This does not certify unrestricted Enterprise
 Architect/Pro Cloud Server interoperability or unconditional remote publication.
 
-See [Framework import](FRAMEWORK_IMPORT.md) and [Sparx exchange](../features/sparx-integration.md).
+See [Framework import](FRAMEWORK_IMPORT.md) and [Sparx exchange](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/sparx-integration.md).
 The connector guide describes the supported version on this branch; proposed future
 profiles and native editor capabilities are not implied by this overview.
 
@@ -373,7 +373,7 @@ a pending PR's feature claims or turn a closed issue into compatibility evidence
 
 ## CI / CD
 
-Use the checked-in Maven Wrapper from the repository root. The [README](../../README.md#build-and-verification)
+Use the checked-in Maven Wrapper from the repository root. The [README](https://github.com/carstenartur/Taxonomy/blob/main/README.md#build-and-verification)
 and [Maven verification guide](../dev/MAVEN_VERIFICATION.md) describe the supported lanes.
 
 `taxonomy-build` owns whole-reactor architecture enforcement. The existing gate checks
@@ -421,5 +421,5 @@ than reclassifying model additions as original external requirements. Prompt enc
 v6 includes inherited question discoveries/origins in the request-local context dictionary;
 this removes repeated serialization without dropping unique evidence or raising limits.
 
-The [acceptance contract](../testing/requirement-reformulation.md) separates deterministic
+The [acceptance contract](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/requirement-reformulation.md) separates deterministic
 application/browser/renderer evidence from opt-in real-provider and human quality review.

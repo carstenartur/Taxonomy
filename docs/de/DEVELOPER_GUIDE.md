@@ -93,7 +93,7 @@ java -Dloader.path=taxonomy-app/target/features -jar taxonomy-app/target/taxonom
 ```
 
 Öffnen Sie <http://localhost:8080>. Die Kataloganzeige benötigt keinen LLM-Schlüssel.
-Die erste lokale Administratoranmeldung beschreibt die [README](../../README.md#quick-start).
+Die erste lokale Administratoranmeldung beschreibt die [README](https://github.com/carstenartur/Taxonomy/blob/main/README.md#quick-start).
 
 ---
 
@@ -531,7 +531,7 @@ aktuellen `exportShowcase()`-Ausgabe abweicht, sodass das Diagramm stets korrekt
 ## Screenshot-Konventionen
 
 Zuständigkeiten, aktuelle Selektoren, Voraussetzungen und Herkunftsregeln stehen in
-der [Screenshot-Referenz](../../.github/copilot-ref-screenshots.md). Verwenden Sie
+der [Screenshot-Referenz](https://github.com/carstenartur/Taxonomy/blob/main/.github/copilot-ref-screenshots.md). Verwenden Sie
 das zuständige Szenario statt eines zweiten nachgebauten Browserzustands:
 `ScreenshotGeneratorIT` besitzt allgemeine UI-Bilder, `ArchitectureWorkbenchUiIT`
 die gespeicherte Workbench und `CompleteCopilotSessionIT` das vollständige Copilot-Ergebnis.

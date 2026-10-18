@@ -7,7 +7,7 @@ eines aktuellen Modelllaufs. Beibehaltene Baum-/Impact-Bilder zeigen ältere
 Beispielzustände und können andere Bewertungen oder Bedienelemente enthalten.
 Die eingebettete Impact-Ansicht ist von der Workbench eines unveränderlichen
 Snapshots zu unterscheiden. Aktuelle Navigation steht im [Benutzerhandbuch](USER_GUIDE.md),
-versionsgebundene Nachweise in der [Szenario-Abnahme](../testing/scenario-acceptance.md).
+versionsgebundene Nachweise in der [Szenario-Abnahme](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md).
 
 ---
 

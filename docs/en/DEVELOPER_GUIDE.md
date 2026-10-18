@@ -93,7 +93,7 @@ java -Dloader.path=taxonomy-app/target/features -jar taxonomy-app/target/taxonom
 ```
 
 Open <http://localhost:8080>. Catalogue browsing requires no LLM key.
-Follow the [README bootstrap instructions](../../README.md#quick-start) for the
+Follow the [README bootstrap instructions](https://github.com/carstenartur/Taxonomy/blob/main/README.md#quick-start) for the
 local administrator's initial sign-in.
 
 ---
@@ -525,7 +525,7 @@ current `exportShowcase()` output, ensuring the diagram stays accurate.
 ## Screenshot Conventions
 
 Screenshot ownership, current selectors, capture prerequisites and provenance rules
-are maintained in [the screenshot reference](../../.github/copilot-ref-screenshots.md).
+are maintained in [the screenshot reference](https://github.com/carstenartur/Taxonomy/blob/main/.github/copilot-ref-screenshots.md).
 Use the owning scenario instead of constructing a second browser state:
 `ScreenshotGeneratorIT` covers general UI, `ArchitectureWorkbenchUiIT` the persisted
 workbench, and `CompleteCopilotSessionIT` the complete Copilot result.

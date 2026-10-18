@@ -103,7 +103,7 @@ dialog, update both the JS module and the template.
 
 ```bash
 # Existing bounded parser/controller/limits profile, including needed siblings
-./mvnw -pl taxonomy-app -am test -Pdocument-import-tests
+./mvnw -pl taxonomy-app -am test -Pdocument-import-tests -Dsurefire.failIfNoSpecifiedTests=false
 
 # Broader provenance and composition checks when mapping or persistence changes
 ./mvnw -pl taxonomy-app -am test

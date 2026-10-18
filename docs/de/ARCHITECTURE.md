@@ -122,7 +122,7 @@ dass ein entfernter Anbieter nach Worker- oder Brokerverlust seine Berechnung be
 
 Siehe [dauerhafte Ausführung](../dev/CLUSTER_ANALYSIS_EXECUTION.md),
 [Artemis-Betrieb](OPERATIONS_GUIDE.md#betrieb-mit-externem-artemis-broker),
-[Helm-Beispiel](../../deploy/helm/taxonomy/values-artemis.yaml) und
+[Helm-Beispiel](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-artemis.yaml) und
 [offene Abnahmegrenzen](../dev/JMS_API_ACCEPTANCE.md).
 
 ## Plugin-Laufzeit
@@ -203,7 +203,7 @@ Die Aufteilung erfindet keine separaten Dienste oder zusätzlich abgeschlossenen
 | Interoperabilität | Geprüfter Austausch, Zuordnungen, Konnektorprofile, Verlustnachweise, Integrationsoperationen und Synchronisationscheckpoints. |
 | Anwendungskomposition | Kontextübergreifende HTTP-Abläufe, Berechtigungs-/Kontextauflösung, Quellenherkunft, Einstellungen, Verdrahtung, Migrationen und Packaging. |
 
-Die genaue Package-Zuordnung steht in der [Kontextdatei](../../.github/architecture-contexts.json).
+Die genaue Package-Zuordnung steht in der [Kontextdatei](https://github.com/carstenartur/Taxonomy/blob/main/.github/architecture-contexts.json).
 Historische Abhängigkeitszahlen belegen ihren jeweiligen Umbauzustand, keine aktuelle
 Laufzeitmessung; siehe [Extraktionshistorie](../internal/MODULE_BOUNDARIES_HISTORY_DE.md).
 
@@ -360,7 +360,7 @@ zweiten Modellspeichers oder eines Git-Commits pro übernommenem Edit. Das zerti
 weder uneingeschränkte Enterprise-Architect-/Pro-Cloud-Server-Kompatibilität noch
 bedingungslose entfernte Veröffentlichung.
 
-Siehe [Framework-Import](FRAMEWORK_IMPORT.md) und [Sparx-Austausch](../features/sparx-integration-de.md).
+Siehe [Framework-Import](FRAMEWORK_IMPORT.md) und [Sparx-Austausch](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/sparx-integration-de.md).
 Der Konnektorleitfaden beschreibt die unterstützte Version dieses Branches; zukünftige
 Profile oder native Editorfähigkeiten sind damit nicht vorweggenommen.
 
@@ -382,7 +382,7 @@ Kompatibilitätsnachweis.
 ## CI / CD
 
 Der eingecheckte Maven Wrapper wird vom Repository-Root aus verwendet. Unterstützte
-Prüfläufe stehen in der [README](../../README.md#build-and-verification) und im
+Prüfläufe stehen in der [README](https://github.com/carstenartur/Taxonomy/blob/main/README.md#build-and-verification) und im
 [Maven-Verifikationsleitfaden](../dev/MAVEN_VERIFICATION.md).
 
 `taxonomy-build` besitzt die Reactor-weiten Architekturprüfungen. Das bestehende Gate
@@ -431,6 +431,6 @@ externen Anforderungen. Promptkodierung v6 nimmt geerbte Frageentdeckungen und i
 Ursprünge in das lokale Kontextwörterbuch des Aufrufs auf. Eindeutige Belege bleiben
 erhalten; wiederholte Serialisierung entfällt, die Limits steigen nicht.
 
-Der [Abnahmevertrag](../testing/requirement-reformulation.md) trennt deterministische
+Der [Abnahmevertrag](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/requirement-reformulation.md) trennt deterministische
 Anwendungs-, Browser- und Renderingbelege von echtem Modellvergleich und menschlicher
 Qualitätsprüfung.

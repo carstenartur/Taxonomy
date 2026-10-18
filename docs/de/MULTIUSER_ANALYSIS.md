@@ -93,5 +93,5 @@ diese Grenze; es erkennt oder verbietet zusätzliche Pods nicht automatisch.
 Ein Token-pro-Minute-/Tageskontingent wird hier ebenfalls nicht ergänzt; bestehende
 Prompt-Grenzen und die Token-Kontingente des Providers bleiben maßgeblich.
 
-[Prüfnachweis](../testing/multiuser-analysis-admission.md) ·
+[Prüfnachweis](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/multiuser-analysis-admission.md) ·
 [Portfolio-Betrieb](PROJECT_PORTFOLIO_OPERATIONS.md)
