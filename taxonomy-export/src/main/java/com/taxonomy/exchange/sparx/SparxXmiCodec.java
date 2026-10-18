@@ -8,7 +8,8 @@ public final class SparxXmiCodec {
     public SparxXmiCodec() { this("1"); }
     public SparxXmiCodec(String version) { profileVersion = SparxMappingProfile.version(version); }
     public ExchangeDocument read(byte[] content, String version, boolean completeScope) {
-        return profileVersion.equals("2") ? new SparxXmiV2Reader().read(content, version, completeScope) : new SparxXmiReader().read(content, version, completeScope);
+        return profileVersion.equals("1") ? new SparxXmiReader().read(content, version, completeScope)
+                : new SparxXmiV2Reader(profileVersion).read(content, version, completeScope);
     }
     public byte[] write(ExchangeDocument document) { return new SparxXmiWriter(profileVersion).write(document); }
 }

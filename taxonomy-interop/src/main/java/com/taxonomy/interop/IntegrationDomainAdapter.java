@@ -9,9 +9,11 @@ import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.exchange.ArchiMateExchangeCodec;
+import com.taxonomy.exchange.ExchangeXml;
 import com.taxonomy.exchange.ReqifExchangeCodec;
 import com.taxonomy.exchange.OslcRdf;
 import com.taxonomy.exchange.sparx.SparxMappingProfile;
+import com.taxonomy.exchange.sparx.SparxRelationProfileV3;
 import com.taxonomy.interop.sparx.SparxSnapshots;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore.Connection;
@@ -132,6 +134,7 @@ public class IntegrationDomainAdapter {
                             && !Set.of("title", "description").contains(property.key())) extensions.put("taxonomy:" + property.key(), property.value());
                 }
                 Map<String, String> attributes = new TreeMap<>(baseline.attributes());
+                if (sparxV3(connection) && baseline.kind() == ArtifactKind.ELEMENT) reconcileEditableElementTags(attributes, extensions);
                 if (SparxSnapshots.isSparx(connection.connectorId()) && baseline.kind() == ArtifactKind.ELEMENT
                         && !Objects.equals(extensions.get("canonicalType"), baseline.extensions().get("canonicalType")))
                     attributes.put("tag:taxonomy.elementType", block.getHeaderTokens().get(2));
@@ -207,12 +210,21 @@ public class IntegrationDomainAdapter {
     /** Capture the complete selected project/model, overlaying current canonical values on accepted exchange evidence. */
     public ExchangeDocument exportDocument(Connection connection, Snapshot current, WorkspaceDocument document,
                                            List<Identity> mappings, ExchangeDocument previous) {
-        ExchangeDocument template = previous == null ? new ExchangeDocument(connection.connectorId(), connection.profileVersion(), null, true, "",
-                List.of(), List.of(), List.of(), Map.of("identifier", SparxSnapshots.isSparx(connection.connectorId())
-                        ? externalId(connection, "model") : "taxonomy-" + connection.id(), "title", connection.displayName()), List.of()) : previous;
-        Map<String, Artifact> items = new TreeMap<>(current.items());
-        List<MappingLoss> losses = new ArrayList<>(template.losses()); losses.addAll(current.losses());
         Map<String, BlockAst> planningBlocks = ArchitectureSemanticPatch.index(document.dsl());
+        List<MappingLoss> evidenceLosses = new ArrayList<>();
+        ExchangeDocument template;
+        if (previous == null) {
+            template = new ExchangeDocument(connection.connectorId(), connection.profileVersion(), null, true, "",
+                    List.of(), List.of(), List.of(), exportMetadata(connection, planningBlocks, current, null, evidenceLosses), List.of());
+        } else if (sparxV3(connection)) {
+            // A checkpoint does not prove that later native additions share its requirement or snapshot.
+            // Reconcile every currently referenced origin, retaining prior model values only while uncontradicted.
+            template = new ExchangeDocument(previous.profile(), previous.profileVersion(), previous.externalVersion(), previous.completeScope(), previous.source(),
+                    previous.artifacts(), previous.relations(), previous.placements(), exportMetadata(connection, planningBlocks, current, previous, evidenceLosses),
+                    previous.losses().stream().filter(loss -> !"EXCHANGE_MODEL_EVIDENCE_CONFLICT".equals(loss.code())).toList());
+        } else template = previous;
+        Map<String, Artifact> items = new TreeMap<>(current.items());
+        List<MappingLoss> losses = new ArrayList<>(template.losses()); losses.addAll(current.losses()); losses.addAll(evidenceLosses);
         PlanningExchangeBridge planning = ReqifExchangeCodec.PROFILE.equals(connection.connectorId())
                 && (hasPlanning(planningBlocks) || current.items().values().stream().anyMatch(a -> a.extensions().containsKey(PlanningEnvelope.EXTENSION)))
                 ? new PlanningExchangeBridge(document.dsl()) : null;
@@ -256,10 +268,16 @@ public class IntegrationDomainAdapter {
                 String id = block.getHeaderTokens().getFirst(), canonical = block.getHeaderTokens().get(2);
                 if (ids.containsKey(id)) continue;
                 String external = externalId(connection, "export-element:" + id); ids.put(id, external);
-                Map<String, String> extensions = new TreeMap<>(); extensions.put("canonicalType", canonical);
+                Artifact evidence = retainedArtifact(connection, block);
+                Map<String, String> extensions = new TreeMap<>(evidence == null ? Map.of() : evidence.extensions()); extensions.put("canonicalType", canonical);
+                if (extensions.containsKey("taxonomy:ElementType")) extensions.put("taxonomy:ElementType", canonical);
+                ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(p -> !Set.of("title", "description").contains(p))
+                        .forEach(p -> extensions.remove("taxonomy:" + p));
                 for (var property : block.getProperties()) if (ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property.key()) && !Set.of("title", "description").contains(property.key()))
                     extensions.put("taxonomy:" + property.key(), property.value());
-                Map<String, String> attributes = SparxSnapshots.isSparx(connection.connectorId()) ? Map.of("tag:taxonomy.elementType", canonical) : Map.of();
+                Map<String, String> attributes = new TreeMap<>(evidence == null ? Map.of() : evidence.attributes());
+                if (sparxV3(connection)) reconcileEditableElementTags(attributes, extensions);
+                if (SparxSnapshots.isSparx(connection.connectorId())) attributes.put("tag:taxonomy.elementType", canonical);
                 Artifact artifact = new Artifact(external, ArtifactKind.ELEMENT, elementType(connection, canonical), value(block.property("title")), value(block.property("description")), attributes, extensions);
                 items.put(ExchangeItems.key(artifact), artifact);
             }
@@ -268,14 +286,22 @@ public class IntegrationDomainAdapter {
                 String key = String.join(" ", block.getHeaderTokens()); if (known.contains(key)) continue;
                 String source = ids.get(block.getHeaderTokens().get(0)), target = ids.get(block.getHeaderTokens().get(2)), type = block.getHeaderTokens().get(1);
                 if (source == null || target == null) throw new IntegrationProblem("RELATION_MAPPING_REQUIRED", 422, "Canonical relation has an unmapped endpoint");
-                Map<String, String> extension = new TreeMap<>(Map.of("source", source, "target", target, "canonicalType", type, "taxonomy:status", value(block.property("status"))));
+                Artifact evidence = retainedArtifact(connection, block);
+                Map<String, String> extension = new TreeMap<>(evidence == null ? Map.of() : evidence.extensions());
+                // Native endpoints already express the relation meaning. A retained reverse connector uses the opposite display order.
+                if (sparxV3(connection) && "Destination -> Source".equals(extension.get("direction"))) {
+                    String swap = source; source = target; target = swap;
+                }
+                extension.putAll(Map.of("source", source, "target", target, "canonicalType", type, "taxonomy:status", value(block.property("status"))));
+                if (extension.containsKey("taxonomy:RelationType")) extension.put("taxonomy:RelationType", type);
                 if (type.equals("PRODUCES")) extension.put("accessType", "Write");
-                String mappedType = SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.eaRelation(type) : archimateRelation(type);
+                String mappedType = SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.eaRelation(type, connection.profileVersion()) : archimateRelation(type);
                 String externalId = externalId(connection, "export-relation:" + key);
-                if (SparxSnapshots.isSparx(connection.connectorId())) extension.put("direction", type.equals("RELATED_TO") ? "Unspecified" : "Source -> Destination");
+                if (SparxSnapshots.isSparx(connection.connectorId())) extension.putIfAbsent("direction", type.equals("RELATED_TO") ? "Unspecified" : "Source -> Destination");
                 if (mappedType == null) losses.add(new MappingLoss(externalId, "type", "UNSUPPORTED_RELATION_TYPE", LossDisposition.UNSUPPORTED,
                         "Canonical " + type + " has no declared exchange mapping; reject this relation or explicitly select an export mapping"));
-                Map<String, String> attributes = SparxSnapshots.isSparx(connection.connectorId()) ? Map.of("tag:taxonomy.relationType", type) : Map.of();
+                Map<String, String> attributes = new TreeMap<>(evidence == null ? Map.of() : evidence.attributes());
+                if (SparxSnapshots.isSparx(connection.connectorId())) attributes.put("tag:taxonomy.relationType", type);
                 Artifact artifact = new Artifact(externalId, ArtifactKind.RELATION, mappedType == null ? type : mappedType, "", "", attributes, extension);
                 items.put(ExchangeItems.key(artifact), artifact);
             }
@@ -340,6 +366,15 @@ public class IntegrationDomainAdapter {
             });
         } while (removed);
         pruneConnections(items, losses);
+        if (sparxV3(connection)) {
+            // expand gives a retained METADATA item precedence over its template. Use the
+            // reconciled values there as well, without changing the accepted mapping itself.
+            Map<String, String> metadata = template.metadata();
+            reconcileEditableElementFeatures(items);
+            items.replaceAll((key, artifact) -> artifact.kind() == ArtifactKind.METADATA
+                    ? new Artifact(artifact.id(), artifact.kind(), artifact.type(), artifact.title(), artifact.text(), metadata, artifact.extensions())
+                    : sparxV3Artifact(artifact));
+        }
         ExchangeDocument result = ExchangeItems.expand(template, items);
         if (SparxSnapshots.isSparx(connection.connectorId())) {
             // A native addition has a stable root occurrence; imported parent/occurrence identity is retained.
@@ -355,6 +390,148 @@ public class IntegrationDomainAdapter {
                 result.relations(), result.placements(), result.metadata(), losses);
         // Freeze the identities even when unsupported features defer serialization until review.
         return SparxSnapshots.isSparx(connection.connectorId()) ? SparxSnapshots.identify(result, connection.id()) : result;
+    }
+
+    /** A new connection has no mapping baseline, but accepted import evidence belongs to the native objects. */
+    private Artifact retainedArtifact(Connection connection, BlockAst block) {
+        if (!sparxV3(connection) || block.property("x-exchange-artifact") == null) return null;
+        Artifact evidence = json.read(block.property("x-exchange-artifact"), Artifact.class);
+        if (!block.getKind().equalsIgnoreCase(evidence.kind().name()))
+            throw new IntegrationProblem("EXCHANGE_EVIDENCE_KIND", 422, "Stored exchange evidence has a different native object kind");
+        return evidence;
+    }
+
+    private Map<String, String> exportMetadata(Connection connection, Map<String, BlockAst> blocks, Snapshot current,
+                                              ExchangeDocument previous, List<MappingLoss> losses) {
+        Map<String, String> metadata = new TreeMap<>(previous == null ? Map.of() : previous.metadata());
+        if (sparxV3(connection)) {
+            // File delivery already binds model metadata before an external checkpoint exists.
+            // Retain those reviewed opaque values, then reconcile current source evidence once.
+            Artifact retainedMetadata = current.items().get("METADATA:package");
+            if (retainedMetadata != null) metadata.putAll(retainedMetadata.attributes());
+            // Read only evidence referenced by exported native objects; unrelated imports cannot supply their requirement text.
+            Set<String> sources = new java.util.TreeSet<>(), conflicts = new java.util.TreeSet<>();
+            Map<String, String> currentValues = new TreeMap<>();
+            blocks.values().stream().filter(b -> Set.of("element", "relation").contains(b.getKind()) && b.property("x-exchange-artifact") != null)
+                    .map(b -> b.property("x-exchange-connection")).filter(Objects::nonNull).forEach(sources::add);
+            for (String source : sources) {
+                BlockAst block = blocks.get("exchange:integration-" + source); if (block == null || block.property("source") == null) continue;
+                ExchangeDocument evidence = json.read(block.property("source"), ExchangeDocument.class);
+                Map<String, String> values = new TreeMap<>(evidence.metadata());
+                if (ArchiMateExchangeCodec.PROFILE.equals(evidence.profile())) values.putAll(archimateModelProperties(evidence.metadata()));
+                values.forEach((name, value) -> {
+                    if (Set.of("identifier", "title").contains(name) || conflicts.contains(name)) return;
+                    String retained = currentValues.putIfAbsent(name, value);
+                    if (retained != null && !retained.equals(value)) {
+                        currentValues.remove(name); conflicts.add(name);
+                        losses.add(new MappingLoss("integration-" + source, "metadata." + name, "EXCHANGE_MODEL_EVIDENCE_CONFLICT", LossDisposition.UNSUPPORTED,
+                                "Exported native objects refer to different accepted model values; no single requirement or snapshot is selected implicitly"));
+                    }
+                });
+            }
+            // A previous delivery cannot conflict with, or restore fields absent
+            // from, the current accepted requirement/snapshot evidence.
+            if (!sources.isEmpty()) metadata.keySet().removeIf(IntegrationDomainAdapter::sourceMetadata);
+            conflicts.stream().filter(IntegrationDomainAdapter::sourceMetadata).forEach(metadata::remove);
+            currentValues.forEach((name, value) -> {
+                if (sourceMetadata(name)) metadata.put(name, value);
+                else metadata.putIfAbsent(name, value); // The outgoing connection owns its opaque reviewed metadata.
+            });
+        }
+        metadata.putIfAbsent("identifier", SparxSnapshots.isSparx(connection.connectorId()) ? externalId(connection, "model") : "taxonomy-" + connection.id());
+        metadata.putIfAbsent("title", connection.displayName());
+        return metadata;
+    }
+
+    private static boolean sourceMetadata(String name) {
+        return name.toLowerCase(java.util.Locale.ROOT).startsWith("taxonomy.")
+                || Set.of("propertyDefinitions", "properties").contains(name);
+    }
+
+    private static Map<String, String> archimateModelProperties(Map<String, String> metadata) {
+        Map<String, String> names = new TreeMap<>(), values = new TreeMap<>();
+        if (metadata.containsKey("propertyDefinitions")) for (var definition : ExchangeXml.children(ExchangeXml.parse(metadata.get("propertyDefinitions").getBytes(StandardCharsets.UTF_8)).getDocumentElement()))
+            names.put(definition.getAttribute("identifier"), ExchangeXml.text(definition, "name"));
+        if (metadata.containsKey("properties")) for (var property : ExchangeXml.children(ExchangeXml.parse(metadata.get("properties").getBytes(StandardCharsets.UTF_8)).getDocumentElement())) {
+            String name = names.get(property.getAttribute("propertyDefinitionRef"));
+            if (name != null) values.put(name, ExchangeXml.text(property, "value"));
+        }
+        return values;
+    }
+
+    private static boolean editableElementScalar(String property) {
+        return ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property) && !Set.of("title", "description").contains(property);
+    }
+
+    private static void reconcileEditableElementTags(Map<String, String> attributes, Map<String, String> extensions) {
+        // Only a current native element can clear or replace an effective tag; opaque source evidence stays intact.
+        ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(IntegrationDomainAdapter::editableElementScalar).forEach(property -> {
+            String tag = "tag:taxonomy." + property, extension = "taxonomy:" + property;
+            if (!extensions.containsKey(extension)) attributes.remove(tag);
+            else if (attributes.containsKey(tag)) attributes.put(tag, extensions.get(extension));
+        });
+    }
+
+    private static void reconcileEditableElementFeatures(Map<String, Artifact> items) {
+        Map<String, Artifact> elements = new HashMap<>();
+        items.values().stream().filter(a -> a.kind() == ArtifactKind.ELEMENT).forEach(a -> elements.put(a.id(), a));
+        var iterator = items.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            Artifact feature = entry.getValue();
+            if (feature.kind() != ArtifactKind.FEATURE || !"tagged-value".equals(feature.type())
+                    || !feature.title().startsWith("taxonomy.")) continue;
+            String property = feature.title().substring(9);
+            Artifact owner = elements.get(feature.extensions().get("owner"));
+            if (owner == null || !editableElementScalar(property)) continue;
+            String current = owner.extensions().get("taxonomy:" + property);
+            if (current == null) iterator.remove();
+            else entry.setValue(new Artifact(feature.id(), feature.kind(), feature.type(), feature.title(), current,
+                    feature.attributes(), feature.extensions()));
+        }
+    }
+
+    /** Overlay effective semantics while retaining complete original property/XML evidence and review metadata. */
+    static Artifact sparxV3Artifact(Artifact artifact) {
+        if (artifact.kind() != ArtifactKind.ELEMENT && artifact.kind() != ArtifactKind.RELATION) return artifact;
+        Map<String, String> attributes = new TreeMap<>(artifact.attributes()), extensions = new TreeMap<>(artifact.extensions());
+        extensions.forEach((key, name) -> {
+            if (key.startsWith("definition:") && (name.startsWith("taxonomy.") || name.startsWith("Taxonomy."))) {
+                String property = attributes.get(key.substring("definition:".length()));
+                // ArchiMate's original catalogue/diagram ID is distinct from Sparx's GUID identity tag.
+                // Editable scalar values come from the current native extensions, never from archived property XML.
+                if (property != null && !(artifact.kind() == ArtifactKind.ELEMENT && editableElementScalar(name.substring(9))))
+                    attributes.putIfAbsent("tag:taxonomy." + (name.substring(9).equals("id") ? "sourceId" : name.substring(9)),
+                        ExchangeXml.text(ExchangeXml.parse(property.getBytes(StandardCharsets.UTF_8)).getDocumentElement(), "value"));
+            }
+        });
+        extensions.forEach((key, value) -> { if (key.startsWith("taxonomy:") && !key.equals("taxonomy:id")) attributes.put("tag:taxonomy." + key.substring(9), value); });
+        if (extensions.containsKey("taxonomy:id")) {
+            attributes.put("tag:taxonomy.sourceId", extensions.remove("taxonomy:id"));
+        }
+        String canonical = extensions.get("canonicalType"), type = artifact.type(), text = artifact.text();
+        if (artifact.kind() == ArtifactKind.ELEMENT) {
+            attributes.put("tag:taxonomy.elementType", canonical);
+            String presence = attributes.get("tag:taxonomy.presenceReason");
+            if (presence != null && !presence.isBlank() && !text.contains(presence)) text += (text.isBlank() ? "" : "\n\n") + "Presence reason: " + presence;
+        } else {
+            type = SparxMappingProfile.eaRelation(canonical, "3");
+            String direction = extensions.getOrDefault("direction", "RELATED_TO".equals(canonical) ? "Unspecified" : "Source -> Destination");
+            extensions.put("direction", direction); extensions.put("stereotype", SparxRelationProfileV3.stereotype(canonical));
+            attributes.put("tag:taxonomy.mappingProfile", SparxMappingProfile.PROFILE + "@3");
+            attributes.put(SparxRelationProfileV3.TYPE_TAG, canonical); attributes.put(SparxRelationProfileV3.DIRECTION_TAG, direction);
+            attributes.put("name", canonical);
+            if (!attributes.containsKey("description") && extensions.containsKey("xml")) {
+                String description = ExchangeXml.text(ExchangeXml.parse(extensions.get("xml").getBytes(StandardCharsets.UTF_8)).getDocumentElement(), "documentation");
+                if (!description.isBlank()) attributes.put("description", description);
+            }
+            if (!attributes.containsKey("description") && !text.isBlank()) attributes.put("description", text);
+        }
+        return new Artifact(artifact.id(), artifact.kind(), type, artifact.title(), text, attributes, extensions);
+    }
+
+    private static boolean sparxV3(Connection connection) {
+        return SparxMappingProfile.PROFILE.equals(connection.connectorId()) && SparxRelationProfileV3.VERSION.equals(connection.profileVersion());
     }
 
     private static void synchronizeViews(Connection connection, Map<String, BlockAst> blocks, Map<String, String> elements,
@@ -580,7 +757,7 @@ public class IntegrationDomainAdapter {
     }
 
     public static boolean nativePackages(Connection connection) {
-        return SparxSnapshots.isSparx(connection.connectorId()) && "2".equals(connection.profileVersion());
+        return SparxSnapshots.isSparx(connection.connectorId()) && "2".equals(connection.profileVersion()) || sparxV3(connection);
     }
     public record RelationTarget(RelationProjection projection, String source, String target, String type) {
         public String businessIdentity() {

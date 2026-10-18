@@ -18,6 +18,11 @@ final class SparxSemanticExchangeAssembler {
     static ExchangeDocument assemble(String profile, String version, boolean complete, String source,
             Map<String,String> metadata, List<Resource> resources, List<Feature> features,
             List<Connector> connectors, List<MappingLoss> inputLosses) {
+        return assemble(profile, "2", version, complete, source, metadata, resources, features, connectors, inputLosses);
+    }
+    static ExchangeDocument assemble(String profile, String profileVersion, String version, boolean complete, String source,
+            Map<String,String> metadata, List<Resource> resources, List<Feature> features,
+            List<Connector> connectors, List<MappingLoss> inputLosses) {
         Map<String,Artifact> objects = new TreeMap<>();
         List<MappingLoss> losses = new ArrayList<>(inputLosses);
         for (Resource r : resources) {
@@ -67,10 +72,17 @@ final class SparxSemanticExchangeAssembler {
             if (!Set.of("Unspecified", "Source -> Destination", "Destination -> Source", "Bi-Directional").contains(direction))
                 throw ExchangeXml.invalid("SPARX_DIRECTION", "Unsupported connector direction");
             Map<String,String> extensions = new TreeMap<>(c.extensions());
+            if ("3".equals(profileVersion) && extensions.containsKey("direction"))
+                SparxRelationProfileV3.require(direction, extensions.get("direction"), "EA direction contradicts preserved evidence");
             extensions.put("direction", direction);
             String canonical = relationType(c.type());
             String declared = c.attributes().get("tag:taxonomy.relationType");
-            if (declared != null) {
+            if ("3".equals(profileVersion)) {
+                SparxRelationProfileV3.transport(declared);
+                if (extensions.containsKey("canonicalType")) SparxRelationProfileV3.require(declared, extensions.get("canonicalType"),
+                        "The canonical relation type contradicts its declaration");
+                canonical = declared;
+            } else if (declared != null) {
                 if (eaRelation(declared) == null) throw ExchangeXml.invalid("SPARX_RELATION_UNMAPPED", "Unsupported declared relation type");
                 canonical = declared;
             }
@@ -78,6 +90,7 @@ final class SparxSemanticExchangeAssembler {
             else losses.add(loss(id, "type", "SPARX_RELATION_UNMAPPED", LossDisposition.UNSUPPORTED));
             if (direction.equals("Bi-Directional")) losses.add(loss(id, "direction", "SPARX_DIRECTION_UNMAPPED", LossDisposition.UNSUPPORTED));
             Relation relation = new Relation(id, c.type(), from, to, c.attributes(), extensions);
+            if ("3".equals(profileVersion)) SparxRelationProfileV3.validate(relation);
             Relation previous = relations.putIfAbsent(id, relation);
             if (previous != null && !previous.equals(relation)) throw duplicate();
         }
@@ -101,8 +114,8 @@ final class SparxSemanticExchangeAssembler {
         if (objects.size() + relations.size() > ExchangeXml.MAX_ARTIFACTS) throw ExchangeXml.invalid("ITEM_LIMIT", "Sparx scope exceeds the item bound");
         SparxModelValidator.features(objects);
         Set<String> taxonomyIds = new HashSet<>();
-        for (Artifact a : objects.values()) SparxModelValidator.checkTags(a.attributes(), taxonomyIds, profile + "@2");
-        for (Relation r : relations.values()) SparxModelValidator.checkTags(r.attributes(), taxonomyIds, profile + "@2");
+        for (Artifact a : objects.values()) SparxModelValidator.checkTags(a.attributes(), taxonomyIds, profile + "@" + profileVersion);
+        for (Relation r : relations.values()) SparxModelValidator.checkTags(r.attributes(), taxonomyIds, profile + "@" + profileVersion);
         List<Placement> placements = new ArrayList<>();
         Map<String,Resource> roots = new TreeMap<>(); resources.forEach(r -> roots.put(guid(r.id()), r));
         Map<String,Integer> positions = new HashMap<>();
@@ -122,7 +135,7 @@ final class SparxSemanticExchangeAssembler {
             positions.merge(parent, 1, Integer::sum);
         }
         losses.sort(Comparator.comparing((MappingLoss l) -> Objects.toString(l.artifactId(), "")).thenComparing(MappingLoss::field).thenComparing(MappingLoss::code));
-        return new ExchangeDocument(profile, "2", version, complete, source, List.copyOf(objects.values()),
+        return new ExchangeDocument(profile, profileVersion, version, complete, source, List.copyOf(objects.values()),
                 List.copyOf(relations.values()), placements, metadata, losses);
     }
     private static String mappedType(String type, Map<String,String> attributes, Map<String,String> extensions) {

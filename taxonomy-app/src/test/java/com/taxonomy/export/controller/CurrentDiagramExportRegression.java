@@ -93,7 +93,8 @@ final class CurrentDiagramExportRegression {
             }
         }
         check(xmi != null, "Sparx XMI missing");
-        var decoded = new com.taxonomy.exchange.sparx.SparxXmiCodec().read(xmi, null, false);
+        var decoded = new com.taxonomy.exchange.sparx.SparxXmiCodec("3").read(xmi, null, false);
+        check(decoded.profileVersion().equals("3"), "Current Sparx handoff selects profile 3");
         check(decoded.artifacts().size() == 3 && decoded.relations().size() == 2, "Sparx membership changed");
         check(view.getIncludedElements().equals(nodes) && view.getIncludedRelationships().size() == 2, "Sparx export changed working view");
     }

@@ -25,9 +25,10 @@ public final class SparxModelValidator {
                             artifact.extensions().get("stereotype"), artifact.attributes().get("tag:taxonomy.elementType")))))
                 throw ExchangeXml.invalid("SPARX_ELEMENT_UNMAPPED", "Reject or explicitly remap unsupported element types before export");
             checkTags(artifact.attributes(), taxonomyIds, source.profile() + "@" + source.profileVersion());
+            if ("3".equals(source.profileVersion())) SparxRelationProfileV3.projectionTags(artifact.attributes(), artifact.extensions());
         }
-        if (source.artifacts().stream().anyMatch(a -> a.kind() == ArtifactKind.FEATURE) && !"2".equals(source.profileVersion()))
-            throw ExchangeXml.invalid("PROFILE_VERSION_CHANGED", "Features require Sparx version 2");
+        if (source.artifacts().stream().anyMatch(a -> a.kind() == ArtifactKind.FEATURE) && !Set.of("2", "3").contains(source.profileVersion()))
+            throw ExchangeXml.invalid("PROFILE_VERSION_CHANGED", "Features require Sparx version 2 or 3");
         features(objects);
         String modelId = guid(source.metadata().get("identifier"));
         if (objects.containsKey(modelId)) throw duplicate();
@@ -36,7 +37,8 @@ public final class SparxModelValidator {
             if (!allIds.add(guid(relation.id()))) throw duplicate();
             if (!objects.containsKey(relation.source()) || !objects.containsKey(relation.target()))
                 throw ExchangeXml.invalid("SPARX_ENDPOINT_REQUIRED", "A reviewed connector endpoint is missing");
-            if (relationType(relation.type()) == null
+            if ("3".equals(source.profileVersion())) SparxRelationProfileV3.validate(relation);
+            else if (relationType(relation.type()) == null
                     || !relationType(relation.type()).equals(relation.extensions().get("canonicalType")))
                 throw ExchangeXml.invalid("SPARX_RELATION_UNMAPPED", "Reject or remap unsupported connectors before export");
             checkTags(relation.attributes(), taxonomyIds, source.profile() + "@" + source.profileVersion());

@@ -78,6 +78,12 @@ class ArchitectureArchiMateExchangeAcceptanceTest {
         assertEquals(ArchiMateProperty.text("repository"), imported.properties().get("taxonomy.repositoryId"));
         assertEquals(ArchiMateProperty.text(artifact.canonicalGraphSha256()), imported.properties().get("taxonomy.canonicalGraphSha256"));
         assertEquals(ArchiMateProperty.text("Human rationale"), imported.elements().getFirst().properties().get("taxonomy.decisionRationale"));
+        assertEquals(ArchiMateProperty.text(projection.requirementText()), imported.properties().get("taxonomy.requirementText"));
+        assertEquals(ArchiMateProperty.text(sha256(projection.requirementText().getBytes(StandardCharsets.UTF_8))),
+                imported.properties().get("taxonomy.requirementSha256"));
+        assertEquals(ArchiMateProperty.text("Scoped subscriber protection contribution"),
+                imported.elements().getFirst().properties().get("taxonomy.presenceReason"));
+        assertTrue(imported.losses().stream().noneMatch(loss -> Set.of("requirementText", "presenceReason").contains(loss.field())));
         String manifest = new String(files.get("manifest.json"), StandardCharsets.UTF_8);
         String xml = new String(files.get("model.archimate.xml"), StandardCharsets.UTF_8);
         var json = tools.jackson.databind.json.JsonMapper.builder().build().readTree(manifest);
@@ -98,9 +104,9 @@ class ArchitectureArchiMateExchangeAcceptanceTest {
                 new DiagramNode("CR", "Duplicate name", "Core Services", .87654, false, 2)),
                 List.of(new DiagramEdge("relation", "CR", "CP", "FULFILLS", .76543, "trace")), new DiagramLayout("LR", true));
         var metadata = new ElementMetadata("CP", "Duplicate name", "CP", 98, .98765, .8, "HUMAN", "CP",
-                "PRIVATE_PROVIDER_EXPLANATION", false, null, null, "Evidence document 7", "alice",
+                "Scoped subscriber protection contribution", false, null, null, "Evidence document 7", "alice",
                 Instant.parse("2026-09-01T12:00:00Z"), "Human rationale");
-        return new Projection(42L, "PRJ", "Project", 7L, "REQ", "Requirement", "PRIVATE_PROVIDER_PROMPT",
+        return new Projection(42L, "PRJ", "Project", 7L, "REQ", "Requirement", "Protect subscriber details and retain an auditable delivery history.",
                 "snapshot", AnalysisStatus.SUCCESS, Instant.parse("2026-09-01T11:00:00Z"), "PRIVATE_PROVIDER", "PRIVATE_PROVIDER_MODEL",
                 "workspace", "branch", "commit-immutable", graph, null, Map.of("CP", metadata), Map.of(), List.of("PRIVATE_PROVIDER_WARNING"),
                 new SnapshotProvenance(99L, "catalogue-frozen", "repository"));
