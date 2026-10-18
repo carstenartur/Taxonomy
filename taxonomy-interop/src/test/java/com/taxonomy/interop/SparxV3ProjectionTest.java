@@ -346,6 +346,114 @@ class SparxV3ProjectionTest {
         }
     }
 
+    @Test void aTagOnlyProposedConnectorRemainsProposedInTheNativeArchitecture() throws Exception {
+        var incoming = connection(SparxMappingProfile.PROFILE, "3");
+        var codec = new SparxXmiCodec("3");
+        var imported = importArchiMate();
+        var xml = com.taxonomy.exchange.ExchangeXml.parse(codec.write(export(incoming, imported.dsl())));
+        for (var connectors : com.taxonomy.exchange.ExchangeXml.all(xml, null, "connectors"))
+            for (var connector : com.taxonomy.exchange.ExchangeXml.children(connectors))
+                for (var evidence : com.taxonomy.exchange.ExchangeXml.children(connector))
+                    if (evidence.getLocalName().equals("evidence")) connector.removeChild(evidence);
+        var source = codec.read(com.taxonomy.exchange.ExchangeXml.write(xml), "tag-only-status", true);
+        var proposed = source.relations().stream().filter(r -> r.attributes().get("tag:taxonomy.relationType").equals("USES")).findFirst().orElseThrow();
+        assertEquals("proposed", proposed.attributes().get("tag:taxonomy.status"));
+        var nativeImport = importExchange("", incoming, source);
+        var nativeRelation = ArchitectureSemanticPatch.index(nativeImport.dsl()).values().stream()
+                .filter(b -> b.getKind().equals("relation") && b.getHeaderTokens().get(1).equals("USES")).findFirst().orElseThrow();
+        assertEquals("proposed", nativeRelation.property("status"));
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void reimportedSingleOriginReplacesPreviouslyDeliveredRequirementEvidence(boolean acknowledged) throws Exception {
+        Imported initial = importArchiMate();
+        var outgoing = connection(SparxMappingProfile.PROFILE, "3");
+        var first = export(outgoing, initial.dsl());
+        var metadata = new TreeMap<>(first.metadata()); metadata.put("external.modelReview", "Reviewed model note");
+        first = new ExchangeDocument(first.profile(), first.profileVersion(), first.externalVersion(), first.completeScope(), first.source(),
+                first.artifacts(), first.relations(), first.placements(), metadata, first.losses());
+        var prior = deliverAndBind(outgoing, initial.dsl(), first);
+        String nextRequirement = REQUIREMENT + "\nF4: Retain the reviewed river forecast.";
+        byte[] updatedXml = new String(archiMateXml(), StandardCharsets.UTF_8)
+                .replace(escape(REQUIREMENT), escape(nextRequirement))
+                .replace(sha256(REQUIREMENT), sha256(nextRequirement))
+                .replace("snapshot-before-import", "updated-snapshot").getBytes(StandardCharsets.UTF_8);
+        Set<String> removedFields = Set.of("taxonomy.requirementId", "taxonomy.requirementVersionId", "taxonomy.canonicalGraphSha256");
+        assertTrue(metadata.keySet().containsAll(removedFields));
+        var xml = com.taxonomy.exchange.ExchangeXml.parse(updatedXml);
+        var model = xml.getDocumentElement();
+        var definitions = com.taxonomy.exchange.ExchangeXml.child(model, "propertyDefinitions");
+        Map<String, String> names = new HashMap<>();
+        for (var definition : com.taxonomy.exchange.ExchangeXml.children(definitions))
+            names.put(definition.getAttribute("identifier"), com.taxonomy.exchange.ExchangeXml.text(definition, "name"));
+        var properties = com.taxonomy.exchange.ExchangeXml.child(model, "properties");
+        for (var property : com.taxonomy.exchange.ExchangeXml.children(properties))
+            if (removedFields.contains(names.get(property.getAttribute("propertyDefinitionRef")))) properties.removeChild(property);
+        var reviewDefinition = com.taxonomy.exchange.ExchangeXml.append(definitions, model.getNamespaceURI(), "propertyDefinition");
+        reviewDefinition.setAttribute("identifier", "origin-review"); reviewDefinition.setAttribute("type", "string");
+        com.taxonomy.exchange.ExchangeXml.text(reviewDefinition, model.getNamespaceURI(), "name", "external.modelReview");
+        var reviewProperty = com.taxonomy.exchange.ExchangeXml.append(properties, model.getNamespaceURI(), "property");
+        reviewProperty.setAttribute("propertyDefinitionRef", "origin-review");
+        com.taxonomy.exchange.ExchangeXml.text(reviewProperty, model.getNamespaceURI(), "value", "Imported origin note");
+        var updatedSource = new ArchiMateExchangeCodec().read(com.taxonomy.exchange.ExchangeXml.write(xml), "reimported-origin", true);
+        var updated = importExchange(initial.dsl(), initial.connection(), updatedSource);
+        var result = exportWithBindings(outgoing, updated.dsl(), prior.identities(), acknowledged ? prior.document() : null);
+        var codec = new SparxXmiCodec("3");
+        for (var returned : List.of(result, codec.read(codec.write(result), "updated-source", true))) {
+            assertEquals(nextRequirement, returned.metadata().get("taxonomy.requirementText"));
+            assertEquals(sha256(nextRequirement), returned.metadata().get("taxonomy.requirementSha256"));
+            assertEquals("updated-snapshot", returned.metadata().get("taxonomy.snapshotId"));
+            assertEquals(metadata.get("identifier"), returned.metadata().get("identifier"));
+            assertEquals("Reviewed model note", returned.metadata().get("external.modelReview"));
+            for (String removed : removedFields) assertFalse(returned.metadata().containsKey(removed), removed);
+            assertTrue(returned.losses().isEmpty(), returned.losses()::toString);
+        }
+    }
+
+    @Test void boundIdentityBearingOwnerTagFollowsTheCurrentNativeOwner() throws Exception {
+        var outgoing = connection(SparxMappingProfile.PROFILE, "3");
+        var original = importArchiMate("", archiMateXml(Map.of("Taxonomy.x-owner", "Alice")));
+        var delivered = export(outgoing, original.dsl());
+        var owner = delivered.artifacts().stream().filter(a -> a.title().equals("History reader")).findFirst().orElseThrow();
+        String featureId = "{AAAABBBB-CCCC-4DDD-8EEE-FFFF00001111}";
+        var tag = new Artifact(featureId, ArtifactKind.FEATURE, "tagged-value", "taxonomy.x-owner", "Alice",
+                Map.of("reviewed", "keep"), Map.of("owner", owner.id(), "position", "0"));
+        var artifacts = new ArrayList<>(delivered.artifacts()); artifacts.add(tag);
+        var source = new ExchangeDocument(delivered.profile(), delivered.profileVersion(), delivered.externalVersion(), delivered.completeScope(),
+                delivered.source(), artifacts, delivered.relations(), delivered.placements(), delivered.metadata(), delivered.losses());
+        var codec = new SparxXmiCodec("3");
+        var imported = importExchange("", outgoing, codec.read(codec.write(source), "owner-feature", true));
+        String nativeId = domain.businessId(outgoing, null, owner);
+        var identities = new ArrayList<Identity>();
+        UUID operation = UUID.randomUUID();
+        for (var entry : imported.items().entrySet()) {
+            Artifact artifact = entry.getValue();
+            String business = artifact.kind() == ArtifactKind.RELATION
+                    ? domain.relationBusinessId(artifact, outgoing, imported.items(), List.of())
+                    : domain.businessId(outgoing, null, artifact);
+            identities.add(new Identity(entry.getKey(), business, null, null, json.fingerprint(null), null, artifact, operation, false));
+        }
+        var prior = new BoundDelivery(imported.source(), List.copyOf(identities));
+        assertTrue(prior.document().artifacts().stream().anyMatch(a -> a.id().equals(featureId)));
+        assertTrue(prior.identities().stream().anyMatch(i -> i.externalId().equals("FEATURE:" + featureId)));
+        String originalEvidence = ArchitectureSemanticPatch.index(imported.dsl()).get("element:" + nativeId).property("x-exchange-artifact");
+        String cleared = commands.apply(imported.dsl(), new ClearArchitectureElementProperties(nativeId, Set.of("x-owner"))).dsl();
+        for (String current : List.of("", "Bob")) {
+            String edited = current.isEmpty() ? cleared : commands.apply(cleared,
+                    new UpdateArchitectureElement(nativeId, "Process", Map.of("x-owner", current))).dsl();
+            var projected = exportWithBindings(outgoing, edited, prior.identities(), prior.document());
+            for (var returned : List.of(projected, codec.read(codec.write(projected), "edited-owner-feature", true))) {
+                var element = returned.artifacts().stream().filter(a -> a.id().equals(owner.id())).findFirst().orElseThrow();
+                assertEquals(current.isEmpty() ? null : current, element.attributes().get("tag:taxonomy.x-owner"));
+                var tags = returned.artifacts().stream().filter(a -> a.id().equals(featureId)).toList();
+                if (current.isEmpty()) assertTrue(tags.isEmpty(), "A cleared owner cannot be restored by its identity-bearing tag");
+                else { assertEquals(1, tags.size()); assertEquals("Bob", tags.getFirst().text());
+                    assertTrue(tags.getFirst().attributes().entrySet().containsAll(tag.attributes().entrySet())); }
+            }
+            assertEquals(originalEvidence, ArchitectureSemanticPatch.index(edited).get("element:" + nativeId).property("x-exchange-artifact"));
+        }
+    }
+
     private Imported importArchiMate() throws Exception {
         return importArchiMate("", archiMateXml());
     }

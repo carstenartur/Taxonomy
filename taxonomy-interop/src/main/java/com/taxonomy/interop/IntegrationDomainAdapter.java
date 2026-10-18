@@ -370,6 +370,7 @@ public class IntegrationDomainAdapter {
             // expand gives a retained METADATA item precedence over its template. Use the
             // reconciled values there as well, without changing the accepted mapping itself.
             Map<String, String> metadata = template.metadata();
+            reconcileEditableElementFeatures(items);
             items.replaceAll((key, artifact) -> artifact.kind() == ArtifactKind.METADATA
                     ? new Artifact(artifact.id(), artifact.kind(), artifact.type(), artifact.title(), artifact.text(), metadata, artifact.extensions())
                     : sparxV3Artifact(artifact));
@@ -410,6 +411,7 @@ public class IntegrationDomainAdapter {
             if (retainedMetadata != null) metadata.putAll(retainedMetadata.attributes());
             // Read only evidence referenced by exported native objects; unrelated imports cannot supply their requirement text.
             Set<String> sources = new java.util.TreeSet<>(), conflicts = new java.util.TreeSet<>();
+            Map<String, String> currentValues = new TreeMap<>();
             blocks.values().stream().filter(b -> Set.of("element", "relation").contains(b.getKind()) && b.property("x-exchange-artifact") != null)
                     .map(b -> b.property("x-exchange-connection")).filter(Objects::nonNull).forEach(sources::add);
             for (String source : sources) {
@@ -419,18 +421,31 @@ public class IntegrationDomainAdapter {
                 if (ArchiMateExchangeCodec.PROFILE.equals(evidence.profile())) values.putAll(archimateModelProperties(evidence.metadata()));
                 values.forEach((name, value) -> {
                     if (Set.of("identifier", "title").contains(name) || conflicts.contains(name)) return;
-                    String retained = metadata.putIfAbsent(name, value);
+                    String retained = currentValues.putIfAbsent(name, value);
                     if (retained != null && !retained.equals(value)) {
-                        metadata.remove(name); conflicts.add(name);
+                        currentValues.remove(name); conflicts.add(name);
                         losses.add(new MappingLoss("integration-" + source, "metadata." + name, "EXCHANGE_MODEL_EVIDENCE_CONFLICT", LossDisposition.UNSUPPORTED,
                                 "Exported native objects refer to different accepted model values; no single requirement or snapshot is selected implicitly"));
                     }
                 });
             }
+            // A previous delivery cannot conflict with, or restore fields absent
+            // from, the current accepted requirement/snapshot evidence.
+            if (!sources.isEmpty()) metadata.keySet().removeIf(IntegrationDomainAdapter::sourceMetadata);
+            conflicts.stream().filter(IntegrationDomainAdapter::sourceMetadata).forEach(metadata::remove);
+            currentValues.forEach((name, value) -> {
+                if (sourceMetadata(name)) metadata.put(name, value);
+                else metadata.putIfAbsent(name, value); // The outgoing connection owns its opaque reviewed metadata.
+            });
         }
         metadata.putIfAbsent("identifier", SparxSnapshots.isSparx(connection.connectorId()) ? externalId(connection, "model") : "taxonomy-" + connection.id());
         metadata.putIfAbsent("title", connection.displayName());
         return metadata;
+    }
+
+    private static boolean sourceMetadata(String name) {
+        return name.toLowerCase(java.util.Locale.ROOT).startsWith("taxonomy.")
+                || Set.of("propertyDefinitions", "properties").contains(name);
     }
 
     private static Map<String, String> archimateModelProperties(Map<String, String> metadata) {
@@ -455,6 +470,25 @@ public class IntegrationDomainAdapter {
             if (!extensions.containsKey(extension)) attributes.remove(tag);
             else if (attributes.containsKey(tag)) attributes.put(tag, extensions.get(extension));
         });
+    }
+
+    private static void reconcileEditableElementFeatures(Map<String, Artifact> items) {
+        Map<String, Artifact> elements = new HashMap<>();
+        items.values().stream().filter(a -> a.kind() == ArtifactKind.ELEMENT).forEach(a -> elements.put(a.id(), a));
+        var iterator = items.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            Artifact feature = entry.getValue();
+            if (feature.kind() != ArtifactKind.FEATURE || !"tagged-value".equals(feature.type())
+                    || !feature.title().startsWith("taxonomy.")) continue;
+            String property = feature.title().substring(9);
+            Artifact owner = elements.get(feature.extensions().get("owner"));
+            if (owner == null || !editableElementScalar(property)) continue;
+            String current = owner.extensions().get("taxonomy:" + property);
+            if (current == null) iterator.remove();
+            else entry.setValue(new Artifact(feature.id(), feature.kind(), feature.type(), feature.title(), current,
+                    feature.attributes(), feature.extensions()));
+        }
     }
 
     /** Overlay effective semantics while retaining complete original property/XML evidence and review metadata. */
