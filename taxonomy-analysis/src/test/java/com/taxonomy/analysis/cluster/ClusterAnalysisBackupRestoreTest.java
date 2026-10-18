@@ -33,6 +33,41 @@ class ClusterAnalysisBackupRestoreTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    @Test void backupRetainsWaitingPredecessorHistoryWithoutResumingItOnRestore() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("waiting-source"); source.admitFrozen(original);
+            new TransactionTemplate(source.transactions).executeWithoutResult(status -> source.em.createQuery(
+                    "update ClusterAnalysisWork w set w.state='WAITING_PREDECESSOR' where w.operationId=:id and w.root='IP'")
+                    .setParameter("id", original.operationId()).executeUpdate());
+            var archive = exportedArchive(source);
+            var waiting = archive.work().stream().filter(work -> work.root().equals("IP")).findFirst().orElseThrow();
+            assertEquals("WAITING_PREDECESSOR", waiting.sourceState());
+            assertEquals(0, waiting.attempts()); assertNull(waiting.startedAt()); assertNull(waiting.resultJson());
+            var restored = targetContext("waiting-restored");
+
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
+
+            var snapshot = target.store.snapshot(restored);
+            assertEquals(ClusterAnalysisState.CANCELLED, snapshot.state());
+            assertEquals(List.of("STOPPED", "STOPPED"), snapshot.tasks().stream().map(ClusterAnalysisStore.TaskView::state).toList());
+            assertTrue(snapshot.result().getRawScores().isEmpty());
+            assertNull(snapshot.progress().nodes().taxonomies().getLast().rootPercent());
+            assertStoppedObservation(target, restored, 0);
+            assertNoOperationalState(target);
+        }
+    }
+
+    @Test void waitingPredecessorCannotImportWorkerProgressBeforeAnyDelivery() {
+        try (var db = new Database()) {
+            var context = context("waiting-progress"); db.admit(context);
+            var task = db.expectedTask(IP);
+            var progress = new ClusterAnalysisProgress.Worker(UUID.randomUUID().toString(), 1, 1,
+                    "SCORING", "IP", Map.of("IP", 0d), null);
+            assertThrows(IllegalArgumentException.class, () -> ClusterAnalysisBackupRestorer.validateProgress(
+                    progress, db.store.snapshot(context).revision(), 0, "WAITING_PREDECESSOR", task));
+        }
+    }
+
     @ParameterizedTest
     @CsvSource(value = {
             "DETAILED, SHORT, false",
@@ -324,7 +359,7 @@ class ClusterAnalysisBackupRestoreTest {
     @Test void cooperativeStopExportsAndRestoresOriginalFailureProvenance() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("time-limited-source"); source.admit(original);
-            source.store.start(source.task(IP));
+            source.store.start(source.task(CP));
             var task = source.task(CP);
             var stopped = new AnalysisMessageFactory(original, Clock.systemUTC())
                     .completed(task, AnalysisTaskOutcome.STOPPED, null, 0, "TIME_LIMIT");

@@ -364,14 +364,7 @@ public class LlmService {
     }
 
     /**
-     * Priority order for sequential analysis (Business Processes first, Information Products last).
-     * Codes must match the virtual-root codes in TaxonomyService.SHEET_PREFIXES.
-     */
-    private static final List<String> ANALYSIS_PRIORITY =
-            List.of("BP", "CP", "CR", "CO", "CI", "UA", "BR", "IP");
-
-    /**
-     * Analyses business text using a sequential, prioritized traversal of taxonomy roots.
+     * Analyses business text sequentially in the displayed catalogue order.
      * Each root is scored independently (0–100), then children distribute the root's score.
      * Handles rate-limit errors gracefully by returning partial results.
      *
@@ -390,14 +383,14 @@ public class LlmService {
 
     private AnalysisResult analyzeWithFrozenReasonLength(String businessText, AnalysisScope requestedScope) {
         AnalysisScope scope = AnalysisScope.orDefault(requestedScope);
-        List<TaxonomyNode> roots = selectedRoots(scope, true);
+        List<TaxonomyNode> roots = selectedRoots(scope);
         List<TaxonomyNodeDto> plannedTree = AnalysisRunControl.active() || !scope.legacyFull()
                 ? taxonomyService.getFullTree() : null;
         if (plannedTree != null) AnalysisRunControl.planNodes(scope.selectedTree(plannedTree));
         RootScoringRun run = new RootScoringRun();
 
         // Each root is one SubtaxonomyAnalysisTask of the operation's task graph. The
-        // in-process transport executes them on this thread in priority order, so
+        // in-process transport executes them on this thread in catalogue order, so
         // provider selection, run control and call semantics remain those of one run.
         Map<String, TaxonomyNode> rootsByCode = new LinkedHashMap<>();
         roots.forEach(root -> rootsByCode.put(root.getCode(), root));
@@ -578,17 +571,10 @@ public class LlmService {
         return score == null ? null : Math.max(0, Math.min(100, score));
     }
 
-    private List<TaxonomyNode> selectedRoots(AnalysisScope scope, boolean prioritize) {
+    private List<TaxonomyNode> selectedRoots(AnalysisScope scope) {
         List<TaxonomyNode> roots = taxonomyService.getRootNodes();
         scope.validateRoots(roots.stream().map(TaxonomyNode::getCode).collect(java.util.stream.Collectors.toSet()));
-        var selected = new ArrayList<>(roots.stream().filter(root -> scope.selects(root.getCode())).toList());
-        if (prioritize) {
-            selected.sort(Comparator.comparingInt(root -> {
-                int index = ANALYSIS_PRIORITY.indexOf(root.getCode());
-                return index < 0 ? Integer.MAX_VALUE : index;
-            }));
-        }
-        return selected;
+        return roots.stream().filter(root -> scope.selects(root.getCode())).toList();
     }
 
     private void analyzeNodesPropagating(String businessText,
@@ -671,8 +657,7 @@ public class LlmService {
 
     private void analyzeStreamingWithFrozenReasonLength(String businessText, AnalysisScope requestedScope, AnalysisEventCallback callback) {
         AnalysisScope scope = AnalysisScope.orDefault(requestedScope);
-        // Legacy SSE preserves catalogue order, including its partial-evidence boundary.
-        List<TaxonomyNode> roots = selectedRoots(scope, !scope.legacyFull());
+        List<TaxonomyNode> roots = selectedRoots(scope);
         if (AnalysisRunControl.active()) AnalysisRunControl.planNodes(scope.selectedTree(taxonomyService.getFullTree()));
         Map<String, Double> allScores = new HashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();

@@ -53,6 +53,52 @@ class LlmServiceBranchCoverageTest {
 
     private LlmService service;
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void budgetAnalysisEvaluatesSelectedRootsInCatalogueOrder(boolean selectedOnly) {
+        var catalogue = List.of(node("BP", null, "BP"), node("BR", null, "BR"),
+                node("CI", null, "CI"), node("CP", null, "CP"), node("IP", null, "IP"));
+        when(taxonomyService.getRootNodes()).thenReturn(catalogue);
+        var evaluated = new ArrayList<String>();
+        when(promptTemplateService.renderRootPrompt(anyString(), anyString(), anyString())).thenAnswer(invocation -> {
+            String root = invocation.getArgument(0);
+            evaluated.add(root);
+            return root;
+        });
+        when(gateway.sendHttpRequest(anyString(), eq("test-key"))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(gateway.extractResponseText(anyString())).thenAnswer(invocation ->
+                "{\"" + invocation.getArgument(0) + "\":0}");
+        var scope = selectedOnly ? new com.taxonomy.dto.AnalysisScope(java.util.Set.of("BR", "CI", "CP", "IP"),
+                com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY) : com.taxonomy.dto.AnalysisScope.full();
+
+        AnalysisResult result = service.analyzeWithBudget("requirement", scope);
+
+        assertThat(result.getStatus()).isEqualTo("SUCCESS");
+        assertThat(evaluated).containsExactlyElementsOf(selectedOnly
+                ? List.of("BR", "CI", "CP", "IP") : List.of("BP", "BR", "CI", "CP", "IP"));
+    }
+
+    @Test
+    void selectedStreamingAnalysisEvaluatesRootsInCatalogueOrder() {
+        when(taxonomyService.getRootNodes()).thenReturn(List.of(node("BR", null, "BR"),
+                node("CI", null, "CI"), node("CP", null, "CP"), node("IP", null, "IP")));
+        var evaluated = new ArrayList<String>();
+        when(promptTemplateService.renderRootPrompt(anyString(), anyString(), anyString())).thenAnswer(invocation -> {
+            String root = invocation.getArgument(0);
+            evaluated.add(root);
+            return root;
+        });
+        when(gateway.sendHttpRequest(anyString(), eq("test-key"))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(gateway.extractResponseText(anyString())).thenAnswer(invocation ->
+                "{\"" + invocation.getArgument(0) + "\":0}");
+        var scope = new com.taxonomy.dto.AnalysisScope(java.util.Set.of("BR", "CI", "CP", "IP"),
+                com.taxonomy.dto.AnalysisMode.TAXONOMIES_ONLY);
+
+        service.analyzeStreaming("requirement", scope, callback);
+
+        assertThat(evaluated).containsExactly("BR", "CI", "CP", "IP");
+    }
+
     @Test
     void completeProductValuesSurviveMissingOuterBraceWithoutRepeatingTheProviderRequest() {
         var products = List.of(node("IP-1365", "IP-F", "IP"), node("IP-1676", "IP-F", "IP"),

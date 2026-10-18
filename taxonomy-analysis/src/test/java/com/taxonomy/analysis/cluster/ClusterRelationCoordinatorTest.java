@@ -41,8 +41,8 @@ class ClusterRelationCoordinatorTest {
             db.store.accept(stopped);
             assertEquals(ClusterAnalysisState.PARTIAL, db.store.snapshot(context).state());
             assertEquals(Map.of("CP", 20d), db.store.snapshot(context).result().getRawScores());
-            assertFalse(db.store.start(db.task(IP)).executable());
-            assertEquals(2, db.sent.size());
+            assertFalse(db.store.start(db.expectedTask(IP)).executable());
+            assertEquals(1, db.sent.size());
         }
     }
 

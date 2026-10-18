@@ -43,7 +43,7 @@ class AnalysisTaskDagEquivalenceTest {
     private static final class Catalogue extends TaxonomyService {
         Catalogue() { super(null, null, null); }
         @Override public List<TaxonomyNode> getRootNodes() {
-            // Catalogue order differs from analysis priority (BP, CP, CR, ...).
+            // Preserve the order supplied by the catalogue, including custom catalogues.
             return new ArrayList<>(List.of(node("CR", null), node("BP", null), node("CP", null)));
         }
         @Override public List<TaxonomyNode> getChildrenOf(String parent) {
@@ -110,7 +110,7 @@ class AnalysisTaskDagEquivalenceTest {
             viaOperation = service(operationGateway).analyzeWithBudget(REQUIREMENT);
 
             var graph = op.graph().orElseThrow();
-            assertThat(graph.subtaxonomyRoots()).extracting(r -> r.code()).containsExactly("BP", "CP", "CR");
+            assertThat(graph.subtaxonomyRoots()).extracting(r -> r.code()).containsExactly("CR", "BP", "CP");
             assertThat(graph.includesRelations()).isTrue();
             assertThat(op.completions().values()).hasSize(3)
                     .allSatisfy(c -> assertThat(c.taskId().operationId()).isEqualTo(OPERATION_ID));
@@ -145,7 +145,7 @@ class AnalysisTaskDagEquivalenceTest {
 
     @Test
     void rateLimitSkipsRemainingRootTasksWithTheExistingPartialMessage() {
-        var gateway = new Gateway("CP");
+        var gateway = new Gateway("BP");
         AnalysisResult result;
         try (var op = InProcessAnalysisOperation.open(operation(REQUIREMENT), null)) {
             result = service(gateway).analyzeWithBudget(REQUIREMENT);
@@ -154,9 +154,9 @@ class AnalysisTaskDagEquivalenceTest {
                             AnalysisTaskOutcome.SKIPPED);
         }
         assertThat(result.getStatus()).isEqualTo("PARTIAL");
-        assertThat(result.getErrorMessage()).isEqualTo("Rate limit reached after processing: BP. Skipped: CP, CR.");
-        // CR is never sent to the provider after the rate limit.
-        assertThat(gateway.prompts).noneMatch(p -> p.contains("CR"));
+        assertThat(result.getErrorMessage()).isEqualTo("Rate limit reached after processing: CR. Skipped: BP, CP.");
+        // CP is never sent to the provider after the rate limit.
+        assertThat(gateway.prompts).noneMatch(p -> p.contains("CP"));
     }
 
     @Test

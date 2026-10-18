@@ -147,10 +147,9 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         var command = command(scope, businessText);
         store.admit(context, command, null, Map.of(CP, frozenInput, IP, "{\"root\":\"IP\"}"));
         assertEquals(command, store.start(task(context, CP)).command());
-        store.start(task(context, IP));
-        // A reverse completion order must preserve deterministic root/result assembly.
-        store.accept(complete(task(context, IP), result(IP, 70, reason)));
         store.accept(complete(task(context, CP), result(CP, 40, reason)));
+        store.start(task(context, IP));
+        store.accept(complete(task(context, IP), result(IP, 70, reason)));
         assertEquals(1, count("ClusterAnalysisRun", "id", context.operationId()));
         assertEquals(2, count("ClusterAnalysisWork", "operationId", context.operationId()));
         assertEquals(2, count("ClusterAnalysisInput", "operationId", context.operationId()));
@@ -179,8 +178,8 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
     void concurrentDuplicateCompletionRollsBackAndSettlesExactlyOnce() throws Exception {
         var context = context("concurrent", scope("workspace", "draft", "repository"), "requirement", null, null);
         store.admit(context, command(scope("workspace", "draft", "repository"), "requirement"), null, Map.of(CP, "{}", IP, "{}"));
-        var cp = task(context, CP); var ip = task(context, IP);
-        store.start(cp); store.start(ip);
+        var cp = task(context, CP);
+        store.start(cp);
         var completion = completion(cp, 40);
         assertThrows(IllegalStateException.class, () -> completions.commit(new PreparedAnalysisCompletion<>(completion, () -> {
             store.persistResult(cp, result(CP, 40, "rolled back"));
@@ -190,7 +189,7 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
         assertEquals(0, count("AnalysisTaskCompletionRecord", "operationId", context.operationId()));
         assertThrows(IllegalStateException.class, () -> store.accept(completion));
         assertEquals(0, store.snapshot(context).completedRoots());
-        assertContinuousEvents(context, 3);
+        assertContinuousEvents(context, 2);
 
         var insertAttempts = new CountDownLatch(2); var releaseInserts = new CountDownLatch(1); var effects = new AtomicInteger();
         beforeCompletionInsert = () -> {
@@ -220,12 +219,16 @@ final class ClusterAnalysisDatabaseContract implements AutoCloseable {
             assertEquals(1, effects.get(), "Concurrent duplicate must never invoke the losing result effect");
             assertEquals(1, count("AnalysisTaskCompletionRecord", "operationId", context.operationId()));
             assertEquals(0, store.snapshot(context).completedRoots(), "Only the coordinator settles committed work");
-            var other = complete(ip, result(IP, 70, "committed"));
             var acceptCp = pool.submit(() -> { start.await(20, TimeUnit.SECONDS); return store.accept(completion); });
             tasks.add(acceptCp);
-            var acceptIp = pool.submit(() -> { start.await(20, TimeUnit.SECONDS); return store.accept(other); });
-            tasks.add(acceptIp);
-            assertTrue(acceptCp.get(30, TimeUnit.SECONDS)); assertTrue(acceptIp.get(30, TimeUnit.SECONDS));
+            var acceptDuplicate = pool.submit(() -> { start.await(20, TimeUnit.SECONDS); return store.accept(completion); });
+            tasks.add(acceptDuplicate);
+            assertNotEquals(acceptCp.get(30, TimeUnit.SECONDS), acceptDuplicate.get(30, TimeUnit.SECONDS),
+                    "Concurrent coordinator deliveries must settle the first root exactly once");
+            var ip = task(context, IP);
+            store.start(ip);
+            var other = complete(ip, result(IP, 70, "committed"));
+            assertTrue(store.accept(other));
             assertFalse(store.accept(completion)); assertFalse(store.accept(other));
         } finally {
             releaseInserts.countDown();

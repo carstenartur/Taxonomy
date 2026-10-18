@@ -179,7 +179,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
 
     public void eventPublisher(Consumer<AnalysisProgressEvent> publisher) { events = Objects.requireNonNull(publisher); }
 
-    /** Admit frozen inputs and all root dispatch intents atomically. */
+    /** Admit frozen inputs and the first root dispatch intent atomically. */
     public void admit(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view,
                        Map<TaxonomyShardRoot, String> shards) {
         admit(context, command, view, shards, Map.of());
@@ -244,10 +244,12 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             List<AnalysisTaskMessage> tasks = new ArrayList<>();
             for (int i = 0; i < graph.tasks().size(); i++) {
                 var task = messages.task(graph.tasks().get(i));
-                addWork(task, i, null);
-                if (command.retainedAnalysis() == null) tasks.add(task);
-                else {
-                    var work = requireWork(task);
+                var work = addWork(task, i, null);
+                if (command.retainedAnalysis() == null) {
+                    // Persist the policy: older QUEUED rows retain their admitted parallel execution.
+                    if (i > 0) work.state = "WAITING_PREDECESSOR";
+                    tasks.add(task);
+                } else {
                     var retained = retainedRoot(command.retainedAnalysis(), task.routingRoot().code());
                     work.resultJson = json(retained); work.settled = true;
                     work.state = "SUCCESS".equals(retained.getStatus()) ? "COMPLETED" : "PARTIAL";
@@ -262,7 +264,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             if (command.retainedAnalysis() != null) {
                 advanceRelations(run);
                 appendEvent(run, AnalysisProgressPhase.TASK_COMPLETED);
-            } else dispatch.dispatch(tasks);
+            } else dispatch.dispatch(tasks.stream().limit(1).toList());
         });
     }
 
@@ -274,6 +276,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             var work = requireWork(task);
             boolean executable = !run.state.terminal() && work.resultJson == null && work.failureReason == null;
             if (executable) {
+                if ("WAITING_PREDECESSOR".equals(work.state)) throw new AnalysisTaskDeferredException();
                 work.attempts = Math.max(work.attempts + 1, task.envelope().attempt());
                 if (work.startedAt == null) work.startedAt = System.currentTimeMillis();
                 work.state = "RUNNING";
@@ -379,6 +382,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         var run = resultRun(task);
         if (run.state.terminal()) return;
         var work = requireWork(task);
+        if ("WAITING_PREDECESSOR".equals(work.state)) throw new AnalysisTaskDeferredException();
         if (work.resultJson != null || work.failureReason != null) throw new IllegalStateException("Task already has a durable effect");
         // Only an already admitted target grant can be represented as failed work.
         // Never fabricate a missing preparation or release an unknown provider allowance.
@@ -433,6 +437,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         requireAuthority(run, context(task.envelope()));
         var work = requireWork(task);
         if (run.state.terminal()) return; // Cancellation won. A late computation cannot publish an effect.
+        if ("WAITING_PREDECESSOR".equals(work.state)) throw new AnalysisTaskDeferredException();
         if (work.resultJson != null) throw new IllegalStateException("Task already has a committed result");
         work.resultJson = json(Objects.requireNonNull(result));
         work.state = "SUCCESS".equals(result.getStatus()) ? "COMPLETED" : "PARTIAL";
@@ -466,6 +471,15 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             if (run.completedRoots == run.totalRoots) {
                 if (command.analysisScope().includesRelations()) advanceRelations(run);
                 else finish(run);
+            } else if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) {
+                // The next root is released by its predecessor's committed settlement.
+                // Stable dispatch identities keep duplicate completions and recovery idempotent.
+                works(run.id).stream().filter(next -> next.taskType.equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())
+                        && !next.settled).findFirst().filter(next -> "WAITING_PREDECESSOR".equals(next.state))
+                        .ifPresent(next -> {
+                            next.state = "QUEUED";
+                            dispatch.dispatch(List.of((AnalysisTaskMessage) decode(next.messageJson)));
+                        });
             }
             appendEvent(run, run.state.terminal() ? AnalysisProgressPhase.OPERATION_COMPLETED : AnalysisProgressPhase.TASK_COMPLETED);
             return true;
@@ -510,7 +524,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                     w.attempts, w.startedAt, w.finishedAt)).toList();
             return new Snapshot(run.id, run.state, run.revision, run.completedRoots, run.totalRoots,
                     (int) tasks.stream().filter(t -> t.state().equals("RUNNING")).count(),
-                    (int) tasks.stream().filter(t -> t.state().equals("QUEUED")).count(), run.createdAt, run.updatedAt,
+                    (int) tasks.stream().filter(t -> t.state().equals("QUEUED") || t.state().equals("WAITING_PREDECESSOR")).count(), run.createdAt, run.updatedAt,
                     tasks, run.resultJson == null ? null : read(run.resultJson, AnalysisResult.class), progress);
         });
     }
@@ -582,7 +596,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 var tasks = List.copyOf(tasksByOperation.getOrDefault(id, List.of()));
                 var snapshot = new Snapshot(id, run.state(), run.revision(), run.completedRoots(), run.totalRoots(),
                         (int) tasks.stream().filter(task -> task.state().equals("RUNNING")).count(),
-                        (int) tasks.stream().filter(task -> task.state().equals("QUEUED")).count(),
+                        (int) tasks.stream().filter(task -> task.state().equals("QUEUED") || task.state().equals("WAITING_PREDECESSOR")).count(),
                         run.createdAt(), run.updatedAt(), tasks, null);
                 return new RecentSnapshot(run.context(), snapshot, run.scores());
             }).toList();
@@ -841,12 +855,13 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         });
     }
 
-    private void addWork(AnalysisTaskMessage task, int ordinal, String input) {
+    private ClusterAnalysisWork addWork(AnalysisTaskMessage task, int ordinal, String input) {
         var work = new ClusterAnalysisWork(); work.id = key(task.taskId().value());
         work.operationId = task.envelope().operationId(); work.taskId = task.taskId().value();
         work.taskType = task.taskType().name(); work.root = task.routingRoot() == null ? null : task.routingRoot().code();
         work.ordinal = ordinal; work.messageJson = encode(task); work.inputJson = input; work.state = "QUEUED";
         em.persist(work);
+        return work;
     }
     private ClusterAnalysisRun requireRun(String id, boolean lock) {
         if (lock) {

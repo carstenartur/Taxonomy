@@ -9,9 +9,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ClusterAnalysisServiceTest {
-    @Test void independentWorkerInstancesOverlapAndDuplicateDeliveryKeepsOneResult() throws Exception {
+    @Test void independentRunsOverlapAndDuplicateDeliveryKeepsOneResult() throws Exception {
         try (var db = new ClusterAnalysisStoreTest.Database(); var threads = Executors.newFixedThreadPool(3)) {
             var context = ClusterAnalysisStoreTest.context("overlap"); db.admit(context);
+            var other = ClusterAnalysisStoreTest.context("overlap-other"); db.admit(other);
             var entered = new CountDownLatch(2); var release = new CountDownLatch(1); var calls = new AtomicInteger();
             ClusterAnalysisComputation scoring = (input, task, cancelled) -> {
                 assertFalse(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
@@ -22,16 +23,19 @@ class ClusterAnalysisServiceTest {
             };
             var first = new ClusterAnalysisService(db.store, scoring, new ClusterAnalysisSignals());
             var second = new ClusterAnalysisService(db.store, scoring, new ClusterAnalysisSignals());
-            var cp = db.task(TaxonomyShardRoot.of("CP")); var ip = db.task(TaxonomyShardRoot.of("IP"));
+            var cp = db.task(context, TaxonomyShardRoot.of("CP")); var secondCp = db.task(other, TaxonomyShardRoot.of("CP"));
             var cpFuture = threads.submit(() -> db.completions.commit(first.prepare(cp)));
-            var ipFuture = threads.submit(() -> db.completions.commit(second.prepare(ip)));
+            var otherFuture = threads.submit(() -> db.completions.commit(second.prepare(secondCp)));
             boolean overlapping = entered.await(5, TimeUnit.SECONDS);
             release.countDown();
-            if (!overlapping) { cpFuture.get(5, TimeUnit.SECONDS); ipFuture.get(5, TimeUnit.SECONDS); }
+            if (!overlapping) { cpFuture.get(5, TimeUnit.SECONDS); otherFuture.get(5, TimeUnit.SECONDS); }
             assertTrue(overlapping, "Both workers must enter before either may finish");
-            db.store.accept(ipFuture.get(5, TimeUnit.SECONDS)); db.store.accept(cpFuture.get(5, TimeUnit.SECONDS));
+            db.store.accept(otherFuture.get(5, TimeUnit.SECONDS)); db.store.accept(cpFuture.get(5, TimeUnit.SECONDS));
             assertEquals(2, calls.get());
+            for (var operation : List.of(context, other)) db.store.accept(db.complete(
+                    db.task(operation, TaxonomyShardRoot.of("IP")), ClusterAnalysisStoreTest.result("IP", 40)));
             assertEquals(ClusterAnalysisState.COMPLETED, db.store.snapshot(context).state());
+            assertEquals(ClusterAnalysisState.COMPLETED, db.store.snapshot(other).state());
             assertTrue(db.completions.find(cp).isPresent());
         }
     }

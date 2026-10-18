@@ -420,7 +420,8 @@
     }
     function scoreCoverage(part) {
         return text('Nichtnull: ', 'Non-zero: ') + (Number.isSafeInteger(part.positive) ? part.positive : text('nicht aufgezeichnet', 'not recorded'))
-            + text(' · Verteilt: ', ' · Allocated: ') + percent(part.allocatedPercent) + ' / ' + percent(part.rootPercent);
+            + text(' · Verteilt: ', ' · Allocated: ') + percent(part.rootPercent == null ? null : part.allocatedPercent)
+            + ' / ' + percent(part.rootPercent);
     }
     function sourceCoverage(part) {
         if (part.total === 0) return text('Keine konkreten Relations-Ausgangsknoten', 'No concrete relationship source nodes');
@@ -432,7 +433,7 @@
         list.id = 'analysis-taxonomy-counts-' + part.root;
         [[text('Gesamt', 'Total'), part.total], [text('Verarbeitet', 'Processed'), part.assessed + part.excluded],
             [text('Nichtnull', 'Non-zero'), Number.isSafeInteger(part.positive) ? part.positive : '—'],
-            [text('Verteilt', 'Allocated'), percent(part.allocatedPercent) + ' / ' + percent(part.rootPercent)]].forEach(function (metric, index) {
+            [text('Verteilt', 'Allocated'), percent(part.rootPercent == null ? null : part.allocatedPercent) + ' / ' + percent(part.rootPercent)]].forEach(function (metric, index) {
             var field = node('div');
             field.append(node('dt', metric[0]), node('dd', metric[1]));
             if (index === 1) field.setAttribute('title', nodeCoverage(part));
@@ -442,6 +443,22 @@
             list.append(field);
         });
         return list;
+    }
+    function belongsToRoot(code, root) {
+        if (typeof code !== 'string') return false;
+        refreshNames();
+        return code === root || code.startsWith(root + '-') || names.get(code)?.taxonomyRoot === root;
+    }
+    function assessmentLabel(status, terminal) {
+        var labels = {
+            NOT_STARTED: terminal ? ['Nicht bewertet', 'Not assessed'] : ['Noch nicht begonnen', 'Not started'],
+            RUNNING: ['Wird bewertet', 'Assessing'],
+            COMPLETED: ['Bewertung abgeschlossen', 'Assessment completed'],
+            COMPLETED_ZERO: ['Abgeschlossen · 0% Relevanz', 'Completed · 0% relevance'],
+            PARTIAL: ['Bewertung unvollständig', 'Incomplete assessment'],
+            FAILED: ['Bewertung fehlgeschlagen', 'Assessment failed']
+        };
+        return text(labels[status][0], labels[status][1]);
     }
     function sourceRoot(r, root) {
         var current = r?.current;
@@ -636,9 +653,31 @@
         var lastWorkSignature = null;
         var taxonomyOrder = [];
         var lastNodeProgress = null;
+        var startedTaxonomies = new Set(), failedTaxonomies = new Set();
+        function assessmentState(part, snapshot) {
+            var terminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
+            var task = (snapshot.cluster?.tasks || []).find(function (entry) {
+                return entry.taskType === 'SUBTAXONOMY_ANALYSIS'
+                    && (typeof entry.root === 'string' ? entry.root : entry.root?.code) === part.root;
+            });
+            var calls = (snapshot.calls || []).filter(function (call) { return belongsToRoot(call.node, part.root); });
+            if (task?.failed > 0 || calls.some(function (call) { return call.status === 'FAILED'; })) failedTaxonomies.add(part.root);
+            var active = !terminal && !snapshot.relationProgress && snapshot.phase !== 'RELATIONS' && snapshot.phase !== 'FINALIZING'
+                && (task ? task.running > 0 : calls.some(function (call) { return call.status === 'STARTED'; })
+                    || belongsToRoot(snapshot.node, part.root) && snapshot.phase !== 'LLM_FAILED');
+            if (active || !task && calls.length || task?.completed > 0 || task?.failed > 0) startedTaxonomies.add(part.root);
+            // Durable failures outrank provisional diagnostics left by a crashed worker.
+            if (task?.failed > 0) return part.assessed + part.excluded > 0 ? 'PARTIAL' : 'FAILED';
+            if (part.total > 0 && part.open === 0) return part.rootPercent === 0 ? 'COMPLETED_ZERO' : 'COMPLETED';
+            if (active) return 'RUNNING';
+            if (failedTaxonomies.has(part.root)) return part.assessed + part.excluded > 0 ? 'PARTIAL' : 'FAILED';
+            if (part.assessed + part.excluded > 0 || startedTaxonomies.has(part.root)) return 'PARTIAL';
+            return 'NOT_STARTED';
+        }
         function renderWork(snapshot) {
             var signature = JSON.stringify([snapshot.nodeProgress, snapshot.relationProgress, snapshot.cluster,
-                snapshot.phase, snapshot.status, german()]);
+                snapshot.phase, snapshot.status, snapshot.node,
+                (snapshot.calls || []).map(function (call) { return [call.node, call.status]; }), german()]);
             if (signature === lastWorkSignature) return;
             lastWorkSignature = signature;
             var oldDetails = document.getElementById('analysisTaxonomyProgressDetails');
@@ -704,6 +743,8 @@
                 (n.taxonomies || []).forEach(function (part) { if (taxonomyOrder.indexOf(part.root) < 0) taxonomyOrder.push(part.root); });
                 (n.taxonomies || []).slice().sort(function (a, b) { return taxonomyOrder.indexOf(a.root) - taxonomyOrder.indexOf(b.root); }).forEach(function (part) {
                     var name = german() ? part.nameDe || part.nameEn : part.nameEn || part.nameDe;
+                    var assessment = assessmentState(part, snapshot);
+                    var assessmentText = assessmentLabel(assessment, ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0);
                     var meter = workMeter(parts, 'nodes', part.root, name && name !== part.root ? name + ' (' + part.root + ')' : nodeLabel(part.root),
                         part.assessed + part.excluded, part.total, nodeCoverage(part),
                         text('Keine Katalogknoten vorhanden', 'No catalogue nodes available'), null,
@@ -712,9 +753,12 @@
                     if (!source && r && ((r.sourceTaxonomies || []).length || r.totalSources === 0 && r.step === 'FINISHED'))
                         source = { root: part.root, total: 0, completed: 0, unresolved: 0 };
                     colourNodeBar(meter.bar, part, source, r);
+                    meter.row.setAttribute('data-assessment-state', assessment);
+                    meter.header.children[0].append(node('span', assessmentText, 'analysis-taxonomy-state'));
+                    meter.bar.setAttribute('aria-valuetext', assessmentText + ' · ' + meter.bar.getAttribute('aria-valuetext'));
                     meter.row.children[2].replaceChildren(taxonomyCounts(part));
                     if (r && source) meter.row.append(node('div', sourceCoverage(source), 'analysis-work-meter-detail analysis-source-progress'));
-                    if (sourceRoot(r, part.root)) meter.row.setAttribute('data-active', 'true');
+                    if (assessment === 'RUNNING' || sourceRoot(r, part.root)) meter.row.setAttribute('data-active', 'true');
                 });
                 details.append(parts);
                 details.addEventListener('toggle', function () { expandedTaxonomies = details.open; });

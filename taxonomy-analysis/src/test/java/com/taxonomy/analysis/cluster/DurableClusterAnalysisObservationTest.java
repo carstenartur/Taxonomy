@@ -37,6 +37,32 @@ class DurableClusterAnalysisObservationTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
     private static final WorkspaceContext SCOPE = command("requirement").workspaceContext();
 
+    @Test void predecessorWaitingRootSurvivesRestartAsQueuedUntilItsPredecessorSettles() {
+        String url = "jdbc:hsqldb:mem:waiting-restart-" + java.util.UUID.randomUUID() + ";hsqldb.tx=mvcc";
+        var context = context("waiting-restart");
+        try (var db = new Database(url, "create", sql -> sql)) {
+            db.admit(context);
+            new org.springframework.jdbc.core.JdbcTemplate(db.bean.getDataSource()).update(
+                    "update analysis_cluster_work set state='WAITING_PREDECESSOR' where root_code='IP'");
+        }
+        try (var db = new Database(url, "validate", sql -> sql); var observer = new DurableClusterAnalysisObservation(
+                db.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE, Runnable::run)) {
+            var durable = db.store.snapshot(context);
+            assertEquals("WAITING_PREDECESSOR", durable.tasks().getLast().state());
+            var view = observer.snapshot(context.operationId(), "alice", SCOPE).orElseThrow();
+            assertEquals(List.of(new ClusterAnalysisView.TaskCounts(AnalysisTaskType.SUBTAXONOMY_ANALYSIS, CP, 1, 0, 0, 0),
+                    new ClusterAnalysisView.TaskCounts(AnalysisTaskType.SUBTAXONOMY_ANALYSIS, IP, 1, 0, 0, 0)), view.cluster().tasks());
+            assertEquals(view.cluster(), observer.recent("alice", SCOPE, null, null).getFirst().cluster());
+            assertTrue(db.sent.isEmpty(), "Observation after restart cannot release waiting work");
+            var first = db.expectedTask(CP);
+            assertTrue(db.store.start(first).executable());
+            db.store.accept(db.complete(first, result("CP", 0)));
+            assertEquals(List.of(IP), db.sent.stream().map(AnalysisTaskMessage::routingRoot).toList());
+            assertEquals("QUEUED", db.store.snapshot(context).tasks().getLast().state());
+            assertTrue(db.store.start(db.task(IP)).executable());
+        }
+    }
+
     @ParameterizedTest
     @EnumSource(AnalysisReasonLength.class)
     @NullSource

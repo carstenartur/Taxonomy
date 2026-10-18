@@ -3,6 +3,7 @@ package com.taxonomy.composition.analysis.artemis;
 import com.taxonomy.analysis.dag.AnalysisCompletionMessage;
 import com.taxonomy.analysis.dag.AnalysisMessage;
 import com.taxonomy.analysis.dag.AnalysisTaskCompletionStore;
+import com.taxonomy.analysis.dag.AnalysisTaskDeferredException;
 import com.taxonomy.analysis.dag.AnalysisTaskHandlers;
 import com.taxonomy.analysis.dag.AnalysisTaskMessage;
 import com.taxonomy.analysis.dag.AnalysisTaskType;
@@ -148,7 +149,14 @@ public final class ArtemisAnalysisWorker implements AutoCloseable {
                 idempotentReplays.incrementAndGet();
                 completion = recorded.get();
             } else {
-                completion = handlers.prepareAndCommit(task, completions, executions::incrementAndGet);
+                try {
+                    completion = handlers.prepareAndCommit(task, completions, executions::incrementAndGet);
+                } catch (AnalysisTaskDeferredException waiting) {
+                    // The durable predecessor will publish this task when ready.
+                    // Consume an early delivery without spending broker retries or a result.
+                    session.commit();
+                    return;
+                }
             }
             subscription.producer().send(session.createQueue(destinations.completion()),
                     ArtemisAnalysisMessages.encode(session, codec, completion));

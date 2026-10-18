@@ -252,6 +252,85 @@
     // Sizing constants
     var MAX_SUNBURST_SIZE = 600; // max px for sunburst diameter
     var TREE_INITIAL_DEPTH = 3;  // collapse nodes at depth >= this on initial render
+    var TREE_LABEL_FONT = '12px Arial, Helvetica, sans-serif';
+    var TREE_BADGE_FONT = 'bold 10px Arial, Helvetica, sans-serif';
+
+    function collapseInitialTree(root) {
+        // Snapshot BEFORE hiding children: mutating a live D3 walk skips the very
+        // descendants that must remain collapsed when their parent is reopened.
+        root.descendants().forEach(function (node) {
+            if (node.depth >= TREE_INITIAL_DEPTH && node.children) {
+                node._children = node.children;
+                node.children = null;
+            }
+        });
+    }
+
+    function treeTextMeasure() {
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext && canvas.getContext('2d');
+        return function (label, font) {
+            if (!context) return String(label).length * 7;
+            context.font = font || TREE_LABEL_FONT;
+            return context.measureText(label).width;
+        };
+    }
+
+    function treeLabel(node) {
+        return node.data.name ? node.data.code + ' \u2013 ' + node.data.name : node.data.code;
+    }
+
+    /** Shared screen/export geometry: complete text and badges occupy space, too. */
+    function layoutTaxonomyTree(root, scores, measure) {
+        d3.tree().nodeSize([28, 1])(root);
+        var nodes = root.descendants();
+        var left = [], right = [], columns = [0, 0];
+        nodes.forEach(function (node) {
+            if (node.data.code === '__root__') return;
+            node._treeLabelWidth = Math.ceil(measure(treeLabel(node), TREE_LABEL_FONT));
+            node._treeBadgeWidth = hasScoreLabel(node.data.code, scores)
+                ? Math.ceil(measure(scoreText(node.data.code, scores[node.data.code]), TREE_BADGE_FONT)) + 8 : 0;
+            var labelWidth = 10 + node._treeLabelWidth + (node._treeBadgeWidth ? 8 + node._treeBadgeWidth : 0);
+            node._treeLeft = 7;
+            node._treeRight = labelWidth;
+            left[node.depth] = Math.max(left[node.depth] || 7, node._treeLeft);
+            right[node.depth] = Math.max(right[node.depth] || 7, node._treeRight);
+        });
+        for (var depth = 2; depth < left.length; depth++) {
+            columns[depth] = columns[depth - 1] + right[depth - 1] + 80 + left[depth];
+        }
+        var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        nodes.forEach(function (node) {
+            node.y = columns[node.depth] || 0;
+            if (node.data.code === '__root__') return;
+            node._treeColumnRight = node.y + right[node.depth];
+            var box = node._treeBounds = {left: node.y - node._treeLeft, right: node.y + node._treeRight,
+                top: node.x - 10, bottom: node.x + 10};
+            minX = Math.min(minX, box.left); maxX = Math.max(maxX, box.right);
+            minY = Math.min(minY, box.top); maxY = Math.max(maxY, box.bottom);
+        });
+        return {nodes: nodes, links: root.links().filter(function (link) { return link.source.data.code !== '__root__'; }),
+            left: minX === Infinity ? 0 : minX, top: minY === Infinity ? 0 : minY,
+            width: minX === Infinity ? 0 : maxX - minX, height: minY === Infinity ? 0 : maxY - minY};
+    }
+
+    function treeBadgeX(node) {
+        return 18 + node._treeLabelWidth;
+    }
+
+    function treeLinkEndpoints(link) {
+        // Connect the occupied parent group to the child circle, keeping the
+        // whole curve in the free corridor outside names and score badges.
+        return {source: {x: link.source.x, y: link.source._treeBounds.right + 8},
+            bend: {x: link.source.x, y: link.source._treeColumnRight + 8},
+            target: {x: link.target.x, y: link.target._treeBounds.left - 8}};
+    }
+
+    function treeLinkPath(link) {
+        var ends = treeLinkEndpoints(link), mid = (ends.bend.y + ends.target.y) / 2;
+        return 'M' + ends.source.y + ',' + ends.source.x + 'H' + ends.bend.y
+            + 'C' + mid + ',' + ends.source.x + ' ' + mid + ',' + ends.target.x + ' ' + ends.target.y + ',' + ends.target.x;
+    }
 
     // Root taxonomy colour palette (C1–C8)
     var ROOT_COLORS = [
@@ -553,10 +632,10 @@
         container.setAttribute('data-view-rendered', 'sunburst');
     }
 
-    // ── Top-down Tree Diagram ──────────────────────────────────────────────────
+    // ── Horizontal Tree Diagram ────────────────────────────────────────────────
     /**
-     * Render a collapsible top-down node-link tree diagram into `container`.
-     * Root nodes are at the top; children grow downward. Supports pan and zoom.
+     * Render a collapsible horizontal node-link tree diagram into `container`.
+     * Root nodes are on the left; children grow rightward. Supports pan and zoom.
      * @param {HTMLElement} container - The DOM element to render into (cleared first).
      * @param {Array}       data      - Array of root taxonomy nodes (each with `children`).
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
@@ -577,7 +656,7 @@
         appendContainerHeadings(container, data, scores);
         var colorMap = buildColorMap(data);
         var marginLeft = 40;
-        var marginRight = 300;
+        var marginRight = 40;
         var marginTop = 20;
         var marginBottom = 20;
 
@@ -585,16 +664,8 @@
         var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
-        // Initially collapse depth >= TREE_INITIAL_DEPTH to keep the initial view compact
-        root.each(function (d) {
-            if (d.depth >= TREE_INITIAL_DEPTH && d.children) {
-                d._children = d.children;
-                d.children = null;
-            }
-        });
-
-        // nodeSize([dx, dy]): dx = px vertical between sibling nodes, dy = px horizontal between levels
-        var treeLayout = d3.tree().nodeSize([28, 220]);
+        collapseInitialTree(root);
+        var measure = treeTextMeasure();
 
         var containerWidth = container.clientWidth || 800;
         var svg = d3.select(container)
@@ -622,26 +693,17 @@
         function update(source) {
             container.removeAttribute('data-transitions-complete');
             var currentToken = ++updateToken;
-            treeLayout(root);
-            var nodes = root.descendants();
-            var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
-
-            // Horizontal layout: d.y is the horizontal position (depth), d.x is vertical position
-            // Compute bounding box: xMin/xMax are vertical extents, yMax is maximum horizontal depth
-            var xMin = Infinity, xMax = -Infinity, yMax = 0;
-            nodes.forEach(function (d) {
-                if (d.x < xMin) { xMin = d.x; }
-                if (d.x > xMax) { xMax = d.x; }
-                if (d.y > yMax) { yMax = d.y; }
-            });
+            var layout = layoutTaxonomyTree(root, scores, measure);
+            var nodes = layout.nodes;
+            var links = layout.links;
 
             // Resize SVG to fit horizontal layout
-            var svgW = Math.max(containerWidth, yMax + marginLeft + marginRight);
-            var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
+            var svgW = Math.max(containerWidth, layout.width + marginLeft + marginRight);
+            var svgH = Math.max(400, layout.height + marginTop + marginBottom);
             svg.attr('width', svgW).attr('height', svgH);
 
             // Translate so the topmost node is at marginTop, root is inset by marginLeft
-            g.attr('transform', 'translate(' + marginLeft + ',' + (marginTop - xMin) + ')');
+            g.attr('transform', 'translate(' + (marginLeft - layout.left) + ',' + (marginTop - layout.top) + ')');
 
             var sourceX = source.x0 !== undefined ? source.x0 : (source.x != null ? source.x : 0);
             var sourceY = source.y0 !== undefined ? source.y0 : (source.y != null ? source.y : 0);
@@ -658,9 +720,18 @@
             nodeEnter.append('circle').attr('r', 7).attr('stroke-width', 1.5);
 
             nodeEnter.append('text')
+                .attr('class', 'tv-label')
                 .attr('dy', '0.31em')
-                .style('font-size', '12px')
+                .style('font', TREE_LABEL_FONT)
                 .style('user-select', 'none');
+            nodeEnter.append('text').attr('class', 'tv-score').attr('dy', '0.31em')
+                .style('font', TREE_BADGE_FONT).attr('fill', 'green');
+            nodeEnter.append('text').attr('class', 'tv-toggle').attr('dy', '0.31em')
+                .attr('text-anchor', 'middle').attr('aria-hidden', 'true')
+                .style('font', TREE_BADGE_FONT).style('pointer-events', 'none')
+                // Two opaque paints keep the glyph visible on pale scores and dark root colours.
+                .attr('fill', '#222').attr('stroke', '#fff').attr('stroke-width', 2)
+                .attr('stroke-linejoin', 'round').attr('paint-order', 'stroke fill');
 
             // Interactivity for non-root nodes
             nodeEnter.filter(function (d) { return d.data.code !== '__root__'; })
@@ -689,13 +760,17 @@
                 })
                 .attr('stroke', function (d) { return d.data.code === '__root__' ? 'none' : '#555'; });
 
-            nodeUpdate.select('text')
+            nodeUpdate.select('text.tv-label')
                 .text(function (d) {
                     if (d.data.code === '__root__') { return ''; }
                     return d.data.name ? d.data.code + ' \u2013 ' + d.data.name : d.data.code;
                 })
-                .attr('x', function (d) { return d.children || d._children ? -10 : 10; })
-                .attr('text-anchor', function (d) { return d.children || d._children ? 'end' : 'start'; });
+                .attr('x', 10)
+                .attr('text-anchor', 'start');
+            nodeUpdate.select('text.tv-score')
+                .text(function (d) { return hasScoreLabel(d.data.code, scores) ? scoreText(d.data.code, scores[d.data.code]) : ''; })
+                .attr('x', function (d) { return d.data.code === '__root__' ? 0 : treeBadgeX(d) + 4; });
+            nodeUpdate.select('text.tv-toggle').text(function (d) { return d._children ? '+' : ''; });
 
             // Exit: animate back to source position (using horizontal layout coordinates)
             node.exit().transition().duration(300)
@@ -722,7 +797,8 @@
                     return diag({ source: o, target: o });
                 });
 
-            var linkT = linkEnter.merge(link).transition().duration(300).attr('d', diag);
+            var linkT = linkEnter.merge(link).transition().duration(300)
+                .attr('d', treeLinkPath);
 
             link.exit().transition().duration(300)
                 .attr('d', function () {
@@ -1597,7 +1673,7 @@
         appendContainerHeadings(container, data, scores);
         var colorMap = buildColorMap(data);
         var marginLeft = 40;
-        var marginRight = 300;
+        var marginRight = 40;
         var marginTop = 20;
         var marginBottom = 20;
         var NODE_RADIUS = 7;
@@ -1606,15 +1682,8 @@
         var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
-        // Collapse depth >= TREE_INITIAL_DEPTH
-        root.each(function (d) {
-            if (d.depth >= TREE_INITIAL_DEPTH && d.children) {
-                d._children = d.children;
-                d.children = null;
-            }
-        });
-
-        var treeLayout = d3.tree().nodeSize([28, 220]);
+        collapseInitialTree(root);
+        var measure = treeTextMeasure();
         var containerWidth = container.clientWidth || 800;
 
         // Create canvas element
@@ -1658,19 +1727,11 @@
         canvas.addEventListener('blur', draw);
 
         function performLayout() {
-            treeLayout(root);
-            layoutNodes = root.descendants();
-            layoutLinks = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
-
-            var xMin = Infinity, xMax = -Infinity, yMax = 0;
-            layoutNodes.forEach(function (d) {
-                if (d.x < xMin) { xMin = d.x; }
-                if (d.x > xMax) { xMax = d.x; }
-                if (d.y > yMax) { yMax = d.y; }
-            });
-
-            var svgW = Math.max(containerWidth, yMax + marginLeft + marginRight);
-            var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
+            var layout = layoutTaxonomyTree(root, scores, measure);
+            layoutNodes = layout.nodes;
+            layoutLinks = layout.links;
+            var svgW = Math.max(container.clientWidth || containerWidth, layout.width + marginLeft + marginRight);
+            var svgH = Math.max(400, layout.height + marginTop + marginBottom);
 
             canvas.width = svgW * (window.devicePixelRatio || 1);
             canvas.height = svgH * (window.devicePixelRatio || 1);
@@ -1678,8 +1739,8 @@
             canvas.style.height = svgH + 'px';
 
             // Store offset for translating coordinates
-            canvas._offsetX = marginLeft;
-            canvas._offsetY = marginTop - xMin;
+            canvas._offsetX = marginLeft - layout.left;
+            canvas._offsetY = marginTop - layout.top;
 
             canvasNavigation.update(layoutNodes.filter(function (node) { return node.data.code !== '__root__'; })
                 .map(function (node) { return {node: node, element: canvas}; }));
@@ -1702,18 +1763,21 @@
             ctx.strokeStyle = '#ccc';
             ctx.lineWidth = 1.5;
             layoutLinks.forEach(function (l) {
-                var sx = l.source.y + ox;
-                var sy = l.source.x + oy;
-                var tx = l.target.y + ox;
-                var ty = l.target.x + oy;
+                var ends = treeLinkEndpoints(l);
+                var sx = ends.source.y + ox;
+                var sy = ends.source.x + oy;
+                var bendX = ends.bend.y + ox;
+                var tx = ends.target.y + ox;
+                var ty = ends.target.x + oy;
                 ctx.beginPath();
                 ctx.moveTo(sx, sy);
-                ctx.bezierCurveTo((sx + tx) / 2, sy, (sx + tx) / 2, ty, tx, ty);
+                ctx.lineTo(bendX, sy);
+                ctx.bezierCurveTo((bendX + tx) / 2, sy, (bendX + tx) / 2, ty, tx, ty);
                 ctx.stroke();
             });
 
             // Draw nodes
-            ctx.font = '12px Arial, Helvetica, sans-serif';
+            ctx.font = TREE_LABEL_FONT;
             layoutNodes.forEach(function (d) {
                 if (d.data.code === '__root__') { return; }
                 var nx = d.y + ox;
@@ -1739,40 +1803,39 @@
 
                 // Collapse indicator (+ inside circle for collapsed nodes)
                 if (d._children && d._children.length) {
-                    ctx.fillStyle = '#fff';
+                    ctx.save();
+                    ctx.fillStyle = '#222';
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.lineJoin = 'round';
                     ctx.font = 'bold 10px Arial';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
+                    ctx.strokeText('+', nx, ny);
                     ctx.fillText('+', nx, ny);
-                    ctx.font = '12px Arial, Helvetica, sans-serif';
+                    ctx.restore();
                 }
 
                 // Label
-                var label = d.data.name ? d.data.code + ' \u2013 ' + d.data.name : d.data.code;
+                var label = treeLabel(d);
                 ctx.fillStyle = '#333';
-                if (d.children || d._children) {
-                    ctx.textAlign = 'right';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(label, nx - 10, ny);
-                } else {
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(label, nx + 10, ny);
-                }
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(label, nx + 10, ny);
 
                 // Score badge
                 if (hasScoreLabel(d.data.code, scores)) {
                     var pct = scores[d.data.code];
                     var badgeText = scoreText(d.data.code, pct);
-                    var badgeX = (d.children || d._children) ? nx - 10 - ctx.measureText(label).width - 4 : nx + 10 + ctx.measureText(label).width + 4;
+                    var badgeX = nx + treeBadgeX(d);
                     ctx.fillStyle = 'rgba(0,128,0,0.75)';
-                    var bw = ctx.measureText(badgeText).width + 6;
-                    ctx.fillRect(badgeX - 1, ny - 7, bw, 14);
+                    ctx.fillRect(badgeX, ny - 9, d._treeBadgeWidth, 18);
                     ctx.fillStyle = '#fff';
-                    ctx.font = '10px Arial';
+                    ctx.font = TREE_BADGE_FONT;
                     ctx.textAlign = 'left';
-                    ctx.fillText(badgeText, badgeX + 2, ny + 3);
-                    ctx.font = '12px Arial, Helvetica, sans-serif';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(badgeText, badgeX + 4, ny);
+                    ctx.font = TREE_LABEL_FONT;
                 }
             });
 
@@ -1875,40 +1938,27 @@
         var areas = (data || []).filter(isTaxonomyContainer);
         var colorMap = buildColorMap(data);
         var marginLeft = 40;
-        var marginRight = 300;
+        var marginRight = 40;
         var marginTop = 20 + areas.length * 28;
         var marginBottom = 20;
-        var CHAR_WIDTH_ESTIMATE = 7;  // approx px per character for 12px Arial
-        var BADGE_OFFSET = 20;        // extra px gap between label end and badge
+        var measure = treeTextMeasure();
 
         var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
         // If expandAll is not set, apply the same initial collapse
         if (!options.expandAll) {
-            root.each(function (d) {
-                if (d.depth >= TREE_INITIAL_DEPTH && d.children) {
-                    d._children = d.children;
-                    d.children = null;
-                }
-            });
+            collapseInitialTree(root);
         }
 
-        var treeLayout = d3.tree().nodeSize([28, 220]);
-        treeLayout(root);
-
-        var nodes = root.descendants();
-        var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
-
-        var xMin = Infinity, xMax = -Infinity, yMax = 0;
-        nodes.forEach(function (d) {
-            if (d.x < xMin) { xMin = d.x; }
-            if (d.x > xMax) { xMax = d.x; }
-            if (d.y > yMax) { yMax = d.y; }
-        });
-
-        var svgW = Math.max(800, yMax + marginLeft + marginRight);
-        var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
+        var layout = layoutTaxonomyTree(root, scores, measure);
+        var nodes = layout.nodes;
+        var links = layout.links;
+        var headingWidth = areas.reduce(function (width, area) {
+            return Math.max(width, measure(containerLabel(area, scores), 'bold ' + TREE_LABEL_FONT));
+        }, 0);
+        var svgW = Math.max(800, Math.max(layout.width, headingWidth) + marginLeft + marginRight);
+        var svgH = Math.max(400, layout.height + marginTop + marginBottom);
 
         // Create off-screen SVG
         var svgNS = 'http://www.w3.org/2000/svg';
@@ -1944,16 +1994,13 @@
         });
 
         var g = document.createElementNS(svgNS, 'g');
-        g.setAttribute('transform', 'translate(' + marginLeft + ',' + (marginTop - xMin) + ')');
+        g.setAttribute('transform', 'translate(' + (marginLeft - layout.left) + ',' + (marginTop - layout.top) + ')');
         svg.appendChild(g);
 
         // Draw links using cubic Bézier curves (same as d3.linkHorizontal)
         links.forEach(function (l) {
             var path = document.createElementNS(svgNS, 'path');
-            var sx = l.source.y, sy = l.source.x;
-            var tx = l.target.y, ty = l.target.x;
-            var mx = (sx + tx) / 2;
-            path.setAttribute('d', 'M' + sx + ',' + sy + ' C' + mx + ',' + sy + ' ' + mx + ',' + ty + ' ' + tx + ',' + ty);
+            path.setAttribute('d', treeLinkPath(l));
             path.setAttribute('class', 'tv-link');
             g.appendChild(path);
         });
@@ -1971,29 +2018,37 @@
             circle.setAttribute('stroke-width', '1.5');
             nodeG.appendChild(circle);
 
+            if (d._children && d._children.length) {
+                var toggle = document.createElementNS(svgNS, 'text');
+                toggle.setAttribute('class', 'tv-toggle');
+                toggle.setAttribute('dy', '0.31em');
+                toggle.setAttribute('text-anchor', 'middle');
+                toggle.setAttribute('style', 'font: ' + TREE_BADGE_FONT);
+                toggle.setAttribute('fill', '#222');
+                toggle.setAttribute('stroke', '#fff');
+                toggle.setAttribute('stroke-width', '2');
+                toggle.setAttribute('stroke-linejoin', 'round');
+                toggle.setAttribute('paint-order', 'stroke fill');
+                toggle.textContent = '+';
+                nodeG.appendChild(toggle);
+            }
+
             var text = document.createElementNS(svgNS, 'text');
             text.setAttribute('dy', '0.31em');
-            var label = d.data.name ? d.data.code + ' \u2013 ' + d.data.name : d.data.code;
+            var label = treeLabel(d);
             text.textContent = label;
-            if (d.children || d._children) {
-                text.setAttribute('x', '-10');
-                text.setAttribute('text-anchor', 'end');
-            } else {
-                text.setAttribute('x', '10');
-                text.setAttribute('text-anchor', 'start');
-            }
+            text.setAttribute('x', '10');
+            text.setAttribute('text-anchor', 'start');
             nodeG.appendChild(text);
 
             // Score badge
             if (hasScoreLabel(d.data.code, scores)) {
                 var badge = document.createElementNS(svgNS, 'text');
                 badge.setAttribute('dy', '0.31em');
-                badge.setAttribute('x', (d.children || d._children) ? '-10' : '10');
-                badge.setAttribute('dx', (d.children || d._children) ? ('-' + (label.length * CHAR_WIDTH_ESTIMATE + BADGE_OFFSET)) : '' + (label.length * CHAR_WIDTH_ESTIMATE + BADGE_OFFSET));
+                badge.setAttribute('x', String(treeBadgeX(d) + 4));
                 badge.setAttribute('text-anchor', 'start');
                 badge.setAttribute('fill', 'green');
-                badge.setAttribute('font-size', '10px');
-                badge.setAttribute('font-weight', 'bold');
+                badge.setAttribute('style', 'font: ' + TREE_BADGE_FONT);
                 badge.textContent = scoreText(d.data.code, scores[d.data.code]);
                 nodeG.appendChild(badge);
             }
