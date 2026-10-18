@@ -32,6 +32,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
     private final BrowserSession session;
     private final List<Map<String, Object>> controls = new ArrayList<>();
     private boolean completed;
+    private int continuedPasses;
 
     ScenarioBrowserWalkthrough(int port, Path output) throws Exception {
         assertThat(Boolean.getBoolean("generateScreenshots")).isTrue();
@@ -99,8 +100,27 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         return new ScenarioArchitectureAcceptanceTest.Run(projectId, requirementId, operation);
     }
 
+    /** One real click authorizes one further cycle; status polling never submits another POST. */
+    void continuePass(String jobId, long itemId) throws Exception {
+        // Reload the persisted operation, including cycles performed before this page was read.
+        driver.navigate().refresh();
+        By action = By.cssSelector("[data-session-control='continue-analysis-pass'][data-job-id='"
+                + jobId + "'][data-item-id='" + itemId + "']");
+        wait.until(ExpectedConditions.elementToBeClickable(action));
+        if (continuedPasses++ == 0) {
+            inventory("analysis-continuation");
+            screenshot("86-scenario-continuation.png");
+        }
+        click(action);
+    }
+
     void inspect(long projectId, long requirementId, String snapshotId, JsonNode projection,
                  Map<String, byte[]> artifacts, ScenarioArchitectureAcceptanceTest app) throws Exception {
+        // A partial analysis stays on its operation surface so its questions and
+        // continuation actions remain reviewable. Open the selected result explicitly.
+        driver.navigate().refresh();
+        wait.until(ExpectedConditions.attributeContains(By.id("copilotOpenResult"), "href", "snapshot=" + snapshotId));
+        click(By.id("copilotOpenResult"));
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot=" + snapshotId));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotResultOverview")));
         inventory("result");

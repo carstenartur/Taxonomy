@@ -2,6 +2,7 @@ package com.taxonomy.acceptance;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
@@ -10,7 +11,7 @@ import java.util.regex.Pattern;
 /** Test-only semantic response corpus. No live fallback is possible. */
 public final class ScenarioLlmPlayback {
     private static final Pattern KEYS = Pattern.compile("EXACTLY these keys: ([^\\r\\n]+)");
-    private static final Pattern BUDGET = Pattern.compile("distribute the parent relevance score of (\\d+)");
+    private static final Pattern BUDGET = Pattern.compile("distribute the parent relevance score of (\\d+(?:\\.\\d+)?)(?=\\s|$)");
     private static final Pattern REQUIREMENT = Pattern.compile("Business Requirement: (.*?)\\n\\s*\\n(?=(?:(?:[^\\r\\n]*Categories|Concrete Information Product candidates|Nodes to evaluate):\\r?\\n|Taxonomy root: [^\\r\\n]+\\r?\\n))", Pattern.DOTALL);
     private static final Set<String> ROOT_CODES = Set.of("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA");
     private static final String ROOT_PROMPT = "You assess the independent relevance of the offered C3 taxonomy root";
@@ -56,25 +57,38 @@ public final class ScenarioLlmPlayback {
             require(!keys.isEmpty() && new HashSet<>(keys).size() == keys.size(), "Duplicate or missing keys: " + id);
             String task = rule.path("task").asText();
             require(Set.of("categories", "products").contains(task), "Unknown task: " + id);
-            int total = 0;
+            require(rule.path("answers").isObject(), "Missing answers: " + id);
+            BigDecimal total = BigDecimal.ZERO;
             for (var entry : rule.path("answers").properties()) {
                 var answer = entry.getValue();
                 require(keys.contains(entry.getKey()), "Answer outside requested keys: " + id);
-                int score = answer.path("score").asInt(-1);
-                require(score >= 0 && score <= 100 && !answer.path("reason").asText().isBlank(), "Invalid answer: " + id);
-                total += score;
+                BigDecimal score = percentage(answer.path("score"), "answer: " + id + "/" + entry.getKey());
+                require(answer.path("reason").isString() && !answer.path("reason").asText().isBlank(), "Invalid answer: " + id);
+                total = total.add(score);
             }
-            require(!rule.path("excludedReason").asText().isBlank(), "Missing exclusion reason: " + id);
+            for (String key : keys) require(rule.path("answers").has(key), "Missing answer: " + id + "/" + key);
+            BigDecimal budget = task.equals("products") ? BigDecimal.valueOf(-1)
+                    : percentage(rule.path("parentScore"), "budget: " + id);
             boolean independentRoot = keys.size() == 1 && ROOT_CODES.contains(keys.getFirst());
-            require(!task.equals("categories") || independentRoot || total == rule.path("parentScore").asInt(), "Budget mismatch: " + id);
-            String signature = signature(task, rule.path("parentScore").asInt(-1), keys);
+            require(!task.equals("categories") || independentRoot || total.signum() == 0 || total.compareTo(budget) == 0,
+                    "Budget mismatch: " + id);
+            String signature = signature(task, budget, keys);
             require(rules.putIfAbsent(signature, rule.deepCopy()) == null, "Duplicate response scope: " + id);
         }
         require(!rules.isEmpty(), "Empty response corpus");
     }
     public static ScenarioLlmPlayback flood() throws Exception {
         try (var input = ScenarioLlmPlayback.class.getResourceAsStream("/scenarios/flood-information.json")) {
-            return new ScenarioLlmPlayback(new ObjectMapper().readTree(input));
+            var mapper = new ObjectMapper();
+            var fixture = mapper.readTree(input);
+            String exclusionResource = fixture.at("/relationPlayback/exclusionResource").asString();
+            require(exclusionResource.startsWith("/scenarios/") && !exclusionResource.contains(".."),
+                    "Missing scenario exclusion resource");
+            try (var exclusions = ScenarioLlmPlayback.class.getResourceAsStream(exclusionResource)) {
+                require(exclusions != null, "Missing authored relation exclusion resource: " + exclusionResource);
+                ((tools.jackson.databind.node.ObjectNode) fixture.path("relationPlayback")).set("exclusions", ScenarioExclusionResource.expand(mapper.readTree(exclusions)));
+            }
+            return new ScenarioLlmPlayback(fixture);
         }
     }
     public JsonNode fixture() { return fixture.deepCopy(); }
@@ -104,14 +118,14 @@ public final class ScenarioLlmPlayback {
                 if (pause != null) pause.hold();
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
-                calls.add(new Call(reply.id(), sha256(prompt), sha256(body)));
+                calls.add(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body));
                 return body;
             }
             if (prompt.startsWith(ScenarioRelationPlayback.PREFIX)) {
                 var reply = relationPlayback.respond(prompt);
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
-                calls.add(new Call(reply.id(), sha256(prompt), sha256(body)));
+                calls.add(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body));
                 return body;
             }
             String requirement = unique(REQUIREMENT, prompt, "requirement");
@@ -126,20 +140,18 @@ public final class ScenarioLlmPlayback {
                 require(keys.size() == 1 && ROOT_CODES.contains(keys.getFirst()), "Unknown root question");
                 require(prompt.contains("\n" + keys.getFirst() + ": "), "Missing offered root node");
             }
-            int budget = products ? -1 : root ? 100 : Integer.parseInt(unique(BUDGET, prompt, "category task and budget"));
+            BigDecimal budget = products ? BigDecimal.valueOf(-1) : root ? BigDecimal.valueOf(100)
+                    : new BigDecimal(unique(BUDGET, prompt, "category task and budget"));
             require(!(products || root) || !BUDGET.matcher(prompt).find(), "Ambiguous task");
             JsonNode rule = rules.get(signature(products ? "products" : "categories", budget, keys));
             require(rule != null, "Unknown response scope: " + String.join(",", keys));
             var answer = json.createObjectNode();
             for (String key : new TreeSet<>(keys)) {
-                JsonNode explicit = rule.path("answers").get(key);
-                answer.set(key, explicit == null
-                        ? json.createObjectNode().put("score", 0).put("reason", rule.path("excludedReason").asText())
-                        : explicit.deepCopy());
+                answer.set(key, rule.path("answers").get(key).deepCopy());
             }
             String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                     Map.of("role", "assistant", "content", json.writeValueAsString(answer))))));
-            calls.add(new Call(rule.path("id").asText(), sha256(prompt), sha256(body)));
+            calls.add(new Call(rule.path("id").asText(), sha256(prompt), sha256(body), prompt, body));
             return body;
         } catch (RuntimeException failure) {
             failures.add(failure.getMessage());
@@ -177,13 +189,15 @@ public final class ScenarioLlmPlayback {
         if (!failures.isEmpty()) throw new AssertionError("Unmatched LLM calls: " + failures);
         relationPlayback.verifyCoverage(repetitions);
         Map<String, Long> frequencies = calls.stream().filter(call -> call.ruleId().startsWith("relation:"))
-                .collect(java.util.stream.Collectors.groupingBy(Call::ruleId, java.util.stream.Collectors.counting()));
+                .collect(java.util.stream.Collectors.groupingBy(Call::promptSha256, java.util.stream.Collectors.counting()));
         for (var entry : frequencies.entrySet()) {
             if (entry.getValue() != repetitions) {
                 throw new AssertionError("Unstable repeated relation query " + entry.getKey() + ": " + entry.getValue());
             }
         }
     }
+
+    public synchronized Map<String, Object> relationCoverage() { return relationPlayback.coverage(); }
 
     public synchronized void verifyReformulationCoverage(int repetitions) {
         if (!failures.isEmpty()) throw new AssertionError("Unmatched LLM calls: " + failures);
@@ -194,8 +208,17 @@ public final class ScenarioLlmPlayback {
         }
     }
 
-    private static String signature(String task, int budget, List<String> keys) {
-        return task + ":" + budget + ":" + String.join(",", new TreeSet<>(keys));
+    private static String signature(String task, BigDecimal budget, List<String> keys) {
+        return task + ":" + budget.stripTrailingZeros().toPlainString() + ":" + String.join(",", new TreeSet<>(keys));
+    }
+    private static BigDecimal percentage(JsonNode value, String label) {
+        require(value.isNumber(), "Invalid " + label);
+        BigDecimal number;
+        try { number = value.decimalValue(); }
+        catch (NumberFormatException invalid) { throw new IllegalArgumentException("Invalid " + label, invalid); }
+        require(number.compareTo(BigDecimal.ZERO) >= 0 && number.compareTo(BigDecimal.valueOf(100)) <= 0,
+                "Invalid " + label);
+        return number;
     }
     private static List<String> strings(JsonNode node) {
         var result = new ArrayList<String>();
@@ -218,5 +241,6 @@ public final class ScenarioLlmPlayback {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException failure) { throw new IllegalStateException(failure); }
     }
-    public record Call(String ruleId, String promptSha256, String responseSha256) { }
+    /** Actual exchanges make every authored decision reviewable against its rendered prompt. */
+    public record Call(String ruleId, String promptSha256, String responseSha256, String prompt, String response) { }
 }

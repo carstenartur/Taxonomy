@@ -55,11 +55,13 @@ public final class RelationScenarioPlaybackContract {
                 Phase.VERIFY, List.of(PICTURE), proposal)).getFirst();
         check(checked.outcome() == Outcome.VERIFIED, "The concrete claim must be verified in a separate call");
         check(checked.quote().equals(proposal.quote()) && checked.contribution().equals(proposal.contribution()), "Verification preserves the exact claim");
-        var reversed = protocol.evaluate(new Query(original, contribution, "CONSUMES", Direction.INCOMING,
-                Phase.NAVIGATE, List.of(PICTURE), null)).getFirst();
+        // The real relation plan never offers an information product consuming an
+        // application. An unauthored reversed prompt must fail, not invent an answer.
+        expectFailure(() -> protocol.evaluate(new Query(original, contribution, "CONSUMES", Direction.INCOMING,
+                Phase.NAVIGATE, List.of(PICTURE), null)));
         var write = protocol.evaluate(new Query(original, contribution, "PRODUCES", Direction.OUTGOING,
                 Phase.NAVIGATE, List.of(PICTURE), null)).getFirst();
-        check(reversed.outcome() == Outcome.REJECT && write.outcome() == Outcome.REJECT, "Reading must not manufacture reversed or write access");
+        check(write.outcome() == Outcome.REJECT, "Reading must not manufacture write access");
     }
 
     public static void testVerificationDoesNotBlindlyEchoAChangedProposal() throws Exception {
@@ -82,6 +84,82 @@ public final class RelationScenarioPlaybackContract {
         expectFailure(() -> protocol(playback).contributions(original(playback),
                 List.of(new Node("FOREIGN", "UA", "Fabricated", "", false))));
         check(playback.failures().size() == 2, "Unmatched calls remain visible and cannot use a real provider fallback");
+    }
+
+    public static void testActualRelationPromptsAndRepliesRemainReviewable() throws Exception {
+        var playback = ScenarioLlmPlayback.flood();
+        var protocol = protocol(playback);
+        var original = original(playback);
+        var source = protocol.contributions(original, List.of(APPLICATION)).getFirst().contributions().getFirst();
+        var query = new Query(original, source, "CONSUMES", Direction.OUTGOING, Phase.NAVIGATE, List.of(PICTURE), null);
+        var proposal = protocol.evaluate(query).getFirst();
+        protocol.evaluate(new Query(original, source, "CONSUMES", Direction.OUTGOING, Phase.VERIFY, List.of(PICTURE), proposal));
+        check(playback.calls().size() == 3, "Extraction, navigation and verification are separate real protocol exchanges");
+        for (var call : playback.calls()) {
+            check(call.prompt().startsWith(ScenarioRelationPlayback.PREFIX) && call.prompt().contains(original),
+                    "The full original and actual relation prompt must be retained");
+            check(!call.response().isBlank(), "A response hash alone cannot support domain review");
+            check(call.promptSha256().equals(ScenarioLlmPlayback.sha256(call.prompt()))
+                            && call.responseSha256().equals(ScenarioLlmPlayback.sha256(call.response())),
+                    "Stored text must match the exchange fingerprints");
+        }
+    }
+
+    public static void testMissingPositiveSourceCannotBecomeAnInventedContextRejection() throws Exception {
+        var fixture = ScenarioLlmPlayback.flood().fixture().deepCopy();
+        var sources = (tools.jackson.databind.node.ArrayNode) fixture.at("/relationPlayback/sourceContributions");
+        for (int index = 0; index < sources.size(); index++) {
+            if (sources.get(index).path("nodeId").asString().equals("CP-1016")) {
+                sources.remove(index);
+                break;
+            }
+        }
+        try {
+            new ScenarioLlmPlayback(fixture);
+            throw new AssertionError("Every positively assessed source needs an authored contribution or a reasoned rejection");
+        } catch (IllegalArgumentException expected) {
+            check(expected.getMessage().equals("Missing positive source assessment: CP-1016"),
+                    "The omitted source must fail explicitly, not disappear as navigation context");
+        }
+    }
+
+    public static void testEverySelectableChannelRemainsARequiredCapability() throws Exception {
+        var playback = ScenarioLlmPlayback.flood();
+        var protocol = protocol(playback);
+        String original = original(playback);
+        var dissemination = new Node("BP-1535", "BP", "Information Retrieval and Dissemination", "", false);
+        for (var channel : List.of(
+                new Node("CO-1048", "CO", "Short Messaging Access Services", "", false),
+                new Node("CO-1066", "CO", "Voice Access Services", "", false),
+                new Node("CR-1037", "CR", "Informal Messaging Services", "", false))) {
+            var contribution = protocol.contributions(original, List.of(channel)).getFirst().contributions().getFirst();
+            var proposal = protocol.evaluate(new Query(original, contribution, "SUPPORTS", Direction.OUTGOING,
+                    Phase.NAVIGATE, List.of(dissemination), null)).getFirst();
+            check(proposal.outcome() == Outcome.MATCH && proposal.necessity() == Necessity.REQUIRED,
+                    channel.id() + " must remain available even when an individual delivery uses another channel");
+            check(!proposal.condition().isBlank() && proposal.alternativeGroup().isBlank(),
+                    "User selection is a per-delivery condition, not a mutually exclusive architecture alternative");
+            var verified = protocol.evaluate(new Query(original, contribution, "SUPPORTS", Direction.OUTGOING,
+                    Phase.VERIFY, List.of(dissemination), proposal)).getFirst();
+            check(verified.outcome() == Outcome.VERIFIED && verified.condition().equals(proposal.condition()),
+                    "Separate verification must retain the required channel and its delivery condition");
+        }
+    }
+
+    public static void testPublicReadingChannelDeliveryAndAssumedReliabilityStaySeparate() throws Exception {
+        var playback = ScenarioLlmPlayback.flood();
+        var node = new Node("BP-1535", "BP", "Information Retrieval and Dissemination", "", false);
+        var assessment = protocol(playback).contributions(original(playback), List.of(node)).getFirst();
+        check(assessment.contributions().size() == 3,
+                "F1 public reading, F3 channel dispatch and A1 reliability need distinct functional scopes");
+        var reading = assessment.contributions().stream().filter(part -> part.quote().startsWith("F1:")).findFirst().orElseThrow();
+        var delivery = assessment.contributions().stream().filter(part -> part.quote().startsWith("F3:")).findFirst().orElseThrow();
+        var reliability = assessment.contributions().stream().filter(part -> part.quote().startsWith("A1 ")).findFirst().orElseThrow();
+        check(reading.condition().isBlank() && delivery.condition().isBlank(),
+                "The mandatory F1/F3 functions must not depend on the supplementary A1 design assumption");
+        check(reliability.condition().contains("test design assumption"), "The A1-specific scope must retain its assumption");
+        check(!reading.text().contains("queue") && !delivery.text().contains("retries"),
+                "Read-only and ordinary delivery scopes must not silently inherit A1 infrastructure choices");
     }
 
     private static RelationSearchProtocol protocol(ScenarioLlmPlayback playback) {

@@ -201,10 +201,11 @@ public final class ScenarioExportQa {
         report.put("relationships", expected.edges().size());
         report.put("isolatedElements", isolated);
         report.put("architectureState", "GENERATED_CANDIDATE");
-        report.put("referenceReview", Map.of("decision", "ACCEPTED_AS_INTEGRATION_TEST_REFERENCE",
+        report.put("referenceReview", Map.of("decision", "SEPARATE_DOMAIN_ACCEPTANCE_REQUIRED",
                 "document", "docs/qa/scenario-reference-review.md", "productionApproval", false,
-                "remainingCoverage", List.of("F3 phone/email and subscription model", "F4 account management/deletion",
-                        "F5 timing/outage contracts", "A1 delivery/privacy/audit contracts")));
+                "reference", "scenarios/flood-quality-reference.json",
+                "requiredGates", List.of("classification-quality.json", "relation-quality.json",
+                        "architecture-quality.json", "integration-quality.json")));
         report.put("automaticChecks", List.of("ArchiMate semantic round trip", "Visio identity and endpoint parity",
                 "ZIP and manifest checksums", "SVG identity and scene bounds", "PDF text, provenance and minimum 7pt glyph size",
                 "DOCX/HTML/JSON report provenance", "All registered diagram adapters, including Sparx fresh-copy handoff",
