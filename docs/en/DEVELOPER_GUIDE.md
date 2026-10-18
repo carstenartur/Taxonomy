@@ -81,40 +81,40 @@ the deeper architecture sections below.
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 
-# Compile the complete reactor with the pinned Maven distribution
-./mvnw compile
-
-# Bounded developer verification (no Docker)
+# Bounded developer verification
 ./mvnw verify
 
-# Complete pull-request verification (Docker required)
-./mvnw -B verify -Pci
+# Canonical CI verification (see its documented runtime prerequisites)
+./mvnw -B verify -Pci -DrunOnnxTests=true
 
-# Start locally (browse-only, no API key required)
-./mvnw -pl taxonomy-app spring-boot:run
+# Package the application and needed libraries, then start from the repository root
+./mvnw -pl taxonomy-app -am package -DskipTests
+java -Dloader.path=taxonomy-app/target/features -jar taxonomy-app/target/taxonomy-app-*.jar --taxonomy.plugins.directory=taxonomy-app/target/plugins
 ```
 
-Open <http://localhost:8080> to see the application. The reactor contains fifteen
-child modules; `taxonomy-app` is the only deployable Spring Boot application.
+Open <http://localhost:8080>. Catalogue browsing requires no LLM key.
+Follow the [README bootstrap instructions](https://github.com/carstenartur/Taxonomy/blob/main/README.md#quick-start) for the
+local administrator's initial sign-in.
+
+---
 
 ## Module Architecture
 
-The current module inventory, ownership and dependency direction are maintained in
-[Module boundaries](MODULE_BOUNDARIES.md); see [Architecture](ARCHITECTURE.md#module-architecture)
-for the feature dependency graph and runtime/persistence views. Use those current
-references rather than the former five-module layout when choosing a change owner.
+The complete reactor inventory and ownership contracts are maintained in
+[Module boundaries](MODULE_BOUNDARIES.md). [Architecture](ARCHITECTURE.md#module-architecture)
+shows the feature dependency graph and separate runtime/persistence views.
 
-There are four framework-free foundations (`taxonomy-domain`, `taxonomy-dsl`,
-`taxonomy-export`, `taxonomy-extension-api`), seven runtime feature libraries,
-one application composition root and three build/tooling modules. Feature
-libraries do not depend back on `taxonomy-app`. This is a modular monolith,
-not a set of independently deployed services.
+The reactor separates framework-free contracts, runtime features, the plugin
+runtime, an independent Mermaid plugin, application composition and build tooling.
+Feature libraries do not depend back on `taxonomy-app`. Reporting models belong
+to `taxonomy-reporting-api`, renderers to `taxonomy-reporting`, and generic template
+contracts to `taxonomy-templates-api`.
 
-The seven feature owners are `taxonomy-workspace`, `taxonomy-knowledge`,
-`taxonomy-templates`, `taxonomy-interop`, `taxonomy-architecture`,
-`taxonomy-analysis` and `taxonomy-portfolio`. Build/release tooling, aggregate
-coverage and repository-wide verification belong to `taxonomy-tooling`,
-`taxonomy-coverage` and `taxonomy-build`, not to runtime feature contexts.
+`taxonomy-app` produces the executable application. The default local mode uses one
+process; optional Artemis execution uses the same image for coordinator and worker
+processes. See [analysis execution](ARCHITECTURE.md#analysis-execution-and-deployment).
+This does not make every web/background feature cluster-safe. Build/release tooling,
+aggregate coverage and repository-wide checks are not runtime feature services.
 
 ---
 
@@ -127,7 +127,7 @@ Pure data types shared across modules:
 | Package | Contents |
 |---|---|
 | `com.taxonomy.dto` | DTOs (Data Transfer Objects) — `TaxonomyNodeDto`, `AnalysisResult`, `ArchitectureRecommendation`, `GapAnalysisView`, `SavedAnalysis`, etc. |
-| `com.taxonomy.model` | 6 domain enums — `RelationType` (12 values), `SeedType`, `HypothesisStatus`, `ProposalStatus`, `SourceType`, `LinkType` |
+| `com.taxonomy.model` | Domain enums and scope values, including `RelationType`, `SeedType`, `HypothesisStatus`, `ProposalStatus`, `SourceType`, `LinkType` and `WorkspaceOverlayScope` |
 
 ### taxonomy-dsl
 
@@ -184,7 +184,7 @@ such as `com.taxonomy.versioning` does not imply physical ownership by
 |---|---|
 | Add a new taxonomy endpoint | `taxonomy-knowledge/.../catalog/` — create or extend the catalogue-owned controller; use application composition only for cross-context orchestration |
 | Add a new service | The owning feature library from [Module boundaries](MODULE_BOUNDARIES.md); use a framework-free type when Spring is unnecessary |
-| Add a new export format | `taxonomy-export/.../export/` — implement the exporter, register in `ExportConfig` |
+| Add a new export format | [Export task](../dev/tasks/add-export-format.md): framework-free SPI, built-in adapter or independent plugin |
 | Add a new JPA entity | The owning feature library; keep application-wide migration composition in `taxonomy-app` |
 | Add a new DTO | `taxonomy-domain/.../dto/` — create a record or class |
 | Change the DSL grammar | `taxonomy-dsl/.../parser/TaxDslParser.java` |
@@ -203,18 +203,18 @@ quality gates and the browser/accessibility matrix.
 
 ```bash
 ./mvnw verify
-./mvnw test -pl taxonomy-dsl
-./mvnw test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
+./mvnw test -pl taxonomy-dsl -am
+./mvnw test -pl taxonomy-app -am -Dtest=TaxonomyApplicationTests -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw -B verify -Pcore-integration
 ./mvnw -B verify -Pdatabase-postgres
 ./mvnw -B verify -Pdatabase-mssql
 ./mvnw -B verify -Pdatabase-oracle
 ./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true
-./mvnw -B verify -Pci
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
 
-The exact suite scope, prerequisites, browser-profile reproduction and the eight
-remaining workflow responsibilities are documented in
+The exact suite scope, prerequisites, browser-profile reproduction and remaining
+workflow responsibilities are documented in
 [`docs/dev/MAVEN_VERIFICATION.md`](../dev/MAVEN_VERIFICATION.md). Test selection
 belongs in a POM profile; workflow YAML may select an environment/profile but
 must not name Java tests or invoke Playwright/axe scripts directly.
@@ -224,7 +224,7 @@ must not name Java tests or invoke Playwright/axe scripts directly.
 1. Select the owning feature library using [Module boundaries](MODULE_BOUNDARIES.md), then create or extend its controller. Only cross-context HTTP orchestration belongs in `taxonomy-app/src/main/java/com/taxonomy/composition/`.
 2. If the endpoint returns a new DTO, add it to `taxonomy-domain/src/main/java/com/taxonomy/dto/`.
 3. Put the service and its owned tests in the same feature context; cross-context access uses its public API or an explicit port.
-4. Add tests (typically using `@SpringBootTest` + `@AutoConfigureMockMvc` + `@WithMockUser(roles = "ADMIN")`).
+4. Keep service tests at the lowest useful JUnit layer; use HTTP/security integration tests for endpoint behavior and the relevant roles.
 5. If the endpoint is admin-only, add it under `/api/admin/` (protected by `ROLE_ADMIN` in `SecurityConfig`).
 6. If the endpoint modifies architecture data (relations, DSL), place it under `/api/relations/`, `/api/dsl/`, or `/api/git/` — write operations on these paths require `ROLE_ARCHITECT` or `ROLE_ADMIN`.
 
@@ -232,40 +232,41 @@ must not name Java tests or invoke Playwright/axe scripts directly.
 
 ## Adding a New Export Format
 
-Use the stable extension point documented in
-[`docs/dev/07-extension-points.md#export-formats`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md#export-formats).
+For a built-in format, implement framework-free conversion in `taxonomy-export`
+and register the application adapter through the existing export SPI. For an
+independently installable format, implement `ExportFormatExtension` in a separate
+JAR and expose it through a `TaxonomyPlugin` ServiceLoader entry. Both use the shared
+catalog and `POST /api/diagram/export/{formatId}`.
 
-The current preferred path is:
-
-1. Add the framework-free exporter class to `taxonomy-export/src/main/java/com/taxonomy/export/`.
-2. Register the exporter as a Spring bean in
-   `taxonomy-app/src/main/java/com/taxonomy/shared/config/ExportConfig.java`.
-3. Add a Spring `@Component` adapter implementing `ExportFormatExtension`.
-4. Reuse the generic endpoint `POST /api/diagram/export/{formatId}` unless a
-   truly custom URL is needed.
-5. Add or extend exporter, adapter, and registry tests.
+Follow [the export task](../dev/tasks/add-export-format.md) for packaging, artifact
+identity, lifecycle and HTTP verification. Report renderers and diagram export
+formats have different contracts; do not route every report through a diagram codec.
 
 ---
 
 ## Adding a New LLM Provider
 
-Use the stable extension point documented in
-[`docs/dev/07-extension-points.md#llm-providers`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md#llm-providers).
+First check whether the existing `CUSTOM_OPENAI` configuration supports the endpoint.
+For a new transport, follow [the provider task](../dev/tasks/add-llm-provider.md):
+use an open `ProviderId`, implement `LlmTransportExtension` and expose it through a
+startup-bound `TaxonomyPlugin` ServiceLoader entry in an independent Java 21 JAR.
+Changing the built-in `LlmProvider` enum is not required for an external provider.
 
-The current preferred path is:
-
-1. Add a new constant to `LlmProvider`.
-2. Create a Spring `@Component` implementing `LlmProviderExtension`.
-3. Register the HTTP gateway in `LlmGatewayRegistry`.
-4. Add configuration and availability wiring in `LlmProviderConfig`.
-5. Update `LlmResponseParser` only if the provider's response schema differs.
-6. Document the new provider in `CONFIGURATION_REFERENCE.md` and `AI_PROVIDERS.md`.
+The host in `taxonomy-analysis` retains selection, admission, retries, cancellation,
+metering and frozen provider identity. A contributed transport performs one attempt.
+Document configuration, capabilities and recovery limitations; do not add protocol
+branches directly to `LlmService` or infer token bounds from compatible HTTP syntax.
 
 ---
 
 ## DSL and JGit Storage
 
-The Architecture DSL subsystem uses JGit DFS (Distributed File System) with all Git objects stored in the HSQLDB database — no filesystem is used. The DSL serves as the **single source of truth** for architecture definitions.
+The Architecture DSL subsystem uses JGit DFS with Git objects and refs stored in
+the configured relational database through `jgit-storage-hibernate`. HSQLDB is the
+default, not the only backend. `taxonomy-workspace` owns the repository facade and
+editor journal. Accepted semantic operations are durable working revisions; explicit
+Git checkpoints record stable DSL versions. Immutable analysis snapshots have their
+own identity and lifecycle. See [persistence responsibilities](ARCHITECTURE.md#dsl-storage-architecture).
 
 **DSL module (`taxonomy-dsl`)** — Spring-independent library:
 
@@ -298,7 +299,10 @@ The Architecture DSL subsystem uses JGit DFS (Distributed File System) with all 
 | `GitPackEntity` | JPA entity for the `git_packs` table |
 | `GitReflogEntity` | JPA entity for the `git_reflog` table |
 
-**Important:** `DfsBlockCache` is a JVM-global singleton. Pack names **must** be unique across all `HibernateObjDatabase` instances in the same JVM. The `packIdCounter` is per-instance and initialised with `System.nanoTime()` to avoid collisions during test context restarts.
+**Storage-library boundary:** `DfsBlockCache` is JVM-global. Repository/pack identities
+must remain distinct, but their implementation and schema belong to the released
+storage adapter. Do not copy an old counter implementation or recreate library
+migrations in Taxonomy. See [JGit storage integration](JGIT_STORAGE_HIBERNATE.md).
 
 ### Source Provenance Architecture
 
@@ -346,11 +350,11 @@ The application uses Hibernate Search 8 with a Lucene 9 backend for full-text an
 
 ## Testing Conventions
 
-- Tests use `@SpringBootTest` with HSQLDB in-memory and `@AutoConfigureMockMvc`.
+- Feature unit tests use JUnit without a Spring context when possible; HTTP/database acceptance uses the existing Spring/HSQLDB fixtures.
 - DSL module tests (`taxonomy-dsl`) are pure JUnit 5 — no Spring context.
 - JGit storage tests (`DslGitRepositoryTest`) are pure JUnit 5 with database-backed `HibernateRepository`.
-- Integration tests requiring Docker follow the `*IT.java` naming pattern.
-- Tests **never** call real LLM APIs — use `LlmService` mocking instead.
+- Surefire owns `*Test`/`*Tests`; Failsafe owns `*IT` in selected profiles. Tags and fixtures determine Docker/browser prerequisites, not the suffix alone.
+- Default tests use deterministic doubles or authored HTTP playback. Live-model comparison requires the explicit opt-in `reformulation-real-llm` profile and its configured provider.
 
 ### Test Security Setup
 
@@ -520,31 +524,23 @@ current `exportShowcase()` output, ensuring the diagram stays accurate.
 
 ## Screenshot Conventions
 
-Screenshots are auto-generated by `ScreenshotGeneratorIT` and stored in `docs/images/`.
+Screenshot ownership, current selectors, capture prerequisites and provenance rules
+are maintained in [the screenshot reference](https://github.com/carstenartur/Taxonomy/blob/main/.github/copilot-ref-screenshots.md).
+Use the owning scenario instead of constructing a second browser state:
+`ScreenshotGeneratorIT` covers general UI, `ArchitectureWorkbenchUiIT` the persisted
+workbench, and `CompleteCopilotSessionIT` the complete Copilot result.
 
-### Rules:
+```bash
+./mvnw -B verify -Pscreenshots -DgenerateScreenshots=true
+```
 
-1. **Only healthy states:** Screenshots must show successful, representative product states.
-   Do not commit screenshots showing:
-   - Backend error pages (500, stack traces)
-   - Empty/loading states without data
-   - Broken layouts or JS errors in the console
-
-2. **Naming convention:** `NN-descriptive-name.png` (e.g., `15-scored-taxonomy-tree.png`)
-
-3. **Regeneration:** After any UI change, regenerate affected screenshots:
-   ```
-   ./mvnw failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
-   ```
-
-4. **Bilingual screenshots:** If the UI is switched to German, generate a parallel
-   set under `docs/images/de/` with the same naming scheme.
-
-5. **Review checklist for PRs that change the UI:**
-   - [ ] Screenshots regenerated
-   - [ ] No error states in screenshots
-   - [ ] User Guide references updated if layout changed
-   - [ ] Both DE and EN labels render correctly
+This full-application capture requires Docker. The existing local scenario path and
+component illustrations have different prerequisites and evidence boundaries; see
+the linked reference. Select representative successful or explicitly labelled
+empty/error/recovery states as appropriate to the documented workflow. Never replace
+an error-state illustration with a fabricated success or call a playback capture a
+live-model evaluation. Inspect the affected language/viewport and update captions
+and source/version evidence together with the image.
 
 ---
 

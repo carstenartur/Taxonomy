@@ -29,7 +29,8 @@ Der manuelle Copilot benötigt einen bereiten Anbieter, aber **kein** `TAXONOMY_
 
 Jede erfolgreiche Copilot-Vollanalyse speichert einen unveränderlichen Architektursnapshot. Über **Architektur** im abgeschlossenen Lauf lässt sich genau dieses Ergebnis in einer schreibgeschützten Workbench untersuchen: mit Suche, Übersicht und Fokusmodus, Kontextfilter, Zoom, echtem Einpassen, Vollbild, Provenienz sowie Review- und Evidenzdetails.
 
-![Persistierte Copilot-Architektur-Workbench](../images/71-copilot-architecture-workbench.png)
+
+Die Werkzeugleiste bietet den Architektureditor, eine Druckansicht und ein aufklappbares Exportmenü. SVG/PDF und verfügbare Berichts-/Modellexporte sind dort zusammengefasst.
 
 Browseransicht, SVG-Download und PDF-Download verwenden dieselbe deterministische serverseitige Szene mit denselben Koordinaten. Die interaktiven Browserwerkzeuge verändern nur Sichtbarkeit, Auswahl und Bildausschnitt; sie berechnen oder verändern die persistierte Architektur nicht stillschweigend neu.
 
@@ -39,9 +40,12 @@ Nach einem autoritativ abgeschlossenen vollständigen Lauf lädt Taxonomy die An
 
 Der normale Lesefluss zeigt sechs anbieterneutrale Kennzahlen, die wichtigsten Architekturlücken, erkannte Muster und die Begründung der Empfehlung. Vollständige technische Nutzdaten bleiben im eingeklappten Diagnosebereich und im JSON-Bericht verfügbar, statt unformatiert in der Ergebnisansicht zu erscheinen.
 
-![Ergebnis eines vollständigen Copilot-Laufs](../images/72-complete-copilot-run-result.png)
 
-Der Screenshot wird durch `CompleteCopilotSessionIT` aus dem echten erfolgreichen persistenten Zustand aufgenommen. Er wird nicht aus einem Browser-Fixture zusammengesetzt; die Screenshot-Erzeugung schlägt fehl, wenn ausgewählter Snapshot, terminale Operation und Ergebnisregister nicht gemeinsam sichtbar sind.
+Der vorhandene `CompleteCopilotSessionIT` besitzt die Aufnahme des persistierten
+Endzustands; die [Screenshot-Anleitung](https://github.com/carstenartur/Taxonomy/blob/main/.github/copilot-ref-screenshots.md)
+beschreibt die Aktualisierung. Frühere Bilder mit getrennten Word-/HTML-/JSON-Buttons
+werden nicht mehr als aktuelle Bedienungsanleitung verwendet. Das Ergebnis öffnet
+jetzt den gemeinsamen Dialog für den Entscheidungsbericht.
 
 ## Grenzen der Architekturknoten
 

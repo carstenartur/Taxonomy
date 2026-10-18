@@ -20,7 +20,7 @@
 
 The system evaluates the selected taxonomy scope hierarchically and preserves partial results, explanations and progress. Assessed, excluded, open and unselected nodes are distinct; not every catalogue node receives an independent model assessment. A full run can propose typed architecture relationships for review and export.
 
-![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
+![Earlier illustrative scored tree; values are example data](../images/15-scored-taxonomy-tree.png)
 
 **Ready for more?** Continue reading for the full guide, or jump to [Architecture View](#7-architecture-view) to understand how the architecture is generated.
 
@@ -158,9 +158,9 @@ The **Taxonomy Architecture Analyzer** helps architects, analysts and requiremen
 | View quality metrics for relation proposals | Right panel → 📊 Quality Dashboard panel |
 | Record and analyse requirement coverage | Right panel → 📋 Requirement Coverage panel |
 | Browse, create, or delete taxonomy relations | Right panel → 🔗 Relations Browser panel |
-| Export a diagram or scoresheet | Left panel → export buttons (appear after analysis) |
-| Save analysis as JSON | Left panel → export buttons → 📥 JSON |
-| Load a saved analysis | Left panel → 📤 Load Scores button |
+| Export a diagram or scoresheet | **Architecture → Export** (formats depend on available results/capabilities) |
+| Save analysis as JSON | **Architecture → Export → JSON** |
+| Load a saved analysis | **Architecture → Export → Load Scores** |
 | Manage user accounts or server settings | Open **Settings** (⚙) in the navigation bar; administrator entries depend on server capabilities |
 
 > For the REST API reference used by developers and integrators, see [API Reference](API_REFERENCE.md).
@@ -185,7 +185,6 @@ Sign in using the installation's configured local login or Keycloak/OIDC. Ordina
 
 Click **Got it — let's start!** to dismiss the overlay. The overlay will not appear again on subsequent visits (stored in your browser's localStorage). To reset the onboarding, open the browser console and run `TaxonomyOnboarding.reset()`.
 
-![Full page layout](../images/01-full-page-layout.png)
 
 ### Checking AI Availability
 
@@ -208,8 +207,6 @@ The left panel (wider column) displays the **Taxonomy Tree**. This is the full c
 At the top of the left panel you will find:
 
 - **View switcher buttons:** 📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary — switch between different visualisations of the taxonomy.
-- **Export buttons** (appear only after a successful analysis): 📥 SVG | 📥 PNG | 📥 PDF | 📥 CSV | 📥 JSON | 📥 Visio | 📥 ArchiMate | 📥 Mermaid
-- **Load Scores button** (always visible): 📤 Load Scores — imports a previously saved JSON analysis file
 - **Expand All / Collapse All** — expand or collapse all nodes in the current view.
 - **Taxonomy root selector** (Tree view only) — choose which taxonomy root to display.
 - **Descriptions toggle switch** — show or hide the description text for each node.
@@ -220,6 +217,8 @@ Each taxonomy node row shows:
 - **Node actions (⋯)** — open a node's available actions, including its explanation and graph tools.
 
 ![Left panel — taxonomy tree in List view](../images/02-left-panel-list-view.png)
+
+Exports and saved-analysis import are in **Architecture → Export**. **Load Scores** is available within that section even without existing scores.
 
 ### Right Panel — Analysis and Tools
 
@@ -240,7 +239,6 @@ The right panel (narrower column) contains all interactive tools:
 - **LLM Diagnostics Panel** (admin only, collapsible) — connection test and statistics.
 - **Prompt Templates Editor** (admin only, collapsible) — view and edit the LLM prompt templates.
 
-![Right panel — default state](../images/03-right-panel-default.png)
 
 ### Navigation Bar
 
@@ -255,7 +253,7 @@ The navigation bar at the top of the page contains:
 
 ### Dark Mode
 
-Click the **🌙** (moon) button in the navigation bar to switch to dark mode. Click **☀️** (sun) to switch back to light mode. Your preference is saved in your browser and persists across sessions.
+Open **Settings** and click **🌙** (moon) to switch to dark mode. Click **☀️** (sun) to switch back to light mode. Your preference is saved in your browser and persists across sessions.
 
 ---
 
@@ -285,7 +283,7 @@ Tips for good requirements:
 4. Progress appears in the inline analysis status. The taxonomy tree in the left panel starts showing colour-coded score bars as results arrive.
 5. When analysis is complete, the inline analysis status shows a summary and the export buttons become available.
 
-![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
+![Earlier illustrative scored tree; values are example data](../images/15-scored-taxonomy-tree.png)
 
 ### Starting over, cancelling, and saving the working draft
 
@@ -390,7 +388,7 @@ The incoming LLM quota is counted per stable authenticated identity and applicat
 
 ### Export Button Visibility
 
-The export buttons (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) only appear when there are analysis scores greater than 0. If no analysis has been run, or if all scores are 0, the export buttons are hidden and a hint text **"📋 Analyze first to enable exports"** is shown instead. The **📤 Load Scores** button is always visible and can be used to restore a previous analysis.
+The export buttons (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) only appear when there are analysis scores greater than 0. If no analysis has been run, or if all scores are 0, the export buttons are hidden and a hint text **"📋 Analyze first to enable exports"** is shown instead. Within **Architecture → Export**, **📤 Load Scores** is available even without existing scores and can restore a previous analysis.
 
 ---
 
@@ -565,7 +563,7 @@ The main visualization is a **stable impact graph arranged by architecture layer
 - **Click** an element card or connection to view its relevance, distance, inclusion reason, and connected elements in the detail area. From there you can open the element in Graph Explorer.
 - Toggle to **"🏗️ Layer View"** for the compact swimlane representation grouped by architecture layer.
 
-![Architecture View](../images/20-architecture-view.png)
+![Illustrative in-page impact view, separate from the saved-snapshot workbench](../images/20-architecture-view.png)
 
 ---
 
@@ -605,7 +603,7 @@ The **enriched failure impact** extends the standard failure impact analysis by 
 - **How many requirements** are affected
 - An aggregated **risk score** that combines the number of affected requirements with the relevance of each element
 
-This is available via the REST API at `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3`. See the [API Reference](API_REFERENCE.md#85-enriched-failure-impact) for full details.
+This is available via the REST API at `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3`. See the [API Reference](API_REFERENCE.md#failure-impact-analysis) for full details.
 
 > **Tip:** Use enriched failure impact together with the Requirement Coverage panel (§11c) to prioritise which failures carry the highest business risk.
 
@@ -712,9 +710,11 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 <a id="guide-section-10"></a>
 ## 10. Exporting Results
 
-After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
+Open **Architecture → Export** for diagram, tree, data and report outputs. Score-dependent formats become available when analysis scores are present; installed capabilities and the selected result determine the available formats.
 
-![Export buttons](../images/23-export-buttons.png)
+![Earlier component illustration of export groups](../images/23-export-buttons.png)
+
+This older illustration shows the grouping, not the current complete format list or support labels. Open **Architecture → Export** for the installed capabilities.
 
 The Export tab provides a dedicated panel with all available export formats organised by category (diagrams, data, reports) and import options:
 
@@ -722,7 +722,7 @@ The Export tab provides a dedicated panel with all available export formats orga
 
 This earlier overview shows the general export groups. See [Configure a decision report](#configurable-decision-report) below for the current decision-report controls and new illustrations.
 
-The [scenario reference workflow](../testing/scenario-acceptance.md) explains Copilot and Workbench controls using a sourced flood-information requirement and describes the corresponding export QA (German guide).
+The [scenario reference workflow](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) explains Copilot and Workbench controls using a sourced flood-information requirement and describes the corresponding export QA (German guide).
 
 > **Support boundary:** Browser/SVG/vector-PDF views are human-readable views of the selected result. Mermaid and JSON are special-purpose projections. ArchiMate 3.1 and Visio 2012 downloads are experimental bounded subsets; named-tool interoperability and Microsoft Visio desktop open/edit/save/reopen behavior are not certified. These controls do not by themselves prove equivalence with a persisted snapshot; use an explicitly snapshot-bound Architecture Workbench endpoint for that authority. See the [Architecture export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary), [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966), and [#967](https://github.com/carstenartur/Taxonomy/issues/967).
 
@@ -792,7 +792,7 @@ This file can be shared with colleagues or loaded back at a later time using the
 
 ### Loading a Saved Analysis (Import)
 
-Click **📤 Load Scores** (always visible in the toolbar, next to the export buttons) to load a previously exported `SavedAnalysis` JSON file. After selecting the file:
+Open **Architecture → Export → 📤 Load Scores** (available there without existing scores) to load a previously exported `SavedAnalysis` JSON file. After selecting the file:
 
 1. The business requirement text is restored in the text area.
 2. The taxonomy tree is rendered with the imported scores.
@@ -889,7 +889,7 @@ The same dialog is available on narrow screens. Common choices appear first; ope
 
 If a download fails, your settings remain in the open dialog. Read the message, adjust the page layout if needed and click **Download** again. If the saved scope could not be loaded, use **Retry loading**. **Cancel** or Escape closes the dialog while no download is running.
 
-See the [export contracts and verification evidence](../testing/contextual-exports.md) for source handling, format limits and screenshot provenance.
+See the [export contracts and verification evidence](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/contextual-exports.md) for source handling, format limits and screenshot provenance.
 
 ---
 
@@ -1098,7 +1098,7 @@ The response contains:
 
 > **Tip:** After running a gap analysis, use the Relation Proposals feature (§9) to propose new relations that fill the identified gaps.
 
-See the [API Reference](API_REFERENCE.md#13-architecture-gap-analysis) for full request/response documentation.
+See the [API Reference](API_REFERENCE.md#gap-analysis) for full request/response documentation.
 
 ---
 
@@ -1146,7 +1146,7 @@ The response contains:
 
 > **Tip:** Use the recommendation pipeline after an initial analysis to get a comprehensive view of what exists, what is missing, and what to do about it.
 
-See the [API Reference](API_REFERENCE.md#14-architecture-recommendation) for full request/response documentation.
+See the [API Reference](API_REFERENCE.md#recommendations) for full request/response documentation.
 
 ---
 
@@ -1203,7 +1203,7 @@ For each pattern, you can see:
 > **Tip:** Incomplete patterns reveal specific architectural gaps. Use the missing steps
 > to guide which relations to create next — either manually or via the Relation Proposals pipeline (§9).
 
-See the [API Reference](API_REFERENCE.md#15-architecture-pattern-detection) for full request/response documentation.
+See the [API Reference](API_REFERENCE.md#pattern-detection) for full request/response documentation.
 
 ---
 
@@ -1506,7 +1506,6 @@ See [§12 Versions Tab](#12-versions-tab) for how to use the search in the GUI.
 
 The **🕓 Versions** tab provides a visual interface for browsing, managing, and reverting architecture versions. Click **🕓 Versions** in the top navigation bar to open it.
 
-![Versions Tab — History timeline](../images/41-versions-tab-history.png)
 
 ### Branch Selector
 
@@ -1663,25 +1662,21 @@ The toast automatically disappears after 5 seconds.
 
 ### Workspace User Badge
 
-In the navbar (top-right), the **workspace badge** shows your username and current branch. The badge colour changes to indicate state:
-
-![Workspace User Badge](../images/45-workspace-user-badge.png)
-
-- **Blue** — Normal, workspace is clean
-- **Yellow** — Workspace has unsaved/unpublished changes (dirty state)
+Open **Status** in the navigation bar to see the workspace/user badge. Its text
+identifies the user; its tooltip names the workspace and current branch. The Git
+and context details in the same menu identify the selected version and editing scope.
 
 ---
 
 <a id="guide-section-20"></a>
 ## 13. Git Status and Context Bar
 
-Two horizontal bars at the top of the page provide at-a-glance information about the current architecture state.
+Open **Status** in the navigation bar to inspect the Git and context details for the current architecture state. These details are shown on demand.
 
 ### Git Status Bar
 
-The **Git Status Bar** appears just below the navigation bar. It displays:
+The **Git Status Bar** is inside the **Status** menu. It displays:
 
-![Git Status Bar](../images/43-git-status-bar.png)
 
 | Indicator | Meaning |
 |---|---|
@@ -1697,7 +1692,7 @@ When the projection shows **STALE**, it means the DSL has been changed but not y
 
 ### Context Navigation Bar
 
-The **Context Bar** appears below the Git Status Bar when you are navigating between different architecture contexts (e.g., viewing a historical version, exploring a variant branch, or comparing branches).
+The **Context Bar** is part of the **Status** menu. It identifies the selected architecture context, such as a historical version, variant or comparison. The following older component illustration explains its fields; its page position is not the current navigation layout.
 
 ![Context Navigation Bar](../images/44-context-bar.png)
 
@@ -2060,8 +2055,8 @@ A subsequent offer preserves the adopted decisions and their evidence.
 Download a selected saved revision or adoption receipt as JSON, Markdown, HTML or
 Word. Downloads exclude unsaved typing and retain the historical source, decisions
 and architecture. Save a separate project checkpoint when you want portable Git
-history. See the [complete workflow](../features/requirement-reformulation.md) and
-[verification boundaries](../testing/requirement-reformulation.md).
+history. See the [complete workflow](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/requirement-reformulation.md) and
+[verification boundaries](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/requirement-reformulation.md).
 
 ### Distributed continuation
 

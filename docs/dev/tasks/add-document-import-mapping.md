@@ -2,9 +2,11 @@
 
 ## Goal
 
-Map a new section of an imported document (e.g., a new heading pattern, a new
-structured field, or a new file format such as DOCX or Markdown) to taxonomy nodes
-or architecture requirements in the provenance pipeline.
+Extend document parsing, requirement-candidate extraction, or regulation-to-node
+mapping in the application-local provenance context. PDF and DOCX are the current
+upload formats; a new format also needs bounded parsing, validation, API, and UI
+changes. Framework catalogue imports use the separate knowledge-owned
+[import-profile extension point](../07-extension-points.md#import-profiles-and-document-mappings).
 
 ---
 
@@ -12,32 +14,45 @@ or architecture requirements in the provenance pipeline.
 
 | File | What to do |
 |---|---|
-| `taxonomy-app/src/main/java/com/taxonomy/provenance/service/DocumentAnalysisService.java` | Add the mapping logic for the new section/field |
-| `taxonomy-app/src/main/java/com/taxonomy/provenance/service/DocumentParserService.java` | Add parsing support for the new file format or section pattern |
+| `taxonomy-app/src/main/java/com/taxonomy/provenance/service/DocumentParserService.java` | Bounded file parsing, rule-based candidates, and content hashing |
+| `taxonomy-app/src/main/java/com/taxonomy/provenance/service/DocumentAnalysisService.java` | Optional model-backed candidate extraction and regulation-to-taxonomy mapping |
+| `taxonomy-app/src/main/java/com/taxonomy/provenance/service/DocumentProvenanceCommandService.java` | Atomic document registration and candidate confirmation |
+| `taxonomy-app/src/main/java/com/taxonomy/provenance/config/DocumentImportLimits.java` | Upload, expanded content, extracted text, candidate, and model-input limits |
 
 ---
 
 ## Files usually touched
 
-- `taxonomy-app/…/provenance/service/DocumentAnalysisService.java` — chunk-to-requirement mapping
-- `taxonomy-app/…/provenance/service/DocumentParserService.java` — text extraction from the source document
-- `taxonomy-app/…/provenance/service/StructuredDocumentParser.java` — structured field extraction (if the new format is structured)
-- `taxonomy-app/…/provenance/service/ChunkingStrategySelector.java` — if the new document type needs a different chunking strategy
-- `taxonomy-app/…/provenance/service/HierarchicalChunkingService.java` or `SemanticChunkingService.java` — if the chunking strategy changes
-- `taxonomy-domain/…/dto/DocumentParseResult.java` — add new fields only if the parser produces new metadata
-- `taxonomy-domain/…/dto/DocumentSection.java` — extends the section model if needed
+- The parser, analysis, and command services above, according to the behavior
+  being changed. Registration and confirmation persist the provenance graph
+  through application-owned JPA repositories.
+- `taxonomy-app/src/main/java/com/taxonomy/provenance/controller/DocumentImportController.java`
+  — request validation and response contracts.
+- `taxonomy-analysis/src/main/resources/prompts/` — extraction or regulation
+  mapping prompts when the model-backed workflow changes.
+- `taxonomy-domain/src/main/java/com/taxonomy/dto/DocumentParseResult.java` and
+  `RequirementCandidate.java` — only if returned candidate/metadata contracts change.
+
+Related structured/chunking helpers live in
+`taxonomy-app/src/main/java/com/taxonomy/provenance/service/`:
+`StructuredDocumentParser`, `ChunkingStrategySelector`, `HierarchicalChunkingService`,
+and `SemanticChunkingService`. The current upload controller calls
+`DocumentParserService.parse(...)`; do not assume it automatically invokes those
+helpers. Trace and test any new integration explicitly.
 
 ---
 
 ## Files usually not touched
 
-- `taxonomy-dsl/` — provenance data is stored as DSL blocks; the DSL parser
-  already handles `source`, `sourceVersion`, `sourceFragment`, and
-  `requirementSourceLink` block types; extend DSL only if you add a new provenance block type
+- `taxonomy-dsl/` — upload and confirmation use the provenance command service.
+  Change DSL syntax/mapping only when the provenance representation exchanged
+  through DSL also changes
 - `taxonomy-export/` — export is unrelated to document import
-- `taxonomy-app/…/analysis/service/` — LLM analysis is separate from document parsing;
-  the document import pipeline feeds requirements, which are then analysed independently
-- `taxonomy-app/…/relations/service/` — relation management is unrelated to document import
+- `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/` — existing
+  provider and prompt services support optional model-backed import; a parser
+  change alone usually needs no gateway change
+- `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/` — relation
+  review and commands have separate contracts
 
 ---
 
@@ -45,18 +60,24 @@ or architecture requirements in the provenance pipeline.
 
 | Endpoint | Controller |
 |---|---|
-| `POST /api/import/document` | `DocumentImportController` |
-| `GET /api/import/document/status` | `DocumentImportController` |
+| `POST /api/documents/upload` | `DocumentImportController`: parse PDF/DOCX and register source/version |
+| `POST /api/documents/extract-ai` | `DocumentImportController`: optional model-backed extraction |
+| `POST /api/documents/map-regulation` | `DocumentImportController`: optional regulation-to-node mapping |
+| `POST /api/documents/confirm-candidates` | `DocumentImportController`: confirm selected candidates and their source links |
+| `GET /api/provenance/sources` | `DocumentImportController`: source metadata |
+| `GET /api/provenance/links/{requirementId}` | `DocumentImportController`: retained requirement/source links |
 
-The import controller accepts a multipart file upload and delegates to
-`DocumentParserService` + `DocumentAnalysisService`.
+The upload, extraction, and mapping routes accept multipart files. Confirmation
+accepts JSON. Plain parsing does not require a remote model; extraction and mapping
+use `DocumentAnalysisService` and the configured generative provider. Do not call
+model-backed endpoints during routine documentation or parser verification.
 
 ---
 
 ## Frontend module(s)
 
-- `taxonomy-app/src/main/resources/static/js/import.js` — handles the upload
-  dialog and progress indicator
+- `taxonomy-app/src/main/resources/static/js/shared/taxonomy-document-import.js`
+  — upload modes, candidate review, provenance, and analysis handoff
 - `taxonomy-app/src/main/resources/templates/index.html` — the import panel
 
 If the new mapping introduces new output fields visible in the import result
@@ -68,9 +89,10 @@ dialog, update both the JS module and the template.
 
 | DTO | Usage |
 |---|---|
-| `DocumentParseResult` | Returned by the parser; contains sections and metadata |
-| `DocumentSection` | A single extracted section (heading, content, level) |
-| `HierarchicalChunk` | A chunk produced by hierarchical chunking |
+| `DocumentParseResult` | File metadata, bounded text preview, candidates, warnings, source/version IDs |
+| `RequirementCandidate` | Rule-based candidate text and section context |
+| `AiExtractedCandidate` / `RegulationArchitectureMatch` | Optional model-backed extraction/mapping outputs |
+| `DocumentSection` / `HierarchicalChunk` | Related structured parsing/chunking helper contracts |
 | `SourceArtifactDto` | The imported document as a provenance source |
 | `SourceFragmentDto` | A fragment (chunk) linked to a source version |
 | `RequirementSourceLinkDto` | Links a requirement to a source fragment |
@@ -80,14 +102,31 @@ dialog, update both the JS module and the template.
 ## Tests to run
 
 ```bash
-# App module unit tests
-./mvnw test -pl taxonomy-app
+# Existing bounded parser/controller/limits profile, including needed siblings
+./mvnw -pl taxonomy-app -am test -Pdocument-import-tests -Dsurefire.failIfNoSpecifiedTests=false
+
+# Broader provenance and composition checks when mapping or persistence changes
+./mvnw -pl taxonomy-app -am test
 ```
 
-Relevant test classes:
-- `DocumentImportControllerTest` — upload endpoint, format detection
-- `DocumentAnalysisServiceTest` — chunk-to-requirement mapping
-- `StructuredDocumentParserTest` (if it exists) — structured field extraction
+Relevant existing tests are application-owned:
+
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/DocumentImportControllerTest.java`,
+  `DocumentParserServiceTest.java`, and `DocumentImportLimitsTest.java` — the
+  named profile's selection
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/service/DocumentAnalysisServiceTest.java`
+  — deterministic mocked extraction/mapping behavior
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/DocumentProvenanceCommandServiceTest.java`
+  and `DocumentImportControllerContractTest.java` — transactional registration,
+  confirmation, and API contracts
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/StructuredDocumentParserTest.java`,
+  `ChunkingStrategySelectorTest.java`, `HierarchicalChunkingServiceTest.java`, and
+  `SemanticChunkingServiceTest.java` — when the related helpers change
+
+The named profile does not select every provenance test. Finish with
+`./mvnw -B verify -Pci -DrunOnnxTests=true` and applicable companion gates in
+[Maven Verification](../MAVEN_VERIFICATION.md). Retain explicit model opt-in and
+report missing prerequisites rather than claiming a reduced run is full CI.
 
 ---
 
@@ -96,25 +135,26 @@ Relevant test classes:
 - `docs/en/DOCUMENT_IMPORT.md` — add the new format or mapping to the supported
   document types table
 - Screenshots: regenerate the import panel screenshot if it shows the list of
-  accepted file types
+  accepted file types; follow [capture ownership and provenance rules](../../../.github/copilot-ref-screenshots.md)
 
 ---
 
 ## Common pitfalls
 
-1. **Chunking strategy selection:** The `ChunkingStrategySelector` chooses between
-   hierarchical and semantic chunking based on document structure.
-   Ensure the new document type returns a sensible strategy; do not hard-code a strategy.
+1. **Extraction paths differ:** Rule-based upload, optional AI extraction, and
+   regulation mapping return different output contracts. Check the intended
+   request path and preserve its limits and provenance behavior.
 
 2. **Large documents:** Documents can be large.
-   The parser must not hold the entire parsed content in memory simultaneously.
-   Use streaming or incremental parsing where possible.
+   Preserve temporary-file cleanup, upload and expansion limits, PDF page limits,
+   bounded extracted text/candidates, and explicit truncation warnings. Do not
+   replace the current bounded workflow with unbounded in-memory file reads.
 
 3. **Empty sections:** The mapping must handle sections with no extractable
    content gracefully (no null pointers, no empty fragments stored).
 
-4. **Provenance DSL round-trip:** After import, the provenance data is persisted
-   as DSL blocks. Verify the round-trip:
-   parse the imported data → store as DSL → re-read DSL → check the data is intact.
-   The `TaxDslParser` and `TaxDslSerializer` handle this, but new block types
-   or properties must be registered (see [add-dsl-property](add-dsl-property.md)).
+4. **Atomic provenance:** Registration retains an artifact/version together;
+   confirmation retains the selected fragments and requirement links atomically.
+   Preserve retry behavior and source identity. When DSL interchange also changes,
+   verify its mapper/parser/serializer round trip separately (see
+   [add-dsl-property](add-dsl-property.md)).

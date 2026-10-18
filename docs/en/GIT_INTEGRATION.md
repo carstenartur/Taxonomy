@@ -478,9 +478,8 @@ After materialization, the `RepositoryStateService` records the projection commi
 
 The system tracks whether the database projection and search index are in sync with the Git HEAD:
 
-The Git status bar at the top automatically shows the synchronization status. When stale, a warning indicator appears.
+Open **Status** in the navigation bar to inspect the Git synchronization indicators, including projection/index staleness.
 
-![Git status bar](../images/43-git-status-bar.png)
 
 | Field | Meaning |
 |---|---|

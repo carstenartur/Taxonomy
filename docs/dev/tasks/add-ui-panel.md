@@ -2,9 +2,10 @@
 
 ## Goal
 
-Add a new panel (tab, accordion section, or modal dialog) to the single-page
-Thymeleaf UI — for example, a new analysis result section, an admin tool, or
-a new visualisation widget.
+Add a panel, tab, accordion section, or modal dialog to the relevant Thymeleaf
+page. The main taxonomy page is `index.html`; the application also has dedicated
+editor, workbench, portfolio, and administration pages. Start from the page that
+owns the intended workflow.
 
 ---
 
@@ -12,18 +13,25 @@ a new visualisation widget.
 
 | File | What to do |
 |---|---|
-| `taxonomy-app/src/main/resources/templates/index.html` | Add the HTML structure for the new panel |
+| `taxonomy-app/src/main/resources/templates/` | Choose the owning page or fragment and add the panel structure |
 | `taxonomy-app/src/main/resources/static/js/` | Create or extend a JS module for the panel's behaviour |
 
 ---
 
 ## Files usually touched
 
-- `taxonomy-app/src/main/resources/templates/index.html` — panel HTML (Bootstrap 5 structure)
-- `taxonomy-app/src/main/resources/static/js/<panel-name>.js` — new JS module (preferred) or extension to an existing module
-- `taxonomy-app/src/main/resources/messages.properties` — English i18n strings for labels, tooltips, and help text
-- `taxonomy-app/src/main/resources/messages_de.properties` — German translations (required for all user-facing text)
-- `taxonomy-app/src/main/java/com/taxonomy/<area>/controller/<AreaController>.java` — the backing REST endpoint (if new data is needed)
+- The owning template, such as `taxonomy-app/src/main/resources/templates/index.html`,
+  `architecture-editor.html`, or `architecture-workbench.html` — panel HTML
+- A module in the relevant area of `taxonomy-app/src/main/resources/static/js/`
+  — use the current directory structure rather than assuming a flat file layout
+- The matching English/German bundle pair under `taxonomy-app/src/main/resources/i18n/`
+  — labels, tooltips, and help text. Use the owning feature bundle when one exists;
+  the general bundles are `messages.properties` and `messages_de.properties`
+- `taxonomy-app/src/main/java/com/taxonomy/shared/config/I18nConfig.java` — only
+  when a new feature bundle needs registration
+- The controller/service in the owning feature module — when new data is needed.
+  `taxonomy-app` owns cross-context adapters and application-local capabilities;
+  see [current module ownership](../../en/MODULE_BOUNDARIES.md)
 
 ---
 
@@ -31,7 +39,7 @@ a new visualisation widget.
 
 - `taxonomy-dsl/` — UI panels do not interact with the DSL parser directly
 - `taxonomy-export/` — export panels call existing export endpoints; no exporter changes needed
-- `taxonomy-domain/` — reuse existing DTOs; add a new DTO only if the panel displays genuinely new data
+- `taxonomy-domain/` — reuse existing shared DTOs when their contract fits
 - `taxonomy-app/src/main/resources/static/css/` — the application uses Bootstrap 5 utility classes;
   avoid adding custom CSS unless absolutely necessary
 
@@ -46,59 +54,82 @@ the data the panel needs:
 |---|---|
 | Taxonomy catalog | `/api/taxonomy` |
 | Search | `/api/search` |
-| Analysis | `/api/analysis` |
+| Analysis | `/api/analyze`, `/api/analyze-stream`, `/api/analysis-runs` |
 | Relations | `/api/relations` |
-| Architecture views | `/api/architecture` |
-| Export | `/api/export` |
+| Architecture, impact, gaps, recommendations | `/api/architecture`, `/api/graph`, `/api/gap`, `/api/recommend` |
+| Export | `/api/diagram`, `/api/scores/export` |
 | Workspace | `/api/workspace` |
 | DSL / Git | `/api/dsl`, `/api/git` |
-| Admin | `/api/admin` |
+| Document import / provenance | `/api/documents`, `/api/provenance` |
+| Operational tools | `/api/diagnostics`, `/api/prompts` with their administrative authorization |
 
-If you must add a new endpoint, follow the [add-rest-endpoint pattern](../../en/DEVELOPER_GUIDE.md#adding-a-new-rest-endpoint).
+These are existing route families; check the controller for the precise method,
+payload, feature availability, authorization, and workspace pin. Administrative
+diagnostics are an operational tool, not a generic readiness check. For a new
+endpoint, follow the [REST endpoint guidance](../../en/DEVELOPER_GUIDE.md#adding-a-new-rest-endpoint).
 
 ---
 
 ## Frontend module(s)
 
-The UI is structured as a set of independent JS modules, each responsible for one panel:
+The current JS directories contain shared behavior, API adapters, and workflow
+modules. Paths below are relative to
+`taxonomy-app/src/main/resources/static/js/`:
 
 | Module | Panel |
 |---|---|
-| `analysis.js` | Analysis input and result display |
-| `tree.js` | Taxonomy tree with match overlays |
-| `relations.js` | Relation CRUD and proposal review |
-| `export.js` | Export format buttons and downloads |
-| `workspace.js` | Workspace switching and context navigation |
-| `dsl.js` | DSL editor and commit history |
-| `architecture.js` | Architecture views and gap analysis |
-| `search.js` | Full-text and KNN search |
-| `admin.js` | Admin tools panel |
-| `import.js` | Document import and framework import |
+| `core/taxonomy-analysis.js`, `core/taxonomy-scoring.js` | Analysis input, results, and requirement architecture rendering |
+| `core/taxonomy-browse.js`, `core/taxonomy-views.js` | Catalogue browsing and tree visualizations |
+| `relations/taxonomy-relations.js` and the relation/proposal/hypothesis command adapters beside it | Projected reads and Git-authoritative changes/reviews |
+| `shared/taxonomy-export.js`, `shared/decision-export-dialog.js` | Contextual exports and shared report choices |
+| `workspace/taxonomy-workspace-provisioning.js`, `workspace/taxonomy-workspace-sync.js` | Workspace provisioning and synchronization |
+| `versioning/taxonomy-context-bar.js`, `versioning/taxonomy-versions.js` | Context navigation and version history |
+| `shared/taxonomy-dsl-editor.js` | Main-page DSL editor; the dedicated editor has its own `architecture-editor.js` |
+| `architecture-workbench.js` | Dedicated architecture workbench |
+| `shared/taxonomy-search.js` | Full-text and semantic search |
+| `shared/taxonomy-document-import.js`, `shared/taxonomy-import.js` | Document/provenance and framework import workflows |
+| `api/` | Existing workflow-specific HTTP clients |
 
-For a new panel, create a new module (`<panel-name>.js`) following the
-IIFE / module pattern used in existing modules.
-Register the module in `index.html` via a `<script src="/js/<panel-name>.js"></script>` tag.
+Follow the nearby module's IIFE or ES-module pattern and initialization order.
+Load a new script from its owning template with the existing Thymeleaf `th:src`
+URL convention. Reuse the applicable API client, CSRF handling, role surface, and
+operation/workspace context rather than creating a second routing layer.
 
 ---
 
 ## DTOs / domain types
 
-Reuse the existing DTOs in `taxonomy-domain/…/dto/`.
+Reuse the existing shared DTOs in `taxonomy-domain/src/main/java/com/taxonomy/dto/`.
 Add a new DTO only if the panel displays data that has no existing DTO representation.
-New DTOs belong in `taxonomy-domain`, not in `taxonomy-app`.
+Put shared contracts in the appropriate framework-free API/domain module;
+feature-local request/response records can remain with their owning feature.
+UI-specific convenience does not justify moving feature entities into the domain
+foundation.
 
 ---
 
 ## Tests to run
 
 ```bash
-# Full verify required for any UI change
-./mvnw verify -DexcludedGroups="real-llm"
+# Existing Maven-owned browser and accessibility checks
+./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true
+
+# Canonical broader verification
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
 
-Relevant test classes:
-- `<AreaController>Test` — the REST controller backing the panel
-- `TaxonomyApplicationTests` — Spring context loads successfully
+Run focused controller/service tests in the owning module with `-pl <module> -am`
+when its behavior changes. Existing application checks include
+`TaxonomyApplicationTests`, `UiSemanticsBridgeContractTest`, and workflow-specific
+contracts such as `RelationGitCommandUiContractTest`. Select the relevant browser
+scenario for the changed role, page, and state; a context-load test alone does not
+verify a panel.
+
+The UI profile has browser/runtime prerequisites and produces evidence under
+`target/ui-verification/`. Its skip flags suppress unrelated Java suites while
+the profile owns the UI checks. See [testing by change type](../06-testing-by-change-type.md#browser-and-accessibility-reproduction)
+and [Maven Verification](../MAVEN_VERIFICATION.md) for companion lanes and known
+local-equivalence gaps. A default or reduced run is not full CI evidence.
 
 ---
 
@@ -106,18 +137,20 @@ Relevant test classes:
 
 - `docs/en/USER_GUIDE.md` — add a walkthrough of the new panel
 - `docs/en/FEATURE_MATRIX.md` — add a row for the new feature
-- Screenshots: add a screenshot showing the panel in a healthy state;
-  follow the naming convention `NN-descriptive-name.png` in `docs/images/`.
-  Regenerate via `ScreenshotGeneratorIT` if the panel shows existing data.
+- Screenshots: capture the panel's actual role/state through its existing owner;
+  follow [capture ownership and provenance rules](../../../.github/copilot-ref-screenshots.md).
+  Preserve source/version and input identity, and distinguish deterministic
+  illustrations from persisted-snapshot, browser, or live-provider evidence
 
 ---
 
 ## Common pitfalls
 
 1. **Bilingual requirement:** Every user-facing string (button label, tooltip,
-   heading, help text, error message) must exist in both `messages.properties`
-   (English) and `messages_de.properties` (German).
-   Missing translations cause Thymeleaf rendering errors.
+   heading, help text, error message) needs matching keys in the English and German
+   versions of its registered message bundle.
+   Verify both locales render usable labels and help text rather than raw keys
+   or unintended fallback text.
 
 2. **Bootstrap 5 grid:** The UI uses Bootstrap 5. Use `col-*`, `d-none`,
    `d-flex`, and standard Bootstrap components. Do not add custom CSS for
@@ -127,14 +160,15 @@ Relevant test classes:
    CSS classes. Follow the same pattern as existing panels to avoid panels
    interfering with each other's state.
 
-4. **SSE panels:** Panels that show streaming LLM responses use `EventSource`
-   (Server-Sent Events). If your panel streams data, follow the pattern in
-   `analysis.js` — do not use WebSockets or long-polling.
+4. **Streaming panels:** Follow the existing analysis-session API/transport
+   adapters, which use SSE for operation events. Preserve cancellation, stale
+   generation guards, and the operation's original workspace pin.
 
-5. **CSRF:** All state-modifying POST/DELETE calls from the JS modules must
+5. **CSRF:** State-modifying POST/PUT/PATCH/DELETE calls from the JS modules must
    include the CSRF token. The existing modules read it from the `<meta>` tag
    added by Thymeleaf; follow the same pattern.
 
-6. **Admin-only panels:** If the panel should only be visible to admins, gate
-   it with `sec:authorize="hasRole('ADMIN')"` in the Thymeleaf template and
-   `@PreAuthorize("hasRole('ADMIN')")` on the backing controller method.
+6. **Authorization:** Match template/role-surface visibility to the backend's
+   authorization and resource-ownership checks. Reuse the existing security
+   configuration and verify allowed and denied roles in the browser/API checks.
+   Hiding a panel alone does not authorize its endpoint.

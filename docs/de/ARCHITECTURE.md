@@ -6,16 +6,17 @@ Dokument erklärt **die dafür eingesetzte Applikation**, nicht die Architektur
 eines mit ihr erzeugten Modells.
 
 Beschrieben wird die implementierte Architektur dieses Branches, keine Roadmap.
-Taxonomy ist ein **modularer Monolith mit genau einer deploybaren Spring-Boot-Anwendung**.
-Der Reactor umfasst siebzehn Untermodule: fünf frameworkfreie Grundlagen, acht
-Laufzeit-Fachbibliotheken, ein Kompositionsmodul und drei Build-/Werkzeugmodule.
-Inventar und aktuelle Zuständigkeiten stehen in [Modulgrenzen](MODULE_BOUNDARIES.md).
+Taxonomy ist ein **modularer Monolith mit einer ausführbaren Spring-Boot-Anwendung**.
+Dasselbe Artefakt unterstützt lokale Ausführung und optionale verteilte Analyserollen.
+Das vollständige Reactor-Inventar und die aktuellen Zuständigkeiten stehen in
+[Modulgrenzen](MODULE_BOUNDARIES.md).
 [English](../en/ARCHITECTURE.md).
 
 ## Inhalt
 
 - [Systemüberblick](#systemüberblick) und [Architekturprinzipien](#architekturprinzipien)
 - [Übergeordnete Architektur](#übergeordnete-architektur) und [Modularchitektur](#modularchitektur)
+- [Analyseausführung und Deployment](#analyseausführung-und-deployment) sowie [Plugin-Laufzeit](#plugin-laufzeit)
 - [Schlüsselkomponenten](#schlüsselkomponenten) und [Anforderungsablauf](#pipeline-zur-generierung-der-architekturansicht)
 - [Persistenzzuständigkeiten](#dsl-speicherarchitektur) und [Git-Status](#git-status-als-erstklassiges-konzept)
 - [Kontext und Schreibschutz](#viewcontext-und-action-guards)
@@ -52,29 +53,31 @@ lokales generatives Sprachmodell mit allen Fähigkeiten entfernter Anbieter.
 
 Die Grafik zeigt **logisches Zusammenwirken zur Laufzeit**, nicht jeden Java-Aufruf
 und nicht die Maven-Abhängigkeiten. Benötigt ein Fachmodul einen anderen Kontext über
-einen Port, stellt die Anwendung den Adapter bereit. Alle Bestandteile innerhalb
-der Anwendungsgrenze laufen in einem Prozess.
+einen Port, stellt die Anwendung den Adapter bereit. Diese Sicht beschreibt die
+standardmäßige lokale Ausführung; das verteilte Analysedeployment folgt separat.
 
 ```mermaid
 flowchart TB
     Client["Browser / REST-Client"] --> HTTP
-    subgraph Application["Eine Spring-Boot-Anwendung"]
+    subgraph Application["Lokaler Anwendungsprozess"]
         HTTP["Anwendungskomposition<br/>Sicherheit, Kontext, HTTP-/UI-Adapter"]
         Portfolio["Portfolio<br/>Versionierte Anforderungen, Jobs, Snapshots"]
         Analysis["Analyse<br/>Prompts, Anbieterregeln, Parsing"]
         Knowledge["Wissen<br/>Katalog, Relationen, Suche"]
-        Architecture["Architektur<br/>Ableitung, Diagramme, Berichte"]
+        Architecture["Architektur: Ableitung und Berichtsmodelle"]
+        Reporting["Reporting: Darstellung und Vorschau"]
         Workspace["Workspace<br/>Editor, Journal, Git-Checkpoints"]
         Interop["Interoperabilität<br/>Geprüfter Austausch und Zuordnungen"]
-        Templates["Vorlagen und Export<br/>Vorlagenlebenszyklus, neutrale Codecs"]
+        Templates["Vorlagen: Versionen und Materialisierung"]
         HTTP --> Portfolio
         HTTP --> Workspace
         HTTP --> Interop
         Portfolio --> Analysis
         Portfolio --> Architecture
+        Portfolio --> Reporting
         Analysis --> Knowledge
         Architecture --> Knowledge
-        Architecture --> Templates
+        Reporting --> Templates
         Interop --> Workspace
     end
     Analysis -.->|optionale Anbieteranfrage| LLM["Externer LLM-Anbieter"]
@@ -82,6 +85,62 @@ flowchart TB
 
 Persistenz folgt bewusst in einer eigenen Darstellung: Laufzeitaufruf,
 Maven-Abhängigkeit und Speichervorgang dürfen nicht dieselbe mehrdeutige Pfeilbedeutung haben.
+
+## Analyseausführung und Deployment
+
+| Modus | Prozesse und Zuständigkeit |
+|---|---|
+| `local`, Rolle `all` (Standard) | Webanwendung und lokale Analyseausführung teilen eine JVM. Live-Zulassung und lokale Provider-Grenzen gelten pro Prozess. |
+| `artemis`, Rollen `coordinator` und `worker` | Dasselbe Anwendungsimage läuft in Koordinator-Web-Pods und getrennten Worker-Pods. Worker-Gruppen können ausgewählte Teiltaxonomien übernehmen. Eine gemeinsame externe Datenbank speichert dauerhafte Operationen, eingefrorene Eingaben, Task-Ergebnisse, Abbruch und Replay; ein externer Artemis-Broker liefert Aufgaben und Ereignisse. |
+| `artemis`, Rolle `all` | Koordinator und Worker laufen gemeinsam mit Anbindung an den externen Broker. |
+
+```mermaid
+flowchart TB
+    Browser["Browser und SSE-Beobachter"] --> Coordinator["Koordinator"]
+    Coordinator -->|Zulassung und Beobachtung| Database["Gemeinsame Operationsdatenbank"]
+    Coordinator -->|Dispatch| Broker["Externer Artemis-Broker"]
+    Broker -->|Aufgaben zustellen| Worker["Wurzel- und Relationsworker"]
+    Worker -->|Dauerhafte Ergebnisse| Database
+    Worker -->|Abschlussereignisse| Broker
+    Broker -->|Fortschrittsereignisse| Coordinator
+    Worker -.->|Konfigurierte Anbieteraufrufe| Provider["LLM-Anbieter"]
+```
+
+`taxonomy.analysis.transport.mode` wählt den Transport;
+`taxonomy.analysis.runtime-role` die Rolle. Worker verwenden gespeicherte Eingaben,
+statt sie aus dem heutigen Katalog zu rekonstruieren. Die Beobachtung nutzt
+dauerhaften Zustand und Fortschrittsereignisse. Eine getrennte SSE-Verbindung
+bricht die Operation nicht ab. Die Anwendung startet keinen eingebetteten
+Produktionsbroker. Getrennte Worker-Pods dürfen keine jeweils private HSQLDB verwenden.
+
+Clusterweite Provider-Erlaubnisse und Ratenkontingente sind separat zu aktivierende
+Regeln, keine automatische Folge des Artemis-Modus. Lokale Zulassung, eingehende
+HTTP-Limits, Websitzungen und andere Hintergrundjobs werden dadurch nicht gemeinsam
+verwaltet. Mehrere Webreplikate benötigen weiterhin die ausdrückliche Bestätigung
+der Deployment-Konfiguration. Idempotente dauerhafte Ergebnisse belegen nicht,
+dass ein entfernter Anbieter nach Worker- oder Brokerverlust seine Berechnung beendet hat.
+
+Siehe [dauerhafte Ausführung](../dev/CLUSTER_ANALYSIS_EXECUTION.md),
+[Artemis-Betrieb](OPERATIONS_GUIDE.md#betrieb-mit-externem-artemis-broker),
+[Helm-Beispiel](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-artemis.yaml) und
+[offene Abnahmegrenzen](../dev/JMS_API_ACCEPTANCE.md).
+
+## Plugin-Laufzeit
+
+`taxonomy-extension-api` besitzt frameworkfreie Erweiterungs- und Lebenszyklusverträge.
+`taxonomy-extension-runtime` validiert betreiberseitig installierte JARs, lädt sie
+über private Classloader und veröffentlicht eingebaute und externe Fähigkeiten in
+einem atomaren Katalog. `taxonomy-app` setzt die Laufzeit zusammen. Das unabhängig
+baubare `plugins/taxonomy-mermaid-plugin` zeigt einen externen Exportbeitrag.
+
+Anbieter verwenden offene `ProviderId`-Kennungen und einen `TaxonomyPlugin`-Eintrag
+für ServiceLoader. Ein neuer Anbieter erfordert keine Änderung des eingebauten Enums.
+Anbieterbeiträge werden beim Start gebunden. Dynamische Lebenszyklusoperationen sind
+auf geeignete zustandslose Exporte/Renderer begrenzt, müssen ausdrücklich aktiviert
+werden und sind im Clusterbetrieb nicht verfügbar. Plugins sind vertrauenswürdiger
+Anwendungscode; getrennte Classloader bilden keine Sandbox.
+Siehe [Erweiterungspunkte](../dev/07-extension-points.md) sowie
+[Installation und Lebenszyklus](../dev/extension-module-boundaries.md#optional-startup-installation-and-runtime-lifecycle).
 
 ## Modularchitektur
 
@@ -138,12 +197,13 @@ Die Aufteilung erfindet keine separaten Dienste oder zusätzlich abgeschlossenen
 | Analyse | Anforderungsanalyse, Anbieterauswahl und -regeln, Prompts, Antwort-Parsing und Sitzungen; zustandsbehaftete Fremdzugriffe über Ports. |
 | Wissen | Katalogladung, Relationen/Hypothesen, Volltext- und semantische Suche, Indizes und Embedding-Lebenszyklus. |
 | Architektur | Ableitung, Scoring, Relevanzfortpflanzung, Lücken, Muster, Empfehlungen, neutrale Diagrammvorbereitung und Berichte; HTTP-Komposition und aktuelle Einstellungen über Anwendungsadapter. |
+| Reporting | Darstellung und Layout vollständiger Snapshot-gebundener Berichtsmodelle, Berichtsvorlagen, Vorschau und Health; der generische Vorlagenlebenszyklus bleibt bei Templates. |
 | Workspace | Repository-/Workspace-Identität, bearbeitbarer Modellzustand, dauerhafte semantische Operationen, Undo/Redo, explizite Checkpoints und JGit-Speicher. |
 | Vorlagen | Versionierte Dokumentvorlagen, OOXML-Validierung, Materialisierung, WebDAV und Administration; Vorlagenhistorie ist keine Architekturhistorie. |
 | Interoperabilität | Geprüfter Austausch, Zuordnungen, Konnektorprofile, Verlustnachweise, Integrationsoperationen und Synchronisationscheckpoints. |
 | Anwendungskomposition | Kontextübergreifende HTTP-Abläufe, Berechtigungs-/Kontextauflösung, Quellenherkunft, Einstellungen, Verdrahtung, Migrationen und Packaging. |
 
-Die genaue Package-Zuordnung steht in der [Kontextdatei](../../.github/architecture-contexts.json).
+Die genaue Package-Zuordnung steht in der [Kontextdatei](https://github.com/carstenartur/Taxonomy/blob/main/.github/architecture-contexts.json).
 Historische Abhängigkeitszahlen belegen ihren jeweiligen Umbauzustand, keine aktuelle
 Laufzeitmessung; siehe [Extraktionshistorie](../internal/MODULE_BOUNDARIES_HISTORY_DE.md).
 
@@ -300,7 +360,7 @@ zweiten Modellspeichers oder eines Git-Commits pro übernommenem Edit. Das zerti
 weder uneingeschränkte Enterprise-Architect-/Pro-Cloud-Server-Kompatibilität noch
 bedingungslose entfernte Veröffentlichung.
 
-Siehe [Framework-Import](FRAMEWORK_IMPORT.md) und [Sparx-Austausch](../features/sparx-integration-de.md).
+Siehe [Framework-Import](FRAMEWORK_IMPORT.md) und [Sparx-Austausch](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/sparx-integration-de.md).
 Der Konnektorleitfaden beschreibt die unterstützte Version dieses Branches; zukünftige
 Profile oder native Editorfähigkeiten sind damit nicht vorweggenommen.
 
@@ -322,7 +382,7 @@ Kompatibilitätsnachweis.
 ## CI / CD
 
 Der eingecheckte Maven Wrapper wird vom Repository-Root aus verwendet. Unterstützte
-Prüfläufe stehen in der [README](../../README.md#build-and-verification) und im
+Prüfläufe stehen in der [README](https://github.com/carstenartur/Taxonomy/blob/main/README.md#build-and-verification) und im
 [Maven-Verifikationsleitfaden](../dev/MAVEN_VERIFICATION.md).
 
 `taxonomy-build` besitzt die Reactor-weiten Architekturprüfungen. Das bestehende Gate
@@ -371,6 +431,6 @@ externen Anforderungen. Promptkodierung v6 nimmt geerbte Frageentdeckungen und i
 Ursprünge in das lokale Kontextwörterbuch des Aufrufs auf. Eindeutige Belege bleiben
 erhalten; wiederholte Serialisierung entfällt, die Limits steigen nicht.
 
-Der [Abnahmevertrag](../testing/requirement-reformulation.md) trennt deterministische
+Der [Abnahmevertrag](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/requirement-reformulation.md) trennt deterministische
 Anwendungs-, Browser- und Renderingbelege von echtem Modellvergleich und menschlicher
 Qualitätsprüfung.

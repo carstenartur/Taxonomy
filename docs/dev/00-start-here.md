@@ -9,7 +9,7 @@ without reading the full architecture reference first.
 
 1. **Identify your task type** from the [Change Map](01-change-map.md).
    The map lists common task types with direct links to the relevant task page,
-   the packages most likely to be touched, and the test command to run.
+   the owning modules, entry points, and focused verification commands.
 
 2. **Open the task page** for your specific change.
    Each page describes:
@@ -26,28 +26,48 @@ without reading the full architecture reference first.
    If you discover that your change requires touching many unrelated files,
    re-read the task page — there is likely a cleaner extension point.
 
-4. **Run the targeted tests** listed on the task page before opening a pull request.
-   For any change that touches a REST controller, UI template, or Spring configuration,
-   also run the full verification suite:
+4. **Run the targeted checks** listed on the task page before opening a pull request,
+   then complete the required broader verification. The canonical entry point is:
 
    ```bash
-   ./mvnw verify -DexcludedGroups="real-llm"
+   ./mvnw -B verify -Pci -DrunOnnxTests=true
    ```
+
+   A focused module run or the default `verify` lifecycle does not cover every CI
+   lane. Read [Maven Verification](MAVEN_VERIFICATION.md) for prerequisites,
+   browser/shard evidence, companion profiles, and the remaining local-equivalence
+   gaps. Documentation changes need content, link, and rendering checks as well.
 
 ---
 
 ## Module quick-reference
 
-| Module | What lives here | Spring? |
-|---|---|:---:|
-| `taxonomy-domain` | DTOs, enums, domain constants | No |
-| `taxonomy-dsl` | DSL parser, serializer, model, validator, differ | No |
-| `taxonomy-export` | Export services (ArchiMate, Visio, Mermaid, Structurizr) | No |
-| `taxonomy-app` | REST controllers, Spring services, JPA entities, UI templates | Yes |
+Use the [current module inventory and ownership contracts](../en/MODULE_BOUNDARIES.md)
+for the complete reactor. The root [POM](../../pom.xml) owns module membership;
+the inventory describes the implemented boundaries, not a planned extraction.
 
-The first three modules are pure Java libraries — they can be compiled and tested
-without Docker and without a Spring context.
-Changes there are usually safer and faster to verify.
+| Concern | Start here |
+|---|---|
+| Shared DTOs, enums, and contracts | Framework-free `taxonomy-domain`; feature persistence belongs to the owning feature module |
+| DSL syntax, mapping, validation, and semantic diff | Framework-free `taxonomy-dsl` |
+| Export codecs and extension/report/template contracts | `taxonomy-export`, `taxonomy-extension-api`, `taxonomy-reporting-api`, `taxonomy-templates-api` |
+| Catalogue, relations, search, and local embeddings | `taxonomy-knowledge` |
+| Requirement analysis, prompts, and provider execution policy | `taxonomy-analysis` |
+| Architecture derivation, summaries, metadata, and view pipeline | `taxonomy-architecture` |
+| Workspace/editor state, semantic journal, and Git checkpoints | `taxonomy-workspace` |
+| Reports, templates, exchanges, and portfolio workflows | Their respective `taxonomy-reporting`, `taxonomy-templates`, `taxonomy-interop`, and `taxonomy-portfolio` modules |
+| External plugin validation and lifecycle | `taxonomy-extension-runtime`; `plugins/taxonomy-mermaid-plugin` is the independent plugin example |
+| Application wiring, security, migrations, cross-context adapters, and UI resources | `taxonomy-app`; provenance/document ingestion and preferences also remain application-local |
+
+`taxonomy-app` is the executable composition root. Feature services, controllers,
+entities, tests, and resources can live in their owning libraries; do not route all
+backend changes through the application module. Build/tooling modules are described
+in the inventory and are not runtime features.
+
+The same executable supports local analysis or optional external-Artemis
+coordinator/worker processes. That analysis topology does not establish that every
+web/application subsystem supports multiple replicas; see
+[deployment and operations](../en/DEPLOYMENT_GUIDE.md).
 
 ---
 

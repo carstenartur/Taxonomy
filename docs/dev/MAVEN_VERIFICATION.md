@@ -242,12 +242,15 @@ Realm data, client secrets and users are located below
 ## Focused Maven-owned suites
 
 Test selection is stored in POM profiles or cataloged Maven commands, never in
-workflow YAML:
+workflow YAML. The import profiles select named tests in their owning modules;
+`-am` builds the required reactor dependencies.
+`surefire.failIfNoSpecifiedTests=false` permits upstream modules without matching
+selected tests; failures in the selected tests still fail the build:
 
 ```bash
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
-./mvnw test -Pdocument-import-tests -pl taxonomy-app
-./mvnw test -Parchimate-import-tests -pl taxonomy-app
+./mvnw test -Pdocument-import-tests -pl taxonomy-app -am -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw test -Parchimate-import-tests -pl taxonomy-app -am -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw -B verify -pl taxonomy-app -am \
   -DskipITs=false -Dit.test=KeycloakSecurityContainerIT
 
