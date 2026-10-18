@@ -7,8 +7,17 @@ import static com.taxonomy.dto.RelationSearchModel.Direction;
 public record RelationSearchProgress(int totalSources, int assessedSources, int totalSearches,
         int completedSearches, int unresolvedSearches, int pendingSearches,
         int calls, int maxCalls, int verifiedRelations, Step step, Current current,
-        List<Taxonomy> taxonomies) {
-    public RelationSearchProgress { taxonomies = List.copyOf(taxonomies); }
+        List<Taxonomy> taxonomies, List<SourceTaxonomy> sourceTaxonomies) {
+    public RelationSearchProgress {
+        taxonomies = List.copyOf(taxonomies);
+        sourceTaxonomies = sourceTaxonomies == null ? List.of() : List.copyOf(sourceTaxonomies);
+    }
+    public RelationSearchProgress(int totalSources, int assessedSources, int totalSearches,
+            int completedSearches, int unresolvedSearches, int pendingSearches, int calls, int maxCalls,
+            int verifiedRelations, Step step, Current current, List<Taxonomy> taxonomies) {
+        this(totalSources, assessedSources, totalSearches, completedSearches, unresolvedSearches, pendingSearches,
+                calls, maxCalls, verifiedRelations, step, current, taxonomies, List.of());
+    }
     public enum Step { SOURCES, NAVIGATE, VERIFY, FINISHED, PAUSED }
     public enum State { PENDING, RUNNING, COMPLETED, UNRESOLVED }
     public record Current(String sourceId, String targetRoot, String type, Direction direction,
@@ -17,4 +26,6 @@ public record RelationSearchProgress(int totalSources, int assessedSources, int 
     }
     public record Task(String sourceId, String targetRoot, State state) { }
     public record Taxonomy(String root, int total, int completed, int unresolved, int pending) { }
+    /** A source completes only after its contribution and every target/type search are settled. */
+    public record SourceTaxonomy(String root, int total, int completed, int unresolved) { }
 }

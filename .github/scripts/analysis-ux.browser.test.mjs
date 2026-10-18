@@ -4,7 +4,7 @@
  */
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 const resources = process.env.TAXONOMY_TEST_RESOURCE_ROOT || path.resolve('taxonomy-app/src/main/resources');
@@ -342,6 +342,53 @@ async function progressFixture(locale='de'){
     return page;
 }
 for(const locale of ['de','en']){
+    test(`${locale}: eight shared taxonomy bars retain catalogue order and fit desktop and mobile widths`,async()=>{
+        const page=await progressFixture(locale);try{
+            if(process.env.BOOTSTRAP_CSS) await page.addStyleTag({path:process.env.BOOTSTRAP_CSS});
+            const roots=['BP','BR','CP','CI','CO','CR','IP','UA'];
+            await page.evaluate(roots=>{
+                TaxonomyState.taxonomyData=roots.map(code=>({code,name:code,children:[]}));
+                const taxonomies=roots.map(root=>({root,nameDe:'Teiltaxonomie '+root,nameEn:'Taxonomy '+root,
+                    total:100,assessed:35,excluded:25,open:40,positive:20,allocatedPercent:37.5,rootPercent:80}));
+                progressSnapshot.phase='RELATIONS';
+                progressSnapshot.nodeProgress={total:800,assessed:280,excluded:200,open:320,taxonomies:taxonomies.reverse()};
+                progressSnapshot.relationProgress={totalSources:40,assessedSources:32,totalSearches:80,
+                    completedSearches:32,unresolvedSearches:8,pendingSearches:40,calls:12,maxCalls:24,
+                    verifiedRelations:7,step:'NAVIGATE',
+                    current:{sourceId:'BP-1',targetRoot:'IP',type:'CONSUMES',direction:'OUTGOING',depth:1,candidates:['IP-1']},
+                    taxonomies:roots.slice().reverse().map(root=>({root,total:10,completed:4,unresolved:1,pending:5})),
+                    sourceTaxonomies:roots.slice().reverse().map(root=>({root,total:5,completed:2,unresolved:1}))};
+                window.progressMonitor=TaxonomyAnalysisProgress.start('ux-progress');
+            },roots);
+            await page.waitForFunction(()=>window.observedSequence===1);
+            const bars=page.locator('#analysisWorkProgress progress[data-taxonomy-root]');
+            assert.equal(await bars.count(),8);
+            assert.deepEqual(await bars.evaluateAll(elements=>elements.map(e=>e.dataset.taxonomyRoot)),roots);
+            assert.equal(await page.locator('progress[data-progress-kind="relations"][data-taxonomy-root]').count(),0);
+            assert.equal(await page.locator('#analysisProgressDiagnostics').evaluate(e=>e.open),false);
+            const first=bars.first();
+            assert.equal(await first.getAttribute('value'),'60');
+            assert.equal(await first.getAttribute('max'),'100');
+            assert.equal(await first.evaluate(e=>e.position),0.6);
+            assert.equal(await first.getAttribute('data-relations-completed'),'2');
+            assert.equal(await first.getAttribute('data-relations-unresolved'),'1');
+            assert.match(await first.getAttribute('aria-valuetext'),locale==='de'?/37,5%.*80%/:/37\.5%.*80%/);
+            assert.equal(await page.locator('#analysis-taxonomy-counts-BP dt').count(),4);
+            for(const width of [1280,390]){
+                await page.setViewportSize({width,height:900});
+                assert.equal(await bars.evaluateAll(elements=>elements.every(e=>{
+                    const b=e.getBoundingClientRect();return b.width>0&&b.left>=0&&b.right<=innerWidth;
+                })),true);
+                assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+                if(process.env.TAXONOMY_UI_OUTPUT_ROOT){
+                    const directory=path.join(process.env.TAXONOMY_UI_OUTPUT_ROOT,'analysis-progress');
+                    await mkdir(directory,{recursive:true});
+                    await page.screenshot({path:path.join(directory,`shared-taxonomy-bars-${locale}-${width}.png`),fullPage:true});
+                }
+            }
+            await page.evaluate(()=>progressMonitor.stop());
+        }finally{await finish(page);}
+    });
     test(`${locale}: distributed relation work never appears complete just because root scoring finished`,async()=>{
         const page=await progressFixture(locale);try{
             const summary=await page.evaluate(()=>TaxonomyAnalysisProgress.workSummary({phase:'RELATIONS',cluster:{completedRoots:8,totalRoots:8,tasks:[{taskType:'RELATION_ANALYSIS',queued:4,running:2,completed:3,failed:1}]}}));

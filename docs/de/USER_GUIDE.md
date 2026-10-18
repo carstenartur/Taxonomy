@@ -67,15 +67,16 @@ Architekturableitung aus und ist keine abgeschlossene vollständige Architektura
 
 Nach einem gespeicherten Lauf mit **Nur Knotenbewertung** ergänzt **Relationssuche ergänzen** die Beziehungen. Die vorhandenen Bewertungen und Begründungen bleiben erhalten. Der zusätzliche Schritt verwendet die ursprüngliche Anforderung, Taxonomie und Anbieterauswahl. Nach einem Neuladen steht er im selben Workspace wieder zur Verfügung. Geänderte Eingaben, bearbeitete oder ergänzte Bewertungen und Begründungen sowie ältere Importe ohne passenden gespeicherten Lauf werden mit einer Erklärung abgewiesen; starten Sie dann eine neue Knotenbewertung. Eine pausierte oder mit offenen Prüfungen beendete Relationssuche lässt sich über diese Prüfungen fortsetzen.
 
-Im Analyse-Status sind die Balken je Teiltaxonomie zunächst aufgeklappt; die Liste kann eingeklappt werden. Die Relationsphase hat einen eigenen Gesamtbalken und Balken je Ziel-Teiltaxonomie. Solange der Umfang noch nicht feststeht, zeigt die Anzeige keinen festen Prozentwert.
+Im Analyse-Status bleibt jede ausgewählte Teiltaxonomie in derselben Reihenfolge und behält ihren Knotenbalken auch während der Relationssuche. Die zunächst aufgeklappte Liste kann eingeklappt werden. Solange der Umfang noch nicht feststeht, zeigt die Anzeige keinen festen Prozentwert.
 
 | Anzeige | Bedeutung |
 |---|---|
-| Knotenbewertung | Direkt bewertete Knoten und durch eine gültige übergeordnete Entscheidung ausgeschlossene Nachfahren zählen als erledigt; offene Knoten bleiben sichtbar. |
-| Relationssuche | Erledigte Suchaufträge werden gegen den geplanten Umfang gezählt. Ungeklärte und noch offene Aufträge stehen getrennt dabei. |
+| Kennzahlen je Teiltaxonomie | Gesamtzahl, verarbeitete Knoten, Knoten mit Bewertung größer null und bereits auf Blätter verteilte Prozente. „Verarbeitet“ umfasst direkte Bewertungen und durch eine gültige übergeordnete Entscheidung ausgeschlossene Nachfahren. Blattprozente zählen übergeordnete Budgets und eigenständige Produkteignungen nicht nochmals mit. |
+| Knotenbalken | Offene, ausgeschlossene, mit null bewertete und positiv bewertete Knoten sind farblich getrennt. Fehlen bei älteren Ergebnissen Trefferzähler, bleibt dieser Anteil neutral und wird als unbekannt bezeichnet. |
+| Relationssuche | Im selben Balken werden vollständig geprüfte positive Quellknoten grün und ungeklärte Quellen orange. Der aktuelle Suchbereich erhält eine Randmarkierung. Eine abgeschlossene Quellenprüfung muss keine Beziehung ergeben. Der separate Gesamtbalken zählt Suchaufträge; eine Quelle kann mehrere Aufträge auslösen. |
 | Gefundene Beziehungen | Ergebniszahl der Relationssuche; sie misst keinen Arbeitsfortschritt und bedeutet keine menschliche Freigabe. |
 
-Abbruch oder Fehler füllen offene Balken nicht nachträglich auf. **Ausblenden** schließt die Anzeige; der Lauf arbeitet weiter. Über **Einstellungen → Analyse-Status** öffnen Sie sie wieder.
+Abbruch oder Fehler füllen offene Balken nicht nachträglich auf. Technische Statuscodes, Speicherwerte und Verbindungsdetails stehen unter **Technische Details**. **Ausblenden** schließt die Anzeige; der Lauf arbeitet weiter. Über **Einstellungen → Analyse-Status** öffnen Sie sie wieder.
 
 Direkt bewertete Knoten, durch eine gültige Nullbewertung ausgeschlossene Nachfahren,
 offene und nicht ausgewählte Knoten sind unterschiedlich zu lesen. Budgetende,
@@ -372,7 +373,7 @@ Während der Analyse (insbesondere im interaktiven Modus) zeigt der Analyse-Stat
 | *„Architekturansicht wird erstellt…"* | Die beziehungsbasierte Architekturansicht wird zusammengestellt |
 | *„Analyse abgeschlossen"* | Der konfigurierte Arbeitsplan hat seinen gemeldeten Zustand erreicht; offene Arbeit und Umfang vor Aussagen zur Vollständigkeit prüfen |
 
-Die Fortschrittsanzeige trennt bewertete, ausgeschlossene und offene Knoten bezogen auf die geplante Gesamtzahl und je ausgewählter Teiltaxonomie. Die Relationsphase zeigt ihre eigenen geplanten, erledigten und offenen Prüfungen; ein Prozentwert der Knotenbewertung ist kein Relationsabschluss.
+Die Fortschrittsanzeige verwendet dieselben Knotenbalken und Kennzahlen von der Bewertung bis zur Relationssuche. Deren Farben zeigen zusätzlich abgeschlossene und ungeklärte Quellenprüfungen; der Relations-Gesamtbalken zählt die einzelnen Suchaufträge. Verteilte Blattprozente sind kein Relationsabschluss. Die [Erklärung der Kennzahlen](#analysis-scope-and-progress) beschreibt diese unterschiedlichen Bezugsgrößen.
 
 ### Fehlerbehandlung während der Analyse
 

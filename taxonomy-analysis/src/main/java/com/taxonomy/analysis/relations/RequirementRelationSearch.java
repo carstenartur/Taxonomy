@@ -169,7 +169,7 @@ public final class RequirementRelationSearch {
             var p = previous.progress(); tasks = previous.tasks();
             progress = new com.taxonomy.dto.RelationSearchProgress(p.totalSources(), p.assessedSources(), p.totalSearches(),
                     p.completedSearches(), p.unresolvedSearches(), p.pendingSearches(), budget.calls,
-                    options.limits().maxCalls(), p.verifiedRelations(), Step.PAUSED, null, p.taxonomies());
+                    options.limits().maxCalls(), p.verifiedRelations(), Step.PAUSED, null, p.taxonomies(), p.sourceTaxonomies());
         }
         return new RelationSearchReport(2, sha256(original), "relation-downwalk-v2/complete-plan/resumable-exchanges",
                 sources, result, budget.calls, options.limits().maxCalls(),

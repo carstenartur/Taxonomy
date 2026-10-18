@@ -54,6 +54,27 @@ class ClusterAnalysisDetailedProgressTest {
         }
     }
 
+    @Test void distributedSnapshotsCountPositiveNodesAndLeafWeightFromFrozenWorkerEvidence() {
+        try (var db = new Database(); var observation = observation(db.store)) {
+            var context = context("score-progress"); db.admitFrozen(context);
+            var task = db.task(IP); var input = db.store.start(task);
+            var worker = db.store.diagnostics(task, input.deliveryAttempt());
+            var scores = new LlmCallDetail();
+            scores.setScores(Map.of("IP", 80d, "fixture-ip-child", 0.125d));
+            worker.assessment(scores);
+            var progress = snapshot(observation, context).nodeProgress();
+            var ip = progress.taxonomies().stream().filter(part -> part.root().equals("IP")).findFirst().orElseThrow();
+            assertEquals(2, ip.positive());
+            assertEquals(0.125d, ip.allocatedPercent());
+            assertEquals(80d, ip.rootPercent());
+            var cp = progress.taxonomies().stream().filter(part -> part.root().equals("CP")).findFirst().orElseThrow();
+            assertEquals(0, cp.positive());
+            assertNull(cp.rootPercent(), "An unassessed root has an unknown budget, not a synthetic zero");
+            db.store.cancel(context);
+            assertEquals(progress, snapshot(observation, context).nodeProgress());
+        }
+    }
+
     @Test void liveAssessmentsDeduplicateByFrozenIdentityAndPersistProviderWaitReasons() {
         try (var db = new Database(); var observation = observation(db.store)) {
             var context = context("live-progress"); db.admitFrozen(context);

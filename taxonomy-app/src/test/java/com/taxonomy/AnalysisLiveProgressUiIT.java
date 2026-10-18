@@ -87,7 +87,10 @@ class AnalysisLiveProgressUiIT {
     @Test void pendingCallMemoryWarningAndPartialScoresAreVisibleBeforeCompletion() throws Exception {
         wait.until(browser -> browser.findElement(By.id("llmCommLogContent")).getText().contains("STARTED"));
         assertThat(driver.findElement(By.id("analysisLiveProgress")).getText())
-                .contains("LLM-Antwort", "Speicherwarnung", "94%", "Server-Lebenszeichen");
+                .contains("LLM-Antwort", "Speicherwarnung", "94%").doesNotContain("IN_MEMORY", "Server-Lebenszeichen");
+        assertThat(driver.executeScript("return document.getElementById('analysisProgressDiagnostics').open")).isEqualTo(false);
+        driver.findElement(By.cssSelector("#analysisProgressDiagnostics summary")).click();
+        assertThat(driver.findElement(By.id("analysisProgressDiagnostics")).getText()).contains("Server-Lebenszeichen", "94%");
         assertThat(DETAIL_REQUESTS.get()).isZero();
         SEQUENCE.set(2);
         wait.until(browser -> browser.findElement(By.id("partialScores")).getText().contains("80"));
@@ -164,26 +167,30 @@ class AnalysisLiveProgressUiIT {
         assertThat(UNEXPECTED_REQUESTS.get()).isZero();
     }
 
-    @Test void taxonomyAndTargetBarsRemainVisibleAtMobileWidthAndPreserveKeyboardDisclosureFocus() throws Exception {
+    @Test void sharedTaxonomyBarsRemainVisibleAtMobileWidthAndPreserveKeyboardDisclosureFocus() throws Exception {
         WORK.set("""
                 ,"nodeProgress":{"total":12,"assessed":4,"excluded":3,"open":5,"taxonomies":[
-                  {"root":"BP","nameEn":"Business processes","nameDe":"Geschäftsprozesse mit einer langen Bezeichnung","total":8,"assessed":3,"excluded":2,"open":3},
-                  {"root":"IP","nameEn":"Information products","nameDe":"Informationsprodukte","total":4,"assessed":1,"excluded":1,"open":2}]},
+                  {"root":"BP","nameEn":"Business processes","nameDe":"Geschäftsprozesse mit einer langen Bezeichnung","total":8,"assessed":3,"excluded":2,"open":3,"positive":2,"allocatedPercent":0.125,"rootPercent":80},
+                  {"root":"IP","nameEn":"Information products","nameDe":"Informationsprodukte","total":4,"assessed":1,"excluded":1,"open":2,"positive":1,"allocatedPercent":20,"rootPercent":20}]},
                  "relationProgress":{"totalSources":3,"assessedSources":2,"totalSearches":10,"completedSearches":4,
                   "unresolvedSearches":2,"pendingSearches":4,"calls":8,"maxCalls":12,"verifiedRelations":99,"step":"NAVIGATE","current":null,
-                  "taxonomies":[{"root":"BP","total":6,"completed":2,"unresolved":1,"pending":3},{"root":"IP","total":4,"completed":2,"unresolved":1,"pending":1}]}
+                  "taxonomies":[{"root":"IP","total":4,"completed":2,"unresolved":1,"pending":1},{"root":"BP","total":6,"completed":2,"unresolved":1,"pending":3}],
+                  "sourceTaxonomies":[{"root":"BP","total":2,"completed":1,"unresolved":1},{"root":"IP","total":1,"completed":0,"unresolved":0}]}
                 """);
         SEQUENCE.incrementAndGet();
-        wait.until(browser -> browser.findElements(By.cssSelector("#analysisWorkProgress progress")).size() == 6);
-        assertThat(driver.findElements(By.cssSelector("progress[data-taxonomy-root]"))).hasSize(4);
+        wait.until(browser -> browser.findElements(By.cssSelector("#analysisWorkProgress progress")).size() == 4);
+        assertThat(driver.findElements(By.cssSelector("progress[data-taxonomy-root]"))).hasSize(2);
+        assertThat(driver.findElements(By.cssSelector("progress[data-progress-kind='relations'][data-taxonomy-root]"))).isEmpty();
         assertThat(driver.executeScript("return document.getElementById('analysisTaxonomyProgressDetails').open")).isEqualTo(true);
         assertThat(driver.findElement(By.cssSelector("progress[data-progress-kind='nodes'][data-taxonomy-root='BP']")).isDisplayed()).isTrue();
         assertThat(driver.findElement(By.cssSelector("progress[data-progress-kind='nodes'][data-taxonomy-root='BP']")).getAttribute("value")).isEqualTo("5");
-        var target = driver.findElement(By.cssSelector("progress[data-progress-kind='relations'][data-taxonomy-root='IP']"));
+        var target = driver.findElement(By.cssSelector("progress[data-progress-kind='nodes'][data-taxonomy-root='IP']"));
         assertThat(target.getAttribute("value")).isEqualTo("2");
         assertThat(target.getAttribute("max")).isEqualTo("4");
         assertThat(target.getAccessibleName()).contains("IP");
         assertThat(target.getAttribute("aria-valuetext")).contains("ungeklärt", "offen");
+        assertThat(driver.findElement(By.cssSelector("progress[data-taxonomy-root='BP']")).getAttribute("data-relations-completed")).isEqualTo("1");
+        assertThat(driver.findElement(By.id("analysis-taxonomy-counts-BP")).getText()).contains("Gesamt", "Verarbeitet", "Nichtnull", "Verteilt", "0,125%");
         assertThat(driver.findElement(By.id("analysisWorkProgress")).getText()).contains("99 geprüfte Relationsvorschläge", "3 durch übergeordnete Entscheidung ausgeschlossen");
         var cdp = (HasCdp) new Augmenter().augment(driver);
         cdp.executeCdpCommand("Emulation.setDeviceMetricsOverride", Map.of("width", 390, "height", 844, "deviceScaleFactor", 1, "mobile", true));
@@ -235,11 +242,11 @@ class AnalysisLiveProgressUiIT {
         STATUS.set("CANCELLED"); SEQUENCE.incrementAndGet();
         wait.until(browser -> "CANCELLED".equals(browser.findElement(By.id("analysisWorkProgress")).getAttribute("data-run-status")));
         assertThat(driver.findElement(By.cssSelector("progress[data-progress-kind='relations'][data-taxonomy-root='IP']")).getAttribute("value")).isEqualTo("4");
-        assertThat(driver.findElement(By.id("analysisLiveProgress")).getText()).contains("CANCELLED", "unvollständig");
+        assertThat(driver.findElement(By.id("analysisLiveProgress")).getText()).contains("Abgebrochen", "unvollständig");
         assertThat(driver.findElement(By.id("analysisLiveProgress")).getText()).doesNotContain("Vollständiges Ergebnis empfangen");
     }
 
-    @Test void eightTaxonomyAndTargetBarsStayWithinThePanelAtDesktopAndMobileWidths() throws Exception {
+    @Test void eightSharedTaxonomyBarsStayWithinThePanelAtDesktopAndMobileWidths() throws Exception {
         var roots = List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA");
         var english = List.of("Business processes", "Business roles", "Capabilities", "COI services",
                 "Communications services", "Communications resources", "Information products", "User applications");
@@ -247,25 +254,31 @@ class AnalysisLiveProgressUiIT {
                 "Kommunikationsdienste", "Kommunikationsressourcen", "Informationsprodukte", "Benutzeranwendungen");
         var nodes = new java.util.ArrayList<String>();
         var targets = new java.util.ArrayList<String>();
+        var sources = new java.util.ArrayList<String>();
         for (int index = 0; index < roots.size(); index++) {
             nodes.add("""
-                    {"root":"%s","nameEn":"%s","nameDe":"%s","total":100,"assessed":35,"excluded":25,"open":40}
+                    {"root":"%s","nameEn":"%s","nameDe":"%s","total":100,"assessed":35,"excluded":25,"open":40,"positive":20,"allocatedPercent":37.5,"rootPercent":80}
                     """.formatted(roots.get(index), english.get(index), german.get(index)));
             targets.add("{\"root\":\"%s\",\"total\":10,\"completed\":4,\"unresolved\":1,\"pending\":5}".formatted(roots.get(index)));
+            sources.add("{\"root\":\"%s\",\"total\":5,\"completed\":2,\"unresolved\":1}".formatted(roots.get(index)));
         }
         driver.executeScript("window.TaxonomyState={taxonomyData:JSON.parse(arguments[0]).map(n=>({...n,code:n.root}))}", "[" + String.join(",", nodes) + "]");
         WORK.set("""
                 ,"nodeProgress":{"total":800,"assessed":280,"excluded":200,"open":320,"taxonomies":[%s]},
-                 "relationProgress":{"totalSources":10,"assessedSources":8,"totalSearches":80,"completedSearches":32,
-                  "unresolvedSearches":8,"pendingSearches":40,"calls":12,"maxCalls":24,"verifiedRelations":7,"step":"PAUSED","current":null,"taxonomies":[%s]}
-                """.formatted(String.join(",", nodes), String.join(",", targets)));
+                 "relationProgress":{"totalSources":40,"assessedSources":32,"totalSearches":80,"completedSearches":32,
+                  "unresolvedSearches":8,"pendingSearches":40,"calls":12,"maxCalls":24,"verifiedRelations":7,"step":"PAUSED","current":null,"taxonomies":[%s],"sourceTaxonomies":[%s]}
+                """.formatted(String.join(",", nodes), String.join(",", targets), String.join(",", sources)));
         PHASE.set("FINISHED"); STATUS.set("PARTIAL"); SEQUENCE.incrementAndGet();
-        wait.until(browser -> browser.findElements(By.cssSelector("#analysisWorkProgress progress")).size() == 18
+        wait.until(browser -> browser.findElements(By.cssSelector("#analysisWorkProgress progress")).size() == 10
                 && "PARTIAL".equals(browser.findElement(By.id("analysisWorkProgress")).getAttribute("data-run-status")));
         var cdp = (HasCdp) new Augmenter().augment(driver);
         for (var size : List.of(Map.of("width", 1280, "height", 1200), Map.of("width", 390, "height", 844))) {
             cdp.executeCdpCommand("Emulation.setDeviceMetricsOverride", Map.of("width", size.get("width"), "height", size.get("height"), "deviceScaleFactor", 1, "mobile", false));
-            assertThat(driver.findElements(By.cssSelector("progress[data-taxonomy-root]"))).hasSize(16).allSatisfy(bar -> assertThat(bar.isDisplayed()).isTrue());
+            assertThat(driver.findElements(By.cssSelector("progress[data-taxonomy-root]"))).hasSize(8).allSatisfy(bar -> {
+                assertThat(bar.isDisplayed()).isTrue();
+                assertThat(bar.getAttribute("data-positive")).isEqualTo("20");
+                assertThat(bar.getAttribute("data-relations-completed")).isEqualTo("2");
+            });
             assertThat(driver.executeScript("""
                     return [...document.querySelectorAll('#analysisWorkProgress progress')].every(p => {
                         const b=p.getBoundingClientRect();return b.width > 0 && b.right <= innerWidth && b.left >= 0;

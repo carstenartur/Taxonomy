@@ -69,15 +69,16 @@ derivation; it must not be presented as a completed full architecture analysis.
 
 After a saved **Node assessment only** run, **Add relationship search** adds the relationships while retaining the existing scores and explanations. This step uses the original requirement, taxonomy and provider selection. It remains available in the same workspace after reload. Changed inputs, edited or independently extended assessments and explanations, and older imports without a matching saved run receive an explanation; start a new node assessment in that case. A paused relationship search or one completed with open assessments can be continued through those assessments.
 
-The analysis status initially expands the bars for each taxonomy; the list can be collapsed. Relationship search has its own total bar and a bar for each target taxonomy. No fixed percentage is shown until the work scope is known.
+Each selected taxonomy keeps the same position and node bar throughout node assessment and relationship search. The list is initially expanded and can be collapsed. No fixed percentage is shown until the work scope is known.
 
 | Display | Meaning |
 |---|---|
-| Node assessment | Directly assessed nodes and descendants excluded by a valid parent decision count as complete; open nodes remain visible. |
-| Relationship search | Completed search tasks are counted against the planned scope. Unresolved and pending tasks remain separate. |
+| Taxonomy metrics | Total nodes, processed nodes, nodes with a score above zero, and percentages already allocated to leaves. Processed includes direct assessments and descendants excluded by a valid parent decision. Leaf allocation does not count parent budgets or independent product suitability scores again. |
+| Node bar | Open, excluded, zero-scored and positive nodes have distinct colours. Older results without positive-node counts use a neutral colour and identify that count as unknown. |
+| Relationship search | In the same bar, fully checked positive source nodes turn green and unresolved sources turn orange. A border marks the current search scope. A completed source assessment need not find a relationship. The separate total bar counts search tasks; a single source can require several tasks. |
 | Relationships found | The number of search results; this is not a measure of work progress or human approval. |
 
-Cancellation or failure does not fill the remaining bars. **Hide** closes the display while work continues. Reopen it through **Settings → Analysis status**.
+Cancellation or failure does not fill the remaining bars. Status codes, memory figures and connection details are available under **Technical details**. **Hide** closes the display while work continues. Reopen it through **Settings → Analysis status**.
 
 Directly assessed nodes, descendants excluded by a valid zero assessment, open
 nodes and unselected nodes are different. A budget stop, a failed answer or an
@@ -369,7 +370,7 @@ During analysis (especially in Interactive Mode), the inline analysis status sho
 | *"Building architecture view…"* | The relation-aware architecture view is being assembled |
 | *"Analysis complete"* | The configured work plan has reached its reported outcome; inspect unresolved work and scope before interpreting completeness |
 
-The progress panel distinguishes assessed, excluded and open nodes against the planned total, including each selected taxonomy. The relationship phase reports its own planned/completed/open work; a node-scoring percentage is not relationship completion.
+The progress panel keeps the same node bars and metrics from assessment through relationship search. Their colours also show completed and unresolved source assessments, while the relationship total bar counts individual search tasks. Leaf allocation percentages do not measure relationship completion. See the [metric explanations](#analysis-scope-and-progress) for these different units.
 
 ### Error Handling During Analysis
 
