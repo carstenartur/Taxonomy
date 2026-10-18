@@ -96,6 +96,132 @@ public final class RelationSearchUseCaseContract {
         check(copy.getRelationSearchReport() != null && !copy.getRelationSearchReport().result().edges().isEmpty(), "snapshot report retained");
         check(!copy.getArchitectureView().getIncludedRelationships().getFirst().getRequirementEvidence().isEmpty(), "view evidence retained");
     }
+    public static void testProjectAnalysisContinuesBeyondHigherScoredContextSources() throws Exception {
+        var prompts = new ArrayList<String>();
+        var f = sourceCohortFixture(24, prompts, false, false);
+        var result = f.analyzeProject();
+        var report = result.getRelationSearchReport();
+        check("SUCCESS".equals(result.getStatus()) && report.isSearchExhausted(),
+                "A project analysis must finish the required low-share source beyond the first 32 candidates");
+        check(report.progress().totalSources() == 33 && report.progress().assessedSources() == 33,
+                "Every positive candidate, including the 0.5-share leaf, is assessed");
+        check(report.progress().pendingSearches() == 0 && report.progress().completedSearches() == 33,
+                "A complete result must have no unassessed source/target tasks");
+        check(report.result().edges().size() == 1 && report.result().edges().getFirst().sourceId().equals("process")
+                        && report.result().edges().getFirst().targetId().equals("evidence"),
+                "The late source contributes its separately verified evidence relation");
+        check(result.getArchitectureView().getIncludedRelationships().size() == 1
+                        && result.getScores().get("process") == 0.5,
+                "The relation reaches the real architecture projection without changing the allocated score");
+        check(new HashSet<>(prompts).size() == prompts.size() && report.totalCalls() == prompts.size(),
+                "Source continuation reuses successful answers and reports all actual calls");
+        check(report.totalCalls() <= 24 && report.maxCalls() == 24,
+                "Cohorts share the original call budget");
+        check(!com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active(),
+                "The request-local replay session must not leak into another project analysis");
+    }
+    public static void testVerificationPassesCannotResetTheBudgetOrClaimPendingSourcesComplete() throws Exception {
+        var prompts = new ArrayList<String>();
+        var f = sourceCohortFixture(10, prompts, false, false);
+        for (int pass = 0; pass < 2; pass++) {
+            prompts.clear();
+            var result = f.analyzeProject();
+            var report = result.getRelationSearchReport();
+            check("PARTIAL".equals(result.getStatus()) && !report.isSearchExhausted(),
+                    "An independent verification job does not complete unassessed source work");
+            check(prompts.size() == 10 && report.totalCalls() == 10 && report.maxCalls() == 10,
+                    "No source continuation may renew the caller's total call budget");
+            check(report.progress().assessedSources() == 30 && report.progress().totalSources() == 33
+                            && report.progress().pendingSearches() == 3,
+                    "Budget exhaustion retains the exact unassessed sources in the fixed task plan");
+            check(result.getErrorMessage().contains("3 unassessed sources"),
+                    "A partial result explains unassessed sources even with no unfinished navigation batches");
+            check(report.result().edges().isEmpty(), "The unassessed late source cannot fabricate an edge");
+        }
+    }
+    public static void testSourceCohortsShareTheCallBudgetAfterCrossingTheSourceLimit() throws Exception {
+        var prompts = new ArrayList<String>();
+        var result = sourceCohortFixture(14, prompts, false, false).analyzeProject();
+        var report = result.getRelationSearchReport();
+        check(prompts.size() == 14 && report.totalCalls() == 14 && report.maxCalls() == 14,
+                "The second source cohort consumes the three remaining calls, not a fresh budget");
+        check(report.progress().assessedSources() == 33 && report.progress().completedSearches() == 32
+                        && report.progress().unresolvedSearches() == 1,
+                "Source coverage does not mark an unfinished verification task complete");
+        check("PARTIAL".equals(result.getStatus()) && !report.isSearchExhausted()
+                        && report.result().edges().isEmpty(),
+                "A navigation match without a budgeted verification stays partial");
+        check(new HashSet<>(prompts).size() == prompts.size(), "No accepted first-cohort request is sent twice");
+    }
+    public static void testSourceContinuationRetainsUnresolvedEvidenceWithoutRetryingIt() throws Exception {
+        var prompts = new ArrayList<String>();
+        var result = sourceCohortFixture(24, prompts, true, false).analyzeProject();
+        var report = result.getRelationSearchReport();
+        check("PARTIAL".equals(result.getStatus()) && !report.isSearchExhausted(),
+                "A source clarification must remain partial after later sources have been assessed");
+        check(report.progress().assessedSources() == 33 && report.progress().unresolvedSearches() == 1,
+                "Later source coverage does not erase the unresolved contribution");
+        check(report.sources().stream().anyMatch(source -> source.node().id().equals("context-00")
+                        && source.question().equals("Which administrative function is requested?")),
+                "The original clarification remains reviewable");
+        check(new HashSet<>(prompts).size() == prompts.size(), "A clarification is not retried automatically");
+    }
+    public static void testCancellationStopsSourceContinuationAndKeepsAssessedSources() throws Exception {
+        var prompts = new ArrayList<String>();
+        var result = sourceCohortFixture(24, prompts, false, true).analyzeProject();
+        var report = result.getRelationSearchReport();
+        check("PARTIAL".equals(result.getStatus()) && report.stopReason().startsWith("CANCELLED"),
+                "Cancellation remains an explicit stop, not a new source cohort");
+        check(prompts.size() == 12 && report.progress().assessedSources() == 32,
+                "No call follows cancellation while the first cohort's evidence remains available");
+        check(report.result().edges().isEmpty(), "The interrupted late source remains unassessed");
+    }
+    private static Fixture sourceCohortFixture(int calls, List<String> prompts,
+                                               boolean unresolved, boolean cancelLateSource) throws Exception {
+        var nodes = new LinkedHashMap<String, TaxonomyNode>();
+        var scores = new LinkedHashMap<String, Double>();
+        nodes.put("BP", node("BP", "BP", null));
+        nodes.put("IP", node("IP", "IP", null));
+        nodes.put("evidence", node("evidence", "IP", "IP"));
+        String parent = "BP";
+        for (int n = 0; n < 32; n++) {
+            String id = "context-%02d".formatted(n);
+            nodes.put(id, node(id, "BP", parent));
+            scores.put(id, 100d);
+            parent = id;
+        }
+        nodes.put("process", node("process", "BP", parent));
+        scores.put("process", 0.5);
+        var catalogue = new TaxonomyService(null, null, null) {
+            @Override public TaxonomyNode getNodeByCode(String id) { return nodes.get(id); }
+            @Override public List<TaxonomyNode> getRootNodes() { return List.of(nodes.get("IP")); }
+            @Override public List<TaxonomyNode> getChildrenOf(String id) {
+                return id.equals("IP") ? List.of(nodes.get("evidence")) : List.of();
+            }
+        };
+        return fixture(true, calls, LlmProvider.CUSTOM_OPENAI, prompt -> {
+            prompts.add(prompt);
+            var json = JsonMapper.builder().build();
+            var input = json.readTree(prompt.substring(prompt.lastIndexOf("INPUT\n") + 6));
+            if (!input.has("nodes")) return RequirementRelationSearchContract.answer(prompt);
+            var selections = new ArrayList<Map<String, Object>>();
+            for (var offered : input.get("nodes")) {
+                String id = offered.path("id").asString();
+                if (id.equals("process")) {
+                    if (cancelLateSource) throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
+                    selections.add(Map.of("nodeId", id, "outcome", "EXPLICIT", "contributions",
+                            List.of(Map.of("text", "read existing evidence", "quote", ORIGINAL, "condition", "")),
+                            "rationale", "The requirement explicitly requests evidence access", "question", ""));
+                } else {
+                    boolean clarify = unresolved && id.equals("context-00");
+                    selections.add(Map.of("nodeId", id, "outcome", clarify ? "UNRESOLVED" : "REJECT",
+                            "contributions", List.of(), "rationale", "The broad ancestor has no distinct requested function",
+                            "question", clarify ? "Which administrative function is requested?" : ""));
+                }
+            }
+            return json.writeValueAsString(Map.of("selections", selections));
+        }, scores, catalogue);
+    }
     static Fixture fixture(Boolean enabled, int calls, boolean invalid) throws Exception {
         return fixture(enabled, calls, invalid, LlmProvider.CUSTOM_OPENAI);
     }
@@ -105,20 +231,25 @@ public final class RelationSearchUseCaseContract {
     }
     static Fixture fixture(Boolean enabled, int calls, LlmProvider provider,
                            java.util.function.Function<String, String> complete) throws Exception {
-        AtomicInteger raw = new AtomicInteger(), legacy = new AtomicInteger(), views = new AtomicInteger();
-        LlmService llm = new LlmService(null, null, JsonMapper.builder().build(), null, null, null, null) {
-            @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(Map.of("process", 1d)); r.setStatus("SUCCESS"); return r; }
-            @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return complete.apply(prompt); }
-            @Override public String callLlmRaw(String prompt, com.taxonomy.analysis.service.LlmCompletionOptions options) { return callLlmRaw(prompt); }
-            @Override public String getActiveProviderName() { return "TEST"; }
-            @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
-            @Override public void clearRequestProvider() { }
-        };
         TaxonomyNode source = node("process", "BP", "BP"), root = node("IP", "IP", null), target = node("evidence", "IP", "IP");
         TaxonomyService catalogue = new TaxonomyService(null, null, null) {
             @Override public TaxonomyNode getNodeByCode(String id) { return Map.of("process", source, "BP", node("BP", "BP", null), "IP", root, "evidence", target).get(id); }
             @Override public List<TaxonomyNode> getRootNodes() { return List.of(root); }
             @Override public List<TaxonomyNode> getChildrenOf(String id) { return id.equals("IP") ? List.of(target) : List.of(); }
+        };
+        return fixture(enabled, calls, provider, complete, Map.of("process", 1d), catalogue);
+    }
+    private static Fixture fixture(Boolean enabled, int calls, LlmProvider provider,
+                                   java.util.function.Function<String, String> complete, Map<String, Double> scores,
+                                   TaxonomyService catalogue) throws Exception {
+        AtomicInteger raw = new AtomicInteger(), legacy = new AtomicInteger(), views = new AtomicInteger();
+        LlmService llm = new LlmService(null, null, JsonMapper.builder().build(), null, null, null, null) {
+            @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(scores); r.setStatus("SUCCESS"); return r; }
+            @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return complete.apply(prompt); }
+            @Override public String callLlmRaw(String prompt, com.taxonomy.analysis.service.LlmCompletionOptions options) { return callLlmRaw(prompt); }
+            @Override public String getActiveProviderName() { return "TEST"; }
+            @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
+            @Override public void clearRequestProvider() { }
         };
         AiPromptBudgetPolicy policy = new AiPromptBudgetPolicy(null) {
             @Override public com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor requireWithinBudget(String text, String provider) { return null; }
@@ -151,8 +282,14 @@ public final class RelationSearchUseCaseContract {
     }
     record Fixture(AnalyzeRequirementUseCase useCase, AtomicInteger raw, AtomicInteger legacy, AtomicInteger legacyViews) {
         AnalysisResult analyze(boolean architecture) {
+            return analyze(architecture, null);
+        }
+        AnalysisResult analyzeProject() {
+            return analyze(true, new AnalysisProvenance(1L, 1L, "snapshot", "portfolio:snapshot"));
+        }
+        private AnalysisResult analyze(boolean architecture, AnalysisProvenance provenance) {
             return useCase.analyze(new AnalyzeRequirementCommand(ORIGINAL, architecture, 20, null, "tester",
-                    new WorkspaceContext("tester", "test-workspace", "draft"))).analysisResult();
+                    new WorkspaceContext("tester", "test-workspace", "draft"), provenance)).analysisResult();
         }
     }
 }

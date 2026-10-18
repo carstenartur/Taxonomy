@@ -45,10 +45,11 @@ class RelationSearchPerformanceTest {
                 childLoads.incrementAndGet();
                 return populated ? List.of(entity(TARGET)) : List.of();
             }
-            @Override public Map<String, String> getAssessmentDescriptions(List<TaxonomyNode> nodes) {
+            @Override public Map<String, RelationAssessmentDescriptions> getRelationAssessmentDescriptions(List<TaxonomyNode> nodes) {
                 descriptions.incrementAndGet();
-                var result = new LinkedHashMap<String, String>();
-                nodes.forEach(node -> result.put(node.getCode(), node.getDescriptionEn()));
+                var result = new LinkedHashMap<String, RelationAssessmentDescriptions>();
+                nodes.forEach(node -> result.put(node.getCode(), new RelationAssessmentDescriptions(
+                        node.getDescriptionEn(), null)));
                 return result;
             }
         };

@@ -67,10 +67,12 @@ class AnalysisContinuationBackupRestorerTest {
             assertThat(view.recovery().openQuestions()).isEmpty();
             assertThat(view.recovery().completedCalls()).isZero();
             tx(db).executeWithoutResult(status -> {
-                Object[] row = db.em.createQuery("select q.state,q.detailJson from AnalysisQuestionCheckpoint q where q.id=?1", Object[].class)
+                String state = db.em.createQuery("select q.state from AnalysisQuestionCheckpoint q where q.id=?1", String.class)
                         .setParameter(1, id + ":" + UNCERTAIN).getSingleResult();
-                assertThat(row[0]).isEqualTo("SUPERSEDED");
-                assertThat(JSON.readValue(row[1].toString(), LlmCallDetail.class).getRawResponse()).isEqualTo(detail.getRawResponse());
+                assertThat(state).isEqualTo("SUPERSEDED");
+                var restored = new AnalysisContinuationStore(db.em, JSON).detail(id, UNCERTAIN, TARGET);
+                assertThat(restored.getRawResponse()).isEqualTo(detail.getRawResponse());
+                assertThat(restored.getError()).isEqualTo(detail.getError());
             });
         }
     }

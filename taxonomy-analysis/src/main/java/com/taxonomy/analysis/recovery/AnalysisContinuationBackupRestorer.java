@@ -21,8 +21,10 @@ public final class AnalysisContinuationBackupRestorer {
     private final EntityManager em;
     private final TransactionTemplate transactions;
     private final ObjectMapper json;
+    private final AnalysisCheckpointPayloadCodec checkpointPayload;
     public AnalysisContinuationBackupRestorer(EntityManager em,PlatformTransactionManager transactions,ObjectMapper json) {
         this.em=Objects.requireNonNull(em);this.transactions=new TransactionTemplate(Objects.requireNonNull(transactions));this.json=Objects.requireNonNull(json);
+        this.checkpointPayload=new AnalysisCheckpointPayloadCodec(json);
     }
     public void restore(ContinuationRecord source,List<QuestionRecord> questions,String targetId,WorkspaceContext target) {
         Objects.requireNonNull(source);Objects.requireNonNull(questions);Objects.requireNonNull(target);
@@ -39,6 +41,7 @@ public final class AnalysisContinuationBackupRestorer {
         if(source.resultJson()==null)result=new AnalysisResult(Map.of(),List.of());
         else { bounded(source.resultJson(),MAX_RUN_CHARACTERS);result=json.readValue(source.resultJson(),AnalysisResult.class); }
         var keys=new HashSet<String>();var ids=new HashSet<SourceRecordId>();long payload=0;
+        var preparedQuestions=new ArrayList<PreparedQuestion>();
         var scores=new LinkedHashMap<String,Double>(result.getRawScores());var reasons=new LinkedHashMap<String,String>(result.getReasons());
         for(var question:questions) {
             requireKind(question.sourceId(),"analysis.question");
@@ -48,14 +51,21 @@ public final class AnalysisContinuationBackupRestorer {
                     || !Set.of("READY","ATTEMPT","SUCCESS","FAILED","SKIPPED","UNASSESSED","CLARIFICATION","DECOMPOSED","SUPERSEDED").contains(question.sourceState()))throw invalid();
             hash(question.inputHash());text(question.provider(),128);if(question.error()!=null)bounded(question.error(),2048);bounded(question.nodeCodesJson(),MAX_QUESTION_CHARACTERS);
             var nodes=json.readValue(question.nodeCodesJson(),String[].class);if(nodes.length>MAX_CALLS)throw invalid();for(String node:nodes)text(node,320);
-            payload=add(payload,question.prompt());payload=add(payload,question.detailJson());
+            if(question.prompt()!=null)bounded(question.prompt(),MAX_QUESTION_CHARACTERS);
+            if(question.detailJson()!=null)bounded(question.detailJson(),MAX_QUESTION_CHARACTERS);
+            String detailError=null;
             if(question.detailJson()!=null) {
                 var detail=json.readValue(question.detailJson(),LlmCallDetail.class);
+                detailError=detail.getError();
                 if("SUCCESS".equals(question.sourceState())) {
                     if(detail.getScores()!=null)detail.getScores().forEach(scores::putIfAbsent);
                     if(detail.getReasons()!=null)detail.getReasons().forEach(reasons::putIfAbsent);
                 }
             } else if("SUCCESS".equals(question.sourceState()))throw invalid();
+            String storedPrompt=checkpointPayload.encodePrompt(question.prompt());
+            String storedDetail=checkpointPayload.encodeDetail(question.detailJson(),question.prompt());
+            payload=addStored(payload,storedPrompt);payload=addStored(payload,storedDetail);
+            preparedQuestions.add(new PreparedQuestion(question,checkpointPayload.encodeNodes(Arrays.asList(nodes)),storedPrompt,storedDetail,detailError));
         }
         result.setRawScores(scores);result.setReasons(reasons);
         var warnings=new ArrayList<>(result.getWarnings());
@@ -70,22 +80,24 @@ public final class AnalysisContinuationBackupRestorer {
             var run=new AnalysisContinuationRun();run.id=targetId;run.username=target.username();run.workspaceId=target.workspaceId();
             run.repositoryId=target.repositoryId();run.branchName=target.currentBranch();run.inputHash=source.inputHash();run.requestJson=requestJson;run.resultJson=resultJson;
             run.state=state;run.updatedAt=System.currentTimeMillis();run.payloadCharacters=retained;run.currentNode=source.currentNode();em.persist(run);
-            for(var sourceQuestion:questions) {
+            for(var prepared:preparedQuestions) {
+                var sourceQuestion=prepared.source();
                 var question=new AnalysisQuestionCheckpoint();question.id=targetId+":"+sourceQuestion.questionKey();question.run=run;
                 question.questionKey=sourceQuestion.questionKey();question.inputHash=sourceQuestion.inputHash();question.provider=sourceQuestion.provider();
-                question.nodeCodes=sourceQuestion.nodeCodesJson();question.detailJson=sourceQuestion.detailJson();question.prompt=sourceQuestion.prompt();
+                question.nodeCodes=prepared.nodeCodes();question.detailJson=prepared.detail();question.prompt=prepared.prompt();
                 question.state=sourceQuestion.sourceState();question.attempts=sourceQuestion.attempts();question.startedAt=sourceQuestion.startedAtEpochMillis();
                 if("ATTEMPT".equals(question.state)) {question.state="FAILED";question.error="OUTCOME_UNCERTAIN: archive retained a started attempt without an accepted outcome; explicit review and retry or leave-open is required";}
                 else if("READY".equals(question.state)) {question.state="FAILED";question.error="RESTORE_REVIEW_REQUIRED: archived ready work has no execution authority";}
                 else if(sourceQuestion.error()!=null)optionalError(question,sourceQuestion.error());
-                else if(question.detailJson!=null)optionalError(question,json.readValue(question.detailJson,LlmCallDetail.class).getError());
+                else optionalError(question,prepared.detailError());
                 em.persist(question);
             }
             em.flush();
         });
     }
+    private record PreparedQuestion(QuestionRecord source,String nodeCodes,String prompt,String detail,String detailError) { }
     private static void optionalError(AnalysisQuestionCheckpoint q,String value) {q.error=value==null?null:value.substring(0,Math.min(2048,value.length()));}
-    private static long add(long total,String value) {if(value==null)return total;bounded(value,MAX_QUESTION_CHARACTERS);if(value.length()>MAX_RUN_CHARACTERS-total)throw invalid();return total+value.length();}
+    private static long addStored(long total,String value) {if(value==null)return total;if(value.length()>MAX_RUN_CHARACTERS-total)throw invalid();return total+value.length();}
     private static void requireKind(SourceRecordId id,String kind) {if(id==null || !kind.equals(id.kind()))throw invalid();}
     private static void requireUuid(String id) {try {if(!UUID.fromString(id).toString().equals(id))throw invalid();}catch(RuntimeException failure){throw invalid();}}
     private static void hash(String value) {if(value==null || !value.matches("[a-f0-9]{64}"))throw invalid();}

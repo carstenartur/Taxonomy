@@ -183,6 +183,9 @@ public class AnalysisContinuationService {
     public AnalysisContinuationStore.Snapshot read(String id, String username, WorkspaceContext scope) {
         authorize(username, scope); return store.read(id, scope);
     }
+    public boolean hasBlockingBudgetQuestions(String id, String username, WorkspaceContext scope) {
+        authorize(username, scope); return store.hasBlockingBudgetQuestions(id, scope);
+    }
     public AnalysisContinuationStore.Snapshot cancel(String id, String username, WorkspaceContext scope) {
         authorize(username, scope);
         var snapshot = store.read(id, scope);
@@ -246,6 +249,10 @@ public class AnalysisContinuationService {
                 public void supersedeEvidence(String kind, String provider, java.util.function.Predicate<AnalysisCheckpointSession.Question> covered) {
                     store.supersedeEvidence(claim, kind, provider, covered, null);
                 }
+                public void supersedeEvidence(String kind, String provider, java.util.Set<String> singletonCodes,
+                        java.util.function.Predicate<AnalysisCheckpointSession.Question> covered) {
+                    store.supersedeEvidence(claim, kind, provider, singletonCodes, covered, null);
+                }
                 public void finish(AnalysisCheckpointSession.Question q, String state, LlmCallDetail detail) {
                     store.finish(claim, q, state, detail);
                     if ("SUCCESS".equals(state) && "PAUSED".equals(store.state(claim)))
@@ -270,7 +277,7 @@ public class AnalysisContinuationService {
         }
         public AnalysisResult replay() { return claim.completedResult(); }
         public AnalysisResult complete(AnalysisResult result) {
-            AnalysisResult completedResult = store.complete(claim, result, catalogue.getFullTree());
+            AnalysisResult completedResult = store.completeWithFallback(claim, result, catalogue::getFullTree);
             completed = true; return completedResult;
         }
         @Override public void close() {

@@ -36,27 +36,43 @@ public final class RecoveryDurabilityProbe {
             run.claimUntil = System.currentTimeMillis() + 60_000;
             var seed = new AnalysisResult(Map.of(), List.of(node("BP"), node("CP"), node("IP")));
             seed.setStatus("IN_PROGRESS"); run.resultJson = MAPPER.writeValueAsString(seed);
-            var query = Proxy.newProxyInstance(TypedQuery.class.getClassLoader(), new Class<?>[]{TypedQuery.class},
-                    (proxy, method, args) -> switch (method.getName()) {
-                        case "setParameter" -> proxy;
-                        case "getResultList" -> questions;
-                        case "getSingleResult" -> (long) questions.size();
-                        default -> throw new AssertionError(method.getName());
-                    });
-            var ownerQuery = Proxy.newProxyInstance(TypedQuery.class.getClassLoader(), new Class<?>[]{TypedQuery.class},
-                    (proxy, method, args) -> switch (method.getName()) {
-                        case "setParameter", "setLockMode" -> proxy;
-                        case "getResultList" -> present ? Collections.singletonList(new Object[]{run.version,
-                                run.payloadCharacters, run.currentNode, run.state, run.claimToken, run.claimUntil}) : List.of();
-                        default -> throw new AssertionError(method.getName());
-                    });
             em = (EntityManager) Proxy.newProxyInstance(EntityManager.class.getClassLoader(), new Class<?>[]{EntityManager.class},
                     (proxy, method, args) -> switch (method.getName()) {
-                        case "find" -> args[0] == AnalysisContinuationRun.class ? (present ? run : null)
+                        case "find", "getReference" -> args[0] == AnalysisContinuationRun.class ? (present ? run : null)
                                 : questions.stream().filter(q -> q.id.equals(args[1])).findFirst().orElse(null);
-                        case "createQuery" -> args.length > 1 && args[1] == Object[].class ? ownerQuery : query;
-                        case "flush" -> null;
+                        case "createQuery" -> query((String) args[0]);
+                        case "flush", "detach" -> null;
                         case "persist" -> { run = (AnalysisContinuationRun) args[0]; present = true; yield null; }
+                        default -> throw new AssertionError(method.getName());
+                    });
+        }
+        private Object query(String jpql) {
+            var parameters = new HashMap<String, Object>();
+            return Proxy.newProxyInstance(TypedQuery.class.getClassLoader(), new Class<?>[]{TypedQuery.class},
+                    (proxy, method, args) -> switch (method.getName()) {
+                        case "setParameter" -> { parameters.put((String) args[0], args[1]); yield proxy; }
+                        case "setLockMode", "setMaxResults" -> proxy;
+                        case "getSingleResult" -> (long) questions.size();
+                        case "getResultList" -> {
+                            if (jpql.startsWith("select r.version,")) yield present ? Collections.singletonList(new Object[]{run.version,
+                                    run.payloadCharacters, run.currentNode, run.state, run.claimToken, run.claimUntil, run.clusterOperationId}) : List.of();
+                            if (jpql.startsWith("select q.questionKey, q.nodeCodes, q.state,")) yield questions.stream()
+                                    .sorted(Comparator.comparingLong((AnalysisQuestionCheckpoint q) -> q.startedAt).thenComparing(q -> q.questionKey))
+                                    .map(q -> new Object[]{q.questionKey, q.nodeCodes, q.state, q.error, q.attempts}).toList();
+                            if (jpql.startsWith("select q.questionKey from")) yield questions.stream()
+                                    .filter(q -> Objects.equals(q.state, parameters.get("state"))).map(q -> q.questionKey).limit(1).toList();
+                            if (jpql.startsWith("select q from")) yield questions;
+                            throw new AssertionError("Unexpected query: " + jpql);
+                        }
+                        case "executeUpdate" -> {
+                            if (!jpql.startsWith("update AnalysisQuestionCheckpoint q set q.state='FAILED', q.error=:error"))
+                                throw new AssertionError("Unexpected mutation: " + jpql);
+                            int updated = 0;
+                            for (var q : questions) if (Objects.equals(q.run.id, parameters.get("id")) && "ATTEMPT".equals(q.state)) {
+                                q.state = "FAILED"; q.error = (String) parameters.get("error"); updated++;
+                            }
+                            yield updated;
+                        }
                         default -> throw new AssertionError(method.getName());
                     });
         }
@@ -215,11 +231,12 @@ public final class RecoveryDurabilityProbe {
             @Override public List<TaxonomyNodeDto> getFullTree() { return List.of(node("BP")); }
         };
         var store = new AnalysisContinuationStore(null, MAPPER) {
-            @Override public AnalysisResult complete(Claim claim, AnalysisResult result, List<TaxonomyNodeDto> tree) {
+            @Override public AnalysisResult completeWithFallback(Claim claim, AnalysisResult result,
+                    java.util.function.Supplier<List<TaxonomyNodeDto>> fallbackTree) {
                 var progress = registry.recent("alice", SCOPE, null, null).getFirst();
                 check(progress.finishedAt() == null, "Terminal live progress was published before the durable commit");
                 if (failPersistence) throw new IllegalStateException("simulated durable write failure");
-                var saved = new AnalysisResult(Map.of("BP",70d), tree); saved.setStatus(persistedStatus); return saved;
+                var saved = new AnalysisResult(Map.of("BP",70d), fallbackTree.get()); saved.setStatus(persistedStatus); return saved;
             }
             @Override public void interrupted(Claim claim) { }
         };

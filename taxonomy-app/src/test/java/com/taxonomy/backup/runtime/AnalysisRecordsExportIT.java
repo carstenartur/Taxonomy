@@ -24,6 +24,62 @@ import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class AnalysisRecordsExportIT {
+    @ParameterizedTest @ValueSource(ints = {0, 1, 2, 3})
+    void compactAndLegacyQuestionsKeepTheOriginalCleartextArchiveContract(int detailMode) throws Exception {
+        var json = new tools.jackson.databind.ObjectMapper();
+        var codec = new com.taxonomy.analysis.recovery.AnalysisCheckpointPayloadCodec(json);
+        String prompt = ("{\"format\":\"ordinary prompt text\"}\nSource — 水位 🌊; \u0000; e\u0301.\n").repeat(11);
+        var detail = new com.taxonomy.dto.LlmCallDetail();
+        detail.setProvider("LOCAL"); detail.setRawResponse("Original response — no truncation.");
+        detail.setPrompt(detailMode == 1 ? null : detailMode == 2 ? "Different original diagnostic prompt" : prompt);
+        String rawDetail = json.writeValueAsString(detail);
+        if (detailMode == 3) rawDetail = "  " + rawDetail + " \n";
+        final String expectedDetail = rawDetail;
+        try (var fixture = new Fixture()) {
+            String id = run(fixture, "repo-a", "private-a", "draft", "alice", 10, "CURRENT");
+            for (boolean compact : List.of(false, true)) {
+                String key = (compact ? "a" : "b").repeat(64);
+                fixture.jdbc.update("""
+                        insert into analysis_question_checkpoint
+                        (id,run_id,question_key,input_hash,provider,node_codes,detail_json,prompt_text,state,attempts,started_at,error_text)
+                        values(?,?,?,?,?,?,?,?, 'SUCCESS',1,10,'Original row diagnostic')
+                        """, id + ":" + key, id, key, "c".repeat(64), "LOCAL",
+                        compact ? codec.encodeNodes(List.of("CP")) : "[ \"CP\" ]",
+                        compact ? codec.encodeDetail(rawDetail, prompt) : rawDetail,
+                        compact ? codec.encodePrompt(prompt) : prompt);
+            }
+            var output = new Contents();
+            new AnalysisBackupContributor(fixture.database, "alice").write(scoped(BackupProfile.REPOSITORY_HISTORY), output);
+            assertThat(records(output, "questions")).hasSize(2).allSatisfy(question -> {
+                assertThat(question.path("prompt").asText()).isEqualTo(prompt);
+                assertThat(question.path("detailJson").asText()).isEqualTo(expectedDetail);
+                String nodes = question.path("nodeCodesJson").asText();
+                assertThat(json.readTree(nodes)).isEqualTo(json.readTree("[\"CP\"]"));
+                if (question.path("questionKey").asText().startsWith("b")) assertThat(nodes).isEqualTo("[ \"CP\" ]");
+                assertThat(question.path("sourceState").asText()).isEqualTo("SUCCESS");
+                assertThat(question.path("error").asText()).isEqualTo("Original row diagnostic");
+            });
+            assertThat(new AnalysisBackupContributor(fixture.database, "alice").schemaVersion()).isEqualTo(1);
+        }
+    }
+
+    @Test void anUnknownCheckpointStorageVersionFailsCaptureInsteadOfBecomingPromptEvidence() throws Exception {
+        var json = new tools.jackson.databind.ObjectMapper();
+        var codec = new com.taxonomy.analysis.recovery.AnalysisCheckpointPayloadCodec(json);
+        try (var fixture = new Fixture()) {
+            String id = run(fixture, "repo-a", "private-a", "draft", "alice", 10, "CURRENT");
+            question(fixture, id, "Original question");
+            String layout = codec.encodeNodes(List.of("CP"));
+            // Corrupt the explicit format, retaining the actual writer's otherwise valid layout.
+            var node = json.readTree(layout);
+            assertThat(node.isObject()).isTrue();
+            ((tools.jackson.databind.node.ObjectNode) node).put("format", "analysis-question-payload-v999");
+            fixture.jdbc.update("update analysis_question_checkpoint set node_codes=? where run_id=?", json.writeValueAsString(node), id);
+            assertThatThrownBy(() -> new AnalysisBackupContributor(fixture.database, "alice")
+                    .write(scoped(BackupProfile.REPOSITORY_HISTORY), new Contents())).isInstanceOf(IOException.class);
+        }
+    }
+
     @ParameterizedTest @CsvSource({
             "Alice,INSTALLATION_CURRENT", "Alice,INSTALLATION_FULL",
             "' alice ',INSTALLATION_CURRENT", "' alice ',INSTALLATION_FULL"})

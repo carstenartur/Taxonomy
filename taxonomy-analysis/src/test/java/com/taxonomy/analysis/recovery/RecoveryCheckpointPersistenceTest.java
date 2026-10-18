@@ -3,6 +3,18 @@ package com.taxonomy.analysis.recovery;
 import org.junit.jupiter.api.Test;
 
 class RecoveryCheckpointPersistenceTest {
+    @Test void budgetEligibilityReadsOnlyLockedAuthorityAndQuestionStates() {
+        RecoveryCheckpointPersistenceProbe.blockingBudgetCheckDoesNotLoadSavedPayloads();
+    }
+    @Test void budgetEligibilityPreservesOwnerIsolationAndEveryQuestionState() {
+        RecoveryCheckpointPersistenceProbe.blockingBudgetCheckPreservesScopeAndStates();
+    }
+    @Test void recoverySnapshotReadsQuestionMetadataOnceAndPreservesFullEvidence() {
+        RecoveryCheckpointPersistenceProbe.recoveryViewReadsQuestionMetadataOnce();
+    }
+    @Test void recoverySnapshotStillRetiresExpiredProviderClaimsAsUncertain() {
+        RecoveryCheckpointPersistenceProbe.recoveryReadStillExpiresAnUncertainAttempt();
+    }
     @Test void fractionalEvidenceSurvivesSessionRestartWithoutRepeatingFailedOrSuccessfulCalls() {
         RecoveryCheckpointPersistenceProbe.fractionalCheckpointSurvivesIndependentSessions();
     }
