@@ -39,6 +39,12 @@ final class PackagedPluginSupport {
         }
     }
     static Path buildIndependentPlugin(Path root, Path temporary) throws Exception {
+        return buildIndependentPlugin(root, temporary, "taxonomy-mermaid-plugin", 5, "plugin-sdk-verification.txt");
+    }
+    static Path buildIndependentPlugin(Path root, Path temporary, String artifactId,
+                                       int minimumTests, String evidenceFile) throws Exception {
+        if (!Set.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin").contains(artifactId))
+            throw new IllegalArgumentException("Unsupported packaged test fixture");
         Path localRepository = Files.createDirectory(temporary.resolve("empty-maven-repository"));
         try (var contents = Files.list(localRepository)) { assertThat(contents).isEmpty(); }
         String version = System.getProperty("taxonomy.project.version");
@@ -52,7 +58,7 @@ final class PackagedPluginSupport {
                     destination.resolve(module + "-" + version + ".jar"));
         }
         Path project = Files.createDirectory(temporary.resolve("independent-project"));
-        Path source = root.resolve("plugins/taxonomy-mermaid-plugin");
+        Path source = root.resolve("plugins/" + artifactId);
         Files.copy(source.resolve("pom.xml"), project.resolve("pom.xml"));
         try (var paths = Files.walk(source.resolve("src"))) {
             for (Path input : paths.sorted().toList()) {
@@ -84,9 +90,9 @@ final class PackagedPluginSupport {
                     assertThat(Integer.parseInt(suite.getAttribute(outcome))).as("Independent plugin %s", outcome).isZero();
             }
         }
-        assertThat(tests).as("Moved Mermaid regression tests must execute in the independent build").isGreaterThanOrEqualTo(5);
-        Files.writeString(root.resolve("taxonomy-build/target/plugin-sdk-verification.txt"), "independent.tests=" + tests + "\nfailures=0\nerrors=0\nskipped=0\n");
-        return artifact(project.resolve("target"), "taxonomy-mermaid-plugin-");
+        assertThat(tests).as("Plugin regression tests must execute in the independent build").isGreaterThanOrEqualTo(minimumTests);
+        Files.writeString(root.resolve("taxonomy-build/target/" + evidenceFile), "independent.tests=" + tests + "\nfailures=0\nerrors=0\nskipped=0\n");
+        return artifact(project.resolve("target"), artifactId + "-");
     }
     static Application start(Path host, Path plugins, Path state) throws Exception {
         return start(host, plugins, host.getParent().resolve("features"), state);

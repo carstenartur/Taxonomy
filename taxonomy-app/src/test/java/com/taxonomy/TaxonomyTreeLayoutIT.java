@@ -160,6 +160,42 @@ class TaxonomyTreeLayoutIT {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"renderTreeDiagram", "renderTreeCanvas", "export"})
+    void collapsedMarkersHaveADarkGlyphAndLightHaloEvenAtOnePercent(String renderer) {
+        driver.executeScript("""
+                var data=[{code:'one',children:[{code:'two',children:[
+                  {code:'three',children:[{code:'four'}]}]}]}];
+                window.markerPaint=[];
+                var proto=CanvasRenderingContext2D.prototype;
+                const clear=proto.clearRect;
+                proto.clearRect=function(...args){markerPaint=[];return clear.apply(this,args);};
+                for(var method of ['strokeText','fillText']) {
+                  const original=proto[method], operation=method;
+                  proto[method]=function(text,...args) {
+                    if(text==='+') markerPaint.push({operation,fill:this.fillStyle,stroke:this.strokeStyle,width:this.lineWidth});
+                    return original.call(this,text,...args);
+                  };
+                }
+                if(arguments[0]==='export') document.getElementById('tree').append(TaxonomyViews.buildExportSVG(data,{three:1},{}));
+                else TaxonomyViews[arguments[0]](document.getElementById('tree'),data,{three:1});
+                """, renderer);
+        if (renderer.equals("renderTreeDiagram")) settled();
+        Object readable = driver.executeScript("""
+                if(arguments[0]==='renderTreeCanvas') {
+                  return markerPaint.length===2 && markerPaint[0].operation==='strokeText'
+                    && markerPaint[1].operation==='fillText' && markerPaint[0].stroke==='#ffffff'
+                    && markerPaint[0].width===2 && markerPaint[1].fill==='#222222';
+                }
+                var marker=[...document.querySelectorAll('svg text')].find(t=>t.textContent==='+');
+                if(!marker) return false;
+                var style=getComputedStyle(marker);
+                return style.fill==='rgb(34, 34, 34)' && style.stroke==='rgb(255, 255, 255)'
+                  && style.strokeWidth==='2px' && style.paintOrder.split(' ')[0]==='stroke';
+                """, renderer);
+        assertThat(readable).as(renderer + " collapsed marker must retain both contrasting paints").isEqualTo(true);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"renderTreeDiagram", "export"})
     void curvesAvoidLongLabelsBesideAShortParent(String renderer) {
         driver.executeScript("""

@@ -66,6 +66,29 @@ if (process.argv[4] === 'expansion') {
         }
     }
     assert.equal(JSON.stringify(data), before);
+} else if (process.argv[4] === 'contrast') {
+    // Only the native DOM boundary is substituted; execute the actual export and D3 layout.
+    const element = tag => ({tag, attributes: {}, children: [], textContent: '',
+        setAttribute(name, value) { this.attributes[name] = String(value); },
+        appendChild(child) { this.children.push(child); return child; }});
+    context.document.createElement = element;
+    context.document.createElementNS = (_, tag) => element(tag);
+    const data = [{code: 'one', children: [{code: 'two', children: [
+        {code: 'three', children: [{code: 'four'}]}]}]}];
+    const descendants = node => [node, ...node.children.flatMap(descendants)];
+    for (const score of [1, 50, 100]) {
+        const svg = context.window.TaxonomyViews.buildExportSVG(data, {three: score}, {});
+        const markers = descendants(svg).filter(node => node.tag === 'text' && node.textContent === '+');
+        assert.equal(markers.length, 1, 'Export must identify the branch whose descendants are hidden');
+        const marker = markers[0].attributes;
+        assert.equal(marker.fill, '#222', 'Dark marker remains visible at 1% green on white');
+        assert.equal(marker.stroke, '#fff', 'White halo remains visible on dark root colours');
+        assert.equal(marker['stroke-width'], '2');
+        assert.equal(marker['paint-order'], 'stroke fill', 'Halo must not obscure the small glyph');
+    }
+    const expanded = context.window.TaxonomyViews.buildExportSVG(data, {}, {expandAll: true});
+    assert.equal(descendants(expanded).filter(node => node.textContent === '+').length, 0,
+        'Expanded branches must not advertise hidden descendants');
 } else {
     const result = api.layout(context.d3.hierarchy({code: '__root__', children: []}), {}, measure);
     for (const property of ['left', 'top', 'width', 'height']) assert.ok(Number.isFinite(result[property]));

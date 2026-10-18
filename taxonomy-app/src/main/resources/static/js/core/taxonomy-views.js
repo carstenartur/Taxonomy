@@ -728,7 +728,10 @@
                 .style('font', TREE_BADGE_FONT).attr('fill', 'green');
             nodeEnter.append('text').attr('class', 'tv-toggle').attr('dy', '0.31em')
                 .attr('text-anchor', 'middle').attr('aria-hidden', 'true')
-                .style('font', TREE_BADGE_FONT).style('pointer-events', 'none').attr('fill', '#fff');
+                .style('font', TREE_BADGE_FONT).style('pointer-events', 'none')
+                // Two opaque paints keep the glyph visible on pale scores and dark root colours.
+                .attr('fill', '#222').attr('stroke', '#fff').attr('stroke-width', 2)
+                .attr('stroke-linejoin', 'round').attr('paint-order', 'stroke fill');
 
             // Interactivity for non-root nodes
             nodeEnter.filter(function (d) { return d.data.code !== '__root__'; })
@@ -1800,12 +1803,17 @@
 
                 // Collapse indicator (+ inside circle for collapsed nodes)
                 if (d._children && d._children.length) {
-                    ctx.fillStyle = '#fff';
+                    ctx.save();
+                    ctx.fillStyle = '#222';
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.lineJoin = 'round';
                     ctx.font = 'bold 10px Arial';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
+                    ctx.strokeText('+', nx, ny);
                     ctx.fillText('+', nx, ny);
-                    ctx.font = TREE_LABEL_FONT;
+                    ctx.restore();
                 }
 
                 // Label
@@ -2009,6 +2017,21 @@
             circle.setAttribute('stroke', '#555');
             circle.setAttribute('stroke-width', '1.5');
             nodeG.appendChild(circle);
+
+            if (d._children && d._children.length) {
+                var toggle = document.createElementNS(svgNS, 'text');
+                toggle.setAttribute('class', 'tv-toggle');
+                toggle.setAttribute('dy', '0.31em');
+                toggle.setAttribute('text-anchor', 'middle');
+                toggle.setAttribute('style', 'font: ' + TREE_BADGE_FONT);
+                toggle.setAttribute('fill', '#222');
+                toggle.setAttribute('stroke', '#fff');
+                toggle.setAttribute('stroke-width', '2');
+                toggle.setAttribute('stroke-linejoin', 'round');
+                toggle.setAttribute('paint-order', 'stroke fill');
+                toggle.textContent = '+';
+                nodeG.appendChild(toggle);
+            }
 
             var text = document.createElementNS(svgNS, 'text');
             text.setAttribute('dy', '0.31em');

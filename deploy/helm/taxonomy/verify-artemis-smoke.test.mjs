@@ -295,8 +295,10 @@ test('Frozen coordinator identity refuses incomplete selected graph and detects 
   const root=mkdtempSync(join(tmpdir(), 'artemis-coordinator-identity-'));
   try {
     const identity={run:['op','admin','scope','context','command','view','QUEUED',2,0,1],
-      work:[['cp','task-cp'],['ip','task-ip']],inputs:[['cp','frozen-cp'],['ip','frozen-ip']],
-      intents:[['cp','message-cp'],['ip','message-ip']],events:[['first',1]]};
+      work:[['cp','task-cp','SUBTAXONOMY_ANALYSIS','CP',0,'message-cp','QUEUED',false,0],
+        ['ip','task-ip','SUBTAXONOMY_ANALYSIS','IP',1,'message-ip','WAITING_PREDECESSOR',false,0]],
+      inputs:[['cp','CP','frozen-cp'],['ip','IP','frozen-ip']],
+      intents:[['cp','task-cp','SUBTAXONOMY_ANALYSIS','CP','message-cp']],events:[['first',1]]};
     function observe(value, baseline) {
       writeFileSync(join(root,'snapshot.json'),JSON.stringify(value));
       const body=`set -euo pipefail
@@ -309,7 +311,7 @@ ${baseline?'if identity_unchanged; then exit 0; else exit 1; fi':'frozen_identit
     }
     assert.equal(observe(identity,false).status,0);
     assert.equal(observe(identity,true).status,0);
-    const changedInput=structuredClone(identity);changedInput.inputs[0][1]='other-frozen-input';
+    const changedInput=structuredClone(identity);changedInput.inputs[0][2]='other-frozen-input';
     assert.equal(observe(changedInput,true).status,1);
     const changedRevision=structuredClone(identity);changedRevision.run[9]=2;
     assert.equal(observe(changedRevision,true).status,1);

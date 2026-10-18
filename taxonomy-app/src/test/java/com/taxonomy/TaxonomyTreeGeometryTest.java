@@ -15,7 +15,7 @@ class TaxonomyTreeGeometryTest {
     @TempDir Path directory;
 
     @ParameterizedTest
-    @ValueSource(strings = {"expansion", "geometry", "empty"})
+    @ValueSource(strings = {"expansion", "geometry", "empty", "contrast"})
     void treeLayoutHonoursVisibleDepthAndOccupiedBounds(String scenario) throws Exception {
         Path script = copy("/tree-layout.cjs", "contract.cjs");
         Path views = copy("/static/js/core/taxonomy-views.js", "views.js");
