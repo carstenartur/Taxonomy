@@ -51,13 +51,14 @@ Files: `.github/copilot-ref-screenshots.md` and affected illustration references
 ### Task 4: Verification and delivery
 
 - [x] Check changed Markdown links, explicit source paths and Markdown rendering; preserve the checked module graphs.
-- [x] Run existing architecture documentation JUnit checks through Maven; report unavailable prerequisites accurately.
+- [x] Run existing architecture documentation, naming and Help JUnit checks through Maven; report unavailable prerequisites accurately.
 - [x] Review the complete diff and prepare a documentation PR with actual verification results.
 
 ## Verification record
 
-- Existing selected JUnit checks and mandatory module gates: 265 cases, zero failures/errors/skips. Maven `test` through `taxonomy-build -am`, offline with cache reuse disabled, JDK 25 compiling for Java 21.
-- Markdown rendering and local file/fragment checks: 26 documents, 774 targets, no errors.
+- All existing `taxonomy-build` unit classes, selected documentation/Help checks and mandatory module gates: 716 JUnit executions, 706 passed, 10 Helm prerequisite skips, zero failures/errors. Maven `test` through `taxonomy-build -am`, offline with cache reuse disabled, JDK 25 compiling for Java 21.
+- Markdown rendering and local file/fragment checks: 28 documents, 779 targets, no errors.
+- Corrected import profiles: document import passed 34 selected application tests; ArchiMate import passed 17 selected tests across Knowledge, Portfolio and Application. Each run also passed 5 existing Mermaid checks. The local ArchiMate run used Mockito's startup agent after dynamic attachment failed to locate the namespaced JVM PID. Actual HelpController output: 14 localized documents, 91 absolute repository references, no unserved repository-only relative targets.
 - Independent source review: export/load/theme navigation findings corrected against the current template.
 - New full-application screenshots were not generated: Docker/browser unavailable. Packaging was additionally blocked by an uncached Maven Antrun plugin in offline mode. Historical image bytes and their earlier manifest were preserved; their mismatch is explicit.
 - This is focused documentation verification, not a full `ci`/browser/database acceptance claim.
