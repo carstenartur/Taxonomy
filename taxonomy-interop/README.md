@@ -25,3 +25,10 @@ From the repository root:
 # Repository-authoritative PR core verification; see .github/workflows/ci-cd.yml
 ./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true
 ```
+
+## Proposed inventory and planning sources
+
+The [product-neutral design](../docs/superpowers/specs/2026-10-18-inventory-planning-sources-design.md)
+and its [three conceptual probes](../docs/superpowers/specs/2026-10-18-inventory-planning-sources-probes.md)
+define the proposed read-only inventory comparison before application binding.
+They are design/review material, not implemented connectors or product acceptance.
