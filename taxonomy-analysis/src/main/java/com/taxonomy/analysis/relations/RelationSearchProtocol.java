@@ -333,9 +333,11 @@ public final class RelationSearchProtocol {
         List<Decision> decisions = new ArrayList<>();
         for (Node node : query.candidates()) {
             Decision accepted = result.accepted().get(node.id());
+            boolean leftOpen = "RELATION_LEFT_OPEN".equals(result.failures().get(node.id()));
             decisions.add(accepted != null ? accepted : new Decision(node.id(), Outcome.UNRESOLVED, "", "", null,
-                    "", "", "No valid model assessment was received; this is not a negative relationship finding.",
-                    "TECHNICAL_ASSESSMENT_FAILURE: " + result.failures().get(node.id())));
+                    "", "", leftOpen ? "This assessment was deliberately left open; no absence of a relationship is asserted."
+                            : "No valid model assessment was received; this is not a negative relationship finding.",
+                    leftOpen ? "RELATION_LEFT_OPEN" : "TECHNICAL_ASSESSMENT_FAILURE: " + result.failures().get(node.id())));
         }
         return List.copyOf(decisions);
     }
@@ -367,7 +369,8 @@ public final class RelationSearchProtocol {
                 if (retried.accepted().containsKey(node.id())) failures.remove(node.id());
                 else failures.putAll(retried.failures());
             } catch (AnalysisCheckpointSession.DeferredException deferred) {
-                failures.replaceAll((id, error) -> deferred.getMessage() + ": " + error);
+                failures.replaceAll((id, error) -> "RELATION_LEFT_OPEN".equals(error)
+                        ? error : deferred.getMessage() + ": " + error);
                 break;
             }
         }

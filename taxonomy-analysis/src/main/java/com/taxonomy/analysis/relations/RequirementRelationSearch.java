@@ -74,7 +74,9 @@ public final class RequirementRelationSearch {
         var journal = new LocalRelationJournal();
         RelationSearchReport report;
         int assessed = 0;
-        int maxCohorts = Math.max(1, (inputScores.size() + options.maxSources() - 1) / options.maxSources());
+        // A source-call boundary can precede the node-count boundary. Progress,
+        // the shared total budget and this finite source count bound continuation.
+        int maxCohorts = Math.max(1, inputScores.size());
         try (var session = new AnalysisCheckpointSession(journal)) {
             report = search(original, inputScores, options, budget);
             for (int cohort = 1; cohort < maxCohorts; cohort++) {
@@ -118,6 +120,7 @@ public final class RequirementRelationSearch {
             ChildAssessmentContract.validateCandidates(offeredRoots.stream().map(Node::id).toList());
             List<Node> roots = offeredRoots.stream().sorted(Comparator.comparing(Node::id)).toList();
             nodes = sourceNodes(scores, warnings);
+            budget.targetRoutes(hasTargetRoutes(nodes, roots));
             plan = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
             plan.restore(previous);
             budget.plan = plan;
@@ -226,11 +229,15 @@ public final class RequirementRelationSearch {
             ChildAssessmentContract.validateCandidates(offered.stream().map(Node::id).toList());
             roots = offered.stream().sorted(Comparator.comparing(Node::id)).toList();
             nodes = sourceNodes(scores, warnings);
+            int sourceAllowance = hasTargetRoutes(nodes, roots)
+                    ? sourceCallAllowance(options.limits().maxCalls()) : options.limits().maxCalls();
             var progress = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
             Set<String> admittedSources = new HashSet<>();
             var protocol = new RelationSearchProtocol((step, ids, prompt) -> completion.apply(prompt), provider, (step, ids) -> {
                 if (charged[0] >= options.limits().maxCalls())
                     throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
+                if (charged[0] >= sourceAllowance)
+                    throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
                 long additional = ids.stream().filter(id -> !admittedSources.contains(id)).count();
                 if (admittedSources.size() + additional > options.maxSources())
                     throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
@@ -368,7 +375,9 @@ public final class RequirementRelationSearch {
                     if (!assessment.question().isBlank()) warnings.add("SOURCE_UNRESOLVED "
                             + assessment.node().id() + ": " + assessment.question());
                 });
-                result.failures().forEach((id, error) -> warnings.add("INVALID_SOURCE_RESPONSE [" + id + "]: " + error));
+                result.failures().forEach((id, error) -> warnings.add(
+                        ("RELATION_LEFT_OPEN".equals(error) ? "SOURCE_LEFT_OPEN" : "INVALID_SOURCE_RESPONSE")
+                                + " [" + id + "]: " + error));
                 result.failures().values().stream().filter(error -> error.startsWith("CALL_BUDGET:") || error.startsWith("SOURCE_LIMIT:")
                         || error.startsWith("WORK_LIMIT:")).findFirst().ifPresent(warnings::add);
             } catch (AnalysisCheckpointSession.DeferredException deferred) {
@@ -418,27 +427,55 @@ public final class RequirementRelationSearch {
         return List.copyOf(intents);
     }
 
+    private boolean hasTargetRoutes(List<Node> sources, List<Node> roots) {
+        for (Node source : sources) for (Node root : roots) for (RelationType type : RelationType.values()) {
+            if (rules.allowedTargetRoots(source.root(), type).contains(root.root())
+                    || rules.allowedTargetRoots(root.root(), type).contains(source.root())) return true;
+        }
+        return false;
+    }
+
     private final class Budget {
         private final Options options;
-        private int calls, newWork;
+        private int calls, newWork, sourceCalls;
+        private int sourceAllowance;
         private boolean sourceLimitReached;
         private final Set<String> newSources = new HashSet<>();
         private RelationWorkPlan plan;
-        Budget(Options options) { this.options = options; }
-        void nextSourceCohort() { newSources.clear(); sourceLimitReached = false; }
+        Budget(Options options) {
+            this.options = options;
+            sourceAllowance = sourceCallAllowance(options.limits().maxCalls());
+        }
+        void targetRoutes(boolean available) {
+            sourceAllowance = available ? sourceCallAllowance(options.limits().maxCalls() - calls)
+                    : options.limits().maxCalls() - calls;
+        }
+        void nextSourceCohort() {
+            newSources.clear(); sourceLimitReached = false; sourceCalls = 0;
+            sourceAllowance = sourceCallAllowance(options.limits().maxCalls() - calls);
+        }
         String complete(Step step, List<String> nodes, String prompt) {
             if (calls >= options.limits().maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
+            if (step == Step.SOURCES && sourceCalls >= sourceAllowance) {
+                sourceLimitReached = true;
+                throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
+            }
             if (step == Step.SOURCES && newSources.size() + nodes.stream().filter(id -> !newSources.contains(id)).count() > options.maxSources()) {
                 sourceLimitReached = true;
                 throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
             }
             if (step != Step.SOURCES && newWork >= options.limits().maxWorkItems())
                 throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
-            if (step == Step.SOURCES) newSources.addAll(nodes);
+            if (step == Step.SOURCES) { newSources.addAll(nodes); sourceCalls++; }
             else newWork++;
             calls++; plan.calls(calls);
             return completion.apply(prompt);
         }
+    }
+
+    /** Leave at least half of the remaining calls for target navigation and verification. */
+    private static int sourceCallAllowance(int remainingCalls) {
+        return Math.min(remainingCalls, Math.max(1, remainingCalls / 2));
     }
 
     /** Request-owned replay only; the enclosing run still checks cancellation and resources. */
