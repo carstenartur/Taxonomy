@@ -52,6 +52,45 @@ class ReformulationReportDocxReviewTest {
                 .doesNotContain("Discovery[", "sourceSpans=", "nodeIds=");
     }
 
+    @Test void repeatedDiscoveryContextsArePreservedOnceWithLinksAcrossQuestionsAndOrigins() throws Exception {
+        String context = "Complete saved context\nwith its original whitespace and evidence.";
+        String distinctContext = context + " Additional evidence.";
+        var discovery = new DecisionQuestion.Discovery("first location", context, "first rationale",
+                List.of(), List.of("saved-node"), List.of());
+        var originDiscovery = new DecisionQuestion.Discovery("origin location", context, "origin rationale",
+                List.of(), List.of(), List.of("saved-edge"));
+        var distinctDiscovery = new DecisionQuestion.Discovery("other location", distinctContext, "other rationale",
+                List.of(), List.of(), List.of());
+        var schema = new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,
+                List.of(), null, null, null);
+        var key = new DecisionQuestion.Key("subject", "choice", "scope");
+        var origin = new DecisionQuestion.Origin("prior", key, "Prior wording", List.of(originDiscovery),
+                List.of(), schema, List.of(), List.of(), "", DecisionQuestion.State.OPEN);
+        var first = new DecisionQuestion("first", key, "First question", List.of(discovery), List.of(), schema,
+                List.of(), List.of(), "", DecisionQuestion.State.OPEN, List.of(), List.of(origin), List.of());
+        var second = new DecisionQuestion("second", key, "Second question", List.of(discovery, distinctDiscovery),
+                List.of(), schema, List.of(), List.of(), "", DecisionQuestion.State.OPEN,
+                List.of(), List.of(), List.of());
+        for (String language : List.of("en", "de")) {
+            for (boolean adoption : List.of(false, true)) {
+                var report = new ReformulationReportRenderer.Input(language, adoption, Map.of(), "Original", "Proposal",
+                        List.of(), List.of(), List.of(first, second), List.of(), new ValidationReport(List.of()), "{}");
+                try (var doc = new XWPFDocument(new ByteArrayInputStream(renderer.render(report, emptyGraph(List.of()))))) {
+                    String label = language.equals("de") ? "Kontext " : "Context ";
+                    assertThat(doc.getParagraphs().stream().map(p -> p.getText()).toList())
+                            .containsOnlyOnce(label + "1: " + context, label + "2: " + distinctContext);
+                    assertThat(doc.getParagraphs().stream().flatMap(p -> p.getCTP().getHyperlinkList().stream())
+                            .filter(link -> "rf_context_1".equals(link.getAnchor())).count()).isEqualTo(2);
+                    assertThat(doc.getParagraphs().stream().flatMap(p -> p.getCTP().getBookmarkStartList().stream())
+                            .filter(mark -> "rf_context_1".equals(mark.getName())).count()).isEqualTo(1);
+                    assertThat(new XWPFWordExtractor(doc).getText()).contains("first location", "first rationale",
+                            "origin location", "origin rationale", "other location", "other rationale",
+                            "saved-node", "saved-edge", language.equals("de") ? "Siehe Kontext 1" : "See context 1");
+                }
+            }
+        }
+    }
+
     @Test void mergedOriginRetainsReviewStateAnswerSchemaAndDependenciesInBothLanguages() throws Exception {
         var schema = new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE,
                 List.of("manual", "automatic"), "days", 1d, 7d,
