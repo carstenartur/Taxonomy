@@ -12,8 +12,11 @@ import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.PatternDetectionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisContinuationView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDiff;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -54,6 +57,12 @@ public class ProjectRequirementAnalysisService {
     private final int maximumArchitectureNodes;
     private final int maximumBatchRequirements;
     private final long claimTimeoutSeconds;
+    private ProjectAnalysisContinuationService budgetContinuations;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void budgetContinuations(ProjectAnalysisContinuationService service) {
+        this.budgetContinuations = service;
+    }
 
     public ProjectRequirementAnalysisService(
             ProjectPortfolioService projectService,
@@ -181,6 +190,25 @@ public class ProjectRequirementAnalysisService {
         return persistenceService.getJob(jobId, projectId, username, context);
     }
 
+    public AnalysisContinuationView getContinuation(String jobId, Long projectId, Long itemId,
+            String username, WorkspaceContext context) {
+        return requireContinuations().read(jobId, projectId, itemId, username, context);
+    }
+
+    /** One explicit action authorizes one further ordinary, bounded worker attempt. */
+    public AnalysisJobView enqueueContinuation(String jobId, Long projectId, Long itemId,
+            ContinueAnalysisRequest request, String username, WorkspaceContext context) {
+        requireContinuations().prepare(jobId, projectId, itemId, request, username, context);
+        AnalysisJobView prepared = persistenceService.getJob(jobId, projectId, username, context);
+        dispatch(jobId, projectId, username, context);
+        return prepared;
+    }
+
+    private ProjectAnalysisContinuationService requireContinuations() {
+        if (budgetContinuations == null) throw PortfolioException.conflict("Project budget continuation is unavailable");
+        return budgetContinuations;
+    }
+
     public List<AnalysisJobView> listJobs(Long projectId,
                                           String username,
                                           WorkspaceContext context) {
@@ -200,6 +228,11 @@ public class ProjectRequirementAnalysisService {
                                       String username,
                                       WorkspaceContext context) {
         return persistenceService.getSnapshot(projectId, snapshotId, username, context);
+    }
+
+    public SnapshotSelection getSnapshotSelection(Long projectId, String snapshotId,
+                                                   String username, WorkspaceContext context) {
+        return persistenceService.getSnapshotSelection(projectId, snapshotId, username, context);
     }
 
     public SnapshotDiff diffSnapshots(Long projectId,
@@ -282,8 +315,7 @@ public class ProjectRequirementAnalysisService {
             String analysisSessionId = "portfolio:" + snapshotId;
             long startedAt = System.nanoTime();
             try (var providerScope = llmService.withProviderBinding(job.provider(), job.providerBinding())) {
-                AnalysisResult analysis = analyzeRequirementUseCase.analyze(
-                        new AnalyzeRequirementCommand(
+                AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
                                 workItem.requirementText(),
                                 true,
                                 job.maxArchitectureNodes(),
@@ -296,8 +328,21 @@ public class ProjectRequirementAnalysisService {
                                         snapshotId,
                                         analysisSessionId), com.taxonomy.dto.AnalysisScope.full(), job.providerBinding())
                                 .withAnalysisReasonLength(job.analysisReasonLength() == null
-                                        ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength()))
-                        .analysisResult();
+                                        ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength());
+                AnalysisResult analysis;
+                // Close the question journal before optional snapshot enrichment. Only
+                // the actual classification/relation procedure owns these checkpoints.
+                try (var continuation = budgetContinuations == null ? null
+                        : budgetContinuations.begin(workItem, job, username, context)) {
+                    if (continuation == null) {
+                        analysis = analyzeRequirementUseCase.analyze(command).analysisResult();
+                    } else if (continuation.replay() != null) {
+                        analysis = continuation.replay();
+                    } else {
+                        analysis = continuation.complete(analyzeRequirementUseCase
+                                .analyze(continuation.bind(command)).analysisResult());
+                    }
+                }
                 if (analysis == null || analysis.getScores() == null
                         || "ERROR".equalsIgnoreCase(analysis.getStatus())) {
                     throw new IllegalStateException(analysis != null && analysis.getErrorMessage() != null

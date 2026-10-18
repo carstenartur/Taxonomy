@@ -186,6 +186,21 @@ public class RequirementAnalysisJobItem {
         this.attempt++;
     }
 
+    /**
+     * Retains the exact snapshot/version as the persisted instruction for one
+     * additional budget cycle. Failed retries deliberately use prepareRetry instead.
+     */
+    public void prepareBudgetContinuation() {
+        if (status != AnalysisStatus.PARTIAL || snapshotId == null) {
+            throw new IllegalStateException("Only an immutable partial snapshot can be continued");
+        }
+        this.status = AnalysisStatus.PENDING;
+        this.errorMessage = null;
+        this.startedAt = null;
+        this.completedAt = null;
+        this.attempt++;
+    }
+
     @PrePersist
     @PreUpdate
     private void synchronizeTenantAuthority() {

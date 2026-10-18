@@ -204,6 +204,21 @@ public final class PortfolioDtos {
             String errorMessage) {
     }
 
+    /** One explicit budget cycle, bound to the immutable result that the user reviewed. */
+    public record ContinueAnalysisRequest(String snapshotId, Long continuationVersion) {
+    }
+
+    /** Reading eligibility never claims a worker or authorizes another provider call. */
+    public record AnalysisContinuationView(
+            String snapshotId,
+            Long requirementVersionId,
+            String continuationId,
+            Long continuationVersion,
+            String state,
+            boolean available,
+            String reason) {
+    }
+
     public record AnalysisJobView(
             String id,
             Long projectId,

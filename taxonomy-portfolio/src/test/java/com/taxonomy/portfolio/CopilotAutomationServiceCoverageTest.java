@@ -6,8 +6,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
-import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
-import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -249,15 +248,13 @@ class CopilotAutomationServiceCoverageTest {
         AnalysisJobView success = job(
                 "job-1", operation, 1, 1, REQUIREMENT_ID,
                 AnalysisStatus.SUCCESS, "snapshot-1", Instant.now());
-        SnapshotDetail best = mock(SnapshotDetail.class);
-        SnapshotSummary summary = mock(SnapshotSummary.class);
-        when(summary.id()).thenReturn("snapshot-1");
-        when(best.summary()).thenReturn(summary);
+        SnapshotSelection best = mock(SnapshotSelection.class);
+        when(best.id()).thenReturn("snapshot-1");
         when(fixture.analysisService.listJobs(
                 PROJECT_ID, context.username(), context)).thenReturn(List.of(success));
-        when(fixture.analysisService.getSnapshot(
+        when(fixture.analysisService.getSnapshotSelection(
                 PROJECT_ID, "snapshot-1", context.username(), context)).thenReturn(best);
-        when(fixture.resultSelector.select(anyList())).thenReturn(Optional.of(best));
+        when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.of(best));
         when(fixture.projectService.getRequirement(
                 PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), "snapshot-1"));
@@ -286,7 +283,7 @@ class CopilotAutomationServiceCoverageTest {
                     status, null, Instant.now());
             when(fixture.analysisService.listJobs(
                     PROJECT_ID, context.username(), context)).thenReturn(List.of(job));
-            when(fixture.resultSelector.select(anyList())).thenReturn(Optional.empty());
+            when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.empty());
             when(fixture.projectService.getRequirement(
                     PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                     .thenReturn(requirement(version(), null));
@@ -378,7 +375,7 @@ class CopilotAutomationServiceCoverageTest {
                         terminalVisible.get() ? AnalysisStatus.SUCCESS : AnalysisStatus.PENDING,
                         null,
                         Instant.now())));
-        when(fixture.resultSelector.select(anyList())).thenReturn(Optional.empty());
+        when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.empty());
         doAnswer(invocation -> {
             Runnable original = invocation.getArgument(0);
             scheduled.set(() -> {
