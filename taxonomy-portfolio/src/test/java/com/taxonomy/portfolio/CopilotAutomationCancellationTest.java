@@ -128,7 +128,7 @@ class CopilotAutomationCancellationTest {
 
         assertThat(result.status()).isEqualTo(AnalysisStatus.CANCELLED);
         assertThat(result.selectedSnapshotId()).isNull();
-        verify(analysisService, never()).getSnapshot(
+        verify(analysisService, never()).getSnapshotSelection(
                 projectId, snapshotId, context.username(), context);
         verifyNoInteractions(
                 resultSelector,

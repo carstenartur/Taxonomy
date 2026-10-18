@@ -7,7 +7,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
-import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.slf4j.Logger;
@@ -404,22 +404,25 @@ public class CopilotAutomationService {
                     definition.operationId());
             return;
         }
-        List<SnapshotDetail> snapshots = new ArrayList<>();
+        List<SnapshotSelection> snapshots = new ArrayList<>();
         for (JobWithKey entry : jobs) {
             for (AnalysisJobItemView item : entry.job().items()) {
-                if (item.snapshotId() != null) {
-                    snapshots.add(analysisService.getSnapshot(
+                if (item.snapshotId() != null
+                        && (item.status() == AnalysisStatus.SUCCESS || item.status() == AnalysisStatus.PARTIAL)) {
+                    snapshots.add(analysisService.getSnapshotSelection(
                             definition.projectId(), item.snapshotId(), username, context));
                 }
             }
         }
-        resultSelector.select(snapshots).ifPresent(best -> {
-            resultPersistenceService.selectCurrentSnapshot(
+        resultSelector.selectForOperation(snapshots).ifPresent(best -> {
+            String selected = resultPersistenceService.selectCurrentSnapshot(
                     definition.projectId(),
                     definition.requirementId(),
-                    best.summary().id(),
+                    best.id(),
+                    jobs.stream().map(JobWithKey::job).toList(),
                     username,
                     context);
+            if (selected == null) return;
             completionService.enrich(
                     definition.projectId(),
                     username,

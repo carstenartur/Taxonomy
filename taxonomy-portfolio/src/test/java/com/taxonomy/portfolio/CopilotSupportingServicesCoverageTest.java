@@ -16,7 +16,8 @@ import com.taxonomy.portfolio.model.PortfolioTypes.ProductStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.RequirementAnalysisJob;
-import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.repository.AnalysisSnapshotIdentityRow;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSelectionRow;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
@@ -279,30 +280,29 @@ class CopilotSupportingServicesCoverageTest {
         RequirementAnalysisSnapshotRepository snapshots =
                 mock(RequirementAnalysisSnapshotRepository.class);
         CopilotResultPersistenceService service = new CopilotResultPersistenceService(
-                requirements, snapshots);
+                requirements, snapshots, mock(com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository.class));
         ProjectRequirement requirement = mock(ProjectRequirement.class);
-        RequirementAnalysisSnapshot snapshot = mock(RequirementAnalysisSnapshot.class);
         String scopeKey = PortfolioScope.key(context.username(), context);
+        when(requirements.findAnalysisSelectionForUpdate(7L, 41L, scopeKey))
+                .thenReturn(Optional.of(new RequirementAnalysisSelectionRow(7L, 9L, "snapshot-previous")));
         when(requirements.findByIdAndProjectIdAndScopeKeyForUpdate(7L, 41L, scopeKey))
                 .thenReturn(Optional.of(requirement));
-        when(snapshots.findByIdAndProjectIdAndScopeKey("snapshot-1", 41L, scopeKey))
-                .thenReturn(Optional.of(snapshot));
-        when(requirement.getCurrentVersionId()).thenReturn(9L);
-
-        when(snapshot.getRequirementId()).thenReturn(8L);
+        when(snapshots.findIdentityByIdAndProjectIdAndScopeKey("snapshot-1", 41L, scopeKey))
+                .thenReturn(Optional.of(new AnalysisSnapshotIdentityRow("snapshot-1", 8L, 9L)));
         assertThatThrownBy(() -> service.selectCurrentSnapshot(
                 41L, 7L, "snapshot-1", context.username(), context))
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("does not belong");
 
-        when(snapshot.getRequirementId()).thenReturn(7L);
-        when(snapshot.getRequirementVersionId()).thenReturn(10L);
+        when(snapshots.findIdentityByIdAndProjectIdAndScopeKey("snapshot-1", 41L, scopeKey))
+                .thenReturn(Optional.of(new AnalysisSnapshotIdentityRow("snapshot-1", 7L, 10L)));
         assertThatThrownBy(() -> service.selectCurrentSnapshot(
                 41L, 7L, "snapshot-1", context.username(), context))
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("stale");
 
-        when(snapshot.getRequirementVersionId()).thenReturn(9L);
+        when(snapshots.findIdentityByIdAndProjectIdAndScopeKey("snapshot-1", 41L, scopeKey))
+                .thenReturn(Optional.of(new AnalysisSnapshotIdentityRow("snapshot-1", 7L, 9L)));
         assertThat(service.selectCurrentSnapshot(
                 41L, 7L, "snapshot-1", context.username(), context))
                 .isEqualTo("snapshot-1");
@@ -316,9 +316,9 @@ class CopilotSupportingServicesCoverageTest {
         RequirementAnalysisSnapshotRepository snapshots =
                 mock(RequirementAnalysisSnapshotRepository.class);
         CopilotResultPersistenceService service = new CopilotResultPersistenceService(
-                requirements, snapshots);
+                requirements, snapshots, mock(com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository.class));
         String scopeKey = PortfolioScope.key(context.username(), context);
-        when(requirements.findByIdAndProjectIdAndScopeKeyForUpdate(7L, 41L, scopeKey))
+        when(requirements.findAnalysisSelectionForUpdate(7L, 41L, scopeKey))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.selectCurrentSnapshot(

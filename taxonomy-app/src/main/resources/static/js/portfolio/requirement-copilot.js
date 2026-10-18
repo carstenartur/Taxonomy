@@ -19,6 +19,7 @@
     let lastAnnouncement = null;
     let lastServerContact = null;
     let consecutivePollFailures = 0;
+    let continuationGeneration = 0;
 
     const copy = {
         en: {
@@ -38,6 +39,10 @@
             reconnecting: 'The server status cannot currently be reached. The analysis has not been declared failed; Taxonomy is reconnecting.',
             reconnectAttempt: 'Reconnect attempt', cancelling: 'Cancellation requested. Waiting for the authoritative terminal state…',
             retryStatus: 'Retry status connection now', openResult: 'Open result',
+            continueAnalysis: 'Continue', continuePass: 'verification pass',
+            continueHint: 'Saved answers are retained and open domain questions remain open. Each Continue action authorizes one further analysis cycle within the same limit.',
+            continuePending: 'Continuing the selected analysis pass…',
+            continueUnavailable: 'Continuation unavailable',
             exportTitle: 'Report export', exportRunning: 'Generating and validating the requested export…',
             exportSuccess: 'Export created', exportFailed: 'Export failed', exportCancelled: 'Export cancelled', bytes: 'bytes'
         },
@@ -58,6 +63,10 @@
             reconnecting: 'Der Serverstatus ist momentan nicht erreichbar. Die Analyse wurde nicht als fehlgeschlagen erklärt; Taxonomy stellt die Verbindung wieder her.',
             reconnectAttempt: 'Wiederverbindungsversuch', cancelling: 'Abbruch angefordert. Warten auf den autoritativen Endzustand…',
             retryStatus: 'Statusverbindung jetzt erneut versuchen', openResult: 'Ergebnis öffnen',
+            continueAnalysis: 'Fortsetzen', continuePass: 'Prüfdurchlauf',
+            continueHint: 'Gespeicherte Antworten bleiben erhalten; offene fachliche Fragen bleiben offen. Jeder Klick auf Fortsetzen startet einen weiteren Analyseschritt mit demselben Limit.',
+            continuePending: 'Der ausgewählte Prüfdurchlauf wird fortgesetzt…',
+            continueUnavailable: 'Fortsetzung nicht verfügbar',
             exportTitle: 'Berichtsexport', exportRunning: 'Der angeforderte Export wird erzeugt und geprüft…',
             exportSuccess: 'Export erstellt', exportFailed: 'Export fehlgeschlagen', exportCancelled: 'Export abgebrochen', bytes: 'Bytes'
         }
@@ -158,6 +167,8 @@
                         <span id="copilotSelectedSnapshot" class="small text-body-secondary"></span>
                         <a id="copilotOpenResult" class="btn btn-sm btn-outline-primary" href="#">Open result</a>
                     </div>
+                    <div id="copilotContinuationActions" class="d-none mt-3 border rounded p-2"
+                         aria-live="polite"></div>
                     <div class="d-flex flex-wrap justify-content-between gap-2 mt-2 small text-body-secondary">
                         <span id="copilotOperationId"></span>
                         <span id="copilotLastContact"></span>
@@ -296,8 +307,7 @@
 
     function handleTerminal(operation) {
         setControls(false);
-        if ((operation.status === 'SUCCESS' || operation.status === 'PARTIAL')
-                && operation.selectedSnapshotId) {
+        if (operation.status === 'SUCCESS' && operation.selectedSnapshotId) {
             announce(t('completed'));
             window.setTimeout(function () {
                 const url = new URL(window.location.href);
@@ -368,6 +378,7 @@
         setText('copilotOperationPhase', t('phase') + ': ' + phase.label);
         renderProgress(operation, phase);
         renderResultAction(operation);
+        renderContinuationActions(operation);
 
         const cancelButton = document.getElementById('copilotCancel');
         if (cancelButton) cancelButton.disabled = terminal.has(operation.status);
@@ -401,6 +412,83 @@
         resultUrl.searchParams.set('lang', locale);
         link.href = resultUrl.pathname + resultUrl.search + resultUrl.hash;
         link.setAttribute('aria-label', t('openResult') + ': ' + snapshotId);
+    }
+
+    async function renderContinuationActions(operation) {
+        const generation = ++continuationGeneration;
+        const surface = document.getElementById('copilotContinuationActions');
+        if (!surface) return;
+        surface.replaceChildren();
+        surface.classList.add('d-none');
+        if (operation.status !== 'PARTIAL') return;
+        const candidates = (operation.jobs || []).flatMap(function (job, index) {
+            return (job.items || []).filter(item => item.status === 'PARTIAL' && item.snapshotId)
+                .map(item => ({ job: job, item: item, pass: index + 1 }));
+        });
+        if (!candidates.length) return;
+        const results = await Promise.allSettled(candidates.map(candidate =>
+            window.TaxonomyPortfolioApi.getAnalysisContinuation(projectId, candidate.job.id, candidate.item.id)));
+        if (generation !== continuationGeneration || activeOperation?.operationId !== operation.operationId) return;
+        surface.classList.remove('d-none');
+        const hint = document.createElement('p');
+        hint.className = 'small mb-2';
+        hint.textContent = t('continueHint');
+        surface.appendChild(hint);
+        results.forEach(function (result, index) {
+            const candidate = candidates[index];
+            const decision = result.status === 'fulfilled' ? result.value : null;
+            const row = document.createElement('div');
+            row.className = 'd-flex flex-wrap align-items-center gap-2 mb-2';
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-sm btn-outline-primary';
+            button.textContent = t('continueAnalysis') + ' · ' + t('continuePass') + ' ' + candidate.pass;
+            button.disabled = decision?.available !== true;
+            button.dataset.sessionControl = 'continue-analysis-pass';
+            button.dataset.sessionTestOutcome = 'operation';
+            button.dataset.jobId = candidate.job.id;
+            button.dataset.itemId = candidate.item.id;
+            button.addEventListener('click', () => continueAnalysis(candidate, decision));
+            row.appendChild(button);
+            if (!decision?.available) {
+                const reason = document.createElement('span');
+                reason.className = 'small text-body-secondary';
+                reason.textContent = decision?.reason || result.reason?.message || t('continueUnavailable');
+                row.appendChild(reason);
+            }
+            surface.appendChild(row);
+        });
+    }
+
+    async function continueAnalysis(candidate, decision) {
+        if (!decision?.available || activeOperation?.status !== 'PARTIAL') return;
+        ++continuationGeneration;
+        document.getElementById('copilotContinuationActions')?.querySelectorAll('button')
+            .forEach(button => { button.disabled = true; });
+        setControls(true);
+        clearError();
+        announce(t('continuePending'));
+        try {
+            await window.TaxonomyPortfolioApi.continueAnalysis(projectId, candidate.job.id, candidate.item.id, decision);
+            // Existing pass identity is unchanged; refresh selection and aggregate status.
+            const operation = await api().get(projectId, activeOperationId);
+            lastServerContact = new Date();
+            renderOperation(operation);
+            if (terminal.has(operation.status)) handleTerminal(operation);
+            else startPolling(operation.operationId);
+        } catch (error) {
+            showError(error);
+            // A lost response may already have queued the cycle. Observe; never repeat the POST.
+            try {
+                const current = await api().get(projectId, activeOperationId);
+                renderOperation(current);
+                if (terminal.has(current.status)) handleTerminal(current);
+                else startPolling(current.operationId);
+            } catch (statusError) {
+                renderReconnect(statusError, ++consecutivePollFailures);
+                startPolling(activeOperationId);
+            }
+        }
     }
 
     function renderLocalState(status, message) {

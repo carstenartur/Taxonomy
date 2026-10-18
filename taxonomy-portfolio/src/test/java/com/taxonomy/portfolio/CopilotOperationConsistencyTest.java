@@ -5,8 +5,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
-import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
-import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
 import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -206,6 +205,7 @@ class CopilotOperationConsistencyTest {
                 org.mockito.ArgumentMatchers.eq(context.username()),
                 org.mockito.ArgumentMatchers.eq(context));
         verify(analysisService, never()).getSnapshot(any(), any(), any(), any());
+        verify(analysisService, never()).getSnapshotSelection(any(), any(), any(), any());
     }
 
     @Test
@@ -303,7 +303,7 @@ class CopilotOperationConsistencyTest {
 
         assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
         assertThat(result.selectedSnapshotId()).as("Expose the promoted winner, not the last completed pass").isEqualTo("snapshot-1");
-        verify(resultPersistenceService).selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context);
+        verify(resultPersistenceService).selectCurrentSnapshot(eq(41L), eq(7L), eq("snapshot-1"), anyList(), eq(context.username()), eq(context));
         verify(completionService).enrich(41L, context.username(), context, true, true);
     }
 
@@ -334,7 +334,7 @@ class CopilotOperationConsistencyTest {
 
         assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
         assertThat(result.selectedSnapshotId()).as("Fast completion still promotes the selected winner before returning").isEqualTo("snapshot-1");
-        verify(resultPersistenceService).selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context);
+        verify(resultPersistenceService).selectCurrentSnapshot(eq(41L), eq(7L), eq("snapshot-1"), anyList(), eq(context.username()), eq(context));
         verify(completionService).enrich(41L, context.username(), context, true, true);
     }
 
@@ -345,14 +345,12 @@ class CopilotOperationConsistencyTest {
         when(projectService.getRequirement(41L, 7L, context.username(), context)).thenReturn(requirement);
         when(requirement.currentAnalysisSnapshotId()).thenAnswer(invocation -> currentSnapshot.get());
         when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
-        var winner = mock(SnapshotDetail.class);
-        var summary = mock(SnapshotSummary.class);
-        when(winner.summary()).thenReturn(summary);
-        when(summary.id()).thenReturn("snapshot-1");
-        when(analysisService.getSnapshot(41L, "snapshot-1", context.username(), context)).thenReturn(winner);
-        when(analysisService.getSnapshot(41L, "snapshot-2", context.username(), context)).thenReturn(mock(SnapshotDetail.class));
-        when(resultSelector.select(anyList())).thenReturn(Optional.of(winner));
-        when(resultPersistenceService.selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context)).thenAnswer(invocation -> {
+        var winner = mock(SnapshotSelection.class);
+        when(winner.id()).thenReturn("snapshot-1");
+        when(analysisService.getSnapshotSelection(41L, "snapshot-1", context.username(), context)).thenReturn(winner);
+        when(analysisService.getSnapshotSelection(41L, "snapshot-2", context.username(), context)).thenReturn(mock(SnapshotSelection.class));
+        when(resultSelector.selectForOperation(anyList())).thenReturn(Optional.of(winner));
+        when(resultPersistenceService.selectCurrentSnapshot(eq(41L), eq(7L), eq("snapshot-1"), anyList(), eq(context.username()), eq(context))).thenAnswer(invocation -> {
             currentSnapshot.set("snapshot-1");
             return "snapshot-1";
         });

@@ -30,7 +30,15 @@ public class PortfolioAnalysisWorkQueue {
             Long requirementVersionId,
             int requirementVersionNumber,
             String requirementText,
-            int attempt) {
+            int attempt,
+            String continuationSnapshotId) {
+
+        public WorkItem(Long itemId, String jobId, Long projectId, String scopeKey,
+                        Long requirementId, String requirementKey, Long requirementVersionId,
+                        int requirementVersionNumber, String requirementText, int attempt) {
+            this(itemId, jobId, projectId, scopeKey, requirementId, requirementKey,
+                    requirementVersionId, requirementVersionNumber, requirementText, attempt, null);
+        }
 
         /** Compatibility constructor for callers that create first-attempt fixtures directly. */
         public WorkItem(Long itemId,
@@ -106,7 +114,8 @@ public class PortfolioAnalysisWorkQueue {
                 item.getRequirementVersionId(),
                 item.getRequirementVersion().getVersionNumber(),
                 item.getRequirementVersion().getText(),
-                item.getAttempt());
+                item.getAttempt(),
+                item.getSnapshotId());
     }
 
     private static String requireScope(String scopeKey) {
