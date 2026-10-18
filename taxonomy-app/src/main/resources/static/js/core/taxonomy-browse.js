@@ -1706,7 +1706,8 @@
         }
 
         if (isHidden && S.interactiveMode && S.storedBusinessText) {
-            if (!S.evaluatedNodes.has(code)) {
+            if (!S.evaluatedNodes.has(code)
+                    && (!SC().canRequestFollowUp || SC().canRequestFollowUp())) {
                 S.evaluatedNodes.add(code);
                 evaluateNodeChildren(code, wrapper);
                 return; // don't toggle yet — wait for API response

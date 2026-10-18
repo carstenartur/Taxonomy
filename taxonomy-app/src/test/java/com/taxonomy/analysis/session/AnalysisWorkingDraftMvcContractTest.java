@@ -394,6 +394,9 @@ class AnalysisWorkingDraftMvcContractTest {
             JsonNode observed = objectMapper.readTree(metadata.getContentAsString());
             assertThat(observed.path("version")).isEqualTo(expected.path("version"));
             assertThat(observed.path("updatedAt")).isEqualTo(expected.path("updatedAt"));
+            assertThat(observed.path("updatedAt"))
+                    .as("an acknowledged save must retain the same revision fingerprint after database reload")
+                    .isEqualTo(objectMapper.readTree(saved.getContentAsString()).path("updatedAt"));
             return restoredPayload;
         } finally {
             jdbc.update("delete from analysis_working_draft where workspace_id = ? and username = ?",

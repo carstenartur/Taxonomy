@@ -1311,6 +1311,7 @@
 
     // ── Leaf Justification ────────────────────────────────────────────────────
     function canRequestFollowUp() {
+        if (window.TaxonomyAnalysisSession && !window.TaxonomyAnalysisSession.state().ready) return false;
         if (S.lastAnalysisProvider && !S.analysisProviderId && !S.analysisOperationId) {
             B().showStatus('warning', t('scoring.followup.unavailable'));
             return false;

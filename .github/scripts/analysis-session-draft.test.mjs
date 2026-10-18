@@ -14,6 +14,9 @@ const source = await readFile(
 const uiSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-ui.js',
   import.meta.url), 'utf8');
+const transportSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-transport.js',
+  import.meta.url), 'utf8');
 
 function deferred() {
   let resolve;
@@ -43,7 +46,7 @@ function fakeControl(id) {
   };
 }
 
-function createHarness({ inputText = '', payload, request, withUi = false }) {
+function createHarness({ inputText = '', payload, request, withUi = false, withTransport = false }) {
   const scheduled = [];
   const cleared = [];
   const alerts = [];
@@ -135,6 +138,7 @@ function createHarness({ inputText = '', payload, request, withUi = false }) {
       return controls[id] || null;
     },
     querySelectorAll(selector) {
+      if (selector === '.tax-evaluating') return [];
       assert.match(selector, /#exportGroup button/);
       return Object.values(controls);
     },
@@ -175,6 +179,16 @@ function createHarness({ inputText = '', payload, request, withUi = false }) {
     String,
     encodeURIComponent
   };
+  if (withTransport) {
+    Object.assign(window, { location: { origin: 'https://taxonomy.example' },
+      fetch: async () => ({ ok: true }), setInterval() {}, clearInterval() {} });
+    Object.assign(context, {
+      requestUrl: input => new URL(String(input), 'https://taxonomy.example'),
+      installWorkspaceFetchRouting() {}, installWorkspaceEventSourceRouting() {}
+    });
+    vm.runInNewContext(transportSource, { ...sandbox, URL, AbortController },
+      { filename: 'taxonomy-analysis-session-transport.js' });
+  }
   if (withUi) vm.runInNewContext(uiSource, sandbox,
     { filename: 'taxonomy-analysis-session-ui.js' });
   vm.runInNewContext(source, sandbox, { filename: 'taxonomy-analysis-session-draft.js' });
@@ -628,10 +642,10 @@ test('a missing previously saved draft never schedules old browser results for r
 });
 
 
-async function savedHarness(request, language = 'en') {
+async function savedHarness(request, language = 'en', options = {}) {
   const original = { businessText: 'saved requirement', scores: { OLD: 100 } };
   const h = createHarness({ inputText: original.businessText, payload: { current: original },
-    request, withUi: true });
+    request, withUi: true, ...options });
   h.context.language = () => language;
   h.context.currentPayload = () => ({ businessText: h.input.value, scores: h.state.currentScores });
   h.window.TaxonomyBrowse = { renderView() {}, updateExportGroupVisibility() {} };
@@ -870,14 +884,22 @@ test('failure rendering an observed revision is reported even after its own inva
     invalidate(options);
     h.runtime.analysisGeneration = (h.runtime.analysisGeneration || 0) + 1;
   };
+  let renderAvailable = false, rendered = 0;
   h.window.TaxonomyScoring.renderArchitectureView = view => {
-    if (view) throw new Error('rendering unavailable');
+    if (!view) return;
+    if (!renderAvailable) throw new Error('rendering unavailable');
+    rendered++;
   };
   await h.context.reconcileDraft();
   assert.equal(h.runtime.serverUnconfirmed, true);
   assert.equal(h.runtime.draftDecisionPending, true);
   assert.equal(h.runtime.restoring, false);
   assert.equal(h.alerts.at(-1).marker, 'server-unconfirmed');
+  renderAvailable = true;
+  await h.context.reconcileDraft();
+  assert.equal(rendered, 1, 'confirming unchanged metadata must still restore the incomplete architecture');
+  assert.equal(h.runtime.serverUnconfirmed, false);
+  assert.equal(h.runtime.draftDecisionPending, false);
 });
 
 test('a missing status endpoint leaves the last confirmed results visible and never switches workspaces', async () => {
@@ -886,4 +908,54 @@ test('a missing status endpoint leaves the last confirmed results visible and ne
   assert.equal(h.state.currentScores.OLD, 100);
   assert.equal(h.runtime.workspaceId, 'ws-1');
   assert.equal(h.runtime.serverUnconfirmed, true);
+});
+
+for (const failure of ['delayed renderer failure', 'renderer readiness timeout']) {
+  test(`${failure} keeps recovery actionable and retries the incomplete draft`, async () => {
+    const h = await savedHarness(async url => url.endsWith('/status')
+      ? { workspaceId: 'ws-1', branch: 'draft', version: 8, updatedAt: 'new' }
+      : { workspaceId: 'ws-1', branch: 'draft', version: 8, updatedAt: 'new',
+        payload: { businessText: 'new', scores: {}, architectureView: { id: 'new-architecture' } } });
+    h.state.taxonomyData = [];
+    let renderAvailable = false, rendered = 0;
+    h.window.TaxonomyScoring.renderArchitectureView = view => {
+      if (!view) return;
+      if (!renderAvailable) throw new Error('delayed rendering unavailable');
+      rendered++;
+    };
+    await h.context.reconcileDraft();
+    assert.equal(h.runtime.restoring, true);
+    const retry = h.scheduled.find(task => task.delay === 100);
+    assert.ok(retry);
+    if (failure === 'delayed renderer failure') h.state.taxonomyData = [{}];
+    assert.doesNotThrow(() => retry.callback());
+    assert.equal(h.runtime.restoring, false);
+    assert.equal(h.runtime.serverUnconfirmed, true);
+    assert.equal(h.runtime.draftDecisionPending, true);
+    assert.equal(h.alerts.at(-1).marker, 'server-unconfirmed');
+    h.state.taxonomyData = [{}];
+    renderAvailable = true;
+    await h.context.reconcileDraft();
+    assert.equal(rendered, 1);
+    assert.equal(h.runtime.serverUnconfirmed, false);
+    assert.equal(h.runtime.draftDecisionPending, false);
+  });
+}
+
+test('cancelling during a full draft read cannot acknowledge an unapplied foreign revision', async () => {
+  const full = deferred();
+  const view = { workspaceId: 'ws-1', branch: 'draft', version: 8, updatedAt: 'new',
+    payload: { businessText: 'foreign requirement', scores: { NEW: 100 } } };
+  const h = await savedHarness(async url => url.endsWith('/status') ? view : full.promise,
+    'en', { withTransport: true });
+  const checking = h.context.reconcileDraft();
+  await new Promise(resolve => setImmediate(resolve));
+  h.context.cancelDerivedRequests('user-cancelled');
+  full.resolve(view);
+  await checking;
+  assert.equal(h.runtime.version, 7, 'old scores must not gain permission to overwrite the unread revision');
+  assert.equal(h.state.currentScores.OLD, 100);
+  await h.context.reconcileDraft();
+  assert.equal(h.runtime.version, 8);
+  assert.equal(h.state.currentScores.NEW, 100);
 });

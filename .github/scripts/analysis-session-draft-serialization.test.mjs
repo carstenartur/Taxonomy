@@ -40,6 +40,7 @@ function put(payload, expectedVersion = null) {
 function createHarness(rawRequest, { basePath = '', elements = new Map(), timers = null } = {}) {
   const eventListeners = new Map();
   const dispatched = [];
+  const fetches = [];
   const runtime = {
     workspaceId: 'workspace-1',
     version: null,
@@ -49,6 +50,7 @@ function createHarness(rawRequest, { basePath = '', elements = new Map(), timers
   const C = {
     runtime,
     S: { interactiveMode: false },
+    language: () => 'en',
     requestUrl(input) {
       return new URL(String(input), `https://taxonomy.example${basePath || ''}/`);
     },
@@ -62,8 +64,9 @@ function createHarness(rawRequest, { basePath = '', elements = new Map(), timers
     installWorkspaceFetchRouting() {},
     installWorkspaceEventSourceRouting() {}
   };
-  function nativeFetch() {
-    return Promise.resolve({ ok: true });
+  function nativeFetch(url, options) {
+    fetches.push({ url, options });
+    return Promise.resolve({ ok: true, json: async () => ({ accepted: true }) });
   }
   function nativeSetInterval() {
     return 1;
@@ -123,7 +126,7 @@ function createHarness(rawRequest, { basePath = '', elements = new Map(), timers
     URL
   }, { filename: 'taxonomy-analysis-session-transport.js' });
 
-  return { C, runtime, dispatched, eventListeners };
+  return { C, runtime, dispatched, eventListeners, window, fetches };
 }
 
 async function flush() {
@@ -396,7 +399,7 @@ test('recognizes reset below a servlet context path', async () => {
 });
 
 
-for (const change of ['workspace', 'analysis']) {
+for (const change of ['workspace', 'analysis', 'draft lifecycle']) {
   test(`a late full draft GET cannot advance the revision of a different ${change}`, async () => {
     const response = deferred();
     const h = createHarness(async () => response.promise);
@@ -405,7 +408,8 @@ for (const change of ['workspace', 'analysis']) {
     const outcome = Promise.allSettled([reading]);
     await flush();
     if (change === 'workspace') h.runtime.workspaceId = 'workspace-2';
-    else h.runtime.analysisGeneration++;
+    else if (change === 'analysis') h.runtime.analysisGeneration++;
+    else h.runtime.draftGeneration++;
     h.runtime.version = 3;
     response.resolve({ version: 8, payload: { businessText: 'old response' } });
     await outcome;
@@ -441,3 +445,42 @@ test('a delayed provider restore cannot replace options selected after its draft
   timers[0]();
   assert.equal(provider.value, 'MANUAL');
 });
+
+
+test('cancellation retains an in-flight draft acknowledgement and the next save uses its revision', async () => {
+  const first = deferred(), requests = [];
+  const h = createHarness(async (url, options) => {
+    requests.push({ method: options.method, body: options.body && JSON.parse(options.body) });
+    return requests.length === 1 ? first.promise : { version: 9, payload: { businessText: 'partial results' } };
+  });
+  h.runtime.version = 7;
+  const saving = h.C.jsonRequest('/api/analysis-drafts/workspace-1', put({ businessText: 'before cancellation' }));
+  const outcome = Promise.allSettled([saving]);
+  await flush();
+  h.C.cancelDerivedRequests('user-cancelled');
+  first.resolve({ version: 8, payload: { businessText: 'before cancellation' } });
+  assert.equal((await outcome)[0].status, 'fulfilled');
+  assert.equal(h.runtime.version, 8);
+  await h.C.jsonRequest('/api/analysis-drafts/workspace-1', put({ businessText: 'partial results' }));
+  assert.equal(requests[1].body.expectedVersion, 8);
+  assert.deepEqual(requests.map(request => request.method), ['PUT', 'PUT']);
+});
+
+for (const barrier of ['serverUnconfirmed', 'draftDecisionPending']) {
+  test(`${barrier} blocks automatic Copilot follow-ups while permitting status reads and in-flight responses`, async () => {
+    const h = createHarness(async () => null);
+    const active = h.window.fetch('/api/analyze', { method: 'POST' });
+    h.runtime[barrier] = true;
+    for (const url of ['/api/gap/analyze', '/api/patterns/detect', '/api/recommend']) {
+      await assert.rejects(h.window.fetch(url, { method: 'POST' }),
+        error => error.code === 'ANALYSIS_SESSION_NOT_READY');
+    }
+    assert.equal(h.fetches.length, 1);
+    assert.equal((await (await active).json()).accepted, true);
+    await h.window.fetch('/api/analysis-drafts/workspace-1/status');
+    assert.equal(h.fetches.length, 2);
+    h.runtime[barrier] = false;
+    await h.window.fetch('/api/recommend', { method: 'POST' });
+    assert.equal(h.fetches.length, 3);
+  });
+}

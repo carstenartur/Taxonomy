@@ -8,6 +8,7 @@
     var DRAFT_WRITE_HISTORY_LIMIT = 1;
     var DRAFT_TRACE_LIMIT = 48;
     runtime.analysisGeneration = Number(runtime.analysisGeneration) || 0;
+    runtime.draftGeneration = Number(runtime.draftGeneration) || 0;
     runtime.activeAnalysisControllers = runtime.activeAnalysisControllers || new Set();
     runtime.copilotIntervals = runtime.copilotIntervals || new Set();
     runtime.draftMutationQueue = runtime.draftMutationQueue || Promise.resolve();
@@ -86,6 +87,13 @@
         function guardedFetch(input, init) {
             if (!derivedAnalysisRequest(input)) {
                 return nativeFetch(input, init);
+            }
+            if (runtime.serverUnconfirmed || runtime.draftDecisionPending) {
+                return Promise.reject(Object.assign(new Error(C.language() === 'de'
+                    ? 'Bitte zuerst den gespeicherten Analysestand abgleichen.'
+                    : 'Confirm the saved analysis state before continuing.'), {
+                    code: 'ANALYSIS_SESSION_NOT_READY'
+                }));
             }
 
             var generation = runtime.analysisGeneration;
@@ -424,9 +432,14 @@
                 return C.nativeJsonRequest(url, options);
             }
             var workspace = runtime.workspaceId;
-            var generation = runtime.analysisGeneration;
+            var generation = runtime.draftGeneration;
+            var analysisGeneration = runtime.analysisGeneration;
+            var readingDraft = methodOf(url, options) === 'GET';
             function assertCurrent() {
-                if (workspace !== runtime.workspaceId || generation !== runtime.analysisGeneration) {
+                // Cancellation retains write acknowledgements. Full reads must
+                // still share the loader's analysis scope before advancing it.
+                if (workspace !== runtime.workspaceId || generation !== runtime.draftGeneration
+                        || (readingDraft && analysisGeneration !== runtime.analysisGeneration)) {
                     throw Object.assign(new Error('The draft context has changed'), {
                         name: 'AbortError', code: 'STALE_DRAFT_CONTEXT'
                     });

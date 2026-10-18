@@ -313,7 +313,7 @@
         statusRead = jsonRequest(endpoint + '/status', { method: 'GET', cache: 'no-store' })
             .then(function (status) {
                 if (!current() || runtime.saveInFlight) return false;
-                if (revision(status) === confirmed) {
+                if (revision(status) === confirmed && !runtime.restorationPending) {
                     var reconnected = runtime.serverUnconfirmed || runtime.draftDecisionPending;
                     runtime.serverUnconfirmed = false;
                     setDraftDecisionPending(false);
@@ -383,6 +383,7 @@
         }
         var payload = view.payload;
         confirmDraft(view);
+        runtime.restorationPending = true;
         runtime.restoring = true;
         setDraftDecisionPending(true);
         runtime.version = view.version;
@@ -438,6 +439,16 @@
 
     function restoreRenderedState(payload, attempt) {
         if (runtime.restoredPayload !== payload) return;
+        try {
+            renderRestoredState(payload, attempt);
+        } catch (error) {
+            if (runtime.restoredPayload !== payload) return;
+            runtime.restoring = false;
+            serverUnavailable(error);
+        }
+    }
+
+    function renderRestoredState(payload, attempt) {
         var ready = window.TaxonomyBrowse && window.TaxonomyScoring
             && Array.isArray(S.taxonomyData) && S.taxonomyData.length > 0;
         if (!ready) {
@@ -447,7 +458,7 @@
                 }, 100);
             } else {
                 runtime.restoring = false;
-                setDraftDecisionPending(false);
+                serverUnavailable(new Error('Analysis draft renderers did not become ready'));
             }
             return;
         }
@@ -465,6 +476,7 @@
             document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-restored', {
                 detail: { workspaceId: runtime.workspaceId, version: runtime.version }
             }));
+            runtime.restorationPending = false;
             return;
         }
 
@@ -498,6 +510,7 @@
         document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-restored', {
             detail: { workspaceId: runtime.workspaceId, version: runtime.version }
         }));
+        runtime.restorationPending = false;
     }
 
     function loadDraft(options) {

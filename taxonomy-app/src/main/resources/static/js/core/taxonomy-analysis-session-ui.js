@@ -131,7 +131,9 @@
         var preservedText = input ? input.value : '';
 
         runtime.invalidating = true;
+        runtime.draftGeneration = (runtime.draftGeneration || 0) + 1;
         runtime.restoredPayload = null;
+        runtime.restorationPending = false;
         S.currentScores = null;
         S.analysisCoverage = null;
         S.analysisRecovery = null;

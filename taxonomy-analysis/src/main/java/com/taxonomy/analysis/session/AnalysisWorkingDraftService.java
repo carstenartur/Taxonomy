@@ -23,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 /**
@@ -91,7 +92,9 @@ public class AnalysisWorkingDraftService {
         AnalysisWorkingDraft draft = repository
                 .findByScopeKeyAndUsername(scope.scopeKey(), scope.username())
                 .orElse(null);
-        Instant now = Instant.now();
+        // Match timestamp(6) storage so an acknowledged save keeps exactly the
+        // same revision fingerprint when the browser later observes the database.
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
         if (draft == null) {
             if (request.expectedVersion() != null) {
@@ -136,7 +139,7 @@ public class AnalysisWorkingDraftService {
         AnalysisWorkingDraft draft = repository
                 .findByScopeKeyAndUsername(scope.scopeKey(), scope.username())
                 .orElse(null);
-        Instant now = Instant.now();
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         if (draft == null) {
             draft = new AnalysisWorkingDraft(
                     scope.scopeKey(), scope.workspaceId(), scope.username(), payloadJson, now);

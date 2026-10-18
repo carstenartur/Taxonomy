@@ -637,3 +637,16 @@ for (const view of ['list', 'tabs']) test(`${view}: interactive heading expansio
     assert.equal(h.requests.length, 1, 'reopening evaluated content does not repeat analysis');
     assert.equal(h.errors.length, 0);
 });
+
+
+test('an unconfirmed session lets users browse an unevaluated area without starting node model work', () => {
+    const h = harness({ interactive: true });
+    h.window.TaxonomyScoring.runInteractiveAnalysis();
+    h.state.analysisProviderId = 'GEMMA';
+    h.window.TaxonomyAnalysisSession = { state: () => ({ ready: false }) };
+    const group = h.group('BP'), button = group.querySelector('.tax-container-toggle');
+    button.click();
+    assert.equal(h.requests.length, 0);
+    assert.equal(button.getAttribute('aria-expanded'), 'true');
+    assert.equal(h.state.evaluatedNodes.has('BP'), false);
+});
