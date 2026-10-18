@@ -1,5 +1,11 @@
 # Bounded multi-user analysis
 
+This page describes process-local admission in the default `local` transport mode.
+For optional durable Artemis execution with coordinator/worker pods and separately
+configured shared provider quotas, use [analysis execution](ARCHITECTURE.md#analysis-execution-and-deployment)
+and [Artemis operations](OPERATIONS_GUIDE.md#external-artemis-analysis-operations).
+The local limits below do not describe the complete distributed execution path.
+
 The existing analysis registry now distinguishes an accepted waiting operation
 (`QUEUED`) from a worker that owns an execution permit (`RUNNING`). Full synchronous,
 streaming and portfolio analyses that enter this registry share its process-local
@@ -84,7 +90,7 @@ The per-user live backlog limit does not bound the number of persisted portfolio
 jobs. A single large batch still processes its items sequentially. Do not describe
 these rules as a globally fair persistent dispatcher.
 
-**Use one application/analysis-executing instance for deployment-wide limits.**
+**In local mode, use one executing instance for installation-wide local limits.**
 Admission, live status and HTTP quotas are process-local, not shared leases. Multiple
 pods would multiply capacity and may route live status to the wrong instance.
 A shared database alone does not turn these limits into cluster-wide limits.

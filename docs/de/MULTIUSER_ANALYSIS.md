@@ -1,5 +1,12 @@
 # Begrenzte Mehrbenutzer-Analyse
 
+Diese Seite beschreibt die prozesslokale Zulassung im standardmäßigen Transportmodus
+`local`. Die optionale dauerhafte Artemis-Ausführung mit Koordinator-/Worker-Pods
+und separat konfigurierten gemeinsamen Provider-Kontingenten beschreiben
+[Analyseausführung](ARCHITECTURE.md#analyseausführung-und-deployment) und
+[Artemis-Betrieb](OPERATIONS_GUIDE.md#betrieb-mit-externem-artemis-broker).
+Die folgenden lokalen Grenzen beschreiben nicht den vollständigen verteilten Ausführungspfad.
+
 Die bestehende Analyse-Registry unterscheidet jetzt angenommene wartende Vorgänge
 (`QUEUED`) von tatsächlich gestarteten Analysen (`RUNNING`). Direkte Vollanalysen,
 Streaming und Portfolio-Analysen nutzen an dieser Stelle dieselbe prozesslokale
@@ -79,7 +86,7 @@ Die benutzerbezogene Live-Grenze begrenzt nicht die Zahl gespeicherter Portfolio
 Jobs. Ein großer Batch verarbeitet seine Anforderungen weiterhin nacheinander.
 Eine vollständig faire persistente Dispatch-Queue wird damit nicht behauptet.
 
-**Für installationsweite Grenzen nur eine ausführende Anwendungsinstanz verwenden.**
+**Im lokalen Modus gelten die lokalen Grenzen nur mit einer ausführenden Instanz installationsweit.**
 Live-Status und Limits sind prozesslokal, nicht über mehrere Rancher-Pods verteilt.
 Eine gemeinsame Datenbank allein reicht dafür nicht. Das Profil dokumentiert
 diese Grenze; es erkennt oder verbietet zusätzliche Pods nicht automatisch.

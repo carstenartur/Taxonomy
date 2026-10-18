@@ -479,9 +479,8 @@ Nach der Materialisierung zeichnet der `RepositoryStateService` den Projektions-
 
 Das System verfolgt, ob die Datenbankprojektion und der Suchindex mit dem Git-HEAD synchron sind:
 
-Die Git-Statusleiste am oberen Rand zeigt automatisch den Synchronisationsstatus. Bei Veralterung erscheint ein Warnindikator.
+Öffnen Sie **Status** in der Navigationsleiste, um die Git-Synchronisationsindikatoren einschließlich veralteter Projektion und Indizierung anzuzeigen.
 
-![Git-Statusleiste](../images/43-git-status-bar.png)
 
 | Feld | Bedeutung |
 |---|---|

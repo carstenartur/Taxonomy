@@ -16,7 +16,7 @@
 
 Das System untersucht den ausgewählten Taxonomieumfang hierarchisch und erhält Teilergebnisse, Begründungen und Fortschritt. Bewertete, ausgeschlossene, offene und nicht ausgewählte Knoten sind zu unterscheiden; nicht jeder Katalogknoten erhält eine eigene Modellbewertung. Ein vollständiger Lauf kann typisierte Architekturbeziehungen zur Prüfung und zum Export vorschlagen.
 
-![Bewerteter Taxonomiebaum](../images/15-scored-taxonomy-tree.png)
+![Frühere Illustration eines bewerteten Baums mit Beispieldaten](../images/15-scored-taxonomy-tree.png)
 
 **Bereit für mehr?** Lesen Sie weiter für die vollständige Anleitung, oder springen Sie zu [Architekturansicht](#7-architecture-view), um zu erfahren, wie die Architektur generiert wird.
 
@@ -158,9 +158,9 @@ Der **Taxonomy Architecture Analyzer** unterstützt Architektur- und Anforderung
 | Qualitätsmetriken für Beziehungsvorschläge anzeigen | Rechtes Panel → 📊 Quality Dashboard Panel |
 | Anforderungsabdeckung erfassen und analysieren | Rechtes Panel → 📋 Requirement Coverage Panel |
 | Taxonomie-Beziehungen durchsuchen, erstellen oder löschen | Rechtes Panel → 🔗 Relations Browser Panel |
-| Ein Diagramm oder Bewertungsbogen exportieren | Linkes Panel → Export-Schaltflächen (erscheinen nach der Analyse) |
-| Analyse als JSON speichern | Linkes Panel → Export-Schaltflächen → 📥 JSON |
-| Eine gespeicherte Analyse laden | Linkes Panel → 📤 Load Scores Schaltfläche |
+| Ein Diagramm oder Bewertungsbogen exportieren | **Architektur → Export** (Formate abhängig von Ergebnissen und Fähigkeiten) |
+| Analyse als JSON speichern | **Architektur → Export → JSON** |
+| Eine gespeicherte Analyse laden | **Architektur → Export → Load Scores** |
 | Benutzerkonten oder Servereinstellungen verwalten | **Einstellungen** (⚙) in der Navigationsleiste öffnen; Admin-Einträge richten sich nach den Serverfunktionen |
 
 > Für die REST-API-Referenz, die von Entwicklern und Integratoren verwendet wird, siehe [API-Referenz](API_REFERENCE.md).
@@ -186,7 +186,6 @@ Melden Sie sich über die konfigurierte lokale Anmeldung oder Keycloak/OIDC an. 
 
 Klicken Sie auf **Got it — let's start!**, um das Overlay zu schließen. Das Overlay wird bei nachfolgenden Besuchen nicht mehr angezeigt (wird im localStorage Ihres Browsers gespeichert). Um das Onboarding zurückzusetzen, öffnen Sie die Browser-Konsole und führen Sie `TaxonomyOnboarding.reset()` aus.
 
-![Vollständiges Seitenlayout](../images/01-full-page-layout.png)
 
 ### KI-Verfügbarkeit prüfen
 
@@ -210,8 +209,6 @@ Das linke Panel (breitere Spalte) zeigt den **Taxonomiebaum** an. Dies ist der v
 Am oberen Rand des linken Panels finden Sie:
 
 - **Ansichtsumschalter-Schaltflächen:** 📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary — wechseln Sie zwischen verschiedenen Visualisierungen der Taxonomie.
-- **Export-Schaltflächen** (erscheinen nur nach einer erfolgreichen Analyse): 📥 SVG | 📥 PNG | 📥 PDF | 📥 CSV | 📥 JSON | 📥 Visio | 📥 ArchiMate | 📥 Mermaid
-- **Load Scores-Schaltfläche** (immer sichtbar): 📤 Load Scores — importiert eine zuvor gespeicherte JSON-Analysedatei
 - **Expand All / Collapse All** — alle Knoten in der aktuellen Ansicht auf- oder zuklappen.
 - **Taxonomie-Stamm-Auswahl** (nur Baumansicht) — wählen Sie, welcher Taxonomie-Stamm angezeigt werden soll.
 - **Descriptions-Umschalter** — Beschreibungstext für jeden Knoten ein- oder ausblenden.
@@ -222,6 +219,8 @@ Jede Taxonomieknoten-Zeile zeigt:
 - **Knotenaktionen (⋯)** — verfügbare Aktionen eines Knotens öffnen, darunter Begründung und Graph-Werkzeuge.
 
 ![Linkes Panel — Taxonomiebaum in Listenansicht](../images/02-left-panel-list-view.png)
+
+Exporte und das Laden gespeicherter Analysen befinden sich unter **Architektur → Export**. **Load Scores** ist innerhalb dieses Bereichs auch ohne vorhandene Bewertungen verfügbar.
 
 ### Rechtes Panel — Analyse und Werkzeuge
 
@@ -242,7 +241,6 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 - **LLM-Diagnose-Panel** (nur Admin, einklappbar) — Verbindungstest und Statistiken.
 - **Prompt-Vorlagen-Editor** (nur Admin, einklappbar) — LLM-Prompt-Vorlagen anzeigen und bearbeiten.
 
-![Rechtes Panel — Standardzustand](../images/03-right-panel-default.png)
 
 ### Navigationsleiste
 
@@ -257,7 +255,7 @@ Die Navigationsleiste am oberen Rand der Seite enthält:
 
 ### Dunkelmodus
 
-Klicken Sie auf die **🌙** (Mond)-Schaltfläche in der Navigationsleiste, um in den Dunkelmodus zu wechseln. Klicken Sie auf **☀️** (Sonne), um zum Hellmodus zurückzukehren. Ihre Einstellung wird in Ihrem Browser gespeichert und bleibt über Sitzungen hinweg erhalten.
+Öffnen Sie **Einstellungen** und wählen Sie **🌙** (Mond), um in den Dunkelmodus zu wechseln. Klicken Sie auf **☀️** (Sonne), um zum Hellmodus zurückzukehren. Ihre Einstellung wird in Ihrem Browser gespeichert und bleibt über Sitzungen hinweg erhalten.
 
 ---
 
@@ -288,7 +286,7 @@ Tipps für gute Anforderungen:
 4. Der Fortschritt erscheint im Analyse-Status direkt im Analysebereich. Sobald Ergebnisse eintreffen, zeigt der Taxonomiebaum im linken Panel farbcodierte Bewertungsbalken.
 5. Nach Abschluss zeigt der Analyse-Status eine Zusammenfassung; die Export-Schaltflächen werden verfügbar.
 
-![Bewerteter Taxonomiebaum](../images/15-scored-taxonomy-tree.png)
+![Frühere Illustration eines bewerteten Baums mit Beispieldaten](../images/15-scored-taxonomy-tree.png)
 
 ### Neu beginnen, abbrechen und den Arbeitsentwurf speichern
 
@@ -393,7 +391,7 @@ Das eingehende LLM-Kontingent gilt je stabiler authentifizierter Identität und 
 
 ### Sichtbarkeit der Export-Schaltflächen
 
-Die Export-Schaltflächen (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) erscheinen nur, wenn Analysebewertungen größer als 0 vorhanden sind. Wenn keine Analyse durchgeführt wurde oder alle Bewertungen 0 sind, werden die Export-Schaltflächen ausgeblendet und stattdessen der Hinweistext **„📋 Analyze first to enable exports"** angezeigt. Die **📤 Load Scores**-Schaltfläche ist immer sichtbar und kann verwendet werden, um eine vorherige Analyse wiederherzustellen.
+Die Export-Schaltflächen (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) erscheinen nur, wenn Analysebewertungen größer als 0 vorhanden sind. Wenn keine Analyse durchgeführt wurde oder alle Bewertungen 0 sind, werden die Export-Schaltflächen ausgeblendet und stattdessen der Hinweistext **„📋 Analyze first to enable exports"** angezeigt. Unter **Architektur → Export** ist **📤 Load Scores** auch ohne vorhandene Bewertungen verfügbar und kann eine frühere Analyse wiederherstellen.
 
 ---
 
@@ -609,7 +607,7 @@ Die **erweiterte Ausfallauswirkung** ergänzt die Standard-Ausfallauswirkungsana
 - **Wie viele Anforderungen** betroffen sind
 - Einen aggregierten **Risiko-Score**, der die Anzahl der betroffenen Anforderungen mit der Relevanz jedes Elements kombiniert
 
-Dies ist über die REST-API unter `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3` verfügbar. Siehe die [API-Referenz](API_REFERENCE.md#85-enriched-failure-impact) für vollständige Details.
+Dies ist über die REST-API unter `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3` verfügbar. Siehe die [API-Referenz](API_REFERENCE.md#ausfallwirkungsanalyse) für vollständige Details.
 
 > **Tipp:** Verwenden Sie die erweiterte Ausfallauswirkung zusammen mit dem Anforderungsabdeckungs-Panel (§11c), um zu priorisieren, welche Ausfälle das höchste Geschäftsrisiko tragen.
 
@@ -720,7 +718,9 @@ Die Spalte **Confidence** zeigt, wie stark die KI davon überzeugt ist, dass die
 
 Nach einer erfolgreichen Analyse erscheinen Export-Schaltflächen am oberen Rand des linken Bereichs. Diese Schaltflächen sind nur sichtbar, wenn Analyse-Bewertungen vorhanden sind.
 
-![Export-Schaltflächen](../images/23-export-buttons.png)
+![Frühere Komponentenillustration der Exportgruppen](../images/23-export-buttons.png)
+
+Diese ältere Illustration zeigt die Gruppierung, nicht die heutige vollständige Formatliste oder Unterstützungskennzeichnung. Die installierten Fähigkeiten stehen unter **Architektur → Export**.
 
 Der Export-Tab bietet ein dediziertes Panel mit allen verfügbaren Exportformaten, gegliedert nach Kategorie (Diagramme, Daten, Berichte) sowie Importoptionen:
 
@@ -798,7 +798,7 @@ Diese Datei kann mit Kollegen geteilt oder zu einem späteren Zeitpunkt über di
 
 ### Laden einer gespeicherten Analyse (Import)
 
-Klicken Sie auf **📤 Load Scores** (immer sichtbar in der Werkzeugleiste, neben den Export-Schaltflächen), um eine zuvor exportierte `SavedAnalysis`-JSON-Datei zu laden. Nach Auswahl der Datei:
+Öffnen Sie **Architektur → Export → 📤 Load Scores** (dort auch ohne vorhandene Bewertungen verfügbar), um eine zuvor exportierte `SavedAnalysis`-JSON-Datei zu laden. Nach Auswahl der Datei:
 
 1. Der Text der Geschäftsanforderung wird im Textfeld wiederhergestellt.
 2. Der Taxonomie-Baum wird mit den importierten Bewertungen dargestellt.
@@ -935,7 +935,7 @@ Screenshots der einzelnen Suchmodi in Aktion:
 
 ### Embedding-Status
 
-Das Badge **🧠 Embeddings** in der Navigationsleiste zeigt an, ob semantische Embeddings verfügbar sind:
+Das Badge **🧠 Embeddings** im Menü **Status** zeigt an, ob semantische Embeddings verfügbar sind:
 
 - **🧠 Embeddings: N nodes** (blau) — Embeddings sind geladen; die Modi Semantic, Hybrid und Graph sind aktiviert.
 - **🧠 Embeddings: unavailable** (grau) — Embeddings nicht geladen; nur die Volltextsuche ist verfügbar.
@@ -1098,7 +1098,7 @@ Die Antwort enthält:
 
 > **Tipp:** Verwenden Sie nach einer Lückenanalyse die Funktion „Relationsvorschläge" (§9), um neue Relationen vorzuschlagen, die die identifizierten Lücken füllen.
 
-Siehe die [API-Referenz](API_REFERENCE.md#13-architecture-gap-analysis) für die vollständige Anfrage-/Antwort-Dokumentation.
+Siehe die [API-Referenz](API_REFERENCE.md#lückenanalyse) für die vollständige Anfrage-/Antwort-Dokumentation.
 
 ---
 
@@ -1147,7 +1147,7 @@ Die Antwort enthält:
 
 > **Tipp:** Verwenden Sie die Empfehlungs-Pipeline nach einer ersten Analyse, um einen umfassenden Überblick darüber zu erhalten, was vorhanden ist, was fehlt und was dagegen unternommen werden sollte.
 
-Siehe die [API-Referenz](API_REFERENCE.md#14-architecture-recommendation) für die vollständige Anfrage-/Antwort-Dokumentation.
+Siehe die [API-Referenz](API_REFERENCE.md#empfehlungen) für die vollständige Anfrage-/Antwort-Dokumentation.
 
 ---
 
@@ -1204,7 +1204,7 @@ Für jedes Muster können Sie sehen:
 > **Tipp:** Unvollständige Muster offenbaren spezifische architektonische Lücken. Verwenden Sie die fehlenden Schritte
 > als Orientierung, welche Relationen als Nächstes erstellt werden sollten — entweder manuell oder über die Relationsvorschlags-Pipeline (§9).
 
-Siehe die [API-Referenz](API_REFERENCE.md#15-architecture-pattern-detection) für die vollständige Anfrage-/Antwort-Dokumentation.
+Siehe die [API-Referenz](API_REFERENCE.md#mustererkennung) für die vollständige Anfrage-/Antwort-Dokumentation.
 
 ---
 
@@ -1509,7 +1509,6 @@ Siehe [§12 Versionen-Tab](#12-versions-tab) für die Verwendung der Suche in de
 
 Der **🕓 Versions**-Tab bietet eine visuelle Oberfläche zum Durchsuchen, Verwalten und Zurücksetzen von Architekturversionen. Klicken Sie auf **🕓 Versions** in der oberen Navigationsleiste, um ihn zu öffnen.
 
-![Versionen-Tab — Verlaufszeitachse](../images/41-versions-tab-history.png)
 
 ### Branch-Auswahl
 
@@ -1666,12 +1665,9 @@ Die Toast-Benachrichtigung verschwindet automatisch nach 5 Sekunden.
 
 ### Arbeitsbereich-Benutzer-Badge
 
-In der Navigationsleiste (oben rechts) zeigt das **Arbeitsbereich-Badge** Ihren Benutzernamen und den aktuellen Branch an. Die Farbe des Badges ändert sich je nach Zustand:
-
-![Arbeitsbereich-Benutzer-Badge](../images/45-workspace-user-badge.png)
-
-- **Blau** — Normal, Arbeitsbereich ist sauber
-- **Gelb** — Arbeitsbereich hat ungespeicherte/unveröffentlichte Änderungen (unsauberer Zustand)
+Öffnen Sie **Status** in der Navigationsleiste, um das Workspace-/Benutzerbadge
+anzuzeigen. Sein Text nennt den Benutzer; der Tooltip enthält Workspace und aktuellen
+Branch. Git- und Kontextdetails im selben Menü zeigen Version und Bearbeitungskontext.
 
 ---
 
@@ -1679,13 +1675,12 @@ In der Navigationsleiste (oben rechts) zeigt das **Arbeitsbereich-Badge** Ihren 
 <a id="guide-section-20"></a>
 ## 13. Git-Status und Kontextleiste
 
-Zwei horizontale Leisten oben auf der Seite bieten einen schnellen Überblick über den aktuellen Architekturzustand.
+Öffnen Sie **Status** in der Navigationsleiste, um Git- und Kontextdetails zum aktuellen Architekturzustand bei Bedarf anzuzeigen.
 
 ### Git-Statusleiste
 
-Die **Git-Statusleiste** erscheint direkt unter der Navigationsleiste. Sie zeigt:
+Die **Git-Statusleiste** befindet sich im Menü **Status**. Sie zeigt:
 
-![Git-Statusleiste](../images/43-git-status-bar.png)
 
 | Indikator | Bedeutung |
 |---|---|
@@ -1701,7 +1696,7 @@ Wenn die Projektion **STALE** anzeigt, bedeutet dies, dass die DSL geändert, ab
 
 ### Kontext-Navigationsleiste
 
-Die **Kontextleiste** erscheint unterhalb der Git-Statusleiste, wenn Sie zwischen verschiedenen Architekturkontexten navigieren (z. B. beim Anzeigen einer historischen Version, Erkunden eines Varianten-Branches oder Vergleichen von Branches).
+Die **Kontextleiste** gehört zum Menü **Status** und beschreibt den ausgewählten Architekturkontext, etwa eine historische Version, Variante oder einen Vergleich. Die folgende ältere Komponentenillustration erklärt ihre Felder; die damalige Seitenposition entspricht nicht der aktuellen Navigation.
 
 ![Kontext-Navigationsleiste](../images/44-context-bar.png)
 
@@ -1731,9 +1726,9 @@ Administrationsfunktionen erfordern die passende serverseitige Rolle. Standardbe
 > 📖 Für eine umfassende Anleitung zu allen KI-Anbietern, anbieterspezifischer Überschreibung pro Anfrage, Mock-Modus, Diagnose-API und Ratenbegrenzung siehe **[AI Providers](AI_PROVIDERS.md)**.
 > Für die Verwaltung von Laufzeiteinstellungen (LLM-Einstellungen, DSL-Konfiguration, Größenbeschränkungen) siehe **[Preferences](PREFERENCES.md)**.
 
-### KI-Statusanzeige (🟢 / 🔴 in der Navigationsleiste)
+### KI-Statusanzeige (im Menü Status)
 
-Das Badge in der Navigationsleiste zeigt an, ob ein LLM-Anbieter verbunden ist:
+Das Badge im Menü **Status** zeigt die gemeldete Anbieterbereitschaft an:
 
 | Badge | Zustand | Bedeutung |
 |---|---|---|
@@ -1988,7 +1983,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 ### Die Schaltfläche „Analyze with AI" ist deaktiviert oder ausgegraut
 
-**Ursache:** Kein LLM-Anbieter ist konfiguriert oder verfügbar. Das KI-Status-Badge in der Navigationsleiste wird 🔴 rot sein.
+**Ursache:** Kein LLM-Anbieter ist konfiguriert oder verfügbar. Prüfen Sie das KI-Status-Badge im Menü **Status**.
 
 **Maßnahme:** Kontaktieren Sie Ihren Administrator, um die LLM-Anbieterkonfiguration zu überprüfen (`GEMINI_API_KEY`, `OPENAI_API_KEY` oder `LLM_PROVIDER=LOCAL_ONNX`).
 

@@ -1,47 +1,61 @@
-# Historische Bildschirmnachweise des Referenzszenarios
+# Historische Bildschirmillustrationen
 
-Die folgenden unveränderten Aufnahmen dokumentieren den damaligen Quellstand.
-Sie sind keine aktuellen Produktabbildungen. Frühere Testbezeichnungen innerhalb
-der Bilder und Nachweispfade werden nicht nachträglich retuschiert oder umgedeutet.
-Der aktuelle Ablauf steht in der [Szenario-Abnahme](../testing/scenario-acceptance.md).
+## Herkunft der früheren Szenariobilder
 
-## Echte Bilder des Referenzlaufs
+Die folgenden PNGs werden als ältere Illustrationen aufbewahrt. Ihre genaue
+Zuordnung zu einem Quellstand oder Testlauf ist derzeit **nicht verifiziert**.
+Beim Abgleich am 18. Oktober 2026 stimmen alle fünf Dateien nicht mit den
+SHA-256-Werten des [früheren Laufmanifests](civilian-acceptance-evidence.json) überein.
+Dieses Manifest beschreibt einen früheren CI-Artefaktbestand; es ist kein Nachweis
+für die heute eingecheckten Bilddateien.
 
-Diese unveränderten Browserbilder stammen aus dem erfolgreichen
-[CI-Lauf 35475880662](https://github.com/carstenartur/Taxonomy/actions/runs/35475880662).
-Ergebnis- und Architekturansichten verwenden Snapshot `bfc86dc4-8fa2-4ad6-8363-48cdc5363e5b`;
-Anforderung und Projekt wurden zuvor in derselben Sitzung angelegt. Commit,
-Browser-Version, Abmessungen und SHA-256-Werte stehen im
-[Bildnachweis](../qa/civilian-acceptance-evidence.json).
+Auch die sichtbare Snapshot-Kennung widerspricht der früheren Zuordnung:
+`75-civilian-architecture.png` zeigt `3c2d7bbe-f477-44fa-a029-00d59508b837`,
+während das Manifest `bfc86dc4-8fa2-4ad6-8363-48cdc5363e5b` nennt. Deshalb werden
+diese Bilder weder diesem Lauf noch einer gemeinsamen Browsersitzung zugeschrieben.
+Das Manifest bleibt als historische Quelle unverändert; neue Bild-Hashes würden
+seine fehlende Zuordnung nicht reparieren.
 
-Vor dem Start: der nachvollziehbare zivile Anforderungstext und das gewählte
-Profil **Exhaustive**. Die Quellen stehen in der Szenariodatei, nicht in einem
-nachträglich erfundenen Importfragment.
+Die Bilder zeigen frühere Beispielzustände, keine aktuellen Bedienelemente,
+aktuelle Abnahme oder gemessene Qualität einer heutigen Modellanalyse.
+Der aktuelle Ablauf und seine Nachweise stehen in der
+[Szenario-Abnahme](../testing/scenario-acceptance.md).
 
-![Zivile Anforderung vor dem vollständigen Copilot-Lauf](../images/73-civilian-requirement.png)
+### Frühere Anforderungsansicht
 
-Nach dem Abschluss und Wiederöffnen: zwei erfolgreiche Durchläufe, der ausgewählte
-Snapshot und die zugehörige Ergebnisansicht. Die Profilauswahl oben ist die Vorgabe
-für einen nächsten Lauf; der abgeschlossene Auftrag belegt seine zwei Durchläufe
-im Statusbereich.
+![Ältere Anforderungsillustration; Herkunft nicht verifiziert](../images/73-civilian-requirement.png)
 
-![Abgeschlossener Copilot-Auftrag und ausgewählter Snapshot](../images/74-civilian-result.png)
+### Frühere Ergebnisansicht
 
-Die vollständige Workbench zeigt 38 Elemente und 44 Beziehungen. Die Übersicht
-bewahrt den Hierarchiekontext; für einzelne Bezeichnungen und Verbindungen sind
-Zoom, Suche und Fokus vorgesehen.
+![Ältere Ergebnisillustration; Herkunft nicht verifiziert](../images/74-civilian-result.png)
 
-![Gespeicherte zivile Kandidatenarchitektur mit Exportaktionen](../images/75-civilian-architecture.png)
+### Frühere Architekturansicht
 
-Der ausgewählte Hydrografiedienst und seine fünf direkten Nachbarn bilden die
-Fokusansicht mit sechs Knoten und 16 Beziehungen. Rechts bleiben Identität,
-Herkunft und der noch offene Review-Status sichtbar.
+![Ältere Architekturillustration; Herkunft nicht verifiziert](../images/75-civilian-architecture.png)
 
-![Fokus auf Hydrografiedienst, Nachbarn und Herkunftsinformationen](../images/76-civilian-focus.png)
+### Frühere Fokusansicht
 
-Die gescrollte mobile Ansicht verwendet echte 390 × 844 CSS-Pixel in Chrome-
-Geräteemulation. Die Bedienelemente umbrechen, und „Fit“ hält alle Knoten innerhalb
-der Zeichenfläche. Die Gesamtübersicht ist dabei bewusst klein; zum Lesen einzelner
-Elemente werden Zoom und Fokus benötigt. Dies ist kein Test auf einem physischen Telefon.
+![Ältere Fokusillustration; Herkunft nicht verifiziert](../images/76-civilian-focus.png)
 
-![Mobile Workbench mit umgebrochenen Bedienelementen und eingepasster Übersicht](../images/77-civilian-mobile.png)
+### Frühere mobile Ansicht
+
+![Ältere mobile Illustration; Herkunft nicht verifiziert](../images/77-civilian-mobile.png)
+
+## Weitere veraltete Bedienungsabbildungen
+
+Die aktuellen Benutzer- und Copilot-Leitfäden verwenden die folgenden Bilder nicht
+mehr als aktuelle Navigations- oder Exportanleitung. Die Dateien bleiben erhalten,
+damit historische Referenzen nicht stillschweigend auf andere Bildinhalte zeigen.
+
+| Dateien | Sichtbare Abweichung zur heutigen Oberfläche |
+|---|---|
+| `01-full-page-layout.png`, `03-right-panel-default.png` | Frühere Navigation und dauerhaft sichtbare Status-/Kontextleisten statt der heutigen Menüs und Statusdetails auf Abruf. |
+| `14-navbar-admin-lock.png` | Früherer Admin-Lock statt des heutigen Einstellungsmenüs. |
+| `41-versions-tab-history.png`, `45-workspace-user-badge.png` | Frühere Einbettung der Versions-/Workspace-Bedienelemente. |
+| `43-git-status-bar.png` | Früherer Seitenkopf mit injiziertem Beispiel-Commit; kein Nachweis eines echten Repositoryzustands. |
+| `71-copilot-architecture-workbench.png` | Direkte SVG-/PDF-Buttons statt heutiger Druckansicht und gruppiertem Exportmenü. |
+| `72-complete-copilot-run-result.png` | Getrennte Berichtsbuttons statt des gemeinsamen Entscheidungsbericht-Dialogs. |
+
+Aktuelle Aufnahmen entstehen durch die jeweiligen vorhandenen Testbesitzer.
+[Voraussetzungen, Befehle und Herkunftsregeln](../../.github/copilot-ref-screenshots.md)
+trennen Vollanwendungsaufnahmen, lokale Szenarien und Komponentenillustrationen.

@@ -29,10 +29,10 @@ not populate the UI.
 
 ## Files usually touched
 
-- `taxonomy-domain/.../model/RelationType.java` — new enum constant
-- `taxonomy-app/.../relations/service/RelationCompatibilityMatrix.java` —
+- `taxonomy-domain/src/main/java/com/taxonomy/model/RelationType.java` — new enum constant
+- `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationCompatibilityMatrix.java` —
   allowed source/target combinations
-- `taxonomy-dsl/.../validation/DslValidator.java` — DSL validation mirror
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java` — DSL validation mirror
 - `taxonomy-app/src/main/resources/templates/index.html` — both relation-type
   selectors
 - `taxonomy-domain/src/test/java/com/taxonomy/model/RelationTypeTest.java` —
@@ -44,7 +44,7 @@ Review these when the new type has special behavior:
 - `RelationValidationService`
 - `RelationCandidateService`
 - `RelationProposalService`
-- `AnalysisRelationGenerator`
+- `AnalysisRelationGenerator` in `taxonomy-analysis`
 - graph traversal, impact, coverage, or materialization services
 - import profiles and seed parsers that map external relation names
 - `taxonomy-knowledge/src/main/resources/data/relations.csv`
@@ -54,7 +54,7 @@ Review these when the new type has special behavior:
 
 ## Files usually not touched
 
-- `taxonomy-dsl/.../parser/TaxDslParser.java` — relation type names are carried as
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/parser/TaxDslParser.java` — relation type names are carried as
   strings; adding a simple enum-backed type normally needs no grammar change
 - `taxonomy-export/` — exporters generally handle relation types generically
 - `RelationApiController` — projected read endpoints are type-agnostic
@@ -135,31 +135,37 @@ Do not rely on `RelationType.ordinal()`. Persist and compare `name()` values onl
 
 ```bash
 # Domain enum contract
-./mvnw test -pl taxonomy-domain
+./mvnw -pl taxonomy-domain -am test
 
-# Application validation, Git commands, projected reads, UI contracts
-./mvnw test -pl taxonomy-app -am
+# Knowledge-owned validation, Git commands, and projected reads
+./mvnw -pl taxonomy-knowledge -am test
 
 # DSL parsing, validation, and round trips
-./mvnw test -pl taxonomy-dsl -am
+./mvnw -pl taxonomy-dsl -am test
+
+# Application composition and UI contracts when affected
+./mvnw -pl taxonomy-app -am test
 ```
 
 Relevant tests include:
 
-- `RelationTypeTest`
-- `RelationValidationServiceTest`
-- `RelationCompatibilityMatrixTest`, when present
-- `GitAuthoritativeRelationMutationServiceTest`
-- `RelationProjectionReadServiceTest`
-- `RelationApiControllerRepositoryScopeTest`
-- `RelationGitCommandUiContractTest`
-- `DslValidatorTest`
+- `RelationTypeTest` in `taxonomy-domain`
+- `RelationValidationServiceRepositoryContextTest`,
+  `GitAuthoritativeRelationMutationServiceTest`, `RelationProjectionReadServiceTest`,
+  and `RelationApiControllerRepositoryScopeTest` in `taxonomy-knowledge`
+- `RelationGitCommandUiContractTest` in `taxonomy-app`
+- `DslValidatorTest` in `taxonomy-dsl`
 - parser/serializer round-trip tests when DSL behavior changes
 - import/seed tests when mappings or seed data change
 
 Add at least one accepted combination and one rejected combination for the new
 relation type. Also prove that the exact enum name survives DSL and JSON
 round trips.
+
+Focused selections are iteration checks. Complete
+`./mvnw -B verify -Pci -DrunOnnxTests=true` and the applicable companion checks
+described in [Maven Verification](../MAVEN_VERIFICATION.md). UI choices, persistence,
+and cross-context behavior need their corresponding application verification.
 
 ---
 
@@ -171,7 +177,7 @@ round trips.
 - this task and the extension-points page — only if the extension workflow or
   API architecture changes
 - screenshots — only when a documented picker visibly enumerates all relation
-  types
+  types; follow [capture ownership and provenance rules](../../../.github/copilot-ref-screenshots.md)
 
 ---
 

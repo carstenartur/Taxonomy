@@ -165,10 +165,12 @@ Use the checked-in Maven Wrapper. A separately installed Maven version is neithe
 ```bash
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
-./mvnw -pl taxonomy-app -am spring-boot:run
+./mvnw -pl taxonomy-app -am package -DskipTests
+java -Dloader.path=taxonomy-app/target/features -jar taxonomy-app/target/taxonomy-app-*.jar --taxonomy.plugins.directory=taxonomy-app/target/plugins
 ```
 
-Open `http://localhost:8080`.
+Open `http://localhost:8080`. Run these commands from the repository root; the
+feature and plugin directories contain the artifacts staged by Maven.
 
 On a new local database, the application creates the `admin` account with a **random one-time bootstrap password** in a uniquely named owner-only temporary file. The startup log contains only the file path. Read the file once, sign in, and replace the password immediately; the application removes the file after the committed administrator password change. No reusable password is published in this repository.
 
@@ -176,14 +178,16 @@ To provide the initial password explicitly for local development:
 
 ```bash
 export TAXONOMY_ADMIN_PASSWORD='use-a-unique-local-development-secret'
-./mvnw -pl taxonomy-app -am spring-boot:run
+./mvnw -pl taxonomy-app -am package -DskipTests
+java -Dloader.path=taxonomy-app/target/features -jar taxonomy-app/target/taxonomy-app-*.jar --taxonomy.plugins.directory=taxonomy-app/target/plugins
 ```
 
 To browse without loading or downloading the embedding model:
 
 ```bash
 export TAXONOMY_EMBEDDING_ENABLED=false
-./mvnw -pl taxonomy-app -am spring-boot:run
+./mvnw -pl taxonomy-app -am package -DskipTests
+java -Dloader.path=taxonomy-app/target/features -jar taxonomy-app/target/taxonomy-app-*.jar --taxonomy.plugins.directory=taxonomy-app/target/plugins
 ```
 
 The local command starts plain HTTP on port 8080. Do not expose that port directly to the internet.
@@ -222,7 +226,7 @@ Canonical Maven CI profile, including integration, browser, quality, coverage, a
 
 Full reproduction of every required CI check with only Java and Maven installed
 is not yet achieved. The remaining runtime and lifecycle gaps are documented in
-[Maven Verification Authority](docs/dev/MAVEN_VERIFICATION.md#remaining-gaps-in-the-javamaven-only-requirement).
+[Maven Verification Authority](docs/dev/MAVEN_VERIFICATION.md#remaining-gaps-in-the-javamaven-only-provisioning-requirement).
 
 Focused profiles include:
 
@@ -262,7 +266,7 @@ The build generates:
 
 ## Architecture
 
-Taxonomy is a **modular monolith with one deployable Spring Boot application**.
+Taxonomy is a **modular monolith built as one executable Spring Boot application**.
 The Maven reactor contains twenty child modules: six framework-free foundations, a plugin runtime, an external plugin,
 eight runtime feature libraries, the application composition root, and three build/tooling modules.
 
@@ -270,18 +274,21 @@ eight runtime feature libraries, the application composition root, and three bui
 
 This is **Taxonomy's own application architecture**, not an architecture model
 produced by the workbench. Arrows describe logical collaboration, not a complete
-Maven dependency graph. All internal groups run in the same Spring Boot application.
+Maven dependency graph. The diagram shows the default local execution mode.
+The same application image also supports optional Artemis-based analysis with
+separate coordinator and worker processes; Maven modules are not separate services.
 
 ```mermaid
 flowchart TB
     Browser["Browser / REST client"] --> App["Application composition<br/>HTTP, security, scope resolution"]
     App --> Portfolio["Portfolio and analysis<br/>Requirements, jobs, review snapshots"]
     Portfolio --> Knowledge["Knowledge<br/>Catalogue, relations, search"]
-    Portfolio --> Architecture["Architecture<br/>Derivation, diagrams, reports"]
+    Portfolio --> Architecture["Architecture: derivation and report models"]
+    Portfolio --> Reporting["Reporting: rendering and previews"]
     App --> Workspace["Workspace and editor<br/>Semantic journal, explicit Git checkpoints"]
     App --> Interop["Interoperability<br/>Reviewed external exchanges"]
     Interop --> Workspace
-    Architecture --> Delivery["Templates and export<br/>Validated templates, neutral codecs"]
+    Reporting --> Templates["Templates: validation and materialization"]
     Portfolio -.->|optional provider calls| AI["External LLM provider"]
 ```
 
@@ -289,6 +296,15 @@ The [architecture guide](docs/en/ARCHITECTURE.md) ([Deutsch](docs/de/ARCHITECTUR
 separates feature-module dependencies, the requirement workflow, and persistence
 responsibilities. It distinguishes immutable analysis snapshots, editable workspace
 revisions, the durable semantic journal, and explicit Git checkpoints.
+
+For distributed execution, see [analysis execution](docs/en/ARCHITECTURE.md#analysis-execution-and-deployment)
+and the [Artemis operator guide](docs/en/OPERATIONS_GUIDE.md#external-artemis-analysis-operations).
+The database retains durable operation state; the external broker delivers tasks
+to workers, which can be assigned selected taxonomy roots. This does not make
+every web session or background job safe for multiple web replicas.
+
+The [plugin guide](docs/dev/07-extension-points.md) describes built-in and external
+capabilities, the shared catalog and startup versus dynamic lifecycle rules.
 
 ### Module inventory
 

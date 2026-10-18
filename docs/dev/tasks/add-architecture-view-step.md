@@ -2,9 +2,18 @@
 
 ## Goal
 
-Add a new step to the architecture view generation pipeline — for example, a new
-scoring phase, a filtering step, or a new view assembly strategy that produces a
-specialised `RequirementArchitectureView`.
+Add a deterministic transformation to the ordered architecture-view pipeline in
+`taxonomy-architecture`, while preserving its shared context and output invariants.
+Start with [the pipeline extension contract](../07-extension-points.md#architecture-view-pipeline-steps).
+
+Check which construction path your caller uses first:
+
+- `RequirementArchitectureViewService.build(...)` runs the registered steps through
+  `ArchitectureViewPipeline.execute(...)`.
+- `buildFromEvidence(...)` uses `projectEvidence(...)` and
+  `EvidenceRelationProjection` directly. It validates the same view model but does
+  not execute the ordered step registry. Requirement-scoped evidence projection
+  needs changes and tests in that path when the requested behavior applies there.
 
 ---
 
@@ -12,19 +21,27 @@ specialised `RequirementArchitectureView`.
 
 | File | What to do |
 |---|---|
-| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/service/RequirementArchitectureViewService.java` | Add the new step to the assembly pipeline |
-| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/service/ArchitectureImpactSelector.java` | Modify element selection if the step changes which elements appear in a view |
+| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStep.java` | Implement the step contract as a Spring bean with a unique ID and order |
+| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepRegistry.java` | Read discovery, duplicate validation, and ordering rules |
+| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/ArchitectureViewContext.java` | Read the step's inputs and intermediate state |
+| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/ArchitectureViewPipeline.java` | Read execution and invariant validation; also owns the separate evidence projection entry point |
+| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/service/RequirementArchitectureViewService.java` | Stable facade; choose the relevant construction path |
 
 ---
 
 ## Files usually touched
 
-- `taxonomy-app/…/architecture/service/RequirementArchitectureViewService.java` — central pipeline; add/insert the new step
-- `taxonomy-app/…/architecture/service/ArchitectureImpactSelector.java` — element/relation selection logic
-- `taxonomy-app/…/architecture/service/EnrichedImpactService.java` — enrichment of impact elements (if the new step adds metadata)
-- `taxonomy-app/…/architecture/service/LayerRepresentativeSelector.java` — if the step changes layer representative selection
-- `taxonomy-domain/…/dto/RequirementArchitectureView.java` — add new fields to the view DTO only if the step produces new output that the UI needs
-- `taxonomy-domain/…/dto/ImpactElement.java` or `EnrichedImpactElement.java` — if the step annotates individual elements
+- A new implementation beside the existing steps in
+  `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/`.
+  Spring bean discovery registers it; ordinary additions do not need a new
+  hard-coded invocation in the facade.
+- `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineInvariantValidator.java`
+  — read and preserve anchor, element, relation, score, and node-limit contracts.
+- `taxonomy-architecture/src/main/java/com/taxonomy/architecture/service/ArchitectureImpactSelector.java`
+  or `LayerRepresentativeSelector.java` — when selection behavior changes.
+- `taxonomy-domain/src/main/java/com/taxonomy/dto/RequirementArchitectureView.java`,
+  `RequirementElementView.java`, or `RequirementRelationshipView.java` — only
+  when the public view needs additional output.
 
 ---
 
@@ -33,11 +50,11 @@ specialised `RequirementArchitectureView`.
 - `taxonomy-dsl/` — the view pipeline operates on scored results, not DSL content
 - `taxonomy-export/` — export consumes the final `RequirementArchitectureView`;
   export code changes only if you add new DTO fields that exports must render
-- `taxonomy-app/…/analysis/service/` — LLM analysis produces `AnalysisResult`;
+- `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/` — LLM analysis produces `AnalysisResult`;
   the view pipeline consumes it; the two stages are decoupled
-- `taxonomy-app/…/relations/service/` — relation data is read-only input to the pipeline
-- `taxonomy-app/…/controller/` — the architecture view controller delegates to the
-  service facade; no controller change needed unless you add a new endpoint
+- `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/` — relation data is input to the view
+- Controllers in their owning feature modules and application adapters — change
+  them only when the HTTP contract or cross-context composition changes
 
 ---
 
@@ -45,19 +62,23 @@ specialised `RequirementArchitectureView`.
 
 | Endpoint | Controller |
 |---|---|
-| `GET /api/architecture/view` | `ArchitectureSummaryApiController` |
-| `GET /api/architecture/impact` | `GapAnalysisApiController` |
-| `GET /api/architecture/recommendations` | `RecommendationApiController` |
+| `POST /api/analyze` | `AnalysisApiController` in `taxonomy-analysis`; can include an architecture view |
+| `GET /api/analyze-stream` | `AnalysisApiController` in `taxonomy-analysis`; analysis stream |
+| `POST /api/diagram/export/{formatId}` | `ExportApiController` in `taxonomy-app`; generic analysis-to-diagram adapter |
 
-The pipeline produces results consumed by these endpoints.
-In most cases, you do not need to add a new endpoint — extend the existing ones.
+The view service is an internal construction API used by analysis and composed
+export/report flows. Trace the consumer's construction path before changing it.
+Summary, gap, impact, and recommendation endpoints have their own service contracts;
+do not assume that every architecture response runs the step registry.
 
 ---
 
 ## Frontend module(s)
 
-- `taxonomy-app/src/main/resources/static/js/architecture.js` — renders the
-  architecture view; update only if the new step adds visible output fields
+- `taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js` — renders
+  the requirement architecture view
+- `taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js` —
+  renders the selected requirement's architecture
 - `taxonomy-app/src/main/resources/templates/index.html` — update the architecture
   panel section only if you add new UI elements
 
@@ -68,10 +89,10 @@ In most cases, you do not need to add a new endpoint — extend the existing one
 | DTO | Usage |
 |---|---|
 | `RequirementArchitectureView` | The final view assembled by the pipeline |
-| `ImpactElement` | An element that appears in the view |
-| `EnrichedImpactElement` | An element annotated with metadata (risk, coverage, etc.) |
-| `ChangeImpactView` | Change impact across elements |
-| `GapAnalysisView` | Gap view between requirements and architecture |
+| `RequirementElementView` | An included element, relevance, hierarchy, and presence reasons |
+| `RequirementRelationshipView` | A relationship within the final view |
+| `RelationSearchReport` | Requirement-scoped evidence retained by evidence projection |
+| `AnalysisResult` | Analysis output that can carry the architecture view |
 
 Add new fields to existing DTOs only if the step produces genuinely new data.
 Avoid adding nullable fields as a shortcut — consider whether a new DTO is cleaner.
@@ -81,14 +102,30 @@ Avoid adding nullable fields as a shortcut — consider whether a new DTO is cle
 ## Tests to run
 
 ```bash
-# App module unit tests
-./mvnw test -pl taxonomy-app
+# Architecture-owned unit and contract tests, including needed sibling modules
+./mvnw -pl taxonomy-architecture -am test
+
+# Application composition and endpoint tests when their behavior changes
+./mvnw -pl taxonomy-app -am test
 ```
 
-Relevant test classes:
-- `RequirementArchitectureViewServiceTest` — add a test for the new step's output
-- `GapAnalysisApiControllerTest` — end-to-end pipeline tests
-- `ReportApiControllerTest` — report generation tests that may use the view
+Relevant existing tests:
+
+- `taxonomy-architecture/src/test/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepRegistryTest.java`
+  — registration and ordering
+- `taxonomy-architecture/src/test/java/com/taxonomy/architecture/pipeline/ArchitectureViewPipelineTest.java`
+  and `ArchitecturePipelineStepContextWriteTest.java` — execution and invariants
+- `taxonomy-architecture/src/test/java/com/taxonomy/architecture/pipeline/EvidenceRelationProjectionTest.java`
+  — evidence-bound construction
+- `taxonomy-app/src/test/java/com/taxonomy/ArchitectureViewTests.java` — composed
+  view behavior; its existing cases explicitly select the legacy propagation path
+- `taxonomy-app/src/test/java/com/taxonomy/composition/report/ReportApiControllerCompositionTest.java`
+  — when report composition is affected
+
+These commands support iteration. Finish with
+`./mvnw -B verify -Pci -DrunOnnxTests=true` and the applicable companion gates in
+[Maven Verification](../MAVEN_VERIFICATION.md); selected-module tests do not
+establish complete browser, database, or full-reactor verification.
 
 ---
 
@@ -98,15 +135,15 @@ Relevant test classes:
   add it to the "Architecture View Generation Pipeline" section
 - `docs/en/DECISION_PIPELINE.md` — update the pipeline description
 - Screenshots: regenerate the architecture view screenshot if the new step changes
-  visible output
+  visible output, following the [capture ownership and provenance rules](../../../.github/copilot-ref-screenshots.md)
 
 ---
 
 ## Common pitfalls
 
-1. **Pipeline ordering matters:** The steps in `RequirementArchitectureViewService`
-   run in sequence. Inserting a step in the wrong position can produce incorrect scores
-   or miss elements. Read the existing step order carefully before inserting.
+1. **Pipeline ordering matters:** The registry sorts enabled steps by their unique
+   order values. Anchor selection must run first. Preserve core invariant steps
+   and validate the context after each transformation.
 
 2. **Empty analysis result:** The pipeline must handle an empty `AnalysisResult`
    gracefully (no LLM response yet). Test with an empty result as well as a populated one.
@@ -115,6 +152,7 @@ Relevant test classes:
    input. Avoid `HashMap` or `Set` iteration where order matters — use `LinkedHashMap`
    or sorted collections.
 
-4. **`ArchitectureCommitIndex` is read-only input:** The commit index is built
-   separately by `CommitIndexService`. A new view step should read from it but
-   not modify it.
+4. **Evidence authority:** Keep original model assessments, effective relevance,
+   and the complete relation evidence distinct. View filtering must not mutate
+   the retained report or create new catalogue relations. An ordered step affects
+   only callers that execute that pipeline.

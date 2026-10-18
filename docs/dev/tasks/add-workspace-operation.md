@@ -19,27 +19,27 @@ selected changes to another user's workspace.
 
 ## Files usually touched
 
-- `taxonomy-workspace/…/workspace/service/WorkspaceManager.java` — orchestrates the operation
-- `taxonomy-workspace/…/workspace/controller/WorkspaceController.java` — REST endpoint
-- `taxonomy-workspace/…/workspace/service/WorkspaceResolver.java` — if the operation needs
+- `taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java` — orchestrates the operation
+- `taxonomy-workspace/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java` — REST endpoint
+- `taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java` — if the operation needs
   to resolve a workspace by name or context
-- `taxonomy-workspace/…/workspace/service/WorkspaceProjectionService.java` — if the operation
+- `taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceProjectionService.java` — if the operation
   produces a new projected view
-- `taxonomy-domain/…/dto/WorkspaceInfo.java` — if the operation returns new workspace metadata
-- `taxonomy-workspace/…/versioning/service/VersioningFacade.java` — if the operation involves
+- `taxonomy-domain/src/main/java/com/taxonomy/dto/WorkspaceInfo.java` — if the operation returns new workspace metadata
+- `taxonomy-workspace/src/main/java/com/taxonomy/versioning/service/VersioningFacade.java` — if the operation involves
   DSL content or Git operations (branching, merging, cherry-picking)
-- `taxonomy-workspace/…/versioning/service/SelectiveTransferService.java` — for cherry-pick style transfers between workspaces
+- `taxonomy-workspace/src/main/java/com/taxonomy/versioning/service/SelectiveTransferService.java` — for selective content transfers between contexts
 
 ---
 
 ## Files usually not touched
 
-- `taxonomy-domain/…/model/RelationType.java` — relation types are independent of workspace operations
+- `taxonomy-domain/src/main/java/com/taxonomy/model/RelationType.java` — relation types are independent of workspace operations
 - `taxonomy-dsl/` — DSL parser/serializer are independent; touch only if the operation
   reads or writes DSL content directly
 - `taxonomy-export/` — export is independent of workspace operations
-- `taxonomy-app/…/analysis/service/` — LLM analysis is independent of workspace management
-- `taxonomy-app/…/catalog/service/TaxonomyService.java` — taxonomy nodes are read-only;
+- `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/` — provider analysis is a separate capability
+- `taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/TaxonomyService.java` — catalogue import has separate authority;
   workspace operations do not modify the taxonomy catalog
 
 ---
@@ -50,21 +50,38 @@ selected changes to another user's workspace.
 |---|---|
 | `GET /api/workspace/list` | `WorkspaceController` |
 | `POST /api/workspace/create` | `WorkspaceController` |
+| `PUT /api/workspace/{id}/rename` | `WorkspaceController` |
+| `PUT /api/workspace/{id}/description` | `WorkspaceController` |
+| `POST /api/workspace/{id}/switch` | `WorkspaceController` |
+| `POST /api/workspace/{id}/archive` | `WorkspaceController` |
 | `DELETE /api/workspace/{id}` | `WorkspaceController` |
-| `POST /api/workspace/{id}/<operation>` | `WorkspaceController` (existing pattern) |
+| `POST /api/workspace/compare` | `WorkspaceController` |
+| `POST /api/workspace/provision` | `WorkspaceController` |
+| `POST /api/workspace/sync-from-shared` | `WorkspaceController` |
+| `POST /api/workspace/publish` | `WorkspaceController` |
 
-New workspace operations typically follow the pattern
-`POST /api/workspace/{id}/<operation-name>`.
+Choose the HTTP method and identity shape to match the operation's existing
+contract. Metadata operations address workspace IDs; provisioning, synchronization,
+publication, and context navigation also have workspace-scoped routes. Read
+`WorkspaceController` and `DslApiController` rather than assuming one generic URL
+pattern for all operations.
 
 ---
 
 ## Frontend module(s)
 
-- `taxonomy-app/src/main/resources/static/js/workspace.js` — workspace panel logic;
-  add button handler and API call
+- `taxonomy-app/src/main/resources/static/js/workspace/taxonomy-workspace-provisioning.js`
+  and `taxonomy-workspace-sync.js` — provisioning and synchronization controls
+- `taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-bar.js`,
+  `taxonomy-context-compare.js`, and `taxonomy-context-transfer.js` — context
+  navigation, comparison, and transfers
+- `taxonomy-app/src/main/resources/static/js/api/workspace-provisioning-api.js`
+  — existing provisioning API adapter
 - `taxonomy-app/src/main/resources/templates/index.html` — workspace panel section;
   add the button or menu item
-- i18n: add labels to both `messages.properties` and `messages_de.properties`
+- i18n: add labels to the appropriate English/German bundle pair under
+  `taxonomy-app/src/main/resources/i18n/`, such as `messages.properties` and
+  `messages_de.properties`
 
 ---
 
@@ -84,21 +101,32 @@ New workspace operations typically follow the pattern
 ## Tests to run
 
 ```bash
-# Workspace and application unit tests, including their required reactor modules
-./mvnw test -pl taxonomy-app -am
+# Workspace-owned behavior and contract tests, including needed sibling modules
+./mvnw -pl taxonomy-workspace -am test
 
-# Full verify if you changed the UI or application configuration
-./mvnw verify -DexcludedGroups="real-llm"
+# Application endpoint, persistence, security, and restart composition when affected
+./mvnw -pl taxonomy-app -am test
 ```
 
 `taxonomy-app` depends on `taxonomy-workspace`; `-am` includes the workspace
 library and its unit tests instead of requiring preinstalled sibling artifacts.
 Application-level endpoint, persistence and restart tests remain in `taxonomy-app`.
 
-Relevant test classes:
-- `WorkspaceControllerTest` — endpoint status codes, response shapes
-- `DslApiControllerTest` — if the operation involves DSL commits
-- `ConflictDetectionServiceTest` — if the operation involves merging or transferring changes
+Relevant existing tests:
+
+- `WorkspaceManagerTest`, `WorkspaceManagerBehaviorTest`, `WorkspaceResolverTest`,
+  `WorkspaceContextResolverTest`, and `RepositoryStateGuardTest` in
+  `taxonomy-workspace` — operation behavior, request identity, and write guards
+- `WorkspaceControllerBranchCoverageTest` in `taxonomy-workspace` — controller
+  branches; `WorkspaceControllerTest` in `taxonomy-app` — composed HTTP behavior
+- `ConflictDetectionServiceTest` and `SelectiveTransferServiceTest` in
+  `taxonomy-workspace` — merging and selective transfers
+- `DslApiControllerTest` in `taxonomy-app` — composed DSL/checkpoint operations
+
+These are focused iteration commands. Complete
+`./mvnw -B verify -Pci -DrunOnnxTests=true` and the applicable companion gates in
+[Maven Verification](../MAVEN_VERIFICATION.md). A module selection or the default
+`verify` lifecycle does not certify all browser, database, or restart scenarios.
 
 ---
 
@@ -106,29 +134,37 @@ Relevant test classes:
 
 - `docs/en/WORKSPACE_VERSIONING.md` — add the new operation to the workspace operations section
 - `docs/en/USER_GUIDE.md` — if the operation is user-facing, add a walkthrough
-- Screenshots: regenerate the workspace panel screenshot if it shows the list of operations
+- Screenshots: regenerate the workspace panel screenshot if it shows the list of
+  operations; follow [capture ownership and provenance rules](../../../.github/copilot-ref-screenshots.md)
 
 ---
 
 ## Common pitfalls
 
-1. **Workspace-scoped vs. system-level:** Operations on a user's own workspace are
-   straightforward. Operations that affect another user's workspace (e.g., admin
-   workspace eviction) require `ROLE_ADMIN` and must go through `SystemRepositoryService`,
-   not `WorkspaceManager`.
+1. **Roles and ownership:** Preserve both global authorization and workspace-owner
+   checks. The application-owned `AuthorizationRulesConfigurer` defines route
+   roles; read it before adding an operation. Administrative eviction is an
+   existing `WorkspaceController` → `WorkspaceManager` path, while system
+   repository operations have their own service contracts.
 
 2. **Git state guard:** `RepositoryStateGuard` enforces that certain operations
    cannot run while the repository is in a conflicted or rebasing state.
-   Wrap operations that modify Git content with the appropriate guard check.
+   Use its exact `WorkspaceContext` overload so actor, workspace, repository, and
+   branch cannot disagree; preserve read-only and operation-in-progress checks.
 
 3. **Terminology in the UI:** User-facing text must use workspace domain terms,
    not raw Git terms. See the Terminology Rules in
    [Developer Guide](../../en/DEVELOPER_GUIDE.md#terminology-rules).
 
-4. **Idempotency:** Workspace operations should be idempotent where possible.
-   For example, creating a workspace that already exists should return the existing
-   workspace, not an error.
+4. **Creation and provisioning differ:** `createWorkspace` allocates a new ID and
+   initially unprovisioned workspace. It does not deduplicate by display name.
+   Preserve operation-specific retry semantics and provisioning authority.
 
 5. **Context resolver:** The `WorkspaceContextResolver` maps the authenticated
    username to the correct workspace. Always use it rather than reading the username
    from a raw request parameter.
+
+6. **Editing and checkpoints:** Accepted editor operations are durable semantic
+   revisions; Git commits are explicit stable checkpoints. Preserve that separation
+   when an operation modifies architecture content; see
+   [ADR 0005](../../adr/0005-private-architecture-editor.md).

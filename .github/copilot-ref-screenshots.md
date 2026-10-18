@@ -4,60 +4,99 @@
 
 ---
 
-## How screenshots are generated
+## Maven entry point and activation
 
-Most screenshots are captured by `src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`. The persisted Copilot architecture workbench is owned by `ArchitectureWorkbenchUiIT.java` because that test creates and opens the real immutable analysis snapshot used by the browser, SVG and PDF paths.
-Changes to persisted-workbench controls or layout must remain in `ArchitectureWorkbenchUiIT` so the documentation image and the browser/SVG/PDF contract are verified from the same snapshot.
-The test class is **opt-in** — it only runs when the `generateScreenshots` system property is set:
+Run from the repository root through the existing `screenshots` profile:
 
 ```bash
-# Step 1 — build the application JAR (required by the container tests)
-./mvnw package -DskipTests
-
-# Step 2 — run the screenshot generator (screenshots 1–14, no LLM key needed)
-./mvnw failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
-
-# Step 2 (alternative) — run with LLM key to also capture screenshots 15–26
-GEMINI_API_KEY=<your-key> ./mvnw failsafe:integration-test \
-    -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+./mvnw -B verify -Pscreenshots -DgenerateScreenshots=true
 ```
 
-Generated PNG files are written to `docs/images/` and must be committed to the repository.
+The root POM selects `ScreenshotGeneratorIT`, `ArchitectureWorkbenchUiIT` and
+`CompleteCopilotSessionIT` and enables Failsafe. The normal lifecycle packages the
+application before the container tests and checks their results at `verify`.
+Do not replace it with a direct `failsafe:integration-test` goal.
 
-## How the test works
+Pass the explicit JVM activation value `true`: `ScreenshotGeneratorIT` checks for
+the presence of the `generateScreenshots` system property, while the two persisted
+acceptances guard their PNG writes with `Boolean.getBoolean("generateScreenshots")`.
+Omit the screenshot profile/property when captures are not requested; setting the
+property to `false` does not disable `ScreenshotGeneratorIT`'s presence condition.
 
-- A `GenericContainer` runs the application JAR in an `eclipse-temurin:21-jre-alpine` Docker image.
-- A `BrowserWebDriverContainer` runs headless Chrome (Selenium) in a sibling container on the same Docker network.
-- Both containers communicate over the shared `Network` using the alias `app` (i.e., `http://app:8080/`).
-- The app container is configured with `ADMIN_PASSWORD=testpassword123` so admin-only panels can be unlocked in tests.
-- `GEMINI_API_KEY` is forwarded from the host environment to the app container **only when it is present**.
-- The health-check wait strategy uses `/api/ai-status` (a public endpoint). Do **not** use `/api/diagnostics` — that endpoint returns HTTP 401 when `ADMIN_PASSWORD` is configured.
+These three owners require Java 21, the Maven Wrapper's dependencies and Docker.
+`CompleteCopilotSessionIT` also starts PostgreSQL in Docker. The checked-in POMs,
+`ContainerTestUtils` and documentation workflow own the pinned runtime, Selenium
+and model assets; initial provisioning needs their download access. All three
+owners use `LLM_MOCK=true`; no provider key or live model call is required.
 
-## Screenshot numbering convention
+Review the generated `docs/images/` files before retaining selected illustrations.
+Keep raw logs and complete capture evidence under `target/` or in CI artifacts.
+A successful command does not establish that every intended image was rewritten:
+check JUnit results, skipped tests and the actual output files.
 
-| Range | Requires LLM? | Description |
+## Capture owners and evidence boundaries
+
+All Java owners below are under `taxonomy-app/src/test/java/com/taxonomy/`.
+Use the complete filename to identify ownership: numeric prefixes are shared.
+
+| Owner | Output | Source boundary |
 |---|---|---|
-| `01` – `14` | No | Basic UI — page layout, all 5 view modes, panels, modals |
-| `15` – `40` | Yes (mock mode) | Scored states, architecture views, search, DSL editor, proposals |
-| `41` – `44` | No | Versions Tab, Git Status Bar, Context Bar |
-| `45` – `51` | No | Workspace UI: User Badge, Variant Modal, Variants Browser, Compare Modal, Copy Back, Read-Only, Context Bar with Origin |
-| `52` – `68` | No | Extended workspace: Sync Tab states, Transfer, Merge, History Search, Diff View |
-| `69`         | Yes (mock mode) | Scored Decision Map (populated with analysis results) |
-| `70`         | No              | Swagger UI (API Documentation)                        |
-| `71`         | Yes (mock mode) | Persisted Copilot architecture workbench from the owning snapshot acceptance |
-| `72`         | Yes (mock mode) | Complete persisted Copilot run result from `CompleteCopilotSessionIT` |
-| `73` – `77` | Spring HTTP playback | Example requirement, result, architecture, focus and mobile views from `ScenarioArchitectureAcceptanceTest` |
+| `ScreenshotGeneratorIT` | `01`–`70`, plus `71-rich-version-timeline.png`, `72-rich-variants-browser.png`, `73-cherry-pick-before.png`, `74-cherry-pick-after.png`, `75-preferences-diagram-policy.png` | General UI illustrations using the real catalogue and mock model. Some search, Git, workspace and status states use injected example HTML or fallback data. These images do not prove live-provider quality, index readiness or successful persistence. |
+| `ArchitectureWorkbenchUiIT` | `71-copilot-architecture-workbench.png` | Creates and opens a real immutable analysis snapshot with deterministic mock scores; checks browser controls and SVG/PDF model exports from that snapshot. |
+| `CompleteCopilotSessionIT` | `72-complete-copilot-run-result.png` | Packaged application, PostgreSQL and real persisted operations with deterministic mock model; checks cancellation, recovery, selected snapshot and result/export behavior. |
+| `ScenarioArchitectureAcceptanceTest` with `ScenarioBrowserWalkthrough` | `73-scenario-requirement.png` through `77-scenario-mobile.png`, plus native-package/publication captures `78`–`85` | Real Spring application, catalogue, provider pipeline, persistence and browser; only remote model HTTP responses are replaced by authored Spring playback. These are not recorded live-model outputs. |
 
-LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null)` when no key is present.
+Keep persisted-workbench changes in `ArchitectureWorkbenchUiIT` and complete-run
+result changes in `CompleteCopilotSessionIT`; do not assemble a second result page
+in the general generator. `ContainerTestUtils` builds the application image from
+the packaged JAR and its `plugins`/`features` directories, uses the pinned runtime
+image and connects the Selenium container to `http://taxonomy.test:8080/`.
+Credentials belong to disposable test setup, not to deployment instructions.
+The shared container helper waits for `/actuator/health/readiness`; the general
+generator additionally waits for authenticated `/api/status/startup` to report
+`ready`. Do not substitute AI availability or administrative diagnostics for
+catalogue readiness.
 
+The separate scenario profile enables browser capture with no provider secrets:
 
-The complete Copilot result screenshot is owned by `CompleteCopilotSessionIT.java`, because only that acceptance creates, recovers and opens the authoritative selected snapshot while retaining the terminal operation evidence.
+```bash
+# Docker/Selenium browser
+./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance
 
-The scenario acceptance is a separate test owner: it runs the real provider pipeline
-with only remote HTTP responses replaced by `MockRestServiceServer`. Its browser
-path is opt-in with `-DgenerateScreenshots=true` and requires no LLM credentials.
-See [the scenario acceptance guide](../docs/testing/scenario-acceptance.md) and
-`.github/workflows/scenario-acceptance.yml` for the command and artifact provenance.
+# Supported local Chrome/ChromeDriver browser
+./mvnw -B -ntp -pl taxonomy-app -am test -Ptest-local,scenario-acceptance
+```
+
+The local profile writes scenario images below
+`taxonomy-app/target/scenario-acceptance/screenshots/`; it does not make the three
+Docker-required screenshot ITs local. See the
+[scenario guide](../docs/testing/scenario-acceptance.md),
+[local-browser prerequisites](../docs/testing/docker-free-tests.md) and
+`.github/workflows/scenario-acceptance.yml`. Preserve `run.json`, `browser.json`,
+fixture identity, source revision and image hashes with the actual capture run.
+
+## Existing images are not automatically current evidence
+
+Check each retained image against its owning template and JavaScript before
+reusing it. For example, older `01`, `03`, `41` and `45` illustrations show the
+previous navigation/status layout. Current `index.html` uses File/Project menus,
+Settings and an on-demand Status menu; `taxonomy-onboarding.js` moves Git, context
+and workspace indicators into `#operationalContextDetails`. The retained `71`
+workbench image predates the Print view and grouped Export controls, and the `72`
+result image predates the shared decision-report dialog action. Capture replacements
+from their owners; do not edit an old image's version text or present it as a new run.
+The general generator now writes `14-navbar-settings.png`; a retained
+`14-navbar-admin-lock.png` is not evidence for the current Settings menu.
+A current test-owner path is a reproduction recipe, not proof of an older PNG's
+source revision. Without matching capture metadata, describe the image as an
+illustration and leave its exact source version unverified.
+
+The older `73`–`77-civilian-*.png` names are historical, not outputs of the current
+scenario owner. Their retained bytes do not match the hashes in
+`docs/qa/civilian-acceptance-evidence.json`; that manifest cannot currently establish
+their provenance. Recover the matching source artifacts or remove unsupported
+image attribution before citing that run. Do not replace manifest hashes merely
+to make the retained images appear verified.
 
 ## Adding a new screenshot
 
@@ -86,32 +125,54 @@ Maven/CI workflows.
 
 ### Full-application screenshots
 
-1. **Add a test method** to `ScreenshotGeneratorIT.java`:
+1. **Choose the existing owner** from the table above. For a general illustration
+   in `taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`:
    - Annotate with `@Test` and `@Order(N)` where `N` continues the existing sequence.
-   - If the screenshot requires a live LLM, add `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null, "Skipping: GEMINI_API_KEY not set");` as the first line.
+   - Use the existing deterministic model setup. Live-provider acceptance belongs
+     to its explicitly selected test path; screenshot generation must not consume
+     shared remote-provider quota.
    - Use `saveScreenshot("NN-my-feature.png")` for a full-viewport screenshot or `saveElementScreenshot(element, "NN-my-feature.png")` for an element-scoped screenshot.
    - Use `wait(N).until(ExpectedConditions....)` instead of `Thread.sleep()` for synchronisation.
    - To show a Bootstrap modal, call `showModalAndWait("myModalId")`.
    - To close a Bootstrap modal without timing issues, call `closeModalAndWait("myModalId")`.
 
-2. **Add the image reference** to `docs/USER_GUIDE.md` at the appropriate location:
-   ```markdown
-   ![Alt text](/docs/images/01-full-page-layout.png)
-   ```
+2. **Update the relevant localized guide** under `docs/en/` and `docs/de/`.
+   Identify mock/example data or historical captures in the surrounding text.
+   Image paths from those guides start with `../images/`; use the actual captured
+   filename and alt text describing its state.
 
-3. **Run the generator** locally (`./mvnw -B verify -Pscreenshots`) to produce the PNG file.
+3. **Run the owning Maven profile** using the commands above. Inspect the resulting
+   PNG, current labels, clipping, responsive layout and test report. Preserve the
+   real captured state and disclose any fixture boundary; do not fabricate healthy
+   readiness or successful operation evidence.
 
-   The Maven-owned `screenshots` profile runs both screenshot owners. Keep a snapshot-specific screenshot in `ArchitectureWorkbenchUiIT` instead of fabricating a second browser state in `ScreenshotGeneratorIT`.
-
-4. **Commit the PNG** to `docs/images/` alongside the test and documentation changes.
+4. **Retain selected PNGs** in `docs/images/` alongside the documentation change
+   and concise provenance. Keep full capture series and raw evidence in `target/`
+   or CI artifacts. If prerequisites prevent regeneration, report the gap and
+   remove or clearly qualify the stale illustration instead of claiming it passed.
 
 ## Automatic regeneration via GitHub Actions
 
-The manual `.github/workflows/documentation-screenshots.yml` workflow invokes the same Maven-owned `screenshots` profile, uploads the generated images for review and publishes changed PNGs only after the generation job succeeds.
+The manual `.github/workflows/documentation-screenshots.yml` workflow accepts
+trusted `main` invocations. It provisions Java, Docker/model assets and document
+renderers, runs `install -Pscreenshots`, then runs the separate
+`document-template-report-e2e` profile. A dependent publication job downloads the
+artifact and commits changed PNGs to `main` after generation succeeds.
+
+The artifact staging step copies every `docs/images/*.png`, including existing
+files. Artifact presence alone does not prove a particular image was regenerated;
+check the owning JUnit result and capture provenance.
 
 To trigger it manually from the GitHub UI: **Actions → Documentation Screenshots → Run workflow**.
 
-## Key Element IDs (for Selenium tests)
+## Current selectors (verify in the owning surface)
+
+General selectors come from `taxonomy-app/src/main/resources/templates/index.html`
+and its JavaScript; persisted-workbench selectors come from
+`templates/architecture-workbench.html`. Visibility depends on the active tab,
+role, menu and loaded data. Open the relevant menu before capturing its contents.
+The previous `adminLockBtn`, `adminModal` and `adminPasswordInput` IDs are absent;
+administration now follows authenticated role-based navigation.
 
 | Element | ID / Selector |
 |---|---|
@@ -132,21 +193,22 @@ To trigger it manually from the GitHub UI: **Actions → Documentation Screensho
 | Copilot workbench search | `#architectureSearch` |
 | Copilot workbench true fit | `#fitArchitecture` |
 | Relation Proposals panel | `#proposalsPanel` |
-| Admin lock button | `#adminLockBtn` |
-| Admin modal | `#adminModal` |
-| Admin password input | `#adminPasswordInput` |
+| File / Project menus | `#fileMenuButton`, `#projectMenuButton` |
+| Settings menu | `#applicationSettings` |
+| Administration / server settings links | `#adminNavTab`, `#preferencesNavTab` |
+| On-demand Status menu | `#operationalContextDetails` |
 | LLM Diagnostics panel | `#diagnosticsPanel` |
 | Prompt Template editor | `#promptEditor` |
 | Leaf Justification modal | `#leafJustificationModal` |
 | Propose Relations modal | `#proposeRelationsModal` |
-| Left panel card | `.col-lg-7 .card` |
-| Right panel column | `.col-lg-5` |
+| Left panel card | `#leftPanel > .card` |
+| Right panel column | `#rightPanel` |
 | Propose Relations buttons | `.proposal-btn` |
 | Node toggle buttons | `.tax-toggle` |
 | Leaf Justify buttons | `.tax-justify-btn` |
-| Match Legend card | `//div[contains(@class,'card')]//small[contains(text(),'Match legend')]/ancestor::div[contains(@class,'card')]` (XPath) |
 | Git Status Bar | `#gitStatusBar` |
 | Context Navigation Bar | `#contextBar` |
+| Workspace badge | `#workspaceUserBadge` |
 | Versions Tab pane | `#tab-versions` |
 | Versions Timeline | `#versionsTimeline` |
 | Versions Undo button | `#versionsUndoBtn` |
@@ -154,3 +216,9 @@ To trigger it manually from the GitHub UI: **Actions → Documentation Screensho
 | Save Version button | `#versionsSaveBtn` |
 | Version Title input | `#versionTitle` |
 | Version Description textarea | `#versionDescription` |
+| Workbench Export menu | `#architectureExportOptions` |
+| Workbench Print view | `#printArchitectureView` |
+| Workbench SVG / PDF download | `#downloadArchitectureSvg`, `#downloadArchitecturePdf` |
+| Complete-run operation | `#copilotOperation` |
+| Selected result tab / detail | `#analyses-tab`, `#snapshotDetail` |
+| Complete-run summary | `#snapshotResultOverview` |

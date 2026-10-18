@@ -31,7 +31,8 @@ Manual Copilot requires a ready provider but does **not** require `TAXONOMY_AI_C
 
 Every successful Copilot full analysis stores an immutable architecture snapshot. Open **Architecture** from the completed run to investigate that exact result in a read-only workbench with search, overview and focus modes, context filtering, zoom, true fit-to-content, fullscreen display, provenance, review state and evidence details.
 
-![Persisted Copilot architecture workbench](../images/71-copilot-architecture-workbench.png)
+
+The toolbar contains **Architecture editor**, **Print view** and an expandable **Export** menu. SVG/PDF and the available report/model exports are grouped in that menu.
 
 The browser, SVG download and PDF download use the same deterministic server-side scene and coordinates. The interactive browser controls change only visibility, selection and viewport; they do not silently recalculate or mutate the persisted architecture.
 
@@ -41,9 +42,8 @@ After a full analysis reaches an authoritative terminal state, Taxonomy reloads 
 
 The normal reading flow presents six provider-neutral indicators, the highest-priority architecture gaps, detected patterns and recommendation reasoning. Complete technical payloads remain available in the collapsed diagnostics section and the JSON report instead of being dumped into the result page.
 
-![Complete Copilot run result](../images/72-complete-copilot-run-result.png)
 
-The screenshot is captured by `CompleteCopilotSessionIT` from the real successful persisted state. It is not assembled from a browser fixture, and screenshot generation fails if the selected snapshot, terminal operation and result tabs are not visible together.
+The existing `CompleteCopilotSessionIT` owns complete-result screenshot generation from the persisted terminal state. Use the [screenshot instructions](../../.github/copilot-ref-screenshots.md) when refreshing this evidence. Earlier images with separate Word/HTML/JSON buttons are no longer used as current UI guidance; the result now opens the shared decision-report dialog.
 
 ## Architecture-node limits
 
