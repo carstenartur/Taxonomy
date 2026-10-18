@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.reformulation;
 
+import com.taxonomy.dto.AnalysisPercentages;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.reformulation.*;
 import org.springframework.stereotype.Service;
@@ -34,12 +35,30 @@ public class FrozenReformulationEngine {
         if(!catalogue.isArray()) throw new IllegalArgumentException("Malformed frozen catalogue");
         var descriptions=new TreeMap<String,String>();var parents=new TreeMap<String,Set<String>>();
         collect(catalogue,null,descriptions,parents,new LinkedHashSet<>());
-        var payload=json.readTree(baseline.snapshotPayload());
-        var raw=payload.has("rawScores")?payload.path("rawScores"):payload.path("scores");
-        var scores=new HashMap<String,Integer>();raw.properties().forEach(e->scores.put(e.getKey(),e.getValue().asInt()));
-        var mappings=json.readTree(baseline.frozenContext().getOrDefault("elementMappings","[]"));
-        for(var mapping:mappings) if(mapping.has("directScore")) scores.put(mapping.path("nodeCode").asText(),mapping.path("directScore").asInt());
-        var hierarchy=descriptions.keySet().stream().map(id->new WalkUpPlanner.Node(id,parents.get(id).stream().sorted().toList(),descriptions.get(id),scores.getOrDefault(id,0),List.<Statement>of())).toList();
+        // Parse decimals before conversion so an unrepresentable positive cannot turn into zero.
+        var reader=json.reader().with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
+        var payload=reader.readTree(baseline.snapshotPayload());
+        if(payload==null || !payload.isObject()) throw new IllegalArgumentException("Malformed frozen analysis snapshot");
+        var raw=payload.hasNonNull("rawScores")?payload.path("rawScores"):payload.path("scores");
+        var scores=new HashMap<String,Double>();
+        if(!raw.isMissingNode() && !raw.isNull()) {
+            if(!raw.isObject()) throw new IllegalArgumentException("Malformed frozen scores");
+            raw.properties().forEach(e->{
+                if(!e.getValue().isNull()) scores.put(e.getKey(),percentage(e.getValue()));
+            });
+        }
+        var mappings=reader.readTree(baseline.frozenContext().getOrDefault("elementMappings","[]"));
+        if(mappings==null || !mappings.isArray()) throw new IllegalArgumentException("Malformed frozen element mappings");
+        for(var mapping:mappings) {
+            if(!mapping.isObject()) throw new IllegalArgumentException("Malformed frozen element mapping");
+            // Null means unassessed, not a later zero that erases existing evidence.
+            if(mapping.hasNonNull("directScore")) {
+                var code=mapping.path("nodeCode");
+                if(!code.isString() || code.stringValue().isBlank()) throw new IllegalArgumentException("Malformed frozen mapping node code");
+                scores.put(code.stringValue(),percentage(mapping.path("directScore")));
+            }
+        }
+        var hierarchy=descriptions.keySet().stream().map(id->new WalkUpPlanner.Node(id,parents.get(id).stream().sorted().toList(),descriptions.get(id),scores.getOrDefault(id,0d),List.<Statement>of())).toList();
         var plan=new WalkUpPlanner().plan(hierarchy);var byId=new HashMap<String,WalkUpPlanner.Node>();hierarchy.forEach(n->byId.put(n.id(),n));
         var sourceSpans=anchors(baseline.originalText());var sourceStatements=new ArrayList<Statement>();
         var verbatimSource=baseline.originalText().isEmpty()?List.<Statement.SourceSpan>of():List.of(new Statement.SourceSpan(0,baseline.originalText().length(),baseline.originalText()));
@@ -69,9 +88,11 @@ public class FrozenReformulationEngine {
                 var result=RejectedWordingGuard.review(generated,evidence,InheritedDecisionContext.rejected(input,json));
                 var carriedStatements=new LinkedHashMap<String,Statement>();var carriedQuestions=new LinkedHashMap<String,DecisionQuestion>();
                 retainedStatements.forEach(v->carriedStatements.put(v.id(),v));openDecisions.forEach(q->carriedQuestions.put(q.id(),q));
-                children.forEach(c->{c.statementProposals().forEach(v->carriedStatements.put(v.id(),v));c.questionProposals().forEach(q->carriedQuestions.put(q.id(),q));});
-                result.statementProposals().forEach(v->carriedStatements.put(v.id(),v));
-                result.questionProposals().forEach(q->carriedQuestions.put(q.id(),q));
+                // A replayed model record is not a new user edit or decision. Retained evidence
+                // must reach ancestors unchanged, not only survive in the final document map.
+                children.forEach(c->{c.statementProposals().forEach(v->carriedStatements.putIfAbsent(v.id(),v));c.questionProposals().forEach(q->carriedQuestions.putIfAbsent(q.id(),q));});
+                result.statementProposals().forEach(v->carriedStatements.putIfAbsent(v.id(),v));
+                result.questionProposals().forEach(q->carriedQuestions.putIfAbsent(q.id(),q));
                 var complete=new NodeSynthesisResult(result.nodeId(),result.summary(),List.copyOf(carriedStatements.values()),result.preservedStatementIds(),List.copyOf(carriedQuestions.values()),result.preservedQuestionIds(),result.uncoveredSourceRefs(),result.conflictCandidates());
                 return new Completed(result,complete);
             };
@@ -165,24 +186,32 @@ public class FrozenReformulationEngine {
                 var retained=statements.putIfAbsent(statement.id(),statement);
                 additions.add(retained==null?statement:retained);
             }
-            generated.questionProposals().forEach(q->questions.put(q.id(),q));
+            var proposedQuestions=new ArrayList<DecisionQuestion>();
+            for(var question:generated.questionProposals()) {
+                var retained=questions.putIfAbsent(question.id(),question);
+                proposedQuestions.add(retained==null?question:retained);
+            }
             var sectionStatements=new LinkedHashSet<>(section.statementIds());additions.forEach(s->sectionStatements.add(s.id()));
-            var sectionQuestions=new LinkedHashSet<>(section.questionIds());generated.questionProposals().forEach(q->sectionQuestions.add(q.id()));
+            var sectionQuestions=new LinkedHashSet<>(section.questionIds());proposedQuestions.forEach(q->sectionQuestions.add(q.id()));
             String summary=generated.summary();
             var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements.values()));
             rejected.addAll(InheritedDecisionContext.rejected(input,json));
             summary=RejectedWordingGuard.safeSummary(summary,rejected,findings);
             sections.put(id,new Section(section.id(),section.taxonomyCode(),section.title(),summary,section.children(),List.copyOf(sectionStatements),List.copyOf(sectionQuestions)));
             findings.addAll(generated.conflictCandidates());
-            result=new NodeSynthesisResult(id,summary,additions,generated.preservedStatementIds(),generated.questionProposals(),generated.preservedQuestionIds(),generated.uncoveredSourceRefs(),generated.conflictCandidates());
+            result=new NodeSynthesisResult(id,summary,additions,generated.preservedStatementIds(),proposedQuestions,generated.preservedQuestionIds(),generated.uncoveredSourceRefs(),generated.conflictCandidates());
         } else result=new NodeSynthesisResult(id,section.summary(),direct,List.of(),localQuestions,List.of(),List.of(),List.of());
         // Ancestors consume completed details including original preserved evidence, not only newly generated additions.
         var allStatements=new LinkedHashMap<String,Statement>();direct.forEach(s->allStatements.put(s.id(),s));
-        children.forEach(c->c.statementProposals().forEach(s->allStatements.put(s.id(),s)));result.statementProposals().forEach(s->allStatements.put(s.id(),s));
+        children.forEach(c->c.statementProposals().forEach(s->allStatements.putIfAbsent(s.id(),s)));result.statementProposals().forEach(s->allStatements.putIfAbsent(s.id(),s));
         var allQuestions=new LinkedHashMap<String,DecisionQuestion>();localQuestions.forEach(q->allQuestions.put(q.id(),q));
-        children.forEach(c->c.questionProposals().forEach(q->allQuestions.put(q.id(),q)));result.questionProposals().forEach(q->allQuestions.put(q.id(),q));
+        children.forEach(c->c.questionProposals().forEach(q->allQuestions.putIfAbsent(q.id(),q)));result.questionProposals().forEach(q->allQuestions.putIfAbsent(q.id(),q));
         result=new NodeSynthesisResult(id,result.summary(),List.copyOf(allStatements.values()),result.preservedStatementIds(),List.copyOf(allQuestions.values()),result.preservedQuestionIds(),result.uncoveredSourceRefs(),result.conflictCandidates());
         results.put(id,result);visiting.remove(id);return result;
+    }
+    private static double percentage(JsonNode value) {
+        if(!value.isNumber()) throw new IllegalArgumentException("Frozen score must be a numeric percentage");
+        return AnalysisPercentages.require(value.decimalValue());
     }
     /** Include only directed edges touching this step, collapsed terminals or carried child evidence. */
     private Map<String,String> boundariesFor(WalkUpPlanner.Step step, WalkUpPlanner.Node node,
