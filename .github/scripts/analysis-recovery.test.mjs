@@ -18,10 +18,11 @@ function harness(language = 'en') {
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
-  const requests=[], analyses=[], saved=[], panels=[], derivedRequests=[]; let openOptions=[], snapshot;
+  const requests=[], analyses=[], saved=[], panels=[], derivedRequests=[], readResponses=[]; let openOptions=[], snapshot;
   const ui = { update(message){ this.message=message; }, close(){ this.opened=false; }, error(message){ this.errorText=message; },
+    isOpen(){return Boolean(this.opened);}, isDismissed(){return false;},
     open(title,message,build,options){
-      this.opened=true; this.message=message; openOptions=options; this.body=node();
+      this.opened=true; this.errorText=null; this.message=message; openOptions=options; this.body=node();
       build(this.body,(tag,text)=>Object.assign(node(),{tagName:tag,textContent:text||''}));
       for(const option of options) fields[option.id]=Object.assign(node(),{disabled:Boolean(option.disabled)});
     } };
@@ -30,10 +31,12 @@ function harness(language = 'en') {
     TaxonomyAnalysisSession:{state:()=>({ready:true,workspaceId:runtime.workspaceId}),saveNow:async()=>{saved.push(JSON.parse(JSON.stringify(S)));return true;}},
     TaxonomyAnalysisSessionApi:{request:async(url,options,workspace)=>{
       requests.push({url,method:options.method,workspace});
+      if(options.method==='GET' && readResponses.length){const next=readResponses.shift();if(next instanceof Error)throw next;return next;}
       if(options.method==='POST') snapshot={...snapshot,recovery:{...snapshot.recovery,state:'CANCELLED'}};
       return {ok:true,json:async()=>snapshot};
     }},
-    TaxonomyScoring:{runAnalysis(options){analyses.push(options.continuation);return new Promise((resolve,reject)=>{pending=resolve;rejectPending=reject;});}},
+    TaxonomyScoring:{renderArchitectureView(){},renderSuggestedRelations(){},
+      runAnalysis(options){analyses.push(options.continuation);return new Promise((resolve,reject)=>{pending=resolve;rejectPending=reject;});}},
     TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderPartialCopilot:message=>panels.push(message)} };
   const document={getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
   const context={window,document,crypto:webcrypto,sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
@@ -54,7 +57,12 @@ function harness(language = 'en') {
     context.fetch = async url => { derivedRequests.push(url); return {ok:true,json:async()=>({totalGaps:0,totalAnchors:1})}; };
     vm.runInNewContext(analysisSource,context);
   }
-  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,derivedRequests,
+  function loadRelationsExtension() {
+    for(const id of ['analysisRelationsExtension','extendAnalysisRelationsBtn','analysisRelationsExtensionHint'])fields[id]=node();
+    vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-relations-extension.js',import.meta.url),'utf8'),context);
+  }
+  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,readResponses,
+    snapshot:()=>snapshot,
     followups:()=>followups,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
     reject: error=>rejectPending(error), recovery:window.TaxonomyAnalysisRecovery};
@@ -242,7 +250,228 @@ test('interrupted unvisited catalogue rows are explicitly labelled unassessed',(
 
 const renderedText = element => [element.textContent, ...element.children.map(renderedText)].join(' ');
 const descendants = element => [element, ...element.children.flatMap(descendants)];
+test('an unknown node-only source cannot allocate a relation extension identity', async()=>{
+ const h=harness();h.window.TaxonomyAnalysisScope={read:()=>({taxonomyRoots:['CP'],mode:'TAXONOMIES_ONLY'}),restrictsGlobalAnalysis:()=>true};
+ h.recovery.startCopilot();h.complete('COMPLETED');await settle();h.loadRelationsExtension();
+ assert.equal(h.fields.extendAnalysisRelationsBtn.disabled,false);
+ const id=h.S.recoveryContext.id;h.readResponses.push(new TypeError('Failed to fetch'));await h.recovery.refresh();
+ h.window.TaxonomyRelationsExtension.render();
+ assert.equal(h.fields.extendAnalysisRelationsBtn.disabled,true);
+ assert.match(h.fields.analysisRelationsExtensionHint.textContent,/status/i);
+ h.recovery.extendRelations();assert.equal(h.S.recoveryContext.id,id);assert.equal(h.analyses.length,1);
+});
+test('unknown status also blocks direct follow-up work on a previously complete result',async()=>{
+ const h=harness();h.recovery.startCopilot();h.complete('COMPLETED');await settle();
+ h.readResponses.push(new TypeError('Failed to fetch'));await h.recovery.refresh();let calls=0;
+ assert.equal(h.recovery.hasOpenEvaluations(),true);
+ await assert.rejects(h.recovery.stage('EXTRA',async()=>{calls++;return {};}));assert.equal(calls,0);
+});
+test('a processing failure in a newer status response is reported without claiming a network failure',async()=>{
+ const h=harness();h.recovery.startCopilot();h.complete('STOPPED');await settle();
+ const snapshot=JSON.parse(JSON.stringify(h.snapshot()));snapshot.recovery.version=9;snapshot.result.recovery=snapshot.recovery;
+ h.readResponses.push({ok:true,json:async()=>snapshot});
+ h.window.TaxonomyScoring.renderArchitectureView=()=>{throw new Error('Cannot render retained model');};
+ await h.recovery.refresh();
+ assert.equal(h.S.recoveryContext.syncState,'UNAVAILABLE');
+ assert.match(h.S.recoveryContext.observationError,/Cannot render retained model/);
+ assert.match(renderedText(h.ui.body),/status response/i);
+ assert.doesNotMatch(h.ui.message,/Connection interrupted/i);
+ assert(!h.options().some(option=>option.id==='analysisRecoveryContinue'));
+});
+test('successful cancellation confirms the final status after a failed observation',async()=>{
+ const h=harness();h.recovery.startCopilot();h.complete('STOPPED');await settle();
+ h.readResponses.push(new TypeError('Failed to fetch'));await h.recovery.refresh();await h.recovery.cancel();
+ h.recovery.open();assert.equal(h.S.analysisRecovery.state,'CANCELLED');
+ assert.equal(h.S.recoveryContext.syncState,null);assert.equal(h.S.recoveryContext.observationError,null);
+ assert.match(h.ui.message,/Cancelled/);assert.doesNotMatch(h.ui.message,/status unknown/i);
+});
+test('a read already in flight cannot replace synchronization after a rejected decision', async()=>{
+ const h=harness();h.recovery.startCopilot();h.complete('STOPPED');await settle();
+ const old=JSON.parse(JSON.stringify(h.snapshot())), latest=JSON.parse(JSON.stringify(old));
+ latest.recovery.version=9;latest.result.recovery=latest.recovery;
+ h.act('analysisRecoveryRetry');
+ let release;h.readResponses.push(new Promise(resolve=>{release=resolve;}));
+ const priorRead=h.recovery.refresh({background:true});await settle();
+ h.readResponses.push({ok:true,json:async()=>latest});
+ h.reject(Object.assign(new Error('A newer operation revision exists; refresh before deciding'),{status:409}));
+ await settle();
+ assert(!h.options().some(option=>option.id==='analysisRecoveryRetry'));
+ release({ok:true,json:async()=>old});await priorRead;await settle();
+ assert.equal(h.requests.filter(request=>request.method==='GET').length,2,'The outcome requires a read sent after the rejected write');
+ assert.equal(h.S.analysisRecovery.version,9);assert.equal(h.analyses.length,2);
+ assert.equal(h.ui.errorText,null);
+});
+for(const late of ['old response','old connection failure']) {
+ test(`a ${late} cannot overwrite a newer confirmed analysis result`,async()=>{
+  const h=harness();h.recovery.startCopilot();h.complete('STOPPED');await settle();
+  const old=JSON.parse(JSON.stringify(h.snapshot()));h.act('analysisRecoveryRetry');
+  let release,reject;h.readResponses.push(new Promise((a,b)=>{release=a;reject=b;}));
+  const read=h.recovery.refresh({background:true});await settle();
+  const result=h.complete('COMPLETED');result.recovery.version=11;result.rawScores.BP=75;result.scores.BP=75;await settle();
+  if(late==='old response')release({ok:true,json:async()=>old});else reject(new TypeError('Failed to fetch'));
+  await read;await settle();
+  assert.equal(h.S.analysisRecovery.version,11);assert.equal(h.S.analysisRecovery.state,'COMPLETED');
+  assert.equal(h.S.currentScores.BP,75);assert.equal(h.S.recoveryContext.syncState,null);
+  assert.equal(h.analyses.length,2);
+ });
+}
 for (const language of ['de', 'en']) {
+ test(`${language} an explicitly cleared relation report cannot revive an old stop reason`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('STOPPED'); result.recovery.openQuestions=[];
+  result.relationSearchReport=null;
+  result.architectureView={relationSearchReport:{stopReason:'TIME_LIMIT: obsolete nested report'}};
+  await settle();
+  assert.doesNotMatch(renderedText(h.ui.body),/obsolete nested report/);
+  assert.match(renderedText(h.ui.body),language==='de' ? /Kein konkreter Unterbrechungsgrund gespeichert/ : /No specific interruption reason was recorded/);
+ });
+ test(`${language} progress summaries are separate from the recorded interruption`, async () => {
+  for(const stopReason of ['', 'TIME_LIMIT: completed evidence retained']) {
+   const h=harness(language); h.recovery.startCopilot();
+   const result=h.complete('STOPPED'); result.recovery.openQuestions=[];
+   result.errorMessage='RELATION_SEARCH_PARTIAL: 24/24 evaluation attempts; 12 unfinished search batches. '+stopReason;
+   result.relationSearchReport={stopReason,warnings:[],result:{unfinished:[]}};
+   await settle();
+   const body=renderedText(h.ui.body);
+   if(stopReason) assert.equal(body.split(stopReason).length-1,1);
+   else assert.match(body,language==='de' ? /Kein konkreter Unterbrechungsgrund gespeichert/ : /No specific interruption reason was recorded/);
+  }
+ });
+ test(`${language} a rejected stale retry loads the new revision without repeating the decision`, async () => {
+  const h=harness(language); h.recovery.startCopilot(); h.complete('STOPPED'); await settle();
+  const before=h.analyses.length, oldRetry=h.options().find(option=>option.id==='analysisRecoveryRetry').handler;
+  oldRetry();
+  const snapshot=JSON.parse(JSON.stringify(h.snapshot()));
+  snapshot.recovery.version=9; snapshot.recovery.completedCalls=97;
+  snapshot.recovery.openQuestions=[{key:'new-question',nodes:['IP-2051'],attempts:1,error:'RELATION_UNRESOLVED: Which time data?'}];
+  snapshot.result.recovery=snapshot.recovery;
+  h.readResponses.push({ok:true,json:async()=>snapshot});
+  h.reject(Object.assign(new Error('A newer operation revision exists; refresh before deciding'),{httpStatus:409}));
+  await settle();
+  assert.equal(h.S.analysisRecovery.version,9);
+  assert.equal(h.analyses.length,before+1,'Only the rejected explicit action was sent');
+  assert.match(renderedText(h.ui.body),language==='de' ? /aktuellen Stand geladen/ : /loaded the current state/);
+  assert.equal(h.ui.errorText,null,'A resolved conflict must not remain as a raw error banner');
+  oldRetry(); assert.equal(h.analyses.length,before+1,'A control from the old revision cannot authorize a new write');
+  h.act('analysisRecoveryContinue');
+  assert.equal(h.analyses.at(-1).continuationVersion,9);
+  assert.equal(h.analyses.at(-1).continuationAction,'CONTINUE');
+  h.complete('COMPLETED_WITH_GAPS'); await settle();
+ });
+ test(`${language} an unreachable status offers connection recovery and blocks stale model decisions`, async () => {
+  const h=harness(language); h.recovery.startCopilot(); h.complete('STOPPED'); await settle();
+  const retry=h.options().find(option=>option.id==='analysisRecoveryRetry').handler;
+  retry(); h.readResponses.push(new TypeError('Failed to fetch')); h.reject(new TypeError('Failed to fetch'));
+  await settle();
+  assert.match(h.ui.message,language==='de' ? /Status unbekannt/ : /status unknown/i);
+  assert.match(renderedText(h.ui.body),language==='de' ? /Verbindung zur Anwendung/ : /connection to the application/i);
+  for(const id of ['analysisRecoveryRetry','analysisRecoverySkip','analysisRecoveryContinue'])
+   assert(!h.options().some(option=>option.id===id),'Unsafe action must be unavailable: '+id);
+  assert(h.options().some(option=>option.id==='analysisRecoveryRefresh'));
+  retry(); h.recovery.startCopilot(); h.recovery.startManagedAnalysis(); assert.equal(h.analyses.length,2,'Unknown outcome cannot create another provider request or identity');
+  const snapshot=JSON.parse(JSON.stringify(h.snapshot()));
+  snapshot.recovery.version=10; snapshot.recovery.state='RUNNING';
+  h.readResponses.push({ok:true,json:async()=>snapshot});
+  await h.act('analysisRecoveryRefresh');
+  assert.equal(h.S.analysisRecovery.version,10);
+  assert.match(h.ui.message,language==='de' ? /läuft/ : /running/i);
+  assert(!h.options().some(option=>option.id==='analysisRecoveryRetry'));
+  assert.equal(h.analyses.length,2);
+ });
+ test(`${language} an unconfirmed cancellation is explained and never resubmitted automatically`, async () => {
+  const h=harness(language);h.recovery.startCopilot();h.complete('STOPPED');await settle();
+  const request=h.window.TaxonomyAnalysisSessionApi.request;let cancels=0;
+  h.window.TaxonomyAnalysisSessionApi.request=async(url,options,workspace)=>{
+   if(options.method==='POST'){cancels++;throw new TypeError('Failed to fetch');}
+   return request(url,options,workspace);
+  };
+  h.readResponses.push(new TypeError('Failed to fetch'));await h.recovery.cancel();await settle();
+  assert.match(h.ui.message,language==='de' ? /Status unbekannt/ : /status unknown/i);
+  assert(h.options().some(option=>option.id==='analysisRecoveryRefresh'));
+  assert(!h.options().some(option=>option.id==='analysisRecoveryRetry'));
+  assert.equal(cancels,1);assert.equal(h.analyses.length,1);
+ });
+ test(`${language} status refresh remains available for a stopped run without a transport error`, async () => {
+  const h=harness(language); h.recovery.startCopilot(); h.complete('STOPPED'); await settle();
+  assert(h.options().some(option=>option.id==='analysisRecoveryRefresh'));
+  h.readResponses.push(new Error('Network request failed'));
+  await h.act('analysisRecoveryRefresh');
+  assert(!h.options().some(option=>option.id==='analysisRecoveryContinue'));
+ });
+ test(`${language} a valid semantic question explains why another model request may not resolve it`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('STOPPED');
+  result.recovery.openQuestions=[{key:'relation-a',nodes:['CP-1122'],attempts:2,error:'RELATION_UNRESOLVED: Does time tracking belong here?'}];
+  await settle();
+  assert.match(renderedText(h.ui.body),language==='de' ? /fachliche Zuordnung/ : /semantic assignment/i);
+  assert.match(renderedText(h.ui.body),language==='de' ? /gleichen? Unsicherheit/ : /same uncertainty/);
+  assert.equal(h.options()[0].id,'analysisRecoveryContinue','Independent saved work is the first action');
+ });
+ test(`${language} a source clarification does not hide the recorded runtime stop`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('STOPPED');
+  result.errorMessage='TIME_LIMIT: completed evidence retained; no further model evaluations.';
+  result.recovery.openQuestions=[{key:'relation-a',nodes:['CP-1000','CP-1023','CP-1122'],attempts:1,
+   error:'RELATION_UNRESOLVED: CP-1122: Does IT Services include administrative time tracking?'}];
+  await settle();
+  const body=renderedText(h.ui.body);
+  assert.match(body,/TIME_LIMIT/);
+  assert.match(body,/Does IT Services include administrative time tracking/);
+  assert.match(body,language==='de' ? /Grund der Unterbrechung/ : /Reason for interruption/);
+  assert.doesNotMatch(body,/LLM-Bewertung fehlgeschlagen|LLM assessment failed/);
+  h.act('analysisRecoveryContinue');
+  assert.equal(h.analyses[1].continuationAction,'CONTINUE');
+  assert.equal(h.analyses[1].continuationQuestion,null);
+  assert.equal(h.analyses[1].continuationQuestions.length,0);
+  h.complete('COMPLETED_WITH_GAPS'); await settle();
+  assert.equal(h.followups(),0);
+ });
+ test(`${language} relation budget evidence survives result hydration and refresh`, async () => {
+  for (const report of [
+   {stopReason:'MEMORY_PRESSURE: completed evidence retained'},
+   {warnings:['SOURCE_UNRESOLVED CP-1122: Catalogue scope?', 'SOURCE_LIMIT: 9 sources remain unassessed.']},
+   {result:{unfinished:[{reason:'CALL_BUDGET',question:''}]}},
+   {warnings:['WORK_LIMIT: remaining searches retained']}
+  ]) {
+   const h=harness(language); h.recovery.startCopilot();
+   const result=h.complete('STOPPED'); result.relationSearchReport=report;
+   await settle();
+   const reason=report.stopReason || report.warnings?.at(-1) || 'CALL_BUDGET';
+   assert(renderedText(h.ui.body).includes(reason),reason);
+   h.S.recoveryContext.pauseReason=null;
+   await h.recovery.refresh(); h.recovery.open();
+   assert.equal(h.S.recoveryContext.observationError,null,renderedText(h.ui.body));
+   assert(renderedText(h.ui.body).includes(reason),'refresh: '+reason);
+   assert.equal(h.analyses.length,1,'reading diagnostics cannot authorize another provider call');
+  }
+ });
+ test(`${language} missing stop evidence is explicit and never inferred from a semantic question`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('STOPPED');
+  result.recovery.openQuestions=[{key:'relation-a',nodes:['CP-1122'],attempts:1,
+   error:'RELATION_UNRESOLVED: Which catalogue scope?'}];
+  await settle();
+  assert.match(renderedText(h.ui.body),language==='de' ? /Kein konkreter Unterbrechungsgrund gespeichert/ : /No specific interruption reason was recorded/);
+  assert.doesNotMatch(renderedText(h.ui.body),/TIME_LIMIT|MEMORY_PRESSURE|CALL_BUDGET/);
+ });
+ test(`${language} completed semantic gaps are not presented as an interrupted run`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('COMPLETED_WITH_GAPS');
+  result.errorMessage='RELATION_SEARCH_PARTIAL: semantic scope remains open';
+  result.recovery.openQuestions=[{key:'relation-a',nodes:['CP-1122'],attempts:1,
+   error:'RELATION_UNRESOLVED: Which catalogue scope?'}];
+  await settle(); h.recovery.open();
+  assert.match(renderedText(h.ui.body),/Which catalogue scope/);
+  assert.doesNotMatch(renderedText(h.ui.body),/Reason for interruption|Grund der Unterbrechung/);
+ });
+ test(`${language} a stop without an open question shows its recorded reason once`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('STOPPED'); result.recovery.openQuestions=[];
+  result.architectureView={relationSearchReport:{stopReason:'TIME_LIMIT: retained answers'}};
+  await settle();
+  assert.equal(renderedText(h.ui.body).split('TIME_LIMIT: retained answers').length-1,1);
+  assert(h.options().some(option=>option.id==='analysisRecoveryContinue'));
+ });
  test(`${language} recovery identifies an LLM assessment failure and explains retry and skip`, async () => {
   const h=harness(language); h.recovery.startCopilot(); h.complete(); await settle();
   h.S.analysisRecovery.openQuestions=[
@@ -257,7 +486,7 @@ for (const language of ['de', 'en']) {
   assert.doesNotMatch(body,/Open question|Offene Abfrage/);
   assert.equal(body.split('IP-1365').length-1,1,'Affected IDs appear once, in the selector');
   assert.match(body,language==='de' ? /interne LLM-Anfrage/ : /internal LLM request/);
-  assert.match(body,language==='de' ? /neue LLM-Anfrage/ : /new LLM request/);
+  assert.match(body,language==='de' ? /neue KI-Anfrage/ : /new AI request/);
   assert.match(body,language==='de' ? /nicht bewertet/ : /unassessed/);
   const select=descendants(h.ui.body).find(n=>n.tagName==='select');
   select.value='product-b'; await select.fire('change');

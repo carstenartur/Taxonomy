@@ -17,13 +17,17 @@
         var owned = source && source.workspaceId === C.runtime.workspaceId && !C.runtime.invalidating;
         var complete = ['COMPLETED', 'COMPLETED_WITH_GAPS'].includes(recovery?.state);
         var compatible = window.TaxonomyAnalysisRecovery?.nodeEvidenceMatches(source);
-        var eligible = owned && sameText && complete && compatible && source.request.analysisScope?.mode === 'TAXONOMIES_ONLY'
+        var statusKnown = window.TaxonomyAnalysisRecovery?.isStatusKnown?.() !== false;
+        var eligible = owned && sameText && statusKnown && complete && compatible && source.request.analysisScope?.mode === 'TAXONOMIES_ONLY'
             && Number.isSafeInteger(recovery.version) && Boolean(window.TaxonomyAnalysisSession?.state?.().ready);
         button.disabled = !eligible;
         button.textContent = text('Relationssuche ergänzen', 'Add relationship search');
         hint.textContent = !owned || !recovery
             ? text('Für dieses importierte oder ältere Ergebnis fehlt eine gespeicherte Ausführungsquelle. Beziehungen können damit nicht sicher ergänzt werden.',
                 'This imported or older result has no retained execution source. Relations cannot be safely added to this evidence.')
+            : !statusKnown
+                ? text('Lade zuerst den aktuellen Laufstatus über „Analyse-Status“. Bis dahin werden keine weiteren KI-Anfragen gestartet.',
+                    'Load the current run status using Analysis status first. Further model requests remain unavailable until then.')
             : !sameText
                 ? text('Die Anforderung wurde geändert. Zum Ergänzen muss der ursprüngliche Text wiederhergestellt werden.',
                     'The requirement has changed. Restore its original text before adding relations.')

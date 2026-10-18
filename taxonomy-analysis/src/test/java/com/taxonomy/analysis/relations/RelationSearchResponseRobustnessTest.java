@@ -124,4 +124,48 @@ class RelationSearchResponseRobustnessTest {
     private static List<com.taxonomy.dto.RelationSearchModel.SourceAssessment> decode(String raw) {
         return new RelationSearchProtocol(prompt -> raw).contributions(ORIGINAL, List.of(SOURCE));
     }
+
+    @Test
+    void photographedTimeTrackingClarificationRetainsSiblingsAndAllowsAnotherSourceWithoutRetry() {
+        // Transcribed response from the reported failure; catalogue text is irrelevant to decoding.
+        String raw = """
+                {"selections":[{"nodeId":"CP-1000","outcome":"REJECT","contributions":[],
+                "rationale":"The requirement for time tracking (arbeitszeiterfassung) is not a high-level military capability described in this node.","question":""},
+                {"nodeId":"CP-1023","outcome":"REJECT","contributions":[],
+                "rationale":"The requirement for time tracking (arbeitszeiterfassung) is not a core CIS capability such as secure communication or network protocols.","question":""},
+                {"nodeId":"CP-1122","outcome":"UNRESOLVED","contributions":[],
+                "rationale":"While time tracking is a digital function/application, it is not explicitly listed in the IT Services Capabilities description. It is unclear if this capability's scope for 'mission-critical software applications' or 'digital functions' extends to administrative HR functions like time tracking.",
+                "question":"Does the scope of IT Services Capabilities (CP-1122) include administrative digital functions such as time tracking (arbeitszeiterfassung)?"}]}
+                """;
+        var nodes = List.of(new Node("CP-1000", "CP", "Capabilities", "", false),
+                new Node("CP-1023", "CP", "Communication and Information System Capabilities", "", false),
+                new Node("CP-1122", "CP", "IT Services Capabilities", "", false));
+        Map<String, AnalysisCheckpointSession.Checkpoint> saved = new HashMap<>();
+        var store = new AnalysisCheckpointSession.Store() {
+            public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question question) {
+                return saved.getOrDefault(question.key(), new AnalysisCheckpointSession.Checkpoint(question, "ATTEMPT", null));
+            }
+            public void finish(AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
+                saved.put(question.key(), new AnalysisCheckpointSession.Checkpoint(question, state, detail));
+            }
+            public void checkActive() { }
+        };
+        var calls = new AtomicInteger();
+        try (var session = new AnalysisCheckpointSession(store)) {
+            var protocol = new RelationSearchProtocol(prompt -> calls.incrementAndGet() == 1 ? raw : EXPLICIT);
+            var first = protocol.contributionsRecovering(ORIGINAL, nodes);
+            assertTrue(first.failures().isEmpty());
+            assertEquals(3, first.accepted().size());
+            assertTrue(first.accepted().get(0).question().isEmpty());
+            assertTrue(first.accepted().get(1).question().isEmpty());
+            assertTrue(first.accepted().get(2).question().contains("administrative digital functions"));
+            var checkpoint = saved.values().iterator().next();
+            assertEquals("CLARIFICATION", checkpoint.state());
+            assertEquals(raw, checkpoint.detail().getRawResponse());
+            assertEquals(1, protocol.contributionsRecovering(ORIGINAL, List.of(SOURCE))
+                    .accepted().getFirst().contributions().size());
+            assertEquals(first, protocol.contributionsRecovering(ORIGINAL, nodes));
+            assertEquals(2, calls.get(), "The semantic question must replay without another provider request");
+        }
+    }
 }
