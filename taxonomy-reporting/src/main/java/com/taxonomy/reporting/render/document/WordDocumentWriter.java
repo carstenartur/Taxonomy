@@ -16,11 +16,24 @@ import java.util.*;
 public final class WordDocumentWriter {
     private final XWPFDocument document;
     private final DecisionReportLabels labels;
+    private final int paragraphSpacingAfter;
+    private XWPFTable contentsTable;
+    private int contentsDepth;
 
     public WordDocumentWriter(XWPFDocument document, DecisionReportLabels labels) {
+        this(document, labels, 100);
+    }
+
+    /** Report-specific prose rhythm in twips; headings, tables and figures keep their own spacing. */
+    WordDocumentWriter(XWPFDocument document, DecisionReportLabels labels, int paragraphSpacingAfter) {
         this.document = document;
         this.labels = labels;
+        this.paragraphSpacingAfter = paragraphSpacingAfter;
         ensureStyles(document);
+        // Reports carry their display values and internal navigation. Inheriting
+        // update-on-open from a template makes Word show a misleading link prompt.
+        var settings = document.getSettings().getCTSettings();
+        if (settings.isSetUpdateFields()) settings.unsetUpdateFields();
     }
 
     public static void ensureStyles(XWPFDocument document) {
@@ -66,7 +79,7 @@ public final class WordDocumentWriter {
 
     public XWPFParagraph paragraph(String text) {
         var p = document.createParagraph();
-        p.setSpacingAfter(100);
+        p.setSpacingAfter(paragraphSpacingAfter);
         var r = p.createRun();
         r.setFontSize(10);
         r.setText(value(text));
@@ -77,21 +90,14 @@ public final class WordDocumentWriter {
         contents(sections, 3);
     }
 
-    /** The contents title itself is not an indexed section. */
+    /** Ready-to-read internal navigation; no client-side field calculation is required. */
     public void contents(Map<String, String> sections, int outlineDepth) {
         if (outlineDepth < 1 || outlineDepth > 3)
             throw new IllegalArgumentException("Contents depth must be 1 to 3");
         heading(labels.contents(), 1, null).setStyle("TOCHeading");
-        var p = document.createParagraph();
-        p.getCTP().addNewPPr();
-        var field = p.getCTP().addNewFldSimple();
-        field.setInstr("TOC \\o \"1-" + outlineDepth + "\" \\h \\z \\u");
-        p.setKeepNext(true);
-        field.addNewR().addNewT().setStringValue("");
-        var settings = document.getSettings().getCTSettings();
-        (settings.isSetUpdateFields() ? settings.getUpdateFields() : settings.addNewUpdateFields())
-                .setVal(true);
         var table = table(List.of(labels.titleLabel(), labels.openChapter()), List.of());
+        contentsTable = table;
+        contentsDepth = outlineDepth;
         table.getRow(0).getTableCells().forEach(c ->
                 c.getParagraphs().forEach(paragraph -> paragraph.setKeepNext(true)));
         sections.forEach(
@@ -101,6 +107,45 @@ public final class WordDocumentWriter {
                     link(row.getCell(1).getParagraphs().getFirst(), anchor, labels.openChapter());
                     row.setCantSplitRow(true);
                 });
+        columnWidths(table, 80, 20);
+    }
+
+    /** Materialize the requested heading levels after every report section has been written. */
+    public void completeContents() {
+        if (contentsTable == null) return;
+        while (contentsTable.getNumberOfRows() > 1) contentsTable.removeRow(1);
+        boolean inReport = false;
+        int generated = 0;
+        for (var element : document.getBodyElements()) {
+            if (element == contentsTable) { inReport = true; continue; }
+            if (!inReport || !(element instanceof XWPFParagraph paragraph)) continue;
+            String style = paragraph.getStyle();
+            if (style == null || !style.matches("Heading[1-3]")) continue;
+            int level = Integer.parseInt(style.substring(7));
+            if (level > contentsDepth) continue;
+            String anchor;
+            if (!paragraph.getCTP().getBookmarkStartList().isEmpty()) {
+                anchor = paragraph.getCTP().getBookmarkStartArray(0).getName();
+            } else {
+                // The bookmark writer validates names across the body, headers,
+                // footers and notes, including administrator template bookmarks.
+                while (true) {
+                    anchor = "report_contents_" + ++generated;
+                    try { bookmark(paragraph, anchor); break; }
+                    catch (IllegalArgumentException duplicateName) {
+                        if (!duplicateName.getMessage().startsWith("Duplicate Word bookmark:")) throw duplicateName;
+                    }
+                }
+            }
+            var row = contentsTable.createRow();
+            cell(row.getCell(0), paragraph.getText());
+            row.getCell(0).getParagraphs().getFirst().setIndentationLeft((level - 1) * 180);
+            link(row.getCell(1).getParagraphs().getFirst(), anchor, labels.openChapter());
+            row.setCantSplitRow(true);
+        }
+        // Complete headings can be much longer than the short chapter action.
+        // Reapply widths after rebuilding so every dynamic row uses the same grid.
+        columnWidths(contentsTable, 80, 20);
     }
 
     public XWPFTable table(List<String> headers, List<List<String>> values) {

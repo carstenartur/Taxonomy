@@ -126,7 +126,7 @@ public class RequirementRelationSearchService {
     public String recoveryPolicyFingerprint() {
         // Request/provider scope owns model identity separately. Keep the policy identity
         // stable when a background worker restores that scope after admission.
-        return "relation-downwalk-v7/relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/" + enabled
+        return "relation-downwalk-v8/source-call-reservation=half/relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/" + enabled
                 + "/" + options(false) + "/batch-override=" + batchSize + "/prompt-override=" + maxPromptCharacters;
     }
 

@@ -19,7 +19,8 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
     @Override public byte[] render(ReformulationReportRenderer.Input report, FrozenReformulationArchitecture architecture) {
         try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {
             standalonePage(document);
-            var w = new WordDocumentWriter(document, new DecisionReportLabels(report.language()));
+            // Numerous short provenance records need a compact body rhythm, not smaller type.
+            var w = new WordDocumentWriter(document, new DecisionReportLabels(report.language()), 40);
             var graphNodes = new HashSet<String>();
             architecture.graph().nodes().forEach(node -> graphNodes.add(node.id()));
             var graphEdges = new HashSet<String>();
@@ -155,6 +156,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                 }
                 w.heading(t(de, "Architekturbeleg", "Architecture provenance"), 1, "architecture_evidence");
                 w.paragraph("SHA-256: " + ArchitectureReportDocument.graphSha256(graph));
+                w.completeContents();
                 document.write(output);
                 return output.toByteArray();
             }
@@ -177,6 +179,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                             : List.of(t(de, "Nicht verfügbar", "Unavailable")), graph,
                     new LayeredDiagramLayoutService().layout(graph), null, evidence);
             new ArchitectureWordSectionRenderer().write(document, architectureDocument);
+            w.completeContents();
             document.write(output);
             return output.toByteArray();
         } catch (Exception exception) {

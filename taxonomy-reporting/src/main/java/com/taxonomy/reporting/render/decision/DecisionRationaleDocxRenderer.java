@@ -205,6 +205,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitleEvidence(document, report, labels);
         }
         if (options.includes(DecisionReportOptions.Section.EVIDENCE)) renderAppendix(document, report, labels);
+        writer.completeContents();
     }
 
     private void configurePage(XWPFDocument document) {

@@ -1,9 +1,27 @@
 # Relation source context
 
-Policy `relation-downwalk-v7` includes `relation-source-context-v1` and
+Policy `relation-downwalk-v8` includes `relation-source-context-v1` and
 `relation-semantics-v2`. The procedure
 keeps its normal call, candidate-count, and request-size limits. A large request
 is never made acceptable by cutting a catalogue description or raising a limit.
+
+## Source and target call budgets
+
+When the catalogue offers structurally compatible target routes, source extraction,
+including corrective requests, may use at most half of the
+available calls (rounded down, with one source call allowed for a nonzero budget).
+The remaining allowance is reserved for target navigation and separate verification.
+This prevents malformed source batches from consuming the complete operation budget
+before any accepted contribution can be searched. Local and distributed execution
+apply the same reservation. The configured total call limit is unchanged.
+Source-only work with no compatible target route keeps its full allowance.
+
+In a local request, another source cohort may use the remaining shared budget after
+the accepted contributions have been searched. Durable continuation reuses accepted
+exchanges; sources not admitted yet remain in the complete work plan. A deliberately
+skipped source is reported as `SOURCE_LEFT_OPEN`, and skipped target work as
+`LEFT_OPEN`, rather than as an invalid provider response. Neither establishes that
+no relation exists.
 
 ## Evidence by phase
 

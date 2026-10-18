@@ -133,6 +133,28 @@ class ReformulationReportDocxReviewTest {
         }
     }
 
+    @Test void narrativeBodyUsesCompactSpacingWithoutShrinkingTextOrHeadings() throws Exception {
+        for (var language : List.of("en", "de")) {
+            var report = new ReformulationReportRenderer.Input(language, false, Map.of(), "Original", "Proposal",
+                    List.of(), List.of(), List.of(), List.of(), new ValidationReport(List.of()), "{}");
+            try (var doc = new XWPFDocument(new ByteArrayInputStream(renderer.render(report, emptyGraph(List.of()))))) {
+                var body = doc.getParagraphs().stream()
+                        .filter(p -> p.getText().equals("Original") || p.getText().equals("Proposal")).toList();
+                assertThat(body).hasSize(2);
+                for (var paragraph : body) {
+                    assertThat(paragraph.getSpacingAfter()).as("Readable two-to-three-point body gap")
+                            .isBetween(40, 60);
+                    assertThat(paragraph.getRuns().getFirst().getFontSizeAsDouble()).isEqualTo(10d);
+                }
+                assertThat(doc.getParagraphs().stream().filter(p -> "Heading1".equals(p.getStyle())))
+                        .allSatisfy(p -> {
+                            assertThat(p.getSpacingBefore()).isEqualTo(180);
+                            assertThat(p.getSpacingAfter()).isEqualTo(100);
+                        });
+            }
+        }
+    }
+
     @Test void germanVisibleMetadataAndEmptyValidationAreLocalized() throws Exception {
         var german = new ReformulationReportRenderer.Input("de", true,
                 Map.of("Adopted at", "2026-01-01", "Source version", "3"), "Original", "Vorschlag",

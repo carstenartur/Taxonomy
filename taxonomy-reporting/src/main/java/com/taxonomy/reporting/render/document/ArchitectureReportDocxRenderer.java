@@ -38,6 +38,7 @@ public final class ArchitectureReportDocxRenderer {
             navigation.put("architecture_evidence", labels.provenance());
             writer.contents(navigation);
             new ArchitectureWordSectionRenderer().write(document, report);
+            writer.completeContents();
             document.write(output);
             return output.toByteArray();
         } catch (com.taxonomy.reporting.render.document.WordReportLayoutException exception) {

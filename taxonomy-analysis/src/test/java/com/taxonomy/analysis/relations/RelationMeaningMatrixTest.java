@@ -98,7 +98,7 @@ class RelationMeaningMatrixTest {
         assertThat(prompt).contains("Repository relation meaning (relation-semantics-v2): SUPPORTS.")
                 .doesNotContain("relation-semantics-v1");
         assertThat(new RequirementRelationSearchService(null, null, null, null).recoveryPolicyFingerprint())
-                .startsWith("relation-downwalk-v7/relation-semantics-v2/relation-source-context-v1/");
+                .startsWith("relation-downwalk-v8/source-call-reservation=half/relation-semantics-v2/relation-source-context-v1/");
     }
 
     private static Query query(RelationType type, String sourceRoot, String targetRoot, Direction direction, Phase phase) {

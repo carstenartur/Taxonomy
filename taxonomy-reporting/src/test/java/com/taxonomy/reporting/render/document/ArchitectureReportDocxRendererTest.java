@@ -62,13 +62,8 @@ class ArchitectureReportDocxRendererTest {
             assertThat(document.getFooterList().getFirst()._getHdrFtr().xmlText())
                     .contains("PAGE", "NUMPAGES", language.equals("de") ? "Seite" : "Page");
             assertThat(document.getStyles().getCtStyles().getDocDefaults().xmlText()).contains("Aptos");
-            var toc = document.getParagraphs().stream()
-                    .filter(p -> p.getCTP().sizeOfFldSimpleArray() > 0
-                            && p.getCTP().getFldSimpleArray(0).getInstr().startsWith("TOC"))
-                    .findFirst().orElseThrow();
-            assertThat(toc.isKeepNext()).isTrue();
-            assertThat(toc.getCTP().getFldSimpleArray(0).xmlText())
-                    .doesNotContain(language.equals("de") ? "Inhalt und Navigation" : "Contents and navigation");
+            assertThat(xml).doesNotContain("TOC ");
+            assertThat(document.getTables().getFirst().getNumberOfRows()).isGreaterThan(1);
             assertThat(document.getTables().getFirst().getRow(0).getTableCells())
                     .allSatisfy(c -> assertThat(c.getParagraphs().getFirst().isKeepNext()).isTrue());
             var qa=java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/final-word-review"));
@@ -77,14 +72,13 @@ class ArchitectureReportDocxRendererTest {
             assertThat(xml)
                     .contains(
                             "Heading1",
-                            "TOC ",
                             "Caption",
                             "SEQ Figure",
                             "tblHeader",
                             "cantSplit",
                             "descr=",
                             "title=");
-            assertThat(document.getSettings().getCTSettings().xmlText()).contains("updateFields");
+            assertThat(document.getSettings().getCTSettings().isSetUpdateFields()).isFalse();
             assertThat(document.getAllPictures().size()).isGreaterThan(2);
             assertThat(text)
                     .contains(
