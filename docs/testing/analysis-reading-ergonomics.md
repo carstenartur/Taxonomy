@@ -45,13 +45,16 @@ read the stored analysis payload instead.
 
 The former generic “Direct child nodes and alternatives” heading was Heading2
 inside every Heading2 decision chapter. It is now a contextual Heading3, with the
-parent code, and the decision TOC includes only levels 1–2. The TOC title has a
-non-outline TOCHeading style. Fallback navigation uses a single title and a
+parent code, and the full decision contents include only levels 1–2. The contents title has a
+non-outline TOCHeading style. Contents navigation uses a single title and a
 “Open chapter” action rather than printing the same title twice.
 
-The existing Word field still needs a consumer that updates TOC fields to show
-page numbers; the independent fallback links remain available. No existing user
-report has been inspected or changed in place.
+The export materializes the linked contents in document order. Short contents
+include only level 1; full decision contents include levels 1–2. It emits no empty
+TOC field and removes automatic field refresh, including an inherited template
+setting, so opening the report does not request recalculation. Page numbers are
+not guessed: chapter links work without a layout engine or a field update.
+Existing downloaded reports need to be exported again to receive this change.
 
 ## Verification and remaining gates
 

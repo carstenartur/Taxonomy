@@ -43,10 +43,17 @@ public final class DecisionReadingChecks {
                 "Both contextual alternatives headings remain in the document");
             String xml=document.getDocument().xmlText();
             require(xml.contains(labels.durationMillis(123456L)), "Word report must show measured duration");
-            require(xml.contains("TOC \\o &quot;1-2&quot;") || xml.contains("TOC \\o \"1-2\""), "Decision TOC must include only two levels");
+            var contentsTitles = document.getTables().getFirst().getRows().stream().skip(1)
+                    .map(row -> row.getCell(0).getText()).toList();
+            var expectedTitles = document.getParagraphs().stream()
+                    .filter(p -> "Heading1".equals(p.getStyle()) || "Heading2".equals(p.getStyle()))
+                    .map(p -> p.getText()).toList();
+            require(contentsTitles.equals(expectedTitles), "Ready-to-read decision contents must include exactly heading levels 1–2 in document order");
+            require(!document.getSettings().getCTSettings().isSetUpdateFields() && !xml.contains("TOC "),
+                    "Decision contents must not require recalculation on opening");
             require(document.getParagraphs().stream().noneMatch(p->labels.contents().equals(p.getText())&&"Heading1".equals(p.getStyle())), "TOC must not index itself");
             var links=document.getTables().getFirst().getRows().stream().skip(1).flatMap(row->row.getTableCells().get(1).getParagraphs().stream()).flatMap(p->p.getCTP().getHyperlinkList().stream()).flatMap(h->h.getRList().stream()).flatMap(run->run.getTList().stream()).map(text->text.getStringValue()).toList();
-            require(links.stream().allMatch(labels.openChapter()::equals), "Fallback navigation must not repeat each title as its action label: " + links);
+            require(links.stream().allMatch(labels.openChapter()::equals), "Contents navigation must not repeat each title as its action label: " + links);
             var directory=java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/decision-reading-qa"));
             try(var stream=java.nio.file.Files.newOutputStream(directory.resolve("decision-reading-"+locale+".docx"))){document.write(stream);}
         }

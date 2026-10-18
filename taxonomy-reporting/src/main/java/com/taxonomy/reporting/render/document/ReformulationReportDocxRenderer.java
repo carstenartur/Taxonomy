@@ -155,6 +155,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                 }
                 w.heading(t(de, "Architekturbeleg", "Architecture provenance"), 1, "architecture_evidence");
                 w.paragraph("SHA-256: " + ArchitectureReportDocument.graphSha256(graph));
+                w.completeContents();
                 document.write(output);
                 return output.toByteArray();
             }
@@ -177,6 +178,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                             : List.of(t(de, "Nicht verfügbar", "Unavailable")), graph,
                     new LayeredDiagramLayoutService().layout(graph), null, evidence);
             new ArchitectureWordSectionRenderer().write(document, architectureDocument);
+            w.completeContents();
             document.write(output);
             return output.toByteArray();
         } catch (Exception exception) {

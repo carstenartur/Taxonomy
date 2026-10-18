@@ -29,7 +29,10 @@ class DecisionCompactReportTest {
             String text = new XWPFWordExtractor(doc).getText();
             assertThat(text).contains("snapshot", "CP", new DecisionReportLabels("en").finalStatus(), report.requirement())
                     .doesNotContain(new DecisionReportLabels("en").appendix(), "Recorded node reasons", "Full original reason");
-            assertThat(doc.getDocument().xmlText()).contains("landscape", "1-1");
+            assertThat(doc.getDocument().xmlText()).contains("landscape").doesNotContain("TOC ");
+            assertThat(doc.getTables().getFirst().getRows().stream().skip(1).map(row -> row.getCell(0).getText()).toList())
+                    .containsExactlyElementsOf(doc.getParagraphs().stream().filter(p -> "Heading1".equals(p.getStyle()))
+                            .map(p -> p.getText()).toList());
             assertThat(doc.getAllPictures()).hasSize(1);
             assertThat(doc.getDocument().getBody().getSectPr().getPgSz().getOrient().toString()).isEqualTo("landscape");
         }
