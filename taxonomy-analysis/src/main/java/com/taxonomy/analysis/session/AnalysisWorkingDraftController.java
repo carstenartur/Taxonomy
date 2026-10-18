@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftStatus;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
@@ -46,6 +47,17 @@ public class AnalysisWorkingDraftController {
         requireMatchingExplicitPin(request, workspaceId);
         return service.read(workspaceResolver.resolveCurrentUsername(), workspaceId)
                 .map(this::versionedResponse)
+                .orElseGet(AnalysisWorkingDraftController::noContentResponse);
+    }
+
+    @GetMapping("/{workspaceId}/status")
+    @Operation(summary = "Check the saved draft revision without loading analysis results",
+            description = "Reads only revision metadata in the authenticated user's pinned workspace. Returns 204 when no draft exists; does not create or modify a draft.")
+    public ResponseEntity<AnalysisDraftStatus> status(
+            @PathVariable String workspaceId, HttpServletRequest request) {
+        requireMatchingExplicitPin(request, workspaceId);
+        return service.status(workspaceResolver.resolveCurrentUsername(), workspaceId)
+                .map(status -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(status))
                 .orElseGet(AnalysisWorkingDraftController::noContentResponse);
     }
 

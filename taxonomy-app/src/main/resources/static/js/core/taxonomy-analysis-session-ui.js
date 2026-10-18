@@ -131,7 +131,16 @@
         var preservedText = input ? input.value : '';
 
         runtime.invalidating = true;
+        runtime.restoredPayload = null;
         S.currentScores = null;
+        S.analysisCoverage = null;
+        S.analysisRecovery = null;
+        S.recoveryContext = null;
+        S.lastAnalysisScope = null;
+        S.lastAnalysisProvider = null;
+        S.lastAnalysisStatus = null;
+        S.lastAnalysisDurationMillis = null;
+        window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.analysisOperationId = null;
         S.analysisProviderId = null;
         S.currentRawScores = {};

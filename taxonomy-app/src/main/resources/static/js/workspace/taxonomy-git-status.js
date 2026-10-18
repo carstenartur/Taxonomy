@@ -42,21 +42,30 @@
     function pollGitState() {
         if (!pageActive) return;
         if (pendingRead) pendingRead.abort();
-        pendingRead = new AbortController();
+        var controller = new AbortController();
+        pendingRead = controller;
         // Use the current context's branch if available, otherwise default to 'draft'
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
 
-        fetch('/api/git/state?branch=' + encodeURIComponent(branch), { signal: pendingRead.signal })
+        fetch('/api/git/state?branch=' + encodeURIComponent(branch), { signal: controller.signal, cache: 'no-store' })
             .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
+                if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
                 return r.json();
             })
             .then(function (state) {
-                if (pageActive) renderStatusBar(state);
+                if (pageActive && pendingRead === controller && !controller.signal.aborted) {
+                    renderStatusBar(state);
+                    document.dispatchEvent(new CustomEvent('taxonomy:server-contact', { detail: { available: true } }));
+                }
             })
             .catch(function (err) {
-                if (pageActive && err.name !== 'AbortError') renderError(err.message);
+                if (pageActive && pendingRead === controller && !controller.signal.aborted && err.name !== 'AbortError') {
+                    renderError(err.message);
+                    document.dispatchEvent(new CustomEvent('taxonomy:server-contact', {
+                        detail: { available: false, status: err.status }
+                    }));
+                }
             });
     }
 

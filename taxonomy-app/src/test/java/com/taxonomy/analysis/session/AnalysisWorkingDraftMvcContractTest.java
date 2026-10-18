@@ -288,6 +288,15 @@ class AnalysisWorkingDraftMvcContractTest {
         verify(service, never()).reset(any(), any(), any());
     }
 
+    @Test
+    @WithMockUser(username = "analyst", roles = "USER")
+    void revisionObservationCannotAddressAnotherPinnedWorkspace() throws Exception {
+        mockMvc.perform(get("/api/analysis-drafts/{workspaceId}/status", "workspace-a")
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-b"))
+                .andExpect(status().isForbidden());
+        verify(service, never()).status(any(), any());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"short", "standard", "detailed"})
     @WithMockUser(username = "analyst", roles = "USER")
@@ -344,6 +353,9 @@ class AnalysisWorkingDraftMvcContractTest {
         workspace.setSourceRepositoryId(systemRepositoryService.getPrimaryRepository().getRepositoryId());
         workspace = workspaceRepository.saveAndFlush(workspace);
         try {
+            mockMvc.perform(get("/api/analysis-drafts/{workspaceId}/status", workspaceId))
+                    .andExpect(status().isNoContent())
+                    .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
             ObjectNode request = objectMapper.createObjectNode();
             request.set("payload", payload);
             request.putNull("expectedVersion");
@@ -367,6 +379,21 @@ class AnalysisWorkingDraftMvcContractTest {
                     .andReturn().getResponse();
             JsonNode restoredPayload = objectMapper.readTree(restored.getContentAsString()).path("payload");
             assertThat(restoredPayload).isEqualTo(payload);
+            // Revision observation must not deserialize or transfer the potentially
+            // large analysis envelope. Use deliberately invalid JSON to prove it.
+            jdbc.update("update analysis_working_draft set payload_json = ? where workspace_id = ? and username = ?",
+                    "not a JSON analysis payload", workspaceId, "analyst");
+            var metadata = mockMvc.perform(get("/api/analysis-drafts/{workspaceId}/status", workspaceId))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                    .andExpect(jsonPath("$.workspaceId").value(workspaceId))
+                    .andExpect(jsonPath("$.branch").value("feature/reason-length"))
+                    .andExpect(jsonPath("$.payload").doesNotExist())
+                    .andReturn().getResponse();
+            JsonNode expected = objectMapper.readTree(restored.getContentAsString());
+            JsonNode observed = objectMapper.readTree(metadata.getContentAsString());
+            assertThat(observed.path("version")).isEqualTo(expected.path("version"));
+            assertThat(observed.path("updatedAt")).isEqualTo(expected.path("updatedAt"));
             return restoredPayload;
         } finally {
             jdbc.update("delete from analysis_working_draft where workspace_id = ? and username = ?",

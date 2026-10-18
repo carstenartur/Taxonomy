@@ -458,7 +458,7 @@
         setDraftDecisionPending(false);
     }
 
-    function resolveWorkspaceAndLoad() {
+    function resolveWorkspaceAndLoad(options) {
         beginDraftResolution();
         var remembered = rememberedWorkspaceId();
         installWorkspaceFetchRouting();
@@ -466,7 +466,7 @@
 
         if (remembered) {
             runtime.workspaceId = remembered;
-            return loadDraft({ probe: true }).then(function (view) {
+            return loadDraft(Object.assign({}, options, { probe: true })).then(function (view) {
                 runtime.workspaceResolved = true;
                 rememberWorkspaceId(remembered);
                 return view;
@@ -477,32 +477,42 @@
                 if (window.console) {
                     window.console.warn('[Taxonomy] Remembered workspace is no longer available', error);
                 }
-                return resolveActiveWorkspaceAndLoad();
+                return resolveActiveWorkspaceAndLoad(options);
             });
         }
-        return resolveActiveWorkspaceAndLoad();
+        return resolveActiveWorkspaceAndLoad(options);
     }
 
-    function resolveActiveWorkspaceAndLoad() {
+    function resolveActiveWorkspaceAndLoad(options) {
         beginDraftResolution();
         return jsonRequest('/api/workspace/current', { method: 'GET' })
             .then(function (workspace) {
                 runtime.workspaceResolved = true;
                 if (!workspace || !workspace.workspaceId) {
                     runtime.workspaceId = null;
+                    runtime.serverUnconfirmed = false;
                     finishDraftResolution();
                     return null;
                 }
                 runtime.workspaceId = workspace.workspaceId;
                 rememberWorkspaceId(runtime.workspaceId);
-                return loadDraft();
+                return loadDraft(options);
             })
             .catch(function (error) {
                 runtime.workspaceResolved = false;
                 finishDraftResolution();
+                if (options?.probe) throw error;
+                if (options?.reconcile) C.serverUnavailable(error);
                 if (window.console) window.console.warn('[Taxonomy] Workspace draft unavailable', error);
                 return null;
             });
+    }
+
+    function retryServerState() {
+        if (!runtime.workspaceResolved && !runtime.restoring) {
+            return resolveWorkspaceAndLoad({ reconcile: true });
+        }
+        return C.reconcileDraft();
     }
 
     function installObservers() {
@@ -558,6 +568,21 @@
 
         document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'hidden') saveDraft();
+            else retryServerState();
+        });
+        document.addEventListener('taxonomy:server-contact', function (event) {
+            if (document.visibilityState === 'hidden') return;
+            if (event.detail?.available === false) {
+                C.serverUnavailable(event.detail);
+                // An unavailable pin can mean that the server restarted with an
+                // empty database. A scoped draft read distinguishes that from
+                // a temporary transport failure without submitting any work.
+                if (event.detail.status === 403 || event.detail.status === 404) retryServerState();
+            } else retryServerState();
+        });
+        window.addEventListener('online', retryServerState);
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) retryServerState();
         });
         window.addEventListener('pagehide', function () { saveDraft(); });
     }
@@ -588,7 +613,8 @@
             return Object.freeze({
                 workspaceId: runtime.workspaceId,
                 ready: runtime.initialized && runtime.workspaceResolved
-                    && !runtime.restoring && !runtime.invalidating && !runtime.resetting && !runtime.conflict,
+                    && !runtime.restoring && !runtime.invalidating && !runtime.resetting
+                    && !runtime.conflict && !runtime.serverUnconfirmed,
                 version: runtime.version,
                 conflict: runtime.conflict,
                 restoring: runtime.restoring
@@ -603,6 +629,7 @@
     }
 
     Object.assign(C, {
+        retryServerState: retryServerState,
         generateProjectKey: generateProjectKey,
         deriveTitle: deriveTitle,
         nextRequirementKey: nextRequirementKey,

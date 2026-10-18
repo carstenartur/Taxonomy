@@ -37,7 +37,7 @@ function put(payload, expectedVersion = null) {
   };
 }
 
-function createHarness(rawRequest, { basePath = '' } = {}) {
+function createHarness(rawRequest, { basePath = '', elements = new Map(), timers = null } = {}) {
   const eventListeners = new Map();
   const dispatched = [];
   const runtime = {
@@ -76,14 +76,15 @@ function createHarness(rawRequest, { basePath = '' } = {}) {
     setInterval: nativeSetInterval,
     clearInterval: nativeClearInterval,
     setTimeout(callback) {
+      if (timers) { timers.push(callback); return timers.length; }
       callback();
       return 1;
     },
     TaxonomyScoring: null
   };
   const document = {
-    getElementById() {
-      return null;
+    getElementById(id) {
+      return elements.get(id) || null;
     },
     querySelectorAll() {
       return [];
@@ -392,4 +393,51 @@ test('recognizes reset below a servlet context path', async () => {
     url: '/taxonomy/api/analysis-drafts/workspace-1/reset',
     method: 'POST'
   }]);
+});
+
+
+for (const change of ['workspace', 'analysis']) {
+  test(`a late full draft GET cannot advance the revision of a different ${change}`, async () => {
+    const response = deferred();
+    const h = createHarness(async () => response.promise);
+    h.runtime.version = 7;
+    const reading = h.C.jsonRequest('/api/analysis-drafts/workspace-1', { method: 'GET' });
+    const outcome = Promise.allSettled([reading]);
+    await flush();
+    if (change === 'workspace') h.runtime.workspaceId = 'workspace-2';
+    else h.runtime.analysisGeneration++;
+    h.runtime.version = 3;
+    response.resolve({ version: 8, payload: { businessText: 'old response' } });
+    await outcome;
+    assert.equal(h.runtime.version, 3);
+  });
+}
+
+test('a queued write for an abandoned scope is never submitted with the next scope revision', async () => {
+  const response = deferred(), methods = [];
+  const h = createHarness(async (url, options) => { methods.push(options.method); return response.promise; });
+  const reading = h.C.jsonRequest('/api/analysis-drafts/workspace-1', { method: 'GET' });
+  const writing = h.C.jsonRequest('/api/analysis-drafts/workspace-1', put({ businessText: 'abandoned' }));
+  const outcomes = Promise.allSettled([reading, writing]);
+  await flush();
+  h.runtime.workspaceId = 'workspace-2';
+  h.runtime.version = 4;
+  response.resolve({ version: 8, payload: { businessText: 'old' } });
+  await outcomes;
+  assert.deepEqual(methods, ['GET']);
+  assert.equal(h.runtime.version, 4);
+});
+
+
+test('a delayed provider restore cannot replace options selected after its draft was discarded', () => {
+  const timers = [], provider = { value: 'MANUAL', options: [] };
+  const h = createHarness(async () => null, { timers, elements: new Map([['providerSelect', provider]]) });
+  const old = { analysisOptions: { provider: 'GEMMA' } };
+  h.runtime.restoredPayload = old;
+  h.C.restoreOptions(old, 0);
+  assert.equal(timers.length, 1);
+  h.runtime.restoredPayload = null;
+  provider.options = [{ value: 'GEMMA' }, { value: 'MANUAL' }];
+  timers[0]();
+  assert.equal(provider.value, 'MANUAL');
 });

@@ -15,7 +15,7 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
     const authFailures = [];
     const schedule = (fn, delay) => { const key = ++serial; timers.set(key, { fn, delay }); return key; };
     const unschedule = key => timers.delete(key);
-    const elements = new Map();
+    const elements = new Map(), listeners = new Map();
     class Element {
         constructor(tag) { this.tag = tag; this.children = []; this.ownText = ''; this.attributes = {}; this.isConnected = true; }
         set id(value) { this.identifier = value; elements.set(value, this); }
@@ -38,12 +38,18 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
     const document = {
         documentElement: { lang: 'en' },
         createElement: tag => new Element(tag),
-        addEventListener() {}, getElementById(id) { return elements.get(id) || null; },
+        addEventListener(name, listener) {
+            if (!listeners.has(name)) listeners.set(name, []);
+            listeners.get(name).push(listener);
+        }, getElementById(id) { return elements.get(id) || null; },
         querySelector(selector) {
             return selector === 'meta[name="_csrf"]' ? { content: 'test-token' }
                 : selector === 'meta[name="_csrf_header"]' ? { content: 'X-CSRF-TOKEN' } : null;
         },
-        dispatchEvent(event) { authFailures.push(event.detail); }
+        dispatchEvent(event) {
+            authFailures.push(event.detail);
+            for (const listener of listeners.get(event.type) || []) listener(event);
+        }
     };
     const window = {
         EventSource: class {
@@ -990,4 +996,20 @@ test('explicit cluster detail opens unresolved attempts and refreshes the comple
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(f.calls.filter(request => String(request.url).includes('/calls/')).length, 3,
         'Explicit reopening reads retained evidence again after live observation ends');
+});
+
+
+test('discarding the analysis removes its progress panel even after observation has finished', async () => {
+    const f = fixture(async () => response(snapshot(1, 'COMPLETED')), 'workspace-a', true);
+    await f.step(0);
+    assert.ok(f.document.getElementById('analysisLiveProgress'));
+    f.document.dispatchEvent(new CustomEvent('taxonomy:analysis-invalidated'));
+    assert.equal(f.document.getElementById('analysisLiveProgress'), null);
+});
+
+test('cancelling retains the observed partial progress until the analysis is explicitly discarded', async () => {
+    const f = fixture(async () => response(snapshot()), 'workspace-a', true);
+    await f.step(0);
+    f.document.dispatchEvent(new CustomEvent('taxonomy:analysis-cancelled'));
+    assert.ok(f.document.getElementById('analysisLiveProgress'));
 });

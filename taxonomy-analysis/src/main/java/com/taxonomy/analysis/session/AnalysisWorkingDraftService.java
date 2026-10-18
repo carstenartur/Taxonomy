@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftStatus;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -60,6 +61,14 @@ public class AnalysisWorkingDraftService {
         DraftScope scope = resolveScope(username, workspaceId);
         return repository.findByScopeKeyAndUsername(scope.scopeKey(), scope.username())
                 .map(draft -> toView(draft, scope.branch()));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<AnalysisDraftStatus> status(String username, String workspaceId) {
+        DraftScope scope = resolveScope(username, workspaceId);
+        return repository.findProjectedByScopeKeyAndUsername(scope.scopeKey(), scope.username())
+                .map(revision -> new AnalysisDraftStatus(scope.workspaceId(), scope.branch(),
+                        revision.getRowVersion(), revision.getUpdatedAt()));
     }
 
     @Transactional

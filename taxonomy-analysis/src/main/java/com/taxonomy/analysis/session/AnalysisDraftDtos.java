@@ -34,4 +34,12 @@ public final class AnalysisDraftDtos {
             long version,
             Instant updatedAt) {
     }
+
+    /** Small read-only observation; does not transfer the analysis payload. */
+    public record AnalysisDraftStatus(
+            String workspaceId,
+            String branch,
+            long version,
+            Instant updatedAt) {
+    }
 }
