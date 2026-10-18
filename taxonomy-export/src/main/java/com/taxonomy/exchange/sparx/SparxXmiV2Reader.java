@@ -49,7 +49,7 @@ final class SparxXmiV2Reader {
         }
         Element model = models.getFirst(); String modelId = guid(model.getAttributeNS(XMI,"id"));
         if (v3()) {
-            if (metadata.containsKey("identifier")) SparxRelationProfileV3.require(modelId, metadata.get("identifier"), "Model identity contradicts preserved metadata");
+            if (metadata.containsKey("identifier")) SparxRelationProfileV3.require(modelId, guid(metadata.get("identifier")), "Model identity contradicts preserved metadata");
             if (metadata.containsKey("title")) SparxRelationProfileV3.require(model.getAttribute("name"), metadata.get("title"), "Model title contradicts preserved metadata");
             for (Element comment : ExchangeXml.children(model)) if ("ownedComment".equals(comment.getLocalName())) {
                 if (metadata.containsKey("taxonomy.requirementText")) SparxRelationProfileV3.require(metadata.get("taxonomy.requirementText"),
@@ -297,6 +297,8 @@ final class SparxXmiV2Reader {
             String extension = name.startsWith("taxonomy.") ? "taxonomy:" + name.substring(9) : null;
             if (!attributes.containsKey("tag:" + name) && extension != null && extensions.containsKey(extension)) sameField(extensions, extension, value);
             else sameField(attributes, "tag:" + name, value);
+            // Native import consumes the effective status even without a private envelope.
+            if ("taxonomy.status".equals(name)) sameField(extensions, "taxonomy:status", value);
         }
     }
 
