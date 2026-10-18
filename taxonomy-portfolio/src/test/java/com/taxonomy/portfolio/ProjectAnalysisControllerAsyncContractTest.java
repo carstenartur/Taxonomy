@@ -3,6 +3,8 @@ package com.taxonomy.portfolio;
 import com.taxonomy.portfolio.controller.ProjectAnalysisController;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisContinuationView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
@@ -21,6 +23,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class ProjectAnalysisControllerAsyncContractTest {
@@ -73,6 +77,28 @@ class ProjectAnalysisControllerAsyncContractTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getHeaders().getLocation())
                 .hasToString("/api/projects/41/analysis-jobs/job-1");
+    }
+
+    @Test
+    void continuationReadOnlyObservesTheExactAuthorizedItem() {
+        var decision = new AnalysisContinuationView("snapshot", 9L, "run", 123L, "STOPPED", true, "Budget stop");
+        when(analysisService.getContinuation("job-1", 41L, 7L, context.username(), context)).thenReturn(decision);
+        assertThat(controller.getContinuation(41L, "job-1", 7L)).isSameAs(decision);
+        verify(analysisService).getContinuation("job-1", 41L, 7L, context.username(), context);
+        verifyNoMoreInteractions(analysisService);
+    }
+
+    @Test
+    void explicitContinuationReturnsTheExistingJobWithoutStartingAnotherVerificationPass() {
+        var request = new ContinueAnalysisRequest("snapshot", 123L);
+        var job = pendingJob();
+        when(analysisService.enqueueContinuation("job-1", 41L, 7L, request, context.username(), context)).thenReturn(job);
+        var response = controller.continueAnalysis(41L, "job-1", 7L, request);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getHeaders().getLocation()).hasToString("/api/projects/41/analysis-jobs/job-1");
+        assertThat(response.getBody()).isSameAs(job);
+        verify(analysisService).enqueueContinuation("job-1", 41L, 7L, request, context.username(), context);
+        verifyNoMoreInteractions(analysisService);
     }
 
     private AnalysisJobView pendingJob() {

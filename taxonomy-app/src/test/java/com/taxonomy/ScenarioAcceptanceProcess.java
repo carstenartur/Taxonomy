@@ -23,6 +23,11 @@ public final class ScenarioAcceptanceProcess {
         Path directory = Path.of("target/scenario-acceptance");
         Files.createDirectories(directory);
         ScenarioRelationQuality.clearReports(directory);
+        for (String report : java.util.List.of("classification-quality.json", "architecture-quality.json",
+                "integration-quality.json", "prompt-evidence-quality.json", "quality.json", "run.json", "continuation-history.json",
+                "playback-coverage.json")) {
+            Files.deleteIfExists(directory.resolve(report));
+        }
         Path log = directory.resolve("application-process.log");
         var command = new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());

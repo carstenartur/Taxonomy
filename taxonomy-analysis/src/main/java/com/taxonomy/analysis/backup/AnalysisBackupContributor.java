@@ -14,6 +14,7 @@ import java.util.*;
 import com.taxonomy.analysis.backup.AnalysisRunSelection.Key;
 import com.taxonomy.analysis.backup.AnalysisRunSelection.Run;
 import com.taxonomy.analysis.cluster.ClusterAnalysisBackupExport;
+import com.taxonomy.analysis.recovery.AnalysisCheckpointPayloadCodec;
 import static com.taxonomy.exchange.backup.PortableRows.*;
 
 /** Captures persisted analysis work; worker ownership is never portable. */
@@ -21,6 +22,8 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
     private static final String RUN_COLUMNS = "r.id as run_id,r.username,r.workspace_id,r.branch_name,r.repository_id,r.input_hash as run_input_hash,r.updated_at,r.row_version,r.state as run_state,r.current_node";
     private final PortableRows rows;
     private final String principalScope;
+    private final tools.jackson.databind.ObjectMapper checkpointJson = new tools.jackson.databind.ObjectMapper();
+    private final AnalysisCheckpointPayloadCodec checkpointPayload = new AnalysisCheckpointPayloadCodec(checkpointJson);
     public AnalysisBackupContributor(DataSource database,String principalScope) {
         rows = new PortableRows(database); this.principalScope = Objects.requireNonNull(principalScope);
     }
@@ -92,7 +95,17 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
             var run=run(r,scope);
             if (!run.id().equals(text(r,"question_run_id")) || !run.equals(includedRuns.get(run.id())))
                 throw new IOException("Analysis question reference is inconsistent");
-            return new QuestionRecord(reference(r,"analysis.question","id"),new SourceRecordId("analysis.continuation",run.id()),text(r,"question_key"),text(r,"input_hash"),text(r,"provider"),text(r,"node_codes"),text(r,"detail_json"),text(r,"prompt_text"),text(r,"state"),r.getInt("attempts"),r.getLong("started_at"),text(r,"error_text"));
+            String nodeCodes = text(r,"node_codes"), prompt, detail;
+            try {
+                var layout = checkpointPayload.parseLayout(nodeCodes);
+                prompt = checkpointPayload.decodePrompt(layout, text(r,"prompt_text"));
+                detail = checkpointPayload.decodeDetail(layout, text(r,"detail_json"), prompt);
+                // The portable v1 archive keeps its complete original cleartext contract.
+                if (layout.encoded()) nodeCodes = checkpointJson.writeValueAsString(layout.nodes());
+            } catch (IllegalArgumentException invalid) {
+                throw new IOException("Invalid stored analysis checkpoint payload");
+            }
+            return new QuestionRecord(reference(r,"analysis.question","id"),new SourceRecordId("analysis.continuation",run.id()),text(r,"question_key"),text(r,"input_hash"),text(r,"provider"),nodeCodes,detail,prompt,text(r,"state"),r.getInt("attempts"),r.getLong("started_at"),text(r,"error_text"));
         });
         new ClusterAnalysisBackupExport(rows, principalScope).write(snapshot, sink, (owner, authority, businessText, terminal) -> {
             if (authority.workspaceId() == null || authority.branch() == null) return !terminal;

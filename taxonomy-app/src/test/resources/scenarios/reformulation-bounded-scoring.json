@@ -1,0 +1,520 @@
+{
+  "schemaVersion": 1,
+  "id": "scenario-flood-reformulation-bounded-v1",
+  "purpose": "PROTOCOL_ONLY",
+  "responseProvenance": "Authored protocol-only acceptance inputs: only the fixed BP-1017 and IP-1116 paths are selected. These replies exercise the eight-section reformulation, decision, adoption and persistence protocol; they are not the realistic Flood classification reference, a completeness judgment about the source, or live-model quality evidence.",
+  "scopeOrigin": {
+    "commit": "5d82494a248a78a2a23254a48cfb21e1160764f0",
+    "resource": "taxonomy-app/src/test/resources/scenarios/flood-information.json",
+    "note": "Preserves the eight independent root questions and the BP/IP child and product prompt scopes used by the bounded reformulation fixture before the Flood semantic-reference expansion."
+  },
+  "protocolSections": [
+    "BP-1060",
+    "BP-1327",
+    "BP-1000",
+    "BP",
+    "IP-1102",
+    "IP-1005",
+    "IP-1000",
+    "IP"
+  ],
+  "selectedLeaves": [
+    "BP-1017",
+    "IP-1116"
+  ],
+  "notes": [
+    "The requirement text and its source evidence are supplied by ReformulationScenarioCorpus from the Flood scenario and remain unchanged. Alternate authored scenarios replace their source exactly as before.",
+    "ReformulationScenarioReplies intentionally implements a fixed eight-section BP/IP protocol. This corpus is independent so adding realistic semantic branches to the Flood reference cannot change that protocol graph.",
+    "Every offered candidate, including roots and the concrete product IP-1673, has an explicit answer. Zeros express a bounded protocol choice, not an evidence-based rejection of a requirement or catalogue candidate.",
+    "The selected roots and descendant budgets remain 100 to reproduce the existing protocol inputs. All other root scores are zero, so they do not expand into unsupported sections.",
+    "This protocol corpus must not be used as evidence for classification quality, domain completeness, independent expert agreement, or the usefulness of a Sparx export."
+  ],
+  "replies": [
+    {
+      "id": "BP",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "BP"
+      ],
+      "answers": {
+        "BP": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select BP to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        }
+      }
+    },
+    {
+      "id": "BR",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "BR"
+      ],
+      "answers": {
+        "BR": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BR stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "CI",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "CI"
+      ],
+      "answers": {
+        "CI": {
+          "score": 0,
+          "reason": "Protocol-only fixture: CI stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "CO",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "CO"
+      ],
+      "answers": {
+        "CO": {
+          "score": 0,
+          "reason": "Protocol-only fixture: CO stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "CP",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "CP"
+      ],
+      "answers": {
+        "CP": {
+          "score": 0,
+          "reason": "Protocol-only fixture: CP stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "CR",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "CR"
+      ],
+      "answers": {
+        "CR": {
+          "score": 0,
+          "reason": "Protocol-only fixture: CR stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "IP",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "IP"
+      ],
+      "answers": {
+        "IP": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select IP to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        }
+      }
+    },
+    {
+      "id": "UA",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "UA"
+      ],
+      "answers": {
+        "UA": {
+          "score": 0,
+          "reason": "Protocol-only fixture: UA stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "BP-1060-categories",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "BP-1017",
+        "BP-1055",
+        "BP-1263",
+        "BP-1866",
+        "BP-1877"
+      ],
+      "answers": {
+        "BP-1017": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select BP-1017 to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        },
+        "BP-1055": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1055 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1263": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1263 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1866": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1866 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1877": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1877 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "BP-1327-categories",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "BP-1060",
+        "BP-1147",
+        "BP-1246",
+        "BP-1332",
+        "BP-1351",
+        "BP-1383",
+        "BP-1459",
+        "BP-1490",
+        "BP-1533",
+        "BP-1599",
+        "BP-1819",
+        "BP-1948",
+        "BP-2060",
+        "BP-2078"
+      ],
+      "answers": {
+        "BP-1060": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select BP-1060 to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        },
+        "BP-1147": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1147 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1246": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1246 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1332": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1332 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1351": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1351 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1383": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1383 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1459": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1459 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1490": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1490 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1533": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1533 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1599": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1599 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1819": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1819 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1948": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1948 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-2060": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-2060 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-2078": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-2078 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "BP-1000-categories",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "BP-1327",
+        "BP-1481",
+        "BP-1486",
+        "BP-1779"
+      ],
+      "answers": {
+        "BP-1327": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select BP-1327 to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        },
+        "BP-1481": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1481 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1486": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1486 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "BP-1779": {
+          "score": 0,
+          "reason": "Protocol-only fixture: BP-1779 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "BP-categories",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "BP-1000"
+      ],
+      "answers": {
+        "BP-1000": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select BP-1000 to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        }
+      }
+    },
+    {
+      "id": "IP-1102-categories",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "IP-1103",
+        "IP-1104",
+        "IP-1105",
+        "IP-1106",
+        "IP-1107",
+        "IP-1108",
+        "IP-1109",
+        "IP-1110",
+        "IP-1111",
+        "IP-1112",
+        "IP-1113",
+        "IP-1114",
+        "IP-1115",
+        "IP-1116"
+      ],
+      "answers": {
+        "IP-1103": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1103 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1104": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1104 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1105": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1105 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1106": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1106 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1107": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1107 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1108": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1108 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1109": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1109 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1110": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1110 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1111": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1111 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1112": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1112 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1113": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1113 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1114": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1114 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1115": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1115 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1116": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select IP-1116 to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        }
+      }
+    },
+    {
+      "id": "IP-1102-products-0",
+      "task": "products",
+      "parentScore": null,
+      "keys": [
+        "IP-1673"
+      ],
+      "answers": {
+        "IP-1673": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1673 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "IP-1005-categories",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "IP-1010",
+        "IP-1069",
+        "IP-1088",
+        "IP-1102"
+      ],
+      "answers": {
+        "IP-1010": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1010 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1069": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1069 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1088": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1088 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1102": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select IP-1102 to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        }
+      }
+    },
+    {
+      "id": "IP-1000-categories",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "IP-1005",
+        "IP-1028",
+        "IP-1049",
+        "IP-1078",
+        "IP-1079",
+        "IP-2049"
+      ],
+      "answers": {
+        "IP-1005": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select IP-1005 to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        },
+        "IP-1028": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1028 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1049": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1049 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1078": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1078 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-1079": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-1079 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        },
+        "IP-2049": {
+          "score": 0,
+          "reason": "Protocol-only fixture: IP-2049 stays outside the selected BP/IP reformulation path. This explicit zero bounds the workflow and makes no claim that the full requirement is irrelevant to this candidate."
+        }
+      }
+    },
+    {
+      "id": "IP-categories",
+      "task": "categories",
+      "parentScore": 100,
+      "keys": [
+        "IP-1000"
+      ],
+      "answers": {
+        "IP-1000": {
+          "score": 100,
+          "reason": "Protocol-only fixture: select IP-1000 to retain the fixed BP/IP reformulation graph and its eight sections. This authored weight is a workflow input, not a semantic relevance assessment."
+        }
+      }
+    }
+  ],
+  "relationPlayback": {
+    "sourceContributions": [
+      {
+        "nodeId": "BP-1017",
+        "text": "Acquire the published observation batch and preserve source and observation time.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": ""
+      },
+      {
+        "nodeId": "IP-1116",
+        "text": "Represent the published environmental situation with its source and observation time.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
+        "condition": ""
+      }
+    ],
+    "paths": {
+      "BP-1017": [
+        "BP",
+        "BP-1000",
+        "BP-1327",
+        "BP-1060",
+        "BP-1017"
+      ],
+      "IP-1116": [
+        "IP",
+        "IP-1000",
+        "IP-1005",
+        "IP-1102",
+        "IP-1116"
+      ]
+    },
+    "claims": [
+      {
+        "sourceId": "BP-1017",
+        "targetId": "IP-1116",
+        "type": "CONSUMES",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "necessity": "REQUIRED",
+        "condition": "",
+        "alternativeGroup": ""
+      }
+    ]
+  }
+}

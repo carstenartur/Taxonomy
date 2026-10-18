@@ -22,7 +22,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.SolutionType;
 import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.ProjectSolution;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
-import com.taxonomy.portfolio.model.RequirementElementMapping;
+import com.taxonomy.portfolio.repository.CurrentElementMappingReadRow;
 import com.taxonomy.portfolio.model.RequirementSolutionLink;
 import com.taxonomy.portfolio.model.SolutionDefinition;
 import com.taxonomy.portfolio.model.SolutionTaxonomyCoverage;
@@ -338,13 +338,13 @@ public class SolutionPortfolioService {
                                                                 WorkspaceContext context) {
         ArchitectureProject project = projectService.requireProject(projectId, username, context);
         String scopeKey = PortfolioScope.key(username, context);
-        List<RequirementElementMapping> mappings = elementMappingRepository
-                .findCurrentMappingsForProject(projectId);
+        List<CurrentElementMappingReadRow> mappings = elementMappingRepository
+                .findCurrentProposalInputsForProject(projectId, scopeKey);
         Map<Long, ProjectSolution> touched = new LinkedHashMap<>();
         Instant now = Instant.now();
 
-        for (RequirementElementMapping element : mappings) {
-            for (SolutionTaxonomyCoverage coverage : coverageRepository.findByNodeCode(element.getNodeCode())) {
+        for (CurrentElementMappingReadRow element : mappings) {
+            for (SolutionTaxonomyCoverage coverage : coverageRepository.findByNodeCode(element.nodeCode())) {
                 SolutionDefinition solution = coverage.getSolution();
                 if (!scopeKey.equals(solution.getScopeKey())
                         || coverage.getReviewStatus() != ReviewStatus.CONFIRMED) {
@@ -357,29 +357,28 @@ public class SolutionPortfolioService {
                                 solution,
                                 ProjectSolutionStatus.PROPOSED,
                                 ActionStatus.UNDECIDED,
-                                (int) Math.max(1, Math.ceil(element.getDirectScore())),
+                                (int) Math.max(1, Math.ceil(element.directScore())),
                                 "Proposed from confirmed taxonomy coverage; human decision required",
                                 PortfolioScope.username(username, context),
                                 now)));
                 touched.put(projectSolution.getId(), projectSolution);
 
-                ProjectRequirement requirement = element.getSnapshot().getRequirement();
                 double effectiveCoverage = com.taxonomy.dto.AnalysisPercentages.product(
-                        coverage.getCoveragePercent(), element.getRelevance() * 100);
+                        coverage.getCoveragePercent(), element.relevance() * 100);
                 RequirementSolutionLink link = requirementLinkRepository
                         .findByProjectSolutionIdAndRequirementId(
-                                projectSolution.getId(), requirement.getId())
+                                projectSolution.getId(), element.requirementId())
                         .orElseGet(() -> new RequirementSolutionLink(
                                 projectSolution,
-                                requirement,
-                                element.getSnapshot().getId(),
+                                projectService.requireRequirement(projectId, element.requirementId(), username, context),
+                                element.snapshotId(),
                                 effectiveCoverage,
                                 RequirementSolutionRole.USES,
                                 ReviewStatus.PROPOSED,
-                                "Solution covers " + element.getNodeCode()
+                                "Solution covers " + element.nodeCode()
                                         + " at " + coverage.getCoveragePercent()
                                         + "% and the requirement relevance is "
-                                        + com.taxonomy.dto.AnalysisPercentages.display(element.getRelevance() * 100),
+                                        + com.taxonomy.dto.AnalysisPercentages.display(element.relevance() * 100),
                                 PortfolioScope.username(username, context),
                                 now));
                 if (link.getId() == null) {

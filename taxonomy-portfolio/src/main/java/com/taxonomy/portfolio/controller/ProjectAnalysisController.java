@@ -1,7 +1,9 @@
 package com.taxonomy.portfolio.controller;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisContinuationView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ElementMappingView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewElementMappingRequest;
@@ -104,6 +106,26 @@ public class ProjectAnalysisController {
         AnalysisJobView job = analysisService.enqueueRetryFailed(
                 jobId, projectId, scope.username(), scope.context());
         return accepted(projectId, job);
+    }
+
+    @GetMapping("/analysis-jobs/{jobId}/items/{itemId}/continuation")
+    @Operation(summary = "Read whether a saved partial item can continue within another budget",
+            description = "Reads exact-tenant snapshot and continuation revisions without making provider calls. An execution-budget stop in an unchanged, owned local workspace can continue independent remaining work while retaining accepted clarification questions. Failed or unassessed evidence, cancellation and unsupported cluster execution remain ineligible.")
+    public AnalysisContinuationView getContinuation(@PathVariable Long projectId,
+            @PathVariable String jobId, @PathVariable Long itemId) {
+        RequestScope scope = scope();
+        return analysisService.getContinuation(jobId, projectId, itemId, scope.username(), scope.context());
+    }
+
+    @PostMapping("/analysis-jobs/{jobId}/items/{itemId}/continue")
+    @Operation(summary = "Continue one budget-stopped requirement analysis",
+            description = "Requires the reviewed snapshotId and continuationVersion. Queues one further bounded cycle for that exact immutable requirement version and retained question journal. Successful provider answers are replayed; the normal per-cycle budget is unchanged and no additional verification pass is created.")
+    public ResponseEntity<AnalysisJobView> continueAnalysis(@PathVariable Long projectId,
+            @PathVariable String jobId, @PathVariable Long itemId,
+            @RequestBody ContinueAnalysisRequest request) {
+        RequestScope scope = scope();
+        return accepted(projectId, analysisService.enqueueContinuation(jobId, projectId, itemId,
+                request, scope.username(), scope.context()));
     }
 
     @GetMapping("/requirements/{requirementId}/snapshots")

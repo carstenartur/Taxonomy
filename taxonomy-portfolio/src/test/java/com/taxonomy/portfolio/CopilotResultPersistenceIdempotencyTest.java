@@ -1,7 +1,8 @@
 package com.taxonomy.portfolio;
 
 import com.taxonomy.portfolio.model.ProjectRequirement;
-import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.repository.AnalysisSnapshotIdentityRow;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSelectionRow;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
 import com.taxonomy.portfolio.service.CopilotResultPersistenceService;
@@ -33,26 +34,17 @@ class CopilotResultPersistenceIdempotencyTest {
 
     @Test
     void selectingTheAlreadyCurrentSnapshotDoesNotChurnRequirementState() {
-        ProjectRequirement requirement = org.mockito.Mockito.mock(ProjectRequirement.class);
-        RequirementAnalysisSnapshot snapshot =
-                org.mockito.Mockito.mock(RequirementAnalysisSnapshot.class);
         String scopeKey = PortfolioScope.key(context.username(), context);
-        when(requirementRepository.findByIdAndProjectIdAndScopeKeyForUpdate(
-                7L, 41L, scopeKey)).thenReturn(Optional.of(requirement));
-        when(snapshotRepository.findByIdAndProjectIdAndScopeKey(
-                "snapshot-1", 41L, scopeKey)).thenReturn(Optional.of(snapshot));
-        when(snapshot.getRequirementId()).thenReturn(7L);
-        when(snapshot.getRequirementVersionId()).thenReturn(9L);
-        when(requirement.getCurrentVersionId()).thenReturn(9L);
-        when(requirement.getCurrentAnalysisSnapshotId()).thenReturn("snapshot-1");
+        when(requirementRepository.findAnalysisSelectionForUpdate(7L, 41L, scopeKey))
+                .thenReturn(Optional.of(new RequirementAnalysisSelectionRow(7L, 9L, "snapshot-1")));
+        when(snapshotRepository.findIdentityByIdAndProjectIdAndScopeKey("snapshot-1", 41L, scopeKey))
+                .thenReturn(Optional.of(new AnalysisSnapshotIdentityRow("snapshot-1", 7L, 9L)));
 
         assertThat(service.selectCurrentSnapshot(
                 41L, 7L, "snapshot-1", context.username(), context))
                 .isEqualTo("snapshot-1");
 
-        verify(requirement, never()).pointToAnalysis(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any());
-        verify(requirementRepository, never()).save(requirement);
+        verify(requirementRepository, never()).findByIdAndProjectIdAndScopeKeyForUpdate(7L, 41L, scopeKey);
+        verify(requirementRepository, never()).save(org.mockito.ArgumentMatchers.any(ProjectRequirement.class));
     }
 }

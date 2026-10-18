@@ -66,25 +66,31 @@ public final class ScenarioExportQa {
         assertThat(sparxBundle.keySet()).containsExactlyInAnyOrder("architecture.xmi", "manifest.json", "README.txt");
         var sparxManifest = JSON.readTree(sparxBundle.get("manifest.json"));
         assertThat(sparxManifest.path("mode").asText()).isEqualTo("fresh-copy");
+        assertThat(sparxManifest.path("exchangeProfile").asText()).isEqualTo("sparx-xmi-2.1@3");
         assertThat(sparxManifest.path("productCompatibility").asText()).isEqualTo("not-certified");
         assertThat(sparxManifest.path("syncCheckpointChanged").asBoolean(true)).isFalse();
         assertThat(sparxManifest.path("sha256").asText()).isEqualTo(sha256(sparxBundle.get("architecture.xmi")));
-        var sparx = new com.taxonomy.exchange.sparx.SparxXmiCodec().read(sparxBundle.get("architecture.xmi"), null, false);
+        var sparx = new com.taxonomy.exchange.sparx.SparxXmiCodec("3").read(sparxBundle.get("architecture.xmi"), null, false);
         assertThat(sparx.artifacts()).hasSize(expected.nodes().size());
         assertThat(sparx.relations()).hasSize(expected.edges().size());
-        assertThat(sparx.artifacts()).extracting(a -> a.extensions().get("taxonomy:sourceId"))
+        assertThat(sparx.artifacts()).extracting(a -> a.attributes().get("tag:taxonomy.sourceId"))
                 .containsExactlyInAnyOrderElementsOf(expected.nodes().stream().map(node -> node.id()).toList());
-        assertThat(sparx.relations()).extracting(r -> r.extensions().get("taxonomy:sourceId"))
+        assertThat(sparx.relations()).extracting(r -> r.attributes().get("tag:taxonomy.sourceId"))
                 .containsExactlyInAnyOrderElementsOf(expected.edges().stream().map(edge -> edge.id()).toList());
         Map<String, String> sparxSourceIds = new HashMap<>();
-        sparx.artifacts().forEach(a -> sparxSourceIds.put(a.id(), a.extensions().get("taxonomy:sourceId")));
+        sparx.artifacts().forEach(a -> sparxSourceIds.put(a.id(), a.attributes().get("tag:taxonomy.sourceId")));
         Map<String, com.taxonomy.diagram.DiagramEdge> expectedEdges = new HashMap<>();
         expected.edges().forEach(edge -> expectedEdges.put(edge.id(), edge));
         sparx.relations().forEach(relation -> {
-            var edge = expectedEdges.get(relation.extensions().get("taxonomy:sourceId"));
+            var edge = expectedEdges.get(relation.attributes().get("tag:taxonomy.sourceId"));
             assertThat(sparxSourceIds.get(relation.source())).isEqualTo(edge.sourceId());
             assertThat(sparxSourceIds.get(relation.target())).isEqualTo(edge.targetId());
-            assertThat(relation.extensions().get("taxonomy:sourceType")).isEqualTo(edge.relationType());
+            assertThat(relation.attributes().get("tag:taxonomy.sourceType")).isEqualTo(edge.relationType());
+            assertThat(relation.extensions().get("canonicalType")).isEqualTo(edge.relationType());
+            assertThat(relation.attributes().get("tag:taxonomy.relationType")).isEqualTo(edge.relationType());
+            assertThat(relation.extensions().get("direction")).isEqualTo("Source -> Destination");
+            assertThat(relation.attributes().get("tag:taxonomy.relationProvenance"))
+                    .isEqualTo(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(edge.metadata()).toString());
         });
 
         var visioBundle = unzip(artifacts.get("architecture.visio.zip"));
@@ -223,10 +229,11 @@ public final class ScenarioExportQa {
         report.put("relationships", expected.edges().size());
         report.put("isolatedElements", isolated);
         report.put("architectureState", "GENERATED_CANDIDATE");
-        report.put("referenceReview", Map.of("decision", "ACCEPTED_AS_INTEGRATION_TEST_REFERENCE",
+        report.put("referenceReview", Map.of("decision", "SEPARATE_DOMAIN_ACCEPTANCE_REQUIRED",
                 "document", "docs/qa/scenario-reference-review.md", "productionApproval", false,
-                "remainingCoverage", List.of("F3 phone/email and subscription model", "F4 account management/deletion",
-                        "F5 timing/outage contracts", "A1 delivery/privacy/audit contracts")));
+                "reference", "scenarios/flood-quality-reference.json",
+                "requiredGates", List.of("classification-quality.json", "relation-quality.json",
+                        "architecture-quality.json", "integration-quality.json")));
         report.put("automaticChecks", List.of("ArchiMate semantic round trip", "Visio identity and endpoint parity",
                 "ZIP and manifest checksums", "SVG identity and scene bounds", "PDF text, provenance and minimum 7pt glyph size",
                 "DOCX/HTML/JSON report provenance", "All registered diagram adapters, including Sparx fresh-copy handoff",

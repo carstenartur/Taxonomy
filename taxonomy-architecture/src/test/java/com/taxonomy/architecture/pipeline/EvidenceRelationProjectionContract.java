@@ -78,6 +78,32 @@ public final class EvidenceRelationProjectionContract {
         var c = project(report(List.of(new Edge(PART, TARGET, "SUPPORTS", Direction.INCOMING, old.evidence()))), 0);
         check(c.getRelationships().getFirst().getSourceCode().equals("record") && c.getRelationships().getFirst().getTargetCode().equals("reader"), "incoming direction not reversed twice");
     }
+    public static void testReadableContributionsFollowTheActualDirectedEndpoints() {
+        var decision = new Decision("record", Outcome.VERIFIED, "retain the evidence record", "Keep the record.",
+                Necessity.REQUIRED, "record scope", "", "The reader uses the retained record", "");
+        var incoming = new Edge(PART, TARGET, "SUPPORTS", Direction.INCOMING, decision);
+        var incomingReport = report(List.of(incoming));
+        var projected = project(incomingReport, 0).getRelationships().getFirst();
+        check(projected.getSourceCode().equals("record") && projected.getTargetCode().equals("reader")
+                        && projected.getRelationType().equals("SUPPORTS"),
+                "The stored incoming edge keeps its independently specified source, target and type");
+        for (String reason : List.of(projected.getPresenceReason(), projected.getDerivationReason(), projected.getIncludedBecause())) {
+            check(reason.contains("Source contribution: retain the evidence record | Target contribution: read existing evidence"),
+                    "Incoming evidence text belongs to the actual record-to-reader endpoints");
+            check(reason.contains("Evidence: Keep the record. / Read evidence.")
+                            && reason.contains("Conditions: record scope / reader role"),
+                    "Evidence and conditions follow the same directed endpoint order");
+        }
+        var outgoing = project(report(List.of(new Edge(PART, TARGET, "CONSUMES", Direction.OUTGOING, decision))), 0)
+                .getRelationships().getFirst();
+        check(outgoing.getSourceCode().equals("reader") && outgoing.getTargetCode().equals("record")
+                        && outgoing.getRelationType().equals("CONSUMES"), "Outgoing endpoints remain unchanged");
+        check(outgoing.getPresenceReason().contains("Source contribution: read existing evidence | Target contribution: retain the evidence record")
+                        && outgoing.getPresenceReason().contains("Evidence: Read evidence. / Keep the record.")
+                        && outgoing.getPresenceReason().contains("Conditions: reader role / record scope"),
+                "Outgoing readable evidence keeps its original endpoint association");
+        check(incomingReport.result().edges().equals(List.of(incoming)), "Readable projection never rewrites the original evidence");
+    }
     static Edge edge(Necessity n) {
         return new Edge(PART, TARGET, "CONSUMES", Direction.OUTGOING, new Decision("record", Outcome.VERIFIED,
                 "existing evidence", "Read evidence.", n, n == Necessity.OPTIONAL ? "if requested" : "", n == Necessity.ALTERNATIVE ? "channel" : "", "Reader needs the record", ""));

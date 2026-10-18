@@ -87,7 +87,8 @@ class ScenarioLlmPlaybackTest {
     }
 
     @Test void multilineSourceIsMatchedInFullIncludingLaterParagraphs() throws Exception {
-        var fixture = (tools.jackson.databind.node.ObjectNode) ScenarioLlmPlayback.flood().fixture();
+        // This tests text transport, not a new domain reference for the appended requirement.
+        var fixture = (tools.jackson.databind.node.ObjectNode) ReformulationScenarioCorpus.flood();
         ((tools.jackson.databind.node.ObjectNode) fixture.path("requirement"))
                 .put("text", fixture.at("/requirement/text").asText() + "\n\nDo not lose this later paragraph.");
         var playback = new ScenarioLlmPlayback(fixture);
@@ -100,12 +101,14 @@ class ScenarioLlmPlaybackTest {
 
     @Test void independentRootCanBeIrrelevantWithoutChangingSiblingBudgets() throws Exception {
         var fixture = ScenarioLlmPlayback.flood().fixture().deepCopy();
-        var rule = (tools.jackson.databind.node.ObjectNode) fixture.path("replies").get(1);
+        var rule = (tools.jackson.databind.node.ObjectNode) fixture.path("replies").valueStream()
+                .filter(candidate -> candidate.path("id").asText().equals("BR")).findFirst().orElseThrow();
         ((tools.jackson.databind.node.ObjectNode) rule.at("/answers/BR")).put("score", 0);
         var playback = new ScenarioLlmPlayback(fixture);
         assertThat(json.readTree(json.readTree(playback.respond(prompt(playback, rule)))
                 .at("/choices/0/message/content").asText()).at("/BR/score").asInt()).isZero();
-        var siblings = (tools.jackson.databind.node.ObjectNode) fixture.path("replies").get(8);
+        var siblings = (tools.jackson.databind.node.ObjectNode) fixture.path("replies").valueStream()
+                .filter(candidate -> candidate.path("id").asText().equals("BP-1060-categories")).findFirst().orElseThrow();
         ((tools.jackson.databind.node.ObjectNode) siblings.at("/answers/BP-1017")).put("score", 99);
         assertThatThrownBy(() -> new ScenarioLlmPlayback(fixture)).hasMessageContaining("Budget mismatch");
     }
@@ -277,6 +280,16 @@ class ScenarioLlmPlaybackTest {
     }
 
     @org.junit.jupiter.api.TestFactory
+    java.util.stream.Stream<org.junit.jupiter.api.DynamicTest> storedScoringReplyContracts() {
+        return java.util.Arrays.stream(ScenarioScoringReplyContract.class.getDeclaredMethods())
+                .filter(method -> method.getName().startsWith("test"))
+                .map(method -> org.junit.jupiter.api.DynamicTest.dynamicTest(method.getName(), () -> {
+                    try { method.invoke(null); }
+                    catch (java.lang.reflect.InvocationTargetException failure) { throw failure.getCause(); }
+                }));
+    }
+
+    @org.junit.jupiter.api.TestFactory
     java.util.stream.Stream<org.junit.jupiter.api.DynamicTest> relationProtocolContracts() {
         return java.util.Arrays.stream(RelationScenarioPlaybackContract.class.getDeclaredMethods())
                 .filter(method -> method.getName().startsWith("test"))
@@ -292,7 +305,7 @@ class ScenarioLlmPlaybackTest {
         Collections.reverse(keys);
         return (rule.get("task").asText().equals("products")
                 ? "You are evaluating concrete Information Products. Score every candidate independently from 0 to 100.\n"
-                : "Analyse and distribute the parent relevance score of " + rule.get("parentScore").asInt() + "\n")
+                : "Analyse and distribute the parent relevance score of " + rule.get("parentScore").asText() + "\n")
                 + "Business Requirement: " + playback.fixture().at("/requirement/text").asText()
                 + "\n\nNodes to evaluate:\n"
                 + "Respond ONLY with a valid JSON object using EXACTLY these keys: " + String.join(", ", keys)

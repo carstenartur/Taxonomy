@@ -123,6 +123,13 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                     continuations.supersedeEvidence(claim, kind, provider, covered, questionOwner);
                 });
             }
+            public void supersedeEvidence(String kind, String provider, Set<String> singletonCodes,
+                    java.util.function.Predicate<com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question> covered) {
+                tx.executeWithoutResult(status -> {
+                    diagnosticAuthority(task, input.deliveryAttempt());
+                    continuations.supersedeEvidence(claim, kind, provider, singletonCodes, covered, questionOwner);
+                });
+            }
             public void checkActive() {
                 boolean current = Boolean.TRUE.equals(tx.execute(status -> {
                     var rows = em.createQuery("select r.state,r.contextJson,w.attempts,w.state from ClusterAnalysisRun r,ClusterAnalysisWork w where r.id=:run and w.id=:work and w.operationId=r.id", Object[].class)

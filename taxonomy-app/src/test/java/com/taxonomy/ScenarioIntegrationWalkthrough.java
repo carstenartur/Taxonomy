@@ -6,26 +6,24 @@ import com.taxonomy.exchange.sparx.SparxXmiCodec;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import tools.jackson.databind.JsonNode;
 
-import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.time.Duration;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Feed the real generated exchange file through review, canonical editing and Sparx delivery. */
 final class ScenarioIntegrationWalkthrough {
-    static void verify(ScenarioArchitectureAcceptanceTest app, byte[] archimate) throws Exception {
+    static void verify(ScenarioArchitectureAcceptanceTest app, JsonNode snapshot, JsonNode projection, byte[] archimate) throws Exception {
         var repository = app.post("/api/repositories", Map.of("displayName", "Scenario exchange QA",
                 "slug", "scenario-exchange-" + UUID.randomUUID(), "description", "Isolated native exchange walkthrough",
                 "visibility", "PRIVATE", "defaultBranch", "draft"), 200);
         var workspace = app.post("/api/repositories/" + repository.path("repositoryId").asText() + "/workspaces",
                 Map.of("displayName", "Scenario exchange", "description", "", "sourceBranch", "draft"), 200);
         String scope = "?workspaceId=" + workspace.path("workspaceId").asText();
-        String incoming = create(app, "Scenario snapshot import", ArchiMateExchangeCodec.PROFILE, "IMPORT_COPY", scope);
+        String incoming = create(app, "Scenario snapshot import", ArchiMateExchangeCodec.PROFILE, "1", "IMPORT_COPY", scope);
         var current = app.get(incoming + scope).get("current");
         var previewRequest = Map.of("operationId", UUID.randomUUID(), "expected", current,
                 "mediaType", "application/archimate+xml", "completeScope", false);
@@ -36,31 +34,33 @@ final class ScenarioIntegrationWalkthrough {
                 + "\r\n--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"snapshot.xml\"\r\n"
                 + "Content-Type: application/archimate+xml\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         body.write(archimate); body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-        var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + incoming + "/previews" + scope))
-                .timeout(Duration.ofSeconds(30)).header("Authorization", "Basic " + Base64.getEncoder().encodeToString(
-                        ("admin:" + ScenarioArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
+        var response = app.http.send(app.authenticatedRequest("POST", incoming + "/previews" + scope)
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200);
         var preview = app.json.readTree(response.body());
         app.save("integration-import-preview.json", preview);
         app.save("integration-import-review.json", app.json.valueToTree(review(preview)));
+        assertAllRelationsAccepted(preview, review(preview), "Snapshot import");
         var applied = app.post(incoming + "/apply" + scope, review(preview), 200);
         assertThat(applied.path("status").asText()).isEqualTo("COMPLETED");
         assertThat(app.post(incoming + "/apply" + scope, review(preview), 200)).isEqualTo(applied);
 
-        String outgoing = create(app, "Scenario Sparx delivery", SparxMappingProfile.PROFILE, "BIDIRECTIONAL", scope);
+        String outgoing = create(app, "Scenario Sparx delivery", SparxMappingProfile.PROFILE, "3", "BIDIRECTIONAL", scope);
         var exportPreview = app.post(outgoing + "/export-previews" + scope, Map.of("operationId", UUID.randomUUID(),
                 "expected", app.get(outgoing + scope).get("current")), 200);
         app.save("integration-sparx-preview.json", exportPreview);
         app.save("integration-sparx-review.json", app.json.valueToTree(review(exportPreview)));
+        assertAllRelationsAccepted(exportPreview, review(exportPreview), "Sparx v3 delivery");
         var delivered = app.post(outgoing + "/files" + scope, review(exportPreview), 200);
         assertThat(delivered.path("status").asText()).isEqualTo("COMPLETED");
         byte[] xmi = app.request("GET", outgoing + "/operations/" + delivered.path("id").asText() + "/file" + scope, null, 200).body();
         Files.write(app.output.resolve("architecture.sparx.xmi"), xmi);
-        var codec = new SparxXmiCodec();
-        var read = codec.read(xmi, "scenario-delivery", false);
-        var replay = codec.read(codec.write(read), "scenario-delivery", false);
+        var codec = new SparxXmiCodec("3");
+        // This delivery is the complete semantic model of the isolated workspace.
+        // The read-only check does not import tombstones or acknowledge a checkpoint.
+        var read = codec.read(xmi, "scenario-delivery", true);
+        var replay = codec.read(codec.write(read), "scenario-delivery", true);
         var source = new ArchiMateExchangeCodec().read(archimate, "scenario-snapshot", false);
         var sourceElements = source.artifacts().stream()
                 .filter(a -> a.kind() == ArtifactKind.ELEMENT).toList();
@@ -69,35 +69,56 @@ final class ScenarioIntegrationWalkthrough {
         assertThat(read.artifacts()).hasSize(sourceElements.size());
         assertThat(read.artifacts()).extracting(a -> a.title())
                 .containsExactlyInAnyOrderElementsOf(sourceElements.stream().map(a -> a.title()).toList());
-        // These are explicit review boundaries, not an assertion of lossless export:
-        // All seven evidence-based required relations satisfy native type rules.
-        // Immutable Sparx profile v1 maps only the two CONSUMES claims; five
-        // other types still require explicit unsupported-mapping review.
-        assertThat(source.relations()).hasSize(7);
-        assertThat(exportPreview.path("document").path("relations")).hasSize(7);
-        assertThat(read.relations()).hasSize(2);
-        Set<String> expectedRelations = new TreeSet<>();
+        // Delivery preserves the actual generated graph through a new connection, not a
+        // separately fabricated Sparx example. Compare oriented, typed endpoints and every
+        // exported Taxonomy property, including scoped rationale and quoted provenance.
+        assertThat(exportPreview.path("document").path("relations")).hasSize(source.relations().size());
+        assertThat(read.relations()).hasSize(source.relations().size());
+        Map<String, Artifact> sourceByTitle = new TreeMap<>(), deliveredByTitle = new TreeMap<>();
         var sourceLabels = new HashMap<String, String>();
-        source.artifacts().forEach(a -> sourceLabels.put(a.id(), a.title()));
-        @SuppressWarnings("unchecked")
-        var decisions = (Map<String, String>) review(preview).get("decisions");
-        for (var change : preview.path("changes")) {
-            var after = change.path("after");
-            if (!"RELATION".equals(after.path("kind").asText()) || !"ACCEPT".equals(decisions.get(change.path("id").asText()))) continue;
-            var fields = after.path("extensions");
-            String type = fields.path("canonicalType").asText();
-            if (SparxMappingProfile.eaRelation(type) != null) expectedRelations.add(
-                    sourceLabels.get(fields.path("source").asText()) + "|" + type + "|" + sourceLabels.get(fields.path("target").asText()));
+        var deliveredLabels = new HashMap<String, String>();
+        for (var artifact : sourceElements) {
+            assertThat(sourceByTitle.put(artifact.title(), artifact)).isNull();
+            sourceLabels.put(artifact.id(), artifact.title());
         }
-        var labels = new HashMap<String, String>();
-        read.artifacts().forEach(a -> labels.put(a.id(), a.title()));
-        assertThat(read.relations()).extracting(r -> labels.get(r.source()) + "|" + r.extensions().get("canonicalType") + "|" + labels.get(r.target()))
-                .containsExactlyInAnyOrderElementsOf(expectedRelations);
-        app.save("integration-quality.json", app.json.valueToTree(Map.of(
-                "generatedRelations", 7, "nativeAcceptedRelations", 7, "nativeRejectedRelations", 0,
-                "sparxDeliveredElements", sourceElements.size(), "sparxDeliveredRelations", 2, "sparxUnmappedRelations", 5,
-                "sparxFileSha256", com.taxonomy.acceptance.ScenarioExportQa.sha256(xmi),
-                "productCompatibility", "NOT_EXECUTED", "reviewEvidence", List.of("integration-import-review.json", "integration-sparx-review.json"))));
+        for (var artifact : read.artifacts()) {
+            assertThat(deliveredByTitle.put(artifact.title(), artifact)).isNull();
+            deliveredLabels.put(artifact.id(), artifact.title());
+        }
+        for (var artifact : sourceElements) {
+            var actual = deliveredByTitle.get(artifact.title());
+            assertThat(actual.extensions().get("canonicalType")).isEqualTo(artifact.extensions().get("canonicalType"));
+            assertTaxonomyPropertiesRetained(artifact.attributes(), artifact.extensions(), actual.attributes(), artifact.title());
+        }
+        Map<String, Relation> expectedRelations = new TreeMap<>(), actualRelations = new TreeMap<>();
+        for (var relation : source.relations()) {
+            assertThat(expectedRelations.put(relationKey(relation, sourceLabels), relation)).isNull();
+        }
+        for (var relation : read.relations()) {
+            assertThat(actualRelations.put(relationKey(relation, deliveredLabels), relation)).isNull();
+        }
+        assertThat(actualRelations.keySet()).containsExactlyInAnyOrderElementsOf(expectedRelations.keySet());
+        for (var entry : expectedRelations.entrySet()) {
+            var actual = actualRelations.get(entry.getKey());
+            assertThat(actual.extensions().get("direction")).isEqualTo("Source -> Destination");
+            assertTaxonomyPropertiesRetained(entry.getValue().attributes(), entry.getValue().extensions(),
+                    actual.attributes(), entry.getKey());
+        }
+        var quality = new LinkedHashMap<String, Object>();
+        quality.put("generatedRelations", source.relations().size());
+        quality.put("nativeAcceptedRelations", source.relations().size());
+        quality.put("nativeRejectedRelations", 0);
+        quality.put("sparxProfile", SparxMappingProfile.PROFILE + "@3");
+        quality.put("sparxDeliveredElements", sourceElements.size());
+        quality.put("sparxDeliveredRelations", read.relations().size());
+        quality.put("sparxUnmappedRelations", 0);
+        quality.put("sparxFileSha256", com.taxonomy.acceptance.ScenarioExportQa.sha256(xmi));
+        quality.put("productCompatibility", "NOT_EXECUTED");
+        quality.put("evaluationScope", "FUNCTIONAL_MODEL_AND_EVIDENCE_NOT_DESKTOP_CERTIFICATION");
+        quality.put("reviewEvidence", List.of("integration-import-review.json", "integration-sparx-review.json"));
+        app.save("integration-quality.json", app.json.valueToTree(quality));
+        app.save("architecture-quality.json", app.json.valueToTree(
+                com.taxonomy.acceptance.ScenarioArchitectureQuality.verify(snapshot, projection, read, xmi)));
         // A delivered file is not a remote acknowledgement and must not advance a checkpoint.
         assertThat(app.get(outgoing + scope).path("checkpoint").isNull()).isTrue();
         app.save("integration-sparx-delivery.json", delivered);
@@ -178,8 +199,7 @@ final class ScenarioIntegrationWalkthrough {
         app.save("integration-native-review.json", app.json.valueToTree(review));
     }
     static JsonNode editorRequest(ScenarioArchitectureAcceptanceTest app, String path, Object body, long revision) throws Exception {
-        var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + path)).timeout(Duration.ofSeconds(30))
-                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + ScenarioArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
+        var response = app.http.send(app.authenticatedRequest("POST", path)
                 .header("Content-Type", "application/json").header("If-Match", "\"workspace-revision-" + revision + "\"")
                 .POST(HttpRequest.BodyPublishers.ofString(app.json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200);
@@ -192,18 +212,62 @@ final class ScenarioIntegrationWalkthrough {
         body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"request\"\r\nContent-Type: application/json\r\n\r\n" + app.json.writeValueAsString(request)
                 + "\r\n--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"contract.xmi\"\r\nContent-Type: application/xmi+xml\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         body.write(file); body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-        var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + path + "/previews" + scope))
-                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + ScenarioArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
+        var response = app.http.send(app.authenticatedRequest("POST", path + "/previews" + scope)
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary).POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200); return app.json.readTree(response.body());
     }
 
-    private static String create(ScenarioArchitectureAcceptanceTest app, String name, String profile, String authority, String scope) throws Exception {
+    private static String create(ScenarioArchitectureAcceptanceTest app, String name, String profile, String version, String authority, String scope) throws Exception {
         UUID id = UUID.randomUUID();
-        app.post("/api/integrations" + scope, Map.of("id", id, "name", name, "connectorId", profile,
+        app.post("/api/integrations" + scope, Map.of("id", id, "name", name, "connectorId", profile, "profileVersion", version,
                 "authority", authority, "externalScope", Map.of("systemType", "Scenario reference",
                         "repository", "urn:taxonomy:scenario-flood:" + id)), 200);
         return "/api/integrations/" + id;
+    }
+
+    private static String relationKey(Relation relation, Map<String, String> labels) {
+        return labels.get(relation.source()) + "|" + relation.extensions().get("canonicalType") + "|" + labels.get(relation.target());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void assertAllRelationsAccepted(JsonNode preview, Map<String, Object> review, String stage) {
+        var decisions = (Map<String, String>) review.get("decisions");
+        for (var change : preview.path("changes")) {
+            if ("RELATION".equals(change.at("/after/kind").asText())) {
+                assertThat(decisions.get(change.path("id").asText()))
+                        .as("%s must not discard generated relationship %s", stage, change.at("/after/id").asText())
+                        .isEqualTo("ACCEPT");
+            }
+        }
+        for (var loss : preview.at("/document/losses")) {
+            if ("UNSUPPORTED".equals(loss.path("disposition").asText())) {
+                assertThat(preview.at("/document/relations"))
+                        .as("%s unsupported relationship loss: %s", stage, loss)
+                        .noneMatch(relation -> relation.path("id").asText().equals(loss.path("artifactId").asText()));
+            }
+        }
+    }
+
+    private static void assertTaxonomyPropertiesRetained(Map<String, String> properties, Map<String, String> definitions,
+                                                         Map<String, String> delivered, String identity) throws Exception {
+        var factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        for (var property : properties.entrySet()) {
+            String name = definitions.get("definition:" + property.getKey());
+            if (name == null || !name.startsWith("taxonomy.")) continue;
+            var parsed = factory.newDocumentBuilder().parse(new java.io.ByteArrayInputStream(
+                    property.getValue().getBytes(StandardCharsets.UTF_8)));
+            var values = parsed.getElementsByTagNameNS(ArchiMateExchangeCodec.NS, "value");
+            assertThat(values.getLength()).as("Single source property %s on %s", name, identity).isEqualTo(1);
+            // Sparx reserves taxonomy.id for its own GUID. The original exchange
+            // identifier is explicitly preserved as sourceId and in source XML.
+            String targetName = name.equals("taxonomy.id") ? "taxonomy.sourceId" : name;
+            assertThat(delivered.get("tag:" + targetName)).as("Retained %s on %s", name, identity)
+                    .isEqualTo(values.item(0).getTextContent());
+        }
     }
 
     private static Map<String, Object> review(JsonNode preview) {

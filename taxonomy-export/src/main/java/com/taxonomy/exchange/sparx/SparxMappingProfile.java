@@ -50,7 +50,7 @@ public final class SparxMappingProfile {
     }
 
     public static String version(String version) {
-        if (!Set.of("1", "2").contains(version))
+        if (!Set.of("1", "2", "3").contains(version))
             throw ExchangeXml.invalid("PROFILE_VERSION_CHANGED", "Select a supported immutable Sparx profile version");
         return version;
     }
@@ -89,6 +89,10 @@ public final class SparxMappingProfile {
 
     public static String relationType(String eaType) { return RELATIONS.get(eaType); }
     public static boolean isRelation(String type) { return RELATIONS.containsKey(type) || Set.of("Abstraction", "Generalization").contains(type); }
+    /** Explicit selection prevents new Taxonomy meanings from changing existing v1/v2 connections. */
+    public static String eaRelation(String canonical, String version) {
+        return version(version).equals("3") ? SparxRelationProfileV3.transport(canonical) : eaRelation(canonical);
+    }
     public static String eaRelation(String canonical) {
         return switch (canonical) {
             case "DEPENDS_ON" -> "Dependency"; case "REALIZES" -> "Realization";

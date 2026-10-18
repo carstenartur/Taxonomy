@@ -11,7 +11,7 @@ import java.util.UUID;
 @Component
 public final class SparxExportExtension implements ExportFormatExtension {
     @Override public ExportFormatDescriptor descriptor() {
-        return new ExportFormatDescriptor("sparx", "Sparx EA / XMI (experimental fresh copy)", "sparx.zip", "application/zip", true);
+        return new ExportFormatDescriptor("sparx", "Sparx EA / XMI profile 3 (experimental fresh copy)", "sparx.zip", "application/zip", true);
     }
     @Override public ExportResult export(ExportContext context) {
         try { return new ExportResult(SparxDiagramHandoff.build(context.diagram(), UUID.randomUUID())); }

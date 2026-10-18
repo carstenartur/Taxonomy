@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.repository;
 
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import jakarta.persistence.LockModeType;
@@ -15,6 +16,21 @@ import java.util.List;
 import java.util.Optional;
 
 public interface RequirementAnalysisJobItemRepository extends JpaRepository<RequirementAnalysisJobItem, Long> {
+
+    /** Keep status polling independent of retained snapshot payloads and the requirement's current version. */
+    @Query("""
+            select new com.taxonomy.portfolio.dto.PortfolioDtos$AnalysisJobItemView(
+                item.id, item.requirementId, requirement.requirementKey,
+                item.requirementVersionId, admittedVersion.versionNumber,
+                item.status, item.snapshotId, item.attempt, item.startedAt, item.completedAt, item.errorMessage)
+              from RequirementAnalysisJobItem item
+              join item.requirement requirement
+              join item.requirementVersion admittedVersion
+             where item.jobId = :jobId and item.projectId = :projectId and item.scopeKey = :scopeKey
+             order by requirement.requirementKey asc
+            """)
+    List<AnalysisJobItemView> findViewsByJobIdAndProjectIdAndScopeKey(
+            @Param("jobId") String jobId, @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
 
     List<RequirementAnalysisJobItem>
             findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
@@ -36,6 +52,26 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
 
     Optional<RequirementAnalysisJobItem> findByIdAndJobIdAndProjectIdAndScopeKey(
             Long id, String jobId, Long projectId, String scopeKey);
+
+    /** Read eligibility from a coherent work identity without loading result or requirement-text LOBs. */
+    @Query("""
+            select new com.taxonomy.portfolio.repository.AnalysisContinuationReadRow(
+                item.id, item.jobId, item.projectId, item.scopeKey,
+                item.requirementId, item.requirementVersionId, item.status, item.snapshotId,
+                job.status, job.provider, job.idempotencyKey, requirement.currentVersionId,
+                snapshot.id, snapshot.jobId, snapshot.requirementId, snapshot.requirementVersionId)
+              from RequirementAnalysisJobItem item
+              join item.job job
+              join item.requirement requirement
+              left join RequirementAnalysisSnapshot snapshot
+                on snapshot.id = item.snapshotId
+               and snapshot.projectId = item.projectId and snapshot.scopeKey = item.scopeKey
+             where item.id = :itemId and item.jobId = :jobId
+               and item.projectId = :projectId and item.scopeKey = :scopeKey
+            """)
+    Optional<AnalysisContinuationReadRow> findContinuationReadRow(
+            @Param("itemId") Long itemId, @Param("jobId") String jobId,
+            @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
 
     /**
      * Serializes claim finalization against exact-tenant recovery updates. The

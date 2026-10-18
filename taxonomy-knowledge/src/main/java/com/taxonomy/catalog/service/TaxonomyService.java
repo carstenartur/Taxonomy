@@ -923,26 +923,65 @@ public class TaxonomyService {
         Map<String, String> descriptions = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {
             List<TaxonomyNode> path = resolveCataloguePath(node.getCode(), true, resolved);
-            StringBuilder text = new StringBuilder();
-            if (path.size() > 1) {
-                text.append("\nSource hierarchy context (ancestors, not additional candidates):\n");
-                for (TaxonomyNode ancestor : path.subList(0, path.size() - 1)) {
-                    text.append("  ").append(ancestor.getCode()).append(": ").append(ancestor.getNameEn());
-                    if (ancestor.getDescriptionEn() != null && !ancestor.getDescriptionEn().isBlank()) {
-                        text.append(" - ").append(ancestor.getDescriptionEn());
-                    }
-                    text.append('\n');
-                }
-            }
-            if (!path.isEmpty() && hasOverlayParent(path.getFirst().getCode())) {
-                text.append("\nClassification/navigation only: the parent assignment above ")
-                        .append(path.getFirst().getCode())
-                        .append(" comes from an overlay, not established source hierarchy. ")
-                        .append("Do not inherit restrictions or infer irrelevance from that assignment.");
-            }
-            descriptions.put(node.getCode(), text.toString());
+            descriptions.put(node.getCode(), assessmentHierarchyContext(path, false));
         }
         return Collections.unmodifiableMap(descriptions);
+    }
+
+    public record RelationAssessmentDescriptions(String full, String assessedSource) { }
+
+    /**
+     * Capture both relation-phase representations from the same structured source
+     * and semantic path. EXTRACT and offered targets retain full ancestor prose;
+     * an already assessed source retains its whole own description and the exact
+     * ancestor IDs/names. Overlay navigation is never inherited as source meaning.
+     * No description is parsed, summarized, or shortened to fit a request limit.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, RelationAssessmentDescriptions> getRelationAssessmentDescriptions(List<TaxonomyNode> nodes) {
+        Objects.requireNonNull(nodes, "nodes");
+        var frozen = FrozenCatalogueContext.current();
+        if (frozen != null) nodes = frozen.canonicalNodes(nodes);
+        else catalogueRuntimePolicy.requireCurrentCatalogueAllowed();
+        Map<String, TaxonomyNode> resolved = new HashMap<>();
+        for (TaxonomyNode node : nodes) {
+            if (node == null || node.getCode() == null || node.getCode().isBlank()
+                    || resolved.putIfAbsent(node.getCode(), node) != null) {
+                throw new IllegalArgumentException("Assessment candidates require unique non-blank IDs");
+            }
+        }
+        Map<String, RelationAssessmentDescriptions> descriptions = new LinkedHashMap<>();
+        for (TaxonomyNode node : nodes) {
+            List<TaxonomyNode> path = resolveCataloguePath(node.getCode(), true, resolved);
+            String own = Objects.toString(node.getDescriptionEn(), "");
+            descriptions.put(node.getCode(), new RelationAssessmentDescriptions(
+                    own + assessmentHierarchyContext(path, false), own + assessmentHierarchyContext(path, true)));
+        }
+        return Collections.unmodifiableMap(descriptions);
+    }
+
+    private String assessmentHierarchyContext(List<TaxonomyNode> path, boolean assessedSource) {
+        StringBuilder text = new StringBuilder();
+        if (assessedSource) {
+            text.append("\nAssessed source hierarchy (relation-source-context-v1; ancestor IDs and names are context, not additional candidates):\n");
+        } else if (path.size() > 1) {
+            text.append("\nSource hierarchy context (ancestors, not additional candidates):\n");
+        }
+        if (path.size() > 1) {
+            for (TaxonomyNode ancestor : path.subList(0, path.size() - 1)) {
+                text.append("  ").append(ancestor.getCode()).append(": ").append(ancestor.getNameEn());
+                if (!assessedSource && ancestor.getDescriptionEn() != null && !ancestor.getDescriptionEn().isBlank())
+                    text.append(" - ").append(ancestor.getDescriptionEn());
+                text.append('\n');
+            }
+        }
+        if (!path.isEmpty() && hasOverlayParent(path.getFirst().getCode())) {
+            text.append("\nClassification/navigation only: the parent assignment above ")
+                    .append(path.getFirst().getCode())
+                    .append(" comes from an overlay, not established source hierarchy. ")
+                    .append("Do not inherit restrictions or infer irrelevance from that assignment.");
+        }
+        return text.toString();
     }
 
     /**

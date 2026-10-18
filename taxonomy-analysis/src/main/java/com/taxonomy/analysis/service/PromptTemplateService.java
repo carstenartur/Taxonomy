@@ -151,7 +151,8 @@ public class PromptTemplateService {
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", name,
                 "{{PARENT_SCORE}}", com.taxonomy.dto.AnalysisPercentages.canonical(parentScore),
-                "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")) + numericContract() + "The scores must sum to " + com.taxonomy.dto.AnalysisPercentages.canonical(parentScore) + ". Preserve a positive child below 1%; for a 1% budget, two equal children have 0.5 each.\n" + reasonContract();
+                "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")) + numericContract()
+                + childAllocationContract(parentScore) + reasonContract();
     }
 
     /** Evaluates one catalogue root independently, without a child allocation budget. */
@@ -162,6 +163,17 @@ public class PromptTemplateService {
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode),
                 "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n" + reasonContract();
+    }
+
+    static String childAllocationContract(double parentScore) {
+        return "\nMandatory child allocation policy (child-budget-v3): this overrides conflicting allocation instructions above. "
+                + "When at least one offered child has a supported match, the scores must sum to "
+                + com.taxonomy.dto.AnalysisPercentages.canonical(parentScore) + ". "
+                + "When the parent fits but no offered child has a supported match, return explicit zero for every offered child "
+                + "with a specific mismatch reason; the parent assessment remains valid at its supported level. "
+                + "Never invent a more specific role, function or implementation merely to spend the inherited budget. "
+                + "A child score is an allocated share of that budget, not a confidence or implementation-coverage percentage. "
+                + "Preserve a positive child below 1%; for a 1% budget, two equal children have 0.5 each.\n";
     }
 
     /**

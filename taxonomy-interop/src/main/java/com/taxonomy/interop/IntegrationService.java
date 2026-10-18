@@ -446,8 +446,9 @@ public class IntegrationService {
         Set<String> ids = new HashSet<>(); operation.changes().forEach(c -> ids.add(c.id()));
         if (!ids.containsAll(review.decisions().keySet())) throw new IllegalArgumentException("Review contains unknown change identities");
         if (!review.decisions().keySet().containsAll(review.endpoints().keySet())) throw new IllegalArgumentException("Endpoint mappings require an explicit item decision");
-        if (!review.endpoints().isEmpty() && (!"2".equals(operation.context().profileVersion()) || !SparxSnapshots.isSparx(operation.context().profile())))
-            throw new IllegalArgumentException("Typed endpoint review requires Sparx version 2");
+        boolean sparxV3 = SparxMappingProfile.PROFILE.equals(operation.context().profile()) && "3".equals(operation.context().profileVersion());
+        if (!review.endpoints().isEmpty() && (!"2".equals(operation.context().profileVersion()) && !sparxV3 || !SparxSnapshots.isSparx(operation.context().profile())))
+            throw new IllegalArgumentException("Typed endpoint review requires Sparx version 2 or XMI version 3");
         if (!review.decisions().keySet().containsAll(review.mappings().keySet())) throw new IllegalArgumentException("Mappings require an explicit item decision");
         if (operation.context().authority() != AuthorityMode.LINK_ONLY && review.mappings().values().stream().anyMatch(m -> m.internalIdentity() != null))
             throw new IllegalArgumentException("Internal trace targets require LINK_ONLY authority");
@@ -496,7 +497,7 @@ public class IntegrationService {
                 }
                 if (SparxSnapshots.isSparx(operation.context().profile()) && mapping != null && mapping.canonicalType() != null) {
                     String type = mapped.kind() == ArtifactKind.ELEMENT ? SparxMappingProfile.umlType(mapping.canonicalType())
-                            : mapped.kind() == ArtifactKind.RELATION ? SparxMappingProfile.eaRelation(mapping.canonicalType()) : mapped.type();
+                            : mapped.kind() == ArtifactKind.RELATION ? SparxMappingProfile.eaRelation(mapping.canonicalType(), operation.context().profileVersion()) : mapped.type();
                     if (type == null) throw new IntegrationProblem("SPARX_TYPE_MAPPING", 422,
                             "The selected canonical relation type is not supported by this Sparx profile; choose a supported mapping or reject the change");
                     Map<String, String> tags = new TreeMap<>(mapped.attributes());
@@ -505,6 +506,7 @@ public class IntegrationService {
                     if ("2".equals(operation.context().profileVersion()) && mapped.kind() == ArtifactKind.RELATION)
                         tags.put("tag:taxonomy.RelationType", mapping.canonicalType());
                     mapped = new Artifact(mapped.id(), mapped.kind(), type, mapped.title(), mapped.text(), tags, mapped.extensions());
+                    if (sparxV3) mapped = IntegrationDomainAdapter.sparxV3Artifact(mapped);
                 }
                 if (operation.direction().equals("OUTBOUND") && operation.context().profile().equals(ArchiMateExchangeCodec.PROFILE)
                         && mapping != null && mapping.canonicalType() != null) {

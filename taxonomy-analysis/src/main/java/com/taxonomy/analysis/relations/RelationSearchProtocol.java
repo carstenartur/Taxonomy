@@ -90,9 +90,27 @@ public final class RelationSearchProtocol {
     }
 
     private static Map<String, Object> input(String original, List<Node> nodes, Map<String, String> errors) {
-        Map<String, Object> input = new TreeMap<>(); input.put("original", original); input.put("nodes", nodes);
+        Map<String, Object> input = new TreeMap<>(); input.put("original", original);
+        input.put("nodes", nodes.stream().map(node -> promptNode(node, false)).toList());
         if (!errors.isEmpty()) input.put("validationErrors", errors);
         return input;
+    }
+
+    /** Internal durable context metadata is not a second catalogue description in the provider prompt. */
+    private static Map<String, Object> promptNode(Node node, boolean assessedSource) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("id", node.id()); value.put("root", node.root()); value.put("name", node.name());
+        value.put("description", assessedSource && node.assessedSourceDescription() != null
+                ? node.assessedSourceDescription() : node.description());
+        value.put("container", node.container());
+        return value;
+    }
+
+    private static Map<String, Object> promptContribution(Contribution contribution) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("source", promptNode(contribution.source(), true)); value.put("text", contribution.text());
+        value.put("quote", contribution.quote()); value.put("condition", contribution.condition());
+        return value;
     }
 
     /** Supplies the selected phase's schema to capable transports; validation remains authoritative. */
@@ -126,7 +144,8 @@ public final class RelationSearchProtocol {
         return new com.taxonomy.analysis.service.LlmCompletionOptions("relation_" + phase, schema, maxOutputTokens);
     }
 
-    static int requestCharacters(String prompt) {
+    /** Conservative request size including the exact response-schema envelope and UTF-8 bytes. */
+    public static int requestCharacters(String prompt) {
         String text = completionOptions(prompt, 1).budgetText(prompt);
         return Math.max(text.codePointCount(0, text.length()), text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
     }
@@ -209,12 +228,51 @@ public final class RelationSearchProtocol {
             ALTERNATIVE needs a stable named choice group. Keep joint necessities and alternatives distinct.
             """;
         Map<String, Object> input = new TreeMap<>();
-        input.put("original", query.original()); input.put("contribution", query.contribution());
+        input.put("original", query.original()); input.put("contribution", promptContribution(query.contribution()));
         input.put("type", query.type()); input.put("direction", query.direction()); input.put("phase", query.phase());
-        input.put("candidates", query.candidates()); input.put("proposal", query.proposal());
+        input.put("candidates", query.candidates().stream().map(node -> promptNode(node, false)).toList());
+        input.put("proposal", query.proposal());
         if (!errors.isEmpty()) input.put("validationErrors", errors);
-        return PREAMBLE + task + "validationErrors, when present, describes entries to correct.\nINPUT\n"
+        return PREAMBLE + relationMeaning(query.type()) + "\n"
+                + "Source context policy: relation-source-context-v1. The source contribution was assessed with its full catalogue hierarchy. "
+                + "Its own complete description and established ancestor IDs/names remain here; ancestor names do not broaden that contribution. "
+                + "Each newly offered candidate retains its complete catalogue context.\n"
+                + "Direction uses the canonical relation endpoints: OUTGOING = source contribution -> candidate. "
+                + "INCOMING = candidate -> source contribution. Apply this also during VERIFY.\n"
+                + task + "validationErrors, when present, describes entries to correct.\nINPUT\n"
                 + JSON.writeValueAsString(input);
+    }
+
+    /** Domain conventions are explicit: similarly named UML verbs are not an authoritative substitute. */
+    private static String relationMeaning(String type) {
+        String meaning = switch (type) {
+            case "REALIZES" -> "The source capability is made real by the target service. "
+                    + "This is the repository's passive Capability -> Service convention, not the active UML Realization convention. "
+                    + "Do not reverse the canonical endpoints or infer another function merely from this label.";
+            case "SUPPORTS" -> "The canonical source supplies a requested function that supports the canonical target.";
+            case "CONSUMES" -> "The canonical source reads or uses the target information product as input. "
+                    + "Read access does not imply creation, editing, ownership or a new data-product identity.";
+            case "USES" -> "The canonical source uses the canonical target for the scoped requested function. "
+                    + "A possible implementation decomposition is not automatically a required dependency.";
+            case "FULFILLS" -> "The canonical source service fulfills the target capability through its scoped function. "
+                    + "A partial contribution does not claim complete realization of every capability feature.";
+            case "ASSIGNED_TO" -> "The canonical source business role is assigned responsibility for the target business process. "
+                    + "Being a recipient or stakeholder does not establish that assignment.";
+            case "DEPENDS_ON" -> "The canonical source depends on the canonical target to perform the requested function; "
+                    + "generic technical usefulness alone is insufficient.";
+            case "PRODUCES" -> "The canonical source creates or writes the target information product. "
+                    + "Reading, forwarding or displaying existing information alone does not establish new production.";
+            case "COMMUNICATES_WITH" -> "The canonical source communications service exchanges information with the target endpoint. "
+                    + "Channel availability alone does not prove a direct interface to every participating application.";
+            case "CONTAINS" -> "The canonical source is the whole that structurally contains the target component. "
+                    + "A taxonomy ancestor or shared requirement relevance alone does not establish architectural containment.";
+            case "REQUIRES" -> "The source capability requires the target information product as input: an information-product dependency for capability delivery. "
+                    + "This does not assert that the capability creates the information or that every unrelated part of the capability needs it.";
+            case "RELATED_TO" -> "A specifically evidenced general relation applies only when no more precise supported relation describes the requested connection. "
+                    + "Two matching scores or related catalogue terms are insufficient.";
+            default -> "No domain definition is supplied for this type. Do not guess semantics from its name; use UNRESOLVED with a concrete question.";
+        };
+        return "Repository relation meaning (relation-semantics-v2): " + type + ". " + meaning;
     }
 
     private List<Decision> parseDecisions(Query query, List<String> candidateIds, String raw) {
@@ -324,7 +382,7 @@ public final class RelationSearchProtocol {
         if (accepted.isEmpty()) return;
         Map<String, Node> covered = new HashMap<>();
         nodes.stream().filter(node -> accepted.contains(node.id())).forEach(node -> covered.put(node.id(), node));
-        AnalysisCheckpointSession.supersedeEvidence(step.name(), provider, saved -> {
+        AnalysisCheckpointSession.supersedeEvidence(step.name(), provider, covered.keySet(), saved -> {
             if (saved.nodes().size() != 1 || saved.prompt() == null || saved.prompt().equals(currentCorrection)) return false;
             Node node = covered.get(saved.nodes().getFirst());
             if (node == null) return false;

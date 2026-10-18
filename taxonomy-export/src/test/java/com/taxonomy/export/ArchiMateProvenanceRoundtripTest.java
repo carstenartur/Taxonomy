@@ -5,6 +5,8 @@ import com.taxonomy.diagram.*;
 import com.taxonomy.dto.*;
 import com.taxonomy.model.SeedType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -52,6 +54,43 @@ class ArchiMateProvenanceRoundtripTest {
             var restored = reader.toDiagram(reader.read(exporter.export(converter.convert(expected))));
             assertEquals(expected, restored);
         }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"source", "target", "both"})
+    void optionalAssessedNodeContextSurvivesActualXmlAndSelectsAnExplicitProvenanceVersion(String captured) {
+        String context = "Complete own description\r\nAssessed source hierarchy (relation-source-context-v1):\n  BP1000: Source <&> 漢字\n";
+        var source = new RelationSearchModel.Node("CP-1", "CP", "Source", "Complete source + full ancestors", false,
+                captured.equals("target") ? null : context);
+        var target = new RelationSearchModel.Node("CR-1", "CR", "Target", "Complete target + full ancestors", false,
+                captured.equals("source") ? null : context + "Target context.");
+        var contribution = new RelationSearchModel.Contribution(source, "Source contribution", "Exact source quote\r\n", "source condition");
+        var decision = new RelationSearchModel.Decision(target.id(), RelationSearchModel.Outcome.VERIFIED,
+                "Target contribution", "Exact target quote", RelationSearchModel.Necessity.REQUIRED, "target condition", "", "Bounded support", "");
+        var evidence = new RelationSearchModel.Edge(contribution, target, "SUPPORTS", RelationSearchModel.Direction.INCOMING, decision);
+        var metadata = new DiagramRelationMetadata(null, RelationOrigin.LLM_SUPPORTED, null, "included", "derived", "present", null, List.of(evidence));
+        var expected = graph(metadata);
+        var model = converter.convert(expected);
+        assertEquals("2", model.relationships().getFirst().properties().get("taxonomy.provenance.version").value());
+        byte[] xml = exporter.export(model);
+        for (int index = 0; index < 3; index++) {
+            var restored = reader.read(xml);
+            assertEquals(model, restored);
+            assertEquals(expected, reader.toDiagram(restored));
+            assertArrayEquals(xml, exporter.export(restored));
+            model = restored;
+        }
+    }
+
+    @Test void legacyNodeEvidenceKeepsItsOriginalVersionAndDoesNotInventAssessedContext() {
+        var source = new RelationSearchModel.Node("CP-1", "CP", "Source", "Full source description", false);
+        var target = new RelationSearchModel.Node("CR-1", "CR", "Target", "Full target description", false);
+        var contribution = new RelationSearchModel.Contribution(source, "Contribution", "Quote", "");
+        var edge = new RelationSearchModel.Edge(contribution, target, "USES", RelationSearchModel.Direction.OUTGOING, null);
+        var metadata = new DiagramRelationMetadata(null, null, null, null, null, null, null, List.of(edge));
+        var properties = ArchiMateRelationProvenance.write(metadata);
+        assertEquals("1", properties.get("taxonomy.provenance.version").value());
+        assertTrue(properties.keySet().stream().noneMatch(key -> key.endsWith("assessedSourceDescription")));
+        assertEquals(metadata, ArchiMateRelationProvenance.read(properties));
     }
 
     @Test void malformedTypedProvenanceFailsRatherThanBeingSilentlyDiscarded() {

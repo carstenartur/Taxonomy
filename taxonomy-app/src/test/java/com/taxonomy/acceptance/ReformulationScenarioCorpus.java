@@ -4,7 +4,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import java.util.Set;
 
-/** Authored provider choices for a bounded application path; the sourced requirement is unchanged. */
+/** Protocol-only provider choices for a fixed application path; the sourced requirement is unchanged. */
 final class ReformulationScenarioCorpus {
     static JsonNode scenario(String name) throws Exception {
         if (name.equals("flood")) return flood();
@@ -27,32 +27,23 @@ final class ReformulationScenarioCorpus {
         return fixture;
     }
     static JsonNode flood() throws Exception {
-        var fixture = (ObjectNode) ScenarioLlmPlayback.flood().fixture();
-        fixture.put("id", "scenario-flood-reformulation-bounded-v1");
-        fixture.put("scenarioReformulation", true);
-        fixture.put("responseProvenance", "Authored acceptance assumptions: only BP and IP are scored relevant. "
-                + "This is not a completeness judgment about the source or live-model quality evidence.");
-        var selected = Set.of("BP", "IP");
-        var rules = fixture.putArray("replies");
-        for (var rule : ScenarioLlmPlayback.flood().fixture().path("replies")) {
-            String id = rule.path("id").asText();
-            if (selected.stream().anyMatch(root -> id.startsWith(root)) || !id.contains("-")) {
-                var copy = (ObjectNode) rule.deepCopy();
-                if (!id.contains("-") && !selected.contains(id)) {
-                    ((ObjectNode) copy.path("answers").path(id)).put("score", 0)
-                            .put("reason", "Authored bounded acceptance choice; original constraints remain binding.");
-                }
-                rules.add(copy);
-            }
+        JsonNode scoring;
+        try (var stream = ReformulationScenarioCorpus.class.getResourceAsStream("/scenarios/reformulation-bounded-scoring.json")) {
+            scoring = new tools.jackson.databind.ObjectMapper().readTree(stream);
         }
-        var corpus = (ObjectNode) fixture.path("relationPlayback");
-        var contributions = corpus.path("sourceContributions").deepCopy();
-        var kept = corpus.putArray("sourceContributions");
-        contributions.forEach(value -> { if (Set.of("BP-1017", "IP-1116").contains(value.path("nodeId").asText())) kept.add(value); });
-        var claims = corpus.path("claims").deepCopy();
-        var retained = corpus.putArray("claims");
-        claims.forEach(value -> { if (value.path("sourceId").asText().equals("BP-1017")
-                && value.path("targetId").asText().equals("IP-1116")) retained.add(value); });
+        var fixture = (ObjectNode) ScenarioLlmPlayback.flood().fixture();
+        fixture.put("id", scoring.path("id").asText());
+        fixture.put("scenarioReformulation", true);
+        fixture.put("responseProvenance", scoring.path("responseProvenance").asText());
+        fixture.put("purpose", "PROTOCOL_ONLY");
+        fixture.remove("classificationReference");
+        fixture.remove("expectedLeafScores");
+        fixture.remove("expectedLeafPaths");
+        fixture.putArray("expectedLeaves").add("BP-1017").add("IP-1116");
+        // The reformulation provider implements exactly eight ancestor sections. Its protocol
+        // inputs must stay fixed when the realistic Flood classification gains semantic branches.
+        fixture.set("replies", scoring.path("replies").deepCopy());
+        fixture.set("relationPlayback", scoring.path("relationPlayback").deepCopy());
         return fixture;
     }
 }

@@ -260,6 +260,19 @@ window.TaxonomyPortfolioApi = (function () {
             return getJson(projectPath(projectId) + '/analysis-jobs/'
                 + encodeURIComponent(String(jobId)));
         },
+        getAnalysisContinuation: function (projectId, jobId, itemId) {
+            return getJson(projectPath(projectId) + '/analysis-jobs/'
+                + encodeURIComponent(String(jobId)) + '/items/'
+                + positiveInteger(itemId, 'itemId') + '/continuation');
+        },
+        continueAnalysis: function (projectId, jobId, itemId, decision) {
+            return sendJson(projectPath(projectId) + '/analysis-jobs/'
+                + encodeURIComponent(String(jobId)) + '/items/'
+                + positiveInteger(itemId, 'itemId') + '/continue', 'POST', {
+                    snapshotId: decision.snapshotId,
+                    continuationVersion: decision.continuationVersion
+                });
+        },
         analyzeRequirement: function (projectId, requirementId, body) {
             return sendJsonResponse(
                 requirementPath(projectId, requirementId) + '/analyses', 'POST', body);

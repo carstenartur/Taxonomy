@@ -21,7 +21,10 @@ public final class SparxOslcAmCodec {
     public static final int MAX_PAGES = 20;
     private final String profileVersion;
     public SparxOslcAmCodec() { this("1"); }
-    public SparxOslcAmCodec(String version) { this.profileVersion = SparxMappingProfile.version(version); }
+    public SparxOslcAmCodec(String version) {
+        if (!Set.of("1", "2").contains(version)) throw invalid("PROFILE_VERSION_CHANGED");
+        this.profileVersion = version;
+    }
     /** A complete collection, identified by a fixed endpoint kind and validated owner identifier. */
     public record Collection(String kind, String owner, List<Page> pages) {
         public Collection { pages = List.copyOf(pages); }

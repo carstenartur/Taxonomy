@@ -13,6 +13,7 @@
     const originalFetch = window.fetch.bind(window);
     const applicationBasePath = window.TaxonomyI18n?.getBasePath?.() || '';
     const terminalStatuses = new Set(['SUCCESS', 'PARTIAL', 'FAILED', 'CANCELLED']);
+    const continuationDecisions = new Map();
     const pollIntervalMs = 1500;
     const storageKey = 'taxonomy.portfolio.analysisJobs.v2';
     const maximumHistory = 20;
@@ -31,6 +32,10 @@
             filterLabel: 'Filter analysis jobs by status',
             filterAll: 'All statuses',
             retryFailed: 'Retry failed items',
+            continueAnalysis: 'Continue analysis',
+            continueHint: 'Continue one further bounded cycle using the saved answers. Open domain questions remain open.',
+            continuationUnavailable: 'Continuation is currently unavailable.',
+            continuationResponseInvalid: 'The continuation response did not contain a valid update for this analysis job.',
             openDetails: 'Show details',
             hideDetails: 'Hide details',
             analysisStarted: 'Analysis job started. Progress is available below.',
@@ -74,6 +79,10 @@
             filterLabel: 'Analysejobs nach Status filtern',
             filterAll: 'Alle Status',
             retryFailed: 'Fehlgeschlagene Einträge wiederholen',
+            continueAnalysis: 'Analyse fortsetzen',
+            continueHint: 'Einen weiteren begrenzten Analyseschritt mit den gespeicherten Antworten starten. Offene fachliche Fragen bleiben offen.',
+            continuationUnavailable: 'Eine Fortsetzung ist momentan nicht verfügbar.',
+            continuationResponseInvalid: 'Die Antwort auf die Fortsetzung enthält keinen gültigen Stand dieses Analysejobs.',
             openDetails: 'Details anzeigen',
             hideDetails: 'Details ausblenden',
             analysisStarted: 'Analysejob wurde gestartet. Der Fortschritt wird unten angezeigt.',
@@ -608,6 +617,9 @@
                 + (item.snapshotId ? '<code>' + escapeHtml(String(item.snapshotId).slice(0, 12)) + '</code>'
                     : escapeHtml(item.errorMessage || '—')) + '</td>';
             body.appendChild(row);
+            if (item.status === 'PARTIAL' && item.snapshotId && job.status !== 'CANCELLED') {
+                renderItemContinuation(row.lastElementChild, job, item);
+            }
         });
         target.appendChild(table);
         if ((job.items || []).length > maximumRenderedItems) {
@@ -629,6 +641,36 @@
             renderJobs();
             return;
         }
+        const continuation = event.target.closest('.job-continue');
+        if (continuation) {
+            if (continuation.disabled) return;
+            const decision = continuationDecisions.get(continuation.dataset.decisionKey)?.decision;
+            if (!decision?.available) return;
+            continuation.disabled = true;
+            const itemId = Number(continuation.dataset.itemId);
+            function registerContinuationUpdate(updated) {
+                if (updated?.id !== entry.job.id || updated?.projectId !== entry.job.projectId
+                        || (!terminalStatuses.has(updated.status) && !['PENDING', 'RUNNING'].includes(updated.status))
+                        || !Array.isArray(updated.items) || !updated.items.some(item => item?.id === itemId)
+                        || !registerJob(entry.url, updated)) {
+                    throw new Error(m('continuationResponseInvalid'));
+                }
+            }
+            try {
+                const updated = await window.TaxonomyPortfolioApi.continueAnalysis(entry.job.projectId,
+                    entry.job.id, itemId, decision);
+                registerContinuationUpdate(updated);
+            } catch (error) {
+                showError(error);
+                continuationDecisions.delete(continuation.dataset.decisionKey);
+                // Observe a potentially accepted request after connection loss; never resubmit it.
+                try {
+                    const current = await window.TaxonomyPortfolioApi.getAnalysisJob(entry.job.projectId, entry.job.id);
+                    registerContinuationUpdate(current);
+                } catch (statusError) { showError(statusError); }
+            }
+            return;
+        }
         const retry = event.target.closest('.job-retry');
         if (!retry) return;
         retry.disabled = true;
@@ -648,6 +690,41 @@
         } finally {
             retry.disabled = false;
         }
+    }
+
+    function renderItemContinuation(target, job, item) {
+        const key = job.id + '/' + item.id + '/' + item.snapshotId + '/' + item.attempt;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-sm btn-outline-primary job-continue d-block mt-1';
+        button.textContent = m('continueAnalysis');
+        button.disabled = true;
+        button.dataset.itemId = item.id;
+        button.dataset.decisionKey = key;
+        button.dataset.sessionControl = 'continue-project-analysis';
+        button.dataset.sessionTestOutcome = 'operation';
+        target.appendChild(button);
+        const reason = document.createElement('span');
+        reason.className = 'small text-body-secondary d-block';
+        target.appendChild(reason);
+        let saved = continuationDecisions.get(key);
+        if (!saved) {
+            saved = {};
+            saved.promise = window.TaxonomyPortfolioApi.getAnalysisContinuation(job.projectId, job.id, item.id)
+                .then(function (decision) { saved.decision = decision; return decision; })
+                .catch(function (error) {
+                    saved.decision = { available: false, reason: error.message || m('continuationUnavailable') };
+                    return saved.decision;
+                });
+            continuationDecisions.set(key, saved);
+        }
+        function show(decision) {
+            button.disabled = decision?.available !== true;
+            button.title = decision?.available ? m('continueHint') : decision?.reason || m('continuationUnavailable');
+            reason.textContent = decision?.available ? '' : button.title;
+        }
+        if (saved.decision) show(saved.decision);
+        else saved.promise.then(show);
     }
 
     function countStatuses(jobList) {
