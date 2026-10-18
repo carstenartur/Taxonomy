@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.reformulation;
 
 import com.taxonomy.reformulation.*;
+import com.taxonomy.analysis.service.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -11,6 +12,7 @@ import java.util.*;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /** Regression tests for evidence reaching the next bottom-up synthesis step. */
 class FrozenReformulationEvidenceTest {
@@ -183,6 +185,64 @@ class FrozenReformulationEvidenceTest {
         assertEquals(List.of(deferred), second.nodeResults().getFirst().questionProposals());
         assertEquals(ORIGINAL, baseline.originalText());
     }
+
+    @Test
+    void realPromptAndResponseParserKeepAnAnsweredQuestionAcrossRewording() {
+        var config = mock(LlmProviderConfig.class);
+        when(config.getActiveProviderId()).thenReturn(LlmProvider.OPENAI.id());
+        when(config.isProviderConfigured(LlmProvider.OPENAI.id())).thenReturn(true);
+        when(config.getApiKey(LlmProvider.OPENAI.id())).thenReturn("synthetic-test-key");
+        var registry = mock(LlmGatewayRegistry.class);
+        var inputs = new ArrayList<tools.jackson.databind.JsonNode>();
+        var questionJson = json.readTree("""
+                {"subject":"capture","dimension":"offline","scope":"Q","wording":"Offline required?",
+                 "rationale":"Clarify capture availability","affectedStatementIds":[],"sourceSpans":[],
+                 "nodeIds":["Q"],"edgeIds":[],
+                 "answerSchema":{"kind":"TEXT","options":[],"unit":null,"minimum":null,"maximum":null},
+                 "prerequisites":[],"consequences":"Changes capture scope"}
+                """);
+        var gateway = new LlmGateway() {
+            @Override public String providerName() { return "controlled-reformulation-test"; }
+            @Override public String extractResponseText(String raw) { return raw; }
+            @Override public String sendHttpRequest(String prompt, String key) {
+                var input = json.readTree(prompt.substring(prompt.indexOf("INPUT_DATA_JSON\n") + 16));
+                inputs.add(input);
+                var statementIds = new TreeSet<String>();
+                var questionIds = new TreeSet<String>();
+                input.path("directContributions").forEach(value -> statementIds.add(value.path("id").stringValue()));
+                input.path("openDecisions").forEach(value -> questionIds.add(value.path("id").stringValue()));
+                input.path("children").forEach(child -> {
+                    child.path("statementProposals").forEach(value -> statementIds.add(value.path("id").stringValue()));
+                    child.path("questionProposals").forEach(value -> questionIds.add(value.path("id").stringValue()));
+                });
+                return json.writeValueAsString(Map.of("summary", "Safe summary", "statementProposals", List.of(),
+                        "preservedStatementIds", statementIds, "questionProposals",
+                        "Q".equals(input.path("nodeId").stringValue()) ? List.of(questionJson) : List.of(),
+                        "preservedQuestionIds", questionIds, "uncoveredSourceRefs", List.of(), "conflictCandidates", List.of()));
+            }
+        };
+        when(registry.getGatewayById(LlmProvider.OPENAI.id())).thenReturn(gateway);
+        var engine = new FrozenReformulationEngine(new NodeReformulationService(registry, config, json), json);
+        var baseline = baseline("{\"scores\":{\"L\":1}}", "[]");
+        var first = engine.synthesize(baseline, List.of(), List.of());
+        assertEquals(1, first.questions().size());
+        var original = first.questions().getFirst();
+        var answered = new DecisionQuestion(original.id(), original.key(), original.wording(), original.discoveries(),
+                original.affectedStatementIds(), original.answerSchema(), original.prerequisites(), original.dependentQuestionIds(),
+                original.consequences(), DecisionQuestion.State.ANSWERED, original.aliases(), original.origins(), original.sourceResolutions());
+        var independent = new Section("X", "X", "Independent", "Unchanged summary", List.of(), List.of(), List.of());
+        var sections = new ArrayList<>(first.sections());
+        sections.add(independent);
+        var before = new ReformulationDocument(first.text(), sections, first.statements(), List.of(answered), first.validation(), first.nodeResults());
+        var result = engine.synthesizeAffected(baseline, before, List.of(),
+                new ReformulationImpact(List.of(), List.of("Q", "P"), List.of(), List.of(), false));
+        assertEquals(4, inputs.size(), "Each iteration needs exactly Q and P, without a repair request");
+        assertSame(answered, result.questions().getFirst());
+        assertEquals(1, result.questions().size());
+        assertSame(independent, result.sections().stream().filter(section -> section.id().equals("X")).findFirst().orElseThrow());
+        assertEquals("ANSWERED", inputs.getLast().path("children").get(0).path("questionProposals").get(0).path("state").stringValue());
+    }
+
 
     private String rawQuestionReply(NodeSynthesisInput input) {
         var reply = json.readTree("""
