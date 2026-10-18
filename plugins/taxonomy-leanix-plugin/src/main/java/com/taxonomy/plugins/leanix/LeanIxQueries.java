@@ -25,13 +25,16 @@ final class LeanIxQueries {
     static List<Map.Entry<String, String>> fields(TypeProjection p) {
         return p.textFields().entrySet().stream().sorted(Map.Entry.comparingByKey()).toList();
     }
+    static String alias(TypeProjection projection, String field) {
+        return "inventory_" + projection.sourceType() + "_" + field;
+    }
     static String objects(Request request, boolean single) {
         StringBuilder selection = new StringBuilder("id name description type rev ");
         for (TypeProjection p : request.projections()) {
             selection.append("... on ").append(p.sourceType()).append(" { lifecycle { phases { phase startDate } } ");
-            if (p.subtypeField() != null) selection.append("inventorySubtype: ").append(p.subtypeField()).append(' ');
+            if (p.subtypeField() != null) selection.append(alias(p, "subtype")).append(": ").append(p.subtypeField()).append(' ');
             int i = 0;
-            for (var field : fields(p)) selection.append("inventoryScalar").append(i++).append(": ").append(field.getValue()).append(' ');
+            for (var field : fields(p)) selection.append(alias(p, "scalar" + i++)).append(": ").append(field.getValue()).append(' ');
             selection.append("} ");
         }
         if (single) return "query InventoryObject($id: ID!) { factSheet(id: $id) { " + selection + " } }";

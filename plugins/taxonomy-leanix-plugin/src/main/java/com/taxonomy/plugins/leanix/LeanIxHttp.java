@@ -17,6 +17,9 @@ import java.util.concurrent.*;
 
 /** One request-owned HTTPS session; fixed endpoints, no redirects/retries/cookies or ambient proxy. */
 final class LeanIxHttp implements AutoCloseable {
+    private static final byte[] AWS_METADATA_IPV6 = {
+            (byte) 0xfd, 0, 0x0e, (byte) 0xc2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0x54
+    };
     enum Endpoint {
         TOKEN("services/mtm/v1/oauth2/token", ContentType.APPLICATION_FORM_URLENCODED),
         GRAPHQL("services/pathfinder/v1/graphql", ContentType.APPLICATION_JSON);
@@ -88,28 +91,38 @@ final class LeanIxHttp implements AutoCloseable {
         requests++;
         try {
             byte[] content = http.execute(request, response -> {
-                int status = response.getCode();
-                if (status != 200) throw new ReadFailure(switch (status) {
-                    case 401, 403 -> "UNAUTHORIZED";
-                    case 429 -> "RATE_LIMITED";
-                    case 301, 302, 303, 307, 308 -> "REDIRECT_REJECTED";
-                    default -> "HTTP_FAILURE";
-                });
-                var media = response.getFirstHeader("Content-Type");
-                if (media == null || !media.getValue().split(";", 2)[0].strip().equalsIgnoreCase("application/json"))
-                    throw new ReadFailure("MEDIA_TYPE");
-                var encoding = response.getFirstHeader("Content-Encoding");
-                if (encoding != null && !encoding.getValue().equalsIgnoreCase("identity")) throw new ReadFailure("MEDIA_TYPE");
-                var entity = response.getEntity();
-                if (entity == null || entity.getContentLength() > max) throw new ReadFailure("READ_LIMIT");
-                try (var in = entity.getContent(); var out = new ByteArrayOutputStream()) {
-                    byte[] buffer = new byte[8192]; int n;
-                    while ((n = in.read(buffer)) != -1) {
-                        checkTime();
-                        if (out.size() + n > max) throw new ReadFailure("READ_LIMIT");
-                        out.write(buffer, 0, n);
+                try {
+                    int status = response.getCode();
+                    if (status != 200) throw new ReadFailure(switch (status) {
+                        case 401, 403 -> "UNAUTHORIZED";
+                        case 429 -> "RATE_LIMITED";
+                        case 301, 302, 303, 307, 308 -> "REDIRECT_REJECTED";
+                        default -> "HTTP_FAILURE";
+                    });
+                    var media = response.getFirstHeader("Content-Type");
+                    if (media == null || !media.getValue().split(";", 2)[0].strip().equalsIgnoreCase("application/json"))
+                        throw new ReadFailure("MEDIA_TYPE");
+                    var encoding = response.getFirstHeader("Content-Encoding");
+                    if (encoding != null && !encoding.getValue().equalsIgnoreCase("identity")) throw new ReadFailure("MEDIA_TYPE");
+                    var entity = response.getEntity();
+                    if (entity == null || entity.getContentLength() > max) throw new ReadFailure("READ_LIMIT");
+                    try (var in = entity.getContent(); var out = new ByteArrayOutputStream()) {
+                        try {
+                            byte[] buffer = new byte[8192]; int n;
+                            while ((n = in.read(buffer, 0, Math.min(buffer.length, max - out.size() + 1))) != -1) {
+                                checkTime();
+                                if (out.size() + n > max) throw new ReadFailure("READ_LIMIT");
+                                out.write(buffer, 0, n);
+                            }
+                            checkTime(); return out.toByteArray();
+                        } catch (IOException | RuntimeException failure) {
+                            // Abort before stream.close() can drain an oversized or interrupted body.
+                            request.cancel(); throw failure;
+                        }
                     }
-                    checkTime(); return out.toByteArray();
+                } catch (IOException | RuntimeException failure) {
+                    // Header rejection must also abort before HttpClient closes the response.
+                    request.cancel(); throw failure;
                 }
             });
             bytes += content.length; checkTime(); return content;
@@ -129,8 +142,9 @@ final class LeanIxHttp implements AutoCloseable {
         if (b.length == 4) {
             int a = Byte.toUnsignedInt(b[0]), second = Byte.toUnsignedInt(b[1]);
             if (a == 0 || a >= 240 || a == 169 && second == 254) return false;
+            if (a == 100 && second == 100 && Byte.toUnsignedInt(b[2]) == 100 && Byte.toUnsignedInt(b[3]) == 200) return false;
             if (!privateNetworks && (a == 100 && second >= 64 && second <= 127 || a == 198 && (second == 18 || second == 19))) return false;
-        } else if (!privateNetworks && (b[0] & 0xfe) == 0xfc) return false;
+        } else if (Arrays.equals(b, AWS_METADATA_IPV6) || !privateNetworks && (b[0] & 0xfe) == 0xfc) return false;
         return privateNetworks || !(address.isLoopbackAddress() || address.isSiteLocalAddress());
     }
     @Override public void close() {

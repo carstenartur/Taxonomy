@@ -1,14 +1,24 @@
 package com.taxonomy.plugins.leanix;
 
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.extension.api.inventory.InventoryReadContracts.*;
 import com.taxonomy.extension.api.inventory.InventorySourceExtension;
 import com.taxonomy.extension.api.plugin.TaxonomyPlugin;
-import com.sun.net.httpserver.*;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsServer;
+import graphql.ExecutionInput;
+import graphql.GraphQL;
+import graphql.parser.Parser;
+import graphql.schema.idl.RuntimeWiring;
+import graphql.schema.idl.SchemaGenerator;
+import graphql.schema.idl.SchemaParser;
+import graphql.validation.Validator;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import javax.net.ssl.*;
+import java.io.IOException;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -76,13 +86,71 @@ class LeanIxInventorySourceTest {
         assertEquals(State.NOT_SUPPORTED, value.subtype().state());
     }
     @Test void mapsOnlyExplicitKnownSubtypesAndPreservesTheOriginalValue() throws Exception {
-        start((q, v) -> objects(false, null, component("t1").replace("\"rev\":2", "\"rev\":2,\"inventorySubtype\":\"managedService\"")));
+        start((q, v) -> objects(false, null, component("t1").replace("\"rev\":2", "\"rev\":2,\"inventory_ITComponent_subtype\":\"managedService\"")));
         var projection = new TypeProjection("ITComponent", ObjectKind.TECHNOLOGY_PRODUCT, "category",
                 Map.of("managedService", ObjectKind.SERVICE), Map.of());
         var value = new LeanIxInventorySource().read(request(List.of(projection), false, Set.of(), limits()), access(true));
         assertEquals(ObjectKind.SERVICE, value.objects().getFirst().kind());
         assertEquals("managedService", value.objects().getFirst().subtype().value());
-        assertTrue(server.calls.get(1).body().contains("inventorySubtype: category"));
+        assertTrue(server.calls.get(1).body().contains("inventory_ITComponent_subtype: category"));
+    }
+    @Test void multiTypeProjectionsValidateAgainstASchemaAndDecodeTheirOwnScalarAliases() throws Exception {
+        var types = new SchemaParser().parse("""
+                interface FactSheet { id: ID!, name: String, description: String, type: String!, rev: Int! }
+                type Application implements FactSheet {
+                  id: ID!, name: String, description: String, type: String!, rev: Int!, lifecycle: Lifecycle
+                  category: String, externalCode: String
+                }
+                type ITComponent implements FactSheet {
+                  id: ID!, name: String, description: String, type: String!, rev: Int!, lifecycle: Lifecycle
+                  category: ID, externalCode: ID
+                }
+                type Lifecycle { phases: [LifecyclePhase!]! }
+                type LifecyclePhase { phase: String, startDate: String }
+                type PageInfo { hasNextPage: Boolean!, endCursor: String }
+                type FactSheetEdge { node: FactSheet! }
+                type FactSheetConnection { pageInfo: PageInfo!, edges: [FactSheetEdge!]! }
+                input FacetFilterInput { facetKey: String!, operator: String!, keys: [String!]! }
+                input FilterInput { facetFilters: [FacetFilterInput!]! }
+                type Query {
+                  allFactSheets(first: Int!, after: String, filter: FilterInput!): FactSheetConnection!
+                  factSheet(id: ID!): FactSheet
+                }
+                """);
+        var values = List.of(
+                Map.<String, Object>of("id", "a1", "type", "Application", "name", "App", "rev", 1,
+                        "category", "web", "externalCode", "APP-1"),
+                Map.<String, Object>of("id", "t1", "type", "ITComponent", "name", "Platform", "rev", 2,
+                        "category", "managedService", "externalCode", "TECH-1"));
+        var wiring = RuntimeWiring.newRuntimeWiring()
+                .type("FactSheet", type -> type.typeResolver(env ->
+                        env.getSchema().getObjectType(((Map<?, ?>) env.getObject()).get("type").toString())))
+                .type("Query", type -> type
+                        .dataFetcher("allFactSheets", env -> Map.of("pageInfo", Map.of("hasNextPage", false),
+                                "edges", values.stream().map(value -> Map.of("node", value)).toList()))
+                        .dataFetcher("factSheet", env -> values.stream()
+                                .filter(value -> value.get("id").equals(env.getArgument("id"))).findFirst().orElse(null)))
+                .build();
+        var schema = new SchemaGenerator().makeExecutableSchema(types, wiring);
+        var graphql = GraphQL.newGraphQL(schema).build();
+        start((query, variables) -> JSON.writeValueAsString(graphql.execute(ExecutionInput.newExecutionInput()
+                .query(query).variables(JSON.convertValue(variables, new TypeReference<Map<String, Object>>() { })).build()).toSpecification()));
+        var projections = List.of(
+                new TypeProjection("Application", ObjectKind.APPLICATION, "category", Map.of("web", ObjectKind.APPLICATION),
+                        Map.of("code", "externalCode")),
+                new TypeProjection("ITComponent", ObjectKind.OTHER, "category", Map.of("managedService", ObjectKind.SERVICE),
+                        Map.of("code", "externalCode")));
+        for (boolean single : List.of(false, true)) {
+            var request = request(projections, false, single ? Set.of("a1", "t1") : Set.of(), limits());
+            var errors = new Validator().validateDocument(schema, new Parser().parseDocument(LeanIxQueries.objects(request, single)), Locale.ROOT);
+            assertTrue(errors.isEmpty(), errors::toString);
+            var observed = new LeanIxInventorySource().read(request, access(true)).objects();
+            assertEquals(List.of("web", "managedService"), observed.stream().map(value -> value.subtype().value()).toList());
+            assertEquals(List.of(ObjectKind.APPLICATION, ObjectKind.SERVICE), observed.stream().map(ObservedObject::kind).toList());
+            assertEquals(List.of("APP-1", "TECH-1"), observed.stream().map(value -> value.fields().get("code").value()).toList());
+            assertTrue(observed.stream().allMatch(value -> "category".equals(value.subtype().sourceField())
+                    && "externalCode".equals(value.fields().get("code").sourceField())));
+        }
     }
     @Test void selectedIdsUseVariablesAndDoNotEnumerateTheWorkspace() throws Exception {
         start((q, v) -> {
@@ -187,6 +255,26 @@ class LeanIxInventorySourceTest {
         assertThrows(ReadFailure.class, () -> new LeanIxInventorySource().read(request(projections(), false, Set.of(),
                 new Limits(10, 20, 100, 100, 1024, 2048, 10)), access(true)));
     }
+    @Test void oversizedChunkedResponseIsAbortedWithoutDraining() throws Exception {
+        startPausedResponse();
+        assertAbortedWithoutDraining("READ_LIMIT");
+    }
+    @Test void unauthorizedChunkedResponseIsAbortedWithoutDraining() throws Exception {
+        startPausedResponse(); server.dataStatus = 403;
+        assertAbortedWithoutDraining("UNAUTHORIZED");
+    }
+    @Test void unsupportedChunkedMediaTypeIsAbortedWithoutDraining() throws Exception {
+        startPausedResponse(); server.dataMediaType = "text/plain";
+        assertAbortedWithoutDraining("MEDIA_TYPE");
+    }
+    @Test void encodedChunkedResponseIsAbortedWithoutDraining() throws Exception {
+        startPausedResponse(); server.dataEncoding = "gzip";
+        assertAbortedWithoutDraining("MEDIA_TYPE");
+    }
+    @Test void oversizedContentLengthIsAbortedWithoutDraining() throws Exception {
+        startPausedResponse(); server.chunkedData = false;
+        assertAbortedWithoutDraining("READ_LIMIT");
+    }
     @Test void invalidJsonIsNotAnEmptyInventory() throws Exception {
         start((q, v) -> "{\"data\":{},\"data\":{}} {}");
         assertEquals("INVALID_JSON", assertThrows(ReadFailure.class, () -> read(false)).code());
@@ -213,6 +301,8 @@ class LeanIxInventorySourceTest {
     }
     @Test void metadataAddressesRemainForbiddenEvenWithPrivateNetworkOptIn() throws Exception {
         assertFalse(LeanIxHttp.allowed(InetAddress.getByName("169.254.169.254"), true));
+        assertFalse(LeanIxHttp.allowed(InetAddress.getByName("fd00:ec2::254"), true));
+        assertFalse(LeanIxHttp.allowed(InetAddress.getByName("100.100.100.200"), true));
         assertFalse(LeanIxHttp.allowed(InetAddress.getByName("0.0.0.0"), true));
         assertFalse(LeanIxHttp.allowed(InetAddress.getByName("224.0.0.1"), true));
         assertFalse(LeanIxHttp.allowed(InetAddress.getByName("::1"), false));
@@ -260,6 +350,25 @@ class LeanIxInventorySourceTest {
     }
     private Observation read(boolean relations) { return new LeanIxInventorySource().read(request(projections(), relations, Set.of(), limits()), access(true)); }
     private void start(Reply reply) throws Exception { server = new Server(reply); }
+    private void startPausedResponse() throws Exception {
+        start((q, v) -> "x".repeat(2 * 1024 * 1024));
+        server.pauseData = true;
+    }
+    private void assertAbortedWithoutDraining(String code) throws Exception {
+        try (var reader = Executors.newSingleThreadExecutor()) {
+            var result = reader.submit(() -> assertThrows(ReadFailure.class, () -> new LeanIxInventorySource().read(
+                    request(projections(), false, Set.of(), new Limits(10, 20, 100, 100, 1024, 2048, 30)), access(true))));
+            try {
+                assertTrue(server.dataPrefixSent.await(20, TimeUnit.SECONDS), "Server must begin its response before rejection is timed");
+                // The rest of the body is unavailable until the client has returned its rejection.
+                var rejected = assertDoesNotThrow(() -> result.get(2, TimeUnit.SECONDS),
+                        "Rejection must return before the server releases the remaining response body");
+                assertEquals(code, rejected.code());
+                assertTrue(server.dataBytesWritten.get() <= 2048);
+                assertEquals(2, server.calls.size());
+            } finally { server.releaseData.countDown(); }
+        }
+    }
     private static String app(String id, int revision, String name) {
         return "{\"id\":\"" + id + "\",\"type\":\"Application\",\"rev\":" + revision + ",\"name\":\"" + name
                 + "\",\"description\":\"Test\",\"lifecycle\":{\"phases\":[{\"phase\":\"endOfLife\",\"startDate\":\"2029-12-31\"}]}}";
@@ -283,8 +392,15 @@ class LeanIxInventorySourceTest {
         final ExecutorService threads = Executors.newCachedThreadPool();
         final List<Call> calls = new CopyOnWriteArrayList<>();
         final AtomicReference<Throwable> failure = new AtomicReference<>();
+        final CountDownLatch dataPrefixSent = new CountDownLatch(1);
+        final CountDownLatch releaseData = new CountDownLatch(1);
+        final AtomicInteger dataBytesWritten = new AtomicInteger();
         volatile int dataStatus = 200;
         volatile int tokenExpires = 3599;
+        volatile boolean pauseData;
+        volatile boolean chunkedData = true;
+        volatile String dataMediaType = "application/json";
+        volatile String dataEncoding;
         Server(Reply reply) throws Exception {
             http = HttpsServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             http.setHttpsConfigurator(new HttpsConfigurator(tls)); http.setExecutor(threads);
@@ -307,9 +423,23 @@ class LeanIxInventorySourceTest {
                         response = reply.response(q, input.path("variables")); status = dataStatus;
                     }
                     byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-                    ex.getResponseHeaders().set("Content-Type", "application/json");
+                    boolean data = !path.equals("/services/mtm/v1/oauth2/token");
+                    ex.getResponseHeaders().set("Content-Type", data ? dataMediaType : "application/json");
+                    if (data && dataEncoding != null) ex.getResponseHeaders().set("Content-Encoding", dataEncoding);
                     if (status == 307) ex.getResponseHeaders().set("Location", "/forbidden");
-                    ex.sendResponseHeaders(status, bytes.length); ex.getResponseBody().write(bytes);
+                    if (data && pauseData) {
+                        ex.sendResponseHeaders(status, chunkedData ? 0 : bytes.length);
+                        try {
+                            ex.getResponseBody().write(bytes, 0, 2048); ex.getResponseBody().flush();
+                            dataBytesWritten.addAndGet(2048); dataPrefixSent.countDown();
+                            assertTrue(releaseData.await(10, TimeUnit.SECONDS));
+                            ex.getResponseBody().write(bytes, 2048, bytes.length - 2048);
+                            dataBytesWritten.addAndGet(bytes.length - 2048);
+                        } catch (IOException expectedCancellation) { /* Rejected responses must abort the socket. */ }
+                        finally { dataPrefixSent.countDown(); }
+                    } else {
+                        ex.sendResponseHeaders(status, bytes.length); ex.getResponseBody().write(bytes);
+                    }
                 } catch (Throwable e) { failure.compareAndSet(null, e); ex.sendResponseHeaders(500, -1); }
                 finally { ex.close(); }
             }); http.start();

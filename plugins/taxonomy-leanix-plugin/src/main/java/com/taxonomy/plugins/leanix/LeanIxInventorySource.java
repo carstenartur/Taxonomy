@@ -99,10 +99,10 @@ public final class LeanIxInventorySource implements InventorySourceExtension {
                 .orElseThrow(() -> new ReadFailure("UNSUPPORTED_SOURCE_TYPE"));
         ExternalKey key = key(request, "factsheet", requiredText(node.get("id"), 2048));
         if (!ids.add(key)) throw new ReadFailure("DUPLICATE_ID");
-        Field subtype = p.subtypeField() == null ? Field.missing(State.NOT_SUPPORTED, "subtype") : field(node, "inventorySubtype", p.subtypeField());
+        Field subtype = p.subtypeField() == null ? Field.missing(State.NOT_SUPPORTED, "subtype") : field(node, LeanIxQueries.alias(p, "subtype"), p.subtypeField());
         var fields = new TreeMap<String, Field>(); fields.put("name", field(node, "name", "name")); fields.put("description", field(node, "description", "description"));
         int i = 0;
-        for (var field : LeanIxQueries.fields(p)) fields.put(field.getKey(), field(node, "inventoryScalar" + i++, field.getValue()));
+        for (var field : LeanIxQueries.fields(p)) fields.put(field.getKey(), field(node, LeanIxQueries.alias(p, "scalar" + i++), field.getValue()));
         JsonNode lifecycle = node.get("lifecycle");
         State lifecycleState = lifecycle == null ? State.ABSENT : lifecycle.isNull() ? State.NULL : State.PRESENT;
         var phases = new ArrayList<LifecyclePhase>();
