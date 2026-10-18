@@ -151,6 +151,20 @@
         renderCoverage();
         if (typeof document.dispatchEvent === 'function') document.dispatchEvent(new CustomEvent('taxonomy:analysis-recovery-updated'));
     }
+    function recordedPauseReason(result) {
+        if (!['PAUSED', 'STOPPED'].includes(result.recovery?.state)) return null;
+        var report = result.relationSearchReport || result.architectureView?.relationSearchReport;
+        // Budget exhaustion can be recorded only in the relation report, while
+        // errorMessage contains a partial-result summary or is absent entirely.
+        var budget = /^(CALL_BUDGET|SOURCE_LIMIT|WORK_LIMIT)(:|$)/;
+        var reasons = [report?.stopReason, result.errorMessage]
+            .concat((report?.warnings || []).filter(function (warning) { return budget.test(warning); }))
+            .concat((report?.result?.unfinished || []).map(function (work) { return work.reason; })
+                .filter(function (reason) { return budget.test(reason); }));
+        return Array.from(new Set(reasons.filter(function (reason) {
+            return typeof reason === 'string' && reason.trim();
+        }))).join('\n') || null;
+    }
     function hydrate(result, context) {
         if (!result || !inScope(context)) return;
         var baseline = acceptedNodeEvidence(context);
@@ -164,7 +178,7 @@
         }
         rememberNodeEvidence(result, context);
         S.analysisRecovery = result.recovery || S.analysisRecovery;
-        context.pauseReason = ['PAUSED', 'STOPPED'].includes(S.analysisRecovery?.state) ? result.errorMessage : null;
+        context.pauseReason = recordedPauseReason(result);
         S.analysisCoverage = result.analysisCoverage || null;
         S.lastAnalysisScope = result.analysisScope || context.request.analysisScope || null;
         S.lastAnalysisReasonLength = result.analysisReasonLength || null;
@@ -279,7 +293,7 @@
             rememberNodeEvidence(result, c);
             S.lastAnalysisStatus = result.status || 'UNKNOWN';
             c.observationError = null;
-            c.pauseReason = ['PAUSED', 'STOPPED'].includes(result.recovery.state) ? result.errorMessage : null;
+            c.pauseReason = recordedPauseReason(result);
             setBusy(false); update(); await save();
             if (['PAUSED', 'STOPPED'].includes(result.recovery.state)) open();
             else if (result.recovery.state === 'COMPLETED' || result.recovery.state === 'COMPLETED_WITH_GAPS') {
@@ -377,7 +391,7 @@
             var name = names.get(code); return name && name !== code ? name + ' (' + code + ')' : code;
         }).join(', '); }
         function explanation(q) {
-            if (!q) return c.pauseReason || '';
+            if (!q) return '';
             if (q.error?.startsWith('RELATION_UNRESOLVED:')) return q.error.substring('RELATION_UNRESOLVED:'.length).trim();
             if (q.outcomeUncertain) return text('Der Ausgang dieser Anfrage ist unklar. Eine Wiederholung benötigt Ihre Entscheidung.',
                 'The outcome of this request is uncertain. Repeating it requires your decision.');
@@ -399,6 +413,16 @@
             options.push({ id: 'analysisRecoveryCancelDialog', shortLabel: text('Abbrechen', 'Cancel'), label: text('Lauf abbrechen', 'Cancel run'), handler: cancel });
         if (c.observationError || r.state === 'RUNNING') options.push({ id: 'analysisRecoveryRefresh', shortLabel: text('Aktualisieren', 'Refresh'), label: text('Status aktualisieren', 'Refresh status'), handler: refresh });
         ui.open('Copilot', message(), function (body, el) {
+            if (['PAUSED', 'STOPPED'].includes(r.state)) {
+                // A semantic question is independent of why execution stopped.
+                // Always retain the actual stop diagnostics above the selection.
+                var reason = el('p', text('Grund der Unterbrechung: ', 'Reason for interruption: ')
+                    + (c.pauseReason || text('Kein konkreter Unterbrechungsgrund gespeichert.',
+                        'No specific interruption reason was recorded.')));
+                reason.id = 'analysisRecoveryStopReason';
+                reason.style.whiteSpace = 'pre-wrap';
+                body.append(reason);
+            }
             var note = el('p', explanation(selected));
             body.append(note);
             body.append(el('p', text('Gültige Bewertungen bleiben erhalten. Unbekannt bedeutet nicht „nicht relevant“.',

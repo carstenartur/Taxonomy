@@ -243,6 +243,70 @@ test('interrupted unvisited catalogue rows are explicitly labelled unassessed',(
 const renderedText = element => [element.textContent, ...element.children.map(renderedText)].join(' ');
 const descendants = element => [element, ...element.children.flatMap(descendants)];
 for (const language of ['de', 'en']) {
+ test(`${language} a source clarification does not hide the recorded runtime stop`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('STOPPED');
+  result.errorMessage='TIME_LIMIT: completed evidence retained; no further model evaluations.';
+  result.recovery.openQuestions=[{key:'relation-a',nodes:['CP-1000','CP-1023','CP-1122'],attempts:1,
+   error:'RELATION_UNRESOLVED: CP-1122: Does IT Services include administrative time tracking?'}];
+  await settle();
+  const body=renderedText(h.ui.body);
+  assert.match(body,/TIME_LIMIT/);
+  assert.match(body,/Does IT Services include administrative time tracking/);
+  assert.match(body,language==='de' ? /Grund der Unterbrechung/ : /Reason for interruption/);
+  assert.doesNotMatch(body,/LLM-Bewertung fehlgeschlagen|LLM assessment failed/);
+  h.act('analysisRecoveryContinue');
+  assert.equal(h.analyses[1].continuationAction,'CONTINUE');
+  assert.equal(h.analyses[1].continuationQuestion,null);
+  assert.equal(h.analyses[1].continuationQuestions.length,0);
+  h.complete('COMPLETED_WITH_GAPS'); await settle();
+  assert.equal(h.followups(),0);
+ });
+ test(`${language} relation budget evidence survives result hydration and refresh`, async () => {
+  for (const report of [
+   {stopReason:'MEMORY_PRESSURE: completed evidence retained'},
+   {warnings:['SOURCE_UNRESOLVED CP-1122: Catalogue scope?', 'SOURCE_LIMIT: 9 sources remain unassessed.']},
+   {result:{unfinished:[{reason:'CALL_BUDGET',question:''}]}},
+   {warnings:['WORK_LIMIT: remaining searches retained']}
+  ]) {
+   const h=harness(language); h.recovery.startCopilot();
+   const result=h.complete('STOPPED'); result.relationSearchReport=report;
+   await settle();
+   const reason=report.stopReason || report.warnings?.at(-1) || 'CALL_BUDGET';
+   assert(renderedText(h.ui.body).includes(reason),reason);
+   h.S.recoveryContext.pauseReason=null;
+   await h.recovery.refresh(); h.recovery.open();
+   assert(renderedText(h.ui.body).includes(reason),'refresh: '+reason);
+   assert.equal(h.analyses.length,1,'reading diagnostics cannot authorize another provider call');
+  }
+ });
+ test(`${language} missing stop evidence is explicit and never inferred from a semantic question`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('STOPPED');
+  result.recovery.openQuestions=[{key:'relation-a',nodes:['CP-1122'],attempts:1,
+   error:'RELATION_UNRESOLVED: Which catalogue scope?'}];
+  await settle();
+  assert.match(renderedText(h.ui.body),language==='de' ? /Kein konkreter Unterbrechungsgrund gespeichert/ : /No specific interruption reason was recorded/);
+  assert.doesNotMatch(renderedText(h.ui.body),/TIME_LIMIT|MEMORY_PRESSURE|CALL_BUDGET/);
+ });
+ test(`${language} completed semantic gaps are not presented as an interrupted run`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('COMPLETED_WITH_GAPS');
+  result.errorMessage='RELATION_SEARCH_PARTIAL: semantic scope remains open';
+  result.recovery.openQuestions=[{key:'relation-a',nodes:['CP-1122'],attempts:1,
+   error:'RELATION_UNRESOLVED: Which catalogue scope?'}];
+  await settle(); h.recovery.open();
+  assert.match(renderedText(h.ui.body),/Which catalogue scope/);
+  assert.doesNotMatch(renderedText(h.ui.body),/Reason for interruption|Grund der Unterbrechung/);
+ });
+ test(`${language} a stop without an open question shows its recorded reason once`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('STOPPED'); result.recovery.openQuestions=[];
+  result.architectureView={relationSearchReport:{stopReason:'TIME_LIMIT: retained answers'}};
+  await settle();
+  assert.equal(renderedText(h.ui.body).split('TIME_LIMIT: retained answers').length-1,1);
+  assert(h.options().some(option=>option.id==='analysisRecoveryContinue'));
+ });
  test(`${language} recovery identifies an LLM assessment failure and explains retry and skip`, async () => {
   const h=harness(language); h.recovery.startCopilot(); h.complete(); await settle();
   h.S.analysisRecovery.openQuestions=[
