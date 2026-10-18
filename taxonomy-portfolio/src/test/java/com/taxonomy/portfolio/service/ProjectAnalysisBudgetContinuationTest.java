@@ -699,7 +699,7 @@ class ProjectAnalysisBudgetContinuationTest {
             var policy = mock(AiAutomationPolicy.class);
             when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
             copilot = new CopilotAutomationService(service, projectService, fingerprints, policy, new CopilotResultSelector(),
-                    proxied(new CopilotResultPersistenceService(requirements, snapshots)), mock(CopilotCompletionService.class),
+                    proxied(new CopilotResultPersistenceService(requirements, snapshots, items)), mock(CopilotCompletionService.class),
                     jobControl, mock(java.util.concurrent.ExecutorService.class));
         }
 

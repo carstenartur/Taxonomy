@@ -94,6 +94,27 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
             @Param("projectId") Long projectId,
             @Param("scopeKey") String scopeKey);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select new com.taxonomy.portfolio.repository.AnalysisItemClaimRow(
+                item.id, item.requirementId, item.requirementVersionId, item.status, item.snapshotId, item.attempt)
+              from RequirementAnalysisJobItem item
+             where item.id = :itemId and item.jobId = :jobId
+               and item.projectId = :projectId and item.scopeKey = :scopeKey
+            """)
+    Optional<AnalysisItemClaimRow> findPromotionClaimForUpdate(
+            @Param("itemId") Long itemId, @Param("jobId") String jobId,
+            @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
+
+    @Query("""
+            select job.status from RequirementAnalysisJobItem item join item.job job
+             where item.id = :itemId and item.jobId = :jobId
+               and item.projectId = :projectId and item.scopeKey = :scopeKey
+            """)
+    Optional<AnalysisStatus> findJobStatusForItem(
+            @Param("itemId") Long itemId, @Param("jobId") String jobId,
+            @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
+
     Optional<RequirementAnalysisJobItem>
             findByJobIdAndProjectIdAndScopeKeyAndRequirementId(
                     String jobId, Long projectId, String scopeKey, Long requirementId);

@@ -65,6 +65,16 @@ async function uiFixture(options = {}) {
             },
             continueAnalysis: async (project, job, item, decision) => {
                 requests.push({method: 'POST', project, job, item, snapshotId: decision.snapshotId, revision: decision.continuationVersion});
+                if (options.rejectedPost) {
+                    current = operation(options.observedStatus);
+                    current.selectedSnapshotId = 'snapshot-completed';
+                    throw new Error('Continuation rejected');
+                }
+                if (options.terminalResponse) {
+                    current = operation(options.terminalResponse);
+                    current.selectedSnapshotId = 'snapshot-completed';
+                    throw new Error('Connection lost after completion');
+                }
                 current = operation(options.lostResponse ? 'PENDING' : 'PARTIAL');
                 current.jobs[0].status = current.jobs[0].items[0].status = options.lostResponse ? 'PENDING' : 'SUCCESS';
                 if (!options.lostResponse) {
@@ -118,6 +128,34 @@ test('an uncertain continuation HTTP response causes observation, never an autom
     assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
     assert.equal(f.requests.filter(r => r.method === 'status').length, 2);
 });
+
+for (const failure of ['rejected POST', 'lost response']) {
+    for (const status of ['PARTIAL', 'SUCCESS', 'FAILED', 'CANCELLED']) {
+        test(`copilot observes ${status} after ${failure} and restores terminal controls without another POST`, async () => {
+            // Either failure can observe a terminal operation changed by the server
+            // before the status read; the observation remains authoritative.
+            const f = await uiFixture(failure === 'rejected POST'
+                ? {rejectedPost: true, observedStatus: status} : {terminalResponse: status});
+            await f.buttons()[0].click(); await tick();
+            assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
+            assert.equal(f.requests.filter(r => r.method === 'status').length, 1);
+            assert.equal(f.nodes.get('copilotOperation').attributes['data-operation-status'], status);
+            for (const id of ['copilotRun', 'copilotProfile', 'copilotForce']) {
+                assert.equal(f.nodes.get(id).disabled, false, id + ' must recover');
+            }
+            assert.equal(f.nodes.get('copilotRun').attributes['aria-busy'], 'false');
+            assert.equal(f.nodes.get('copilotRunSpinner').classList.contains('d-none'), true);
+            assert.equal(f.nodes.get('copilotCancel').disabled, true);
+            assert.equal(f.timers.length, status === 'SUCCESS' ? 1 : 0);
+            if (status === 'SUCCESS') {
+                assert.equal(f.timers[0].ms, 600, 'The normal completion action must run, not polling');
+                f.timers.shift().fn();
+                assert.match(f.redirects[0], /snapshot=snapshot-completed/);
+            }
+            assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
+        });
+    }
+}
 
 test('the API client sends only the selected immutable snapshot and revision with CSRF protection', async () => {
     const requests = [], window = {location: {pathname: '/projects'}};
@@ -257,3 +295,50 @@ test('portfolio continuation registers a valid accepted job without a redundant 
     assert.equal(f.job().status, 'PENDING');
     assert.deepEqual(f.scheduled, ['http://localhost/api/projects/41/analysis-jobs/saved-job']);
 });
+
+for (const failure of ['HTTP failure', 'connection failure']) {
+    test(`portfolio retries eligibility on later rendering after ${failure} without posting continuation`, async () => {
+        const d = dom(), requests = [];
+        let resolveFirst;
+        const first = new Promise(resolve => {resolveFirst = resolve;});
+        const decision = {available: true, snapshotId: 'old-snapshot', continuationVersion: 23};
+        const window = {location: {pathname: '/projects'}};
+        const context = vm.createContext({window, document: d.document, URL, URLSearchParams,
+            continuationDecisions: new Map(), m: key => key,
+            fetch: async (url, options) => {
+                requests.push({url, method: options.method || 'GET'});
+                assert.equal(options.method || 'GET', 'GET', 'Rendering never submits continuation');
+                if (requests.length === 1) {
+                    await first;
+                    if (failure === 'connection failure') throw new TypeError('Network unavailable');
+                    return new Response(JSON.stringify({detail: 'Temporarily unavailable'}), {status: 503});
+                }
+                return new Response(JSON.stringify(decision), {status: 200});
+            }});
+        vm.runInContext(source('api/portfolio-api.js'), context);
+        const portfolio = source('portfolio/taxonomy-portfolio-async.js');
+        vm.runInContext(productionSection(portfolio, '    function renderItemContinuation(', '    function countStatuses('), context);
+        const job = {id: 'saved-job', projectId: 41};
+        const item = {id: 7, snapshotId: 'old-snapshot', attempt: 1};
+        const render = () => {
+            const target = d.element();
+            context.renderItemContinuation(target, job, item);
+            return target;
+        };
+        const firstCard = render(), concurrentCard = render();
+        assert.equal(requests.length, 1, 'Concurrent renders share an in-flight eligibility request');
+        assert.equal(firstCard.children[0].disabled, true);
+        resolveFirst(); await tick();
+        assert.equal(firstCard.children[0].disabled, true);
+        assert.ok(firstCard.children[1].textContent.length > 0, 'The transient failure remains visible');
+        assert.equal(concurrentCard.children[0].disabled, true);
+        const laterCard = render(); await tick();
+        assert.equal(requests.length, 2, 'A later render retries the read for the same snapshot and attempt');
+        assert.equal(laterCard.children[0].disabled, false);
+        assert.equal(laterCard.children[1].textContent, '');
+        const reopenedCard = render(); await tick();
+        assert.equal(reopenedCard.children[0].disabled, false);
+        assert.equal(requests.length, 2, 'A successful decision remains cached');
+        assert.ok(requests.every(request => request.method === 'GET'));
+    });
+}
