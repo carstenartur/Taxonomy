@@ -21,7 +21,10 @@ public class AnalysisContinuationStore {
     private static final long CLAIM_MILLIS = 35 * 60 * 1000L;
     private final EntityManager em;
     private final ObjectMapper mapper;
-    public AnalysisContinuationStore(EntityManager em, ObjectMapper mapper) { this.em = em; this.mapper = mapper; }
+    private final AnalysisCheckpointPayloadCodec payloads;
+    public AnalysisContinuationStore(EntityManager em, ObjectMapper mapper) {
+        this.em = em; this.mapper = mapper; this.payloads = new AnalysisCheckpointPayloadCodec(mapper);
+    }
     public record Claim(String id, String token, AnalysisResult completedResult, RelationSearchReport previousRelations,
                         AnalysisResult retainedAnalysis) {
         public Claim(String id, String token, AnalysisResult completedResult, RelationSearchReport previousRelations) {
@@ -37,10 +40,13 @@ public class AnalysisContinuationStore {
     @Transactional(readOnly = true)
     public Optional<AnalysisRequest> originalRequest(String id, WorkspaceContext scope) {
         requireScope(scope);
-        var run = em.find(AnalysisContinuationRun.class, requireId(id));
-        if (run == null) return Optional.empty();
-        authorize(run, scope);
-        return Optional.of(mapper.readValue(run.requestJson, AnalysisRequest.class));
+        var rows = em.createQuery("select r.username, r.workspaceId, r.branchName, r.repositoryId, r.requestJson "
+                        + "from AnalysisContinuationRun r where r.id=:id", Object[].class)
+                .setParameter("id", requireId(id)).getResultList();
+        if (rows.isEmpty()) return Optional.empty();
+        Object[] row = rows.getFirst();
+        authorize((String) row[0], (String) row[1], (String) row[2], (String) row[3], scope);
+        return Optional.of(mapper.readValue((String) row[4], AnalysisRequest.class));
     }
 
     @Transactional
@@ -106,7 +112,7 @@ public class AnalysisContinuationStore {
             if (request.getContinuationVersion() == null || request.getContinuationVersion() != run.version)
                 throw conflict("A newer operation revision exists; refresh before deciding");
             if ("CONTINUE".equals(action) && "STOPPED".equals(run.state)
-                    && questions(run).stream().noneMatch(q -> "FAILED".equals(q.state))) {
+                    && !hasQuestionState(run.id, "FAILED")) {
                 // No unresolved provider attempt is outstanding. Keep previously skipped areas open.
             } else {
                 // Resolve and validate the complete selection before modifying any row.
@@ -267,22 +273,35 @@ public class AnalysisContinuationStore {
             question.id = run.id() + ":" + request.key();
             question.run = em.getReference(AnalysisContinuationRun.class, run.id());
             question.questionKey = request.key(); question.inputHash = request.inputHash();
-            question.provider = request.provider(); question.nodeCodes = mapper.writeValueAsString(request.nodes());
+            question.provider = request.provider(); question.nodeCodes = payloads.encodeNodes(request.nodes());
             question.state = "READY";
             em.persist(question);
         }
         question.attempts++; question.startedAt = System.currentTimeMillis(); question.state = "ATTEMPT";
         String currentNode = String.join(", ", request.nodes());
         if (currentNode.length() > 320) currentNode = currentNode.substring(0, 317) + "...";
-        long retainedPrompt = question.prompt == null ? 0 : question.prompt.length();
-        long nextPayload = run.payloadCharacters() - retainedPrompt + request.prompt().length();
+        long nextPayload = run.payloadCharacters();
+        String nextPrompt = null, nextDetail = null, nextNodes = null;
+        if (request.prompt().length() <= MAX_QUESTION_CHARACTERS) {
+            var layout = payloads.parseLayout(question.nodeCodes);
+            String previousPrompt = payloads.decodePrompt(layout, question.prompt);
+            String previousDetail = payloads.decodeDetail(layout, question.detailJson, previousPrompt);
+            nextPrompt = payloads.encodePrompt(request.prompt());
+            nextDetail = payloads.encodeDetail(previousDetail, request.prompt());
+            nextNodes = payloads.encodeNodes(layout.nodes());
+            nextPayload = run.payloadCharacters() - storedCharacters(question.prompt, question.detailJson)
+                    + storedCharacters(nextPrompt, nextDetail);
+        }
         String state = "RUNNING";
         if (request.prompt().length() > MAX_QUESTION_CHARACTERS || nextPayload > MAX_RUN_CHARACTERS) {
             question.state = "FAILED";
             question.error = "CHECKPOINT_INPUT_LIMIT: full prompt or total retained text exceeds the bounded checkpoint budget; "
                     + "it was not sent or silently shortened";
             state = "PAUSED"; nextPayload = run.payloadCharacters();
-        } else question.prompt = request.prompt();
+        } else {
+            // A retry can upgrade a legacy row only as one complete, budgeted representation.
+            question.nodeCodes = nextNodes; question.prompt = nextPrompt; question.detailJson = nextDetail;
+        }
         updateCheckpointOwner(claim, run, state, nextPayload, currentNode);
         return checkpoint(question, request);
     }
@@ -291,9 +310,24 @@ public class AnalysisContinuationStore {
         var candidates = em.createQuery("select q from AnalysisQuestionCheckpoint q where q.run.id=:id and q.inputHash=:hash and q.provider=:provider", AnalysisQuestionCheckpoint.class)
                 .setParameter("id", runId).setParameter("hash", request.inputHash()).setParameter("provider", request.provider()).setMaxResults(2).getResultList();
         if (candidates.size() > 1) throw conflict("Ambiguous saved question scope; use the original distributed context");
-        return candidates.size() == 1 && Objects.equals(candidates.getFirst().nodeCodes, mapper.writeValueAsString(request.nodes()))
+        return candidates.size() == 1 && payloads.parseLayout(candidates.getFirst().nodeCodes).nodes().equals(request.nodes())
                 && AnalysisCheckpointSession.isRelationQuestion(candidates.getFirst().questionKey) == AnalysisCheckpointSession.isRelationQuestion(request.key())
                 ? candidates.getFirst() : null;
+    }
+
+    private String compatibleQuestionKey(String runId, AnalysisCheckpointSession.Question request) {
+        // Supersession needs the same ambiguity and scope checks as replay, but not its response body.
+        var candidates = em.createQuery("select q.questionKey, q.nodeCodes from AnalysisQuestionCheckpoint q "
+                        + "where q.run.id=:id and q.inputHash=:hash and q.provider=:provider", Object[].class)
+                .setParameter("id", runId).setParameter("hash", request.inputHash())
+                .setParameter("provider", request.provider()).setMaxResults(2).getResultList();
+        if (candidates.size() > 1) throw conflict("Ambiguous saved question scope; use the original distributed context");
+        if (candidates.isEmpty()) return null;
+        Object[] candidate = candidates.getFirst();
+        String key = (String) candidate[0];
+        return payloads.parseLayout((String) candidate[1]).nodes().equals(request.nodes())
+                && AnalysisCheckpointSession.isRelationQuestion(key) == AnalysisCheckpointSession.isRelationQuestion(request.key())
+                ? key : null;
     }
 
     /** A physical question belongs to one captured delivery and one worker session. */
@@ -317,7 +351,7 @@ public class AnalysisContinuationStore {
             var legacy = question(run.id(), input.key());
             if (legacy != null && Objects.equals(legacy.inputHash, input.inputHash())
                     && Objects.equals(legacy.provider, input.provider())
-                    && Objects.equals(legacy.nodeCodes, mapper.writeValueAsString(input.nodes()))) {
+                    && payloads.parseLayout(legacy.nodeCodes).nodes().equals(input.nodes())) {
                 existing = legacy; request = input;
             }
         }
@@ -353,26 +387,53 @@ public class AnalysisContinuationStore {
     @Transactional
     public void supersedeEvidence(Claim claim, String kind, String provider,
             java.util.function.Predicate<AnalysisCheckpointSession.Question> covered, QuestionOwner owner) {
+        supersedeEvidence(claim, kind, provider, null, covered, owner);
+    }
+
+    /** Node metadata can exclude unrelated corrections; it never replaces the full input or ownership checks. */
+    @Transactional
+    public void supersedeEvidence(Claim claim, String kind, String provider, Set<String> singletonCodes,
+            java.util.function.Predicate<AnalysisCheckpointSession.Question> covered, QuestionOwner owner) {
         var run = checkpointOwner(claim, true);
         if (owner != null && !Objects.equals(run.operationId(), owner.operationId()))
             throw conflict("Question operation binding was superseded");
-        var pending = em.createQuery("select q from AnalysisQuestionCheckpoint q where q.run.id=:id and q.provider=:provider and q.state in ('READY','UNASSESSED','CLARIFICATION','FAILED','SKIPPED')", AnalysisQuestionCheckpoint.class)
-                .setParameter("id", run.id()).setParameter("provider", provider).getResultList();
+        Set<String> candidates = singletonCodes == null ? null : Set.copyOf(singletonCodes);
+        var pending = em.createQuery("select q.questionKey, q.inputHash, q.provider, q.nodeCodes, q.state "
+                        + "from AnalysisQuestionCheckpoint q where q.run.id=:id and q.provider=:provider "
+                        + "and q.prompt is not null and q.state in ('READY','UNASSESSED','CLARIFICATION','FAILED','SKIPPED')", Object[].class)
+                .setParameter("id", run.id()).setParameter("provider", provider).getResultList().stream()
+                .map(row -> new QuestionInput((String) row[0], (String) row[1], (String) row[2],
+                        (String) row[3], (String) row[4])).toList();
         boolean changed = false;
         for (var saved : pending) {
-            if (!AnalysisCheckpointSession.isRelationQuestion(saved.questionKey) || saved.prompt == null) continue;
+            if (!AnalysisCheckpointSession.isRelationQuestion(saved.questionKey)) continue;
+            // Parse even excluded layouts strictly: corrupt metadata is not evidence of a different node.
+            var layout = payloads.parseLayout(saved.nodeCodes);
+            if (candidates != null && (layout.nodes().size() != 1 || !candidates.contains(layout.nodes().getFirst()))) continue;
+            var prompts = em.createQuery("select q.prompt from AnalysisQuestionCheckpoint q "
+                            + "where q.run.id=:id and q.questionKey=:key and q.inputHash=:hash and q.provider=:provider and q.state=:state", String.class)
+                    .setParameter("id", run.id()).setParameter("key", saved.questionKey).setParameter("hash", saved.inputHash)
+                    .setParameter("provider", saved.provider).setParameter("state", saved.state).getResultList();
+            if (prompts.size() != 1 || prompts.getFirst() == null) throw conflict("Question input was superseded");
             var question = AnalysisCheckpointSession.evidenceQuestion(kind, saved.provider,
-                    List.of(mapper.readValue(saved.nodeCodes, String[].class)), saved.prompt);
+                    layout.nodes(), payloads.decodePrompt(layout, prompts.getFirst()));
             if (!Objects.equals(saved.inputHash, question.inputHash()) || !covered.test(question)) continue;
             if (owner != null) {
                 String scopedKey = "R" + AnalysisCheckpointSession.digest("distributed-question-v1", owner.namespace(),
                         question.key(), question.inputHash()).substring(1);
                 if (!saved.questionKey.equals(scopedKey) && !saved.questionKey.equals(question.key())) continue;
             } else if (!saved.questionKey.equals(question.key())) {
-                var compatible = compatibleQuestion(run.id(), question);
-                if (compatible == null || !compatible.questionKey.equals(saved.questionKey)) continue;
+                String compatible = compatibleQuestionKey(run.id(), question);
+                if (!saved.questionKey.equals(compatible)) continue;
             }
-            saved.state = "SUPERSEDED"; changed = true;
+            em.flush();
+            int updated = em.createQuery("update AnalysisQuestionCheckpoint q set q.state='SUPERSEDED' "
+                            + "where q.run.id=:id and q.questionKey=:key and q.state=:state")
+                    .setParameter("id", run.id()).setParameter("key", saved.questionKey)
+                    .setParameter("state", saved.state).executeUpdate();
+            if (updated != 1) throw conflict("Question state was superseded");
+            detachQuestion(run.id(), saved.questionKey);
+            changed = true;
         }
         if (changed) updateCheckpointOwner(claim, run, "RUNNING", run.payloadCharacters(), run.currentNode());
     }
@@ -383,17 +444,27 @@ public class AnalysisContinuationStore {
         var question = question(run.id(), request.key());
         if (question == null || !"ATTEMPT".equals(question.state)) throw conflict("Question no longer owns this attempt");
         String json = mapper.writeValueAsString(detail);
-        long oldLength = question.detailJson == null ? 0 : question.detailJson.length();
-        if (json.length() > MAX_QUESTION_CHARACTERS || run.payloadCharacters() - oldLength + json.length() > MAX_RUN_CHARACTERS) {
+        String nextPrompt = null, nextDetail = null, nextNodes = null;
+        long nextPayload = run.payloadCharacters();
+        if (json.length() <= MAX_QUESTION_CHARACTERS) {
+            var layout = payloads.parseLayout(question.nodeCodes);
+            String fullPrompt = payloads.decodePrompt(layout, question.prompt);
+            nextPrompt = layout.encoded() ? question.prompt : payloads.encodePrompt(fullPrompt);
+            nextDetail = payloads.encodeDetail(json, fullPrompt);
+            nextNodes = payloads.encodeNodes(layout.nodes());
+            nextPayload = run.payloadCharacters() - storedCharacters(question.prompt, question.detailJson)
+                    + storedCharacters(nextPrompt, nextDetail);
+        }
+        if (json.length() > MAX_QUESTION_CHARACTERS || nextPayload > MAX_RUN_CHARACTERS) {
             question.state = "FAILED"; question.error = "CHECKPOINT_STORAGE_LIMIT: response was not accepted; prior checkpoints remain intact";
             // Do not pretend a result was durably cached. Signal the pause outside this transaction.
             updateCheckpointOwner(claim, run, "PAUSED", run.payloadCharacters(), run.currentNode());
             return;
         }
-        question.detailJson = json; question.state = state;
+        question.nodeCodes = nextNodes; question.prompt = nextPrompt; question.detailJson = nextDetail; question.state = state;
         question.error = bounded(detail.getError(), 2048);
         updateCheckpointOwner(claim, run, "FAILED".equals(state) ? "PAUSED" : "RUNNING",
-                run.payloadCharacters() + json.length() - oldLength, run.currentNode());
+                nextPayload, run.currentNode());
     }
 
     @Transactional(readOnly = true)
@@ -423,6 +494,13 @@ public class AnalysisContinuationStore {
 
     @Transactional
     public AnalysisResult complete(Claim claim, AnalysisResult result, List<TaxonomyNodeDto> tree) {
+        return completeWithFallback(claim, result, () -> tree);
+    }
+
+    /** The admitted catalogue is authoritative; only legacy results can need a fresh fallback. */
+    @Transactional
+    public AnalysisResult completeWithFallback(Claim claim, AnalysisResult result,
+            java.util.function.Supplier<List<TaxonomyNodeDto>> fallbackTree) {
         var run = em.find(AnalysisContinuationRun.class, claim.id(), LockModeType.PESSIMISTIC_WRITE);
         if (run == null || !Objects.equals(run.claimToken, claim.token())) throw conflict("Operation claim was superseded");
         var previous = readResult(run);
@@ -435,7 +513,8 @@ public class AnalysisContinuationStore {
             previous.setRecovery(view(run));
             return previous;
         }
-        if (previous != null && previous.getTree() != null) tree = previous.getTree();
+        List<TaxonomyNodeDto> tree = previous != null && previous.getTree() != null
+                ? previous.getTree() : fallbackTree.get();
         AnalysisRequest frozenRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
         boolean relationsOnly = frozenRequest.getRelationSourceContinuationId() != null;
         if (relationsOnly && previous != null && !sameNodeEvidence(previous, result))
@@ -445,19 +524,16 @@ public class AnalysisContinuationStore {
         result.setAnalysisReasonLength(frozenRequest.getAnalysisReasonLength());
         if (previous != null && result.getRelationSearchReport() == null)
             result.setRelationSearchReport(previous.getRelationSearchReport());
-        for (var question : questions(run)) if ("ATTEMPT".equals(question.state)) {
-            question.state = "FAILED";
-            question.error = "OUTCOME_UNCERTAIN: interrupted call; the provider may have processed it";
-        }
-        var open = openQuestions(run);
+        var metadata = failUncertainAttempts(run, questionMetadata(run));
+        var open = openQuestions(metadata);
         if ("CANCELLED".equals(run.state)) result.setStatus("CANCELLED");
-        else if (questions(run).stream().anyMatch(q -> "FAILED".equals(q.state))) run.state = "PAUSED";
+        else if (metadata.stream().anyMatch(q -> "FAILED".equals(q.state))) run.state = "PAUSED";
         else if ("ERROR".equals(result.getStatus()) || cooperativeInterruption(result.getErrorMessage())
                 || result.getRelationSearchReport() != null && cooperativeInterruption(result.getRelationSearchReport().stopReason())) {
             // Runtime guards use these typed-reason prefixes at the existing result boundary.
             // A prior skipped question must not disguise unfinished independent work as complete.
             run.state = "STOPPED";
-        } else if (questions(run).stream().anyMatch(q -> "READY".equals(q.state))
+        } else if (metadata.stream().anyMatch(q -> "READY".equals(q.state))
                 || relationBudgetStopped(result.getRelationSearchReport())) {
             run.state = "STOPPED";
         } else if (!open.isEmpty()) {
@@ -466,9 +542,12 @@ public class AnalysisContinuationStore {
         if (run.clusterOperationId != null) {
             var raw = new LinkedHashMap<>(result.getRawScores());
             var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
-            for (var q : questions(run)) if ("SUCCESS".equals(q.state) && q.detailJson != null
-                    && !AnalysisCheckpointSession.isRelationQuestion(q.questionKey)) {
-                var detail = mapper.readValue(q.detailJson, LlmCallDetail.class);
+            var acceptedDetails = em.createQuery("select q.nodeCodes, q.prompt, q.detailJson from AnalysisQuestionCheckpoint q "
+                            + "where q.run.id=:id and q.state='SUCCESS' and q.detailJson is not null "
+                            + "and q.questionKey not like 'R%' order by q.startedAt, q.questionKey", Object[].class)
+                    .setParameter("id", run.id).getResultList();
+            for (Object[] row : acceptedDetails) {
+                var detail = questionDetail((String) row[0], (String) row[1], (String) row[2]);
                 detail.getScores().forEach(raw::putIfAbsent);
                 if (detail.getReasons() != null) detail.getReasons().forEach(reasons::putIfAbsent);
             }
@@ -530,8 +609,20 @@ public class AnalysisContinuationStore {
     @Transactional
     public Snapshot read(String id, WorkspaceContext scope) {
         var run = scoped(id, scope); expire(run); em.flush();
-        return new Snapshot(view(run), readResult(run), mapper.readValue(run.requestJson, AnalysisRequest.class), run.clusterOperationId);
+        var recovery = view(run);
+        return new Snapshot(recovery, readResult(run, recovery), mapper.readValue(run.requestJson, AnalysisRequest.class), run.clusterOperationId);
     }
+
+    /** Accepted clarifications replay unchanged; every other unresolved attempt needs its own decision. */
+    @Transactional
+    public boolean hasBlockingBudgetQuestions(String id, WorkspaceContext scope) {
+        String runId = scopedId(id, scope);
+        // Inspect persisted states, not error-message prefixes in a saved display DTO.
+        return em.createQuery("select count(q) from AnalysisQuestionCheckpoint q where q.run.id=:id "
+                        + "and q.state not in ('SUCCESS','CLARIFICATION','DECOMPOSED','READY','SUPERSEDED')", Long.class)
+                .setParameter("id", runId).getSingleResult() > 0;
+    }
+
     @Transactional
     public Snapshot cancel(String id, WorkspaceContext scope) {
         return cancelLocked(scoped(id, scope), null, null);
@@ -600,7 +691,7 @@ public class AnalysisContinuationStore {
             for (var question : questions(run)) {
                 if ("SUCCESS".equals(question.state) && question.detailJson != null
                         && !AnalysisCheckpointSession.isRelationQuestion(question.questionKey)) {
-                    var detail = mapper.readValue(question.detailJson, LlmCallDetail.class);
+                    var detail = questionDetail(question.nodeCodes, question.prompt, question.detailJson);
                     raw.putAll(detail.getScores());
                     if (detail.getReasons() != null) reasons.putAll(detail.getReasons());
                     if (detail.getProvider() != null) result.setProvider(detail.getProvider());
@@ -620,9 +711,9 @@ public class AnalysisContinuationStore {
         var run = scoped(id, scope);
         var question = question(run, key);
         if (question == null) throw notFound();
-        var detail = question.detailJson == null ? new LlmCallDetail()
-                : mapper.readValue(question.detailJson, LlmCallDetail.class);
-        detail.setPrompt(question.prompt);
+        var detail = questionDetail(question.nodeCodes, question.prompt, question.detailJson);
+        if (detail == null) detail = new LlmCallDetail();
+        detail.setPrompt(payloads.decodePrompt(payloads.parseLayout(question.nodeCodes), question.prompt));
         if (detail.getError() == null) detail.setError(question.error);
         return detail;
     }
@@ -638,6 +729,19 @@ public class AnalysisContinuationStore {
         requireScope(scope);
         var run = em.find(AnalysisContinuationRun.class, requireId(id), LockModeType.PESSIMISTIC_WRITE);
         if (run == null) throw notFound(); authorize(run, scope); return run;
+    }
+    private String scopedId(String id, WorkspaceContext scope) {
+        requireScope(scope);
+        String runId = requireId(id);
+        // Keep the same scope check and row lock as a full read, without hydrating
+        // the frozen request, result and catalogue just to inspect question states.
+        var rows = em.createQuery("select r.username, r.workspaceId, r.branchName, r.repositoryId "
+                        + "from AnalysisContinuationRun r where r.id=:id", Object[].class)
+                .setParameter("id", runId).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+        if (rows.isEmpty()) throw notFound();
+        Object[] row = rows.getFirst();
+        authorize((String) row[0], (String) row[1], (String) row[2], (String) row[3], scope);
+        return runId;
     }
     private record CheckpointOwner(String id, long version, long payloadCharacters, String currentNode, String operationId) { }
     private CheckpointOwner checkpointOwner(Claim claim, boolean requireUnexpired) {
@@ -673,23 +777,70 @@ public class AnalysisContinuationStore {
     }
     private AnalysisCheckpointSession.Checkpoint checkpoint(AnalysisQuestionCheckpoint q, AnalysisCheckpointSession.Question input) {
         return new AnalysisCheckpointSession.Checkpoint(new AnalysisCheckpointSession.Question(q.questionKey, input.inputHash(), input.provider(), input.nodes(), input.prompt()), q.state,
-                q.detailJson == null ? null : mapper.readValue(q.detailJson, LlmCallDetail.class));
+                questionDetail(q.nodeCodes, q.prompt, q.detailJson));
+    }
+    private LlmCallDetail questionDetail(String nodeCodes, String prompt, String detail) {
+        var layout = payloads.parseLayout(nodeCodes);
+        if (detail == null) return null;
+        String fullPrompt = payloads.decodePrompt(layout, prompt);
+        return mapper.readValue(payloads.decodeDetail(layout, detail, fullPrompt), LlmCallDetail.class);
+    }
+    private static long storedCharacters(String prompt, String detail) {
+        return (prompt == null ? 0L : prompt.length()) + (detail == null ? 0L : detail.length());
     }
     private List<AnalysisQuestionCheckpoint> questions(AnalysisContinuationRun run) {
         return em.createQuery("select q from AnalysisQuestionCheckpoint q where q.run.id=:id order by q.startedAt, q.questionKey", AnalysisQuestionCheckpoint.class)
                 .setParameter("id", run.id).getResultList();
     }
+    private boolean hasQuestionState(String runId, String state) {
+        return !em.createQuery("select q.questionKey from AnalysisQuestionCheckpoint q where q.run.id=:id and q.state=:state", String.class)
+                .setParameter("id", runId).setParameter("state", state).setMaxResults(1).getResultList().isEmpty();
+    }
+    private record QuestionInput(String questionKey, String inputHash, String provider, String nodeCodes, String state) { }
+    private record QuestionMetadata(String key, String nodeCodes, String state, String error, int attempts) { }
+
+    private List<QuestionMetadata> failUncertainAttempts(AnalysisContinuationRun run, List<QuestionMetadata> metadata) {
+        var pending = metadata.stream().filter(q -> "ATTEMPT".equals(q.state)).toList();
+        if (pending.isEmpty()) return metadata;
+        String error = "OUTCOME_UNCERTAIN: interrupted call; the provider may have processed it";
+        // The run row is locked by completion. Only the state/error change; all raw evidence stays byte-for-byte.
+        em.flush();
+        int updated = em.createQuery("update AnalysisQuestionCheckpoint q set q.state='FAILED', q.error=:error "
+                        + "where q.run.id=:id and q.state='ATTEMPT'")
+                .setParameter("id", run.id).setParameter("error", error).executeUpdate();
+        if (updated != pending.size()) throw conflict("Question state was superseded");
+        pending.forEach(q -> detachQuestion(run.id, q.key));
+        return metadata.stream().map(q -> "ATTEMPT".equals(q.state)
+                ? new QuestionMetadata(q.key, q.nodeCodes, "FAILED", error, q.attempts) : q).toList();
+    }
+
+    private void detachQuestion(String runId, String key) {
+        // A question may already be managed by cancellation or recovery in this transaction.
+        // Evict its stale state after the narrow update without initializing any deferred payload.
+        em.detach(em.getReference(AnalysisQuestionCheckpoint.class, runId + ":" + key));
+    }
+    private List<QuestionMetadata> questionMetadata(AnalysisContinuationRun run) {
+        // Status views need identities, scopes and outcomes, not opaque prompts or replies.
+        return em.createQuery("select q.questionKey, q.nodeCodes, q.state, q.error, q.attempts "
+                        + "from AnalysisQuestionCheckpoint q where q.run.id=:id order by q.startedAt, q.questionKey", Object[].class)
+                .setParameter("id", run.id).getResultList().stream()
+                .map(row -> new QuestionMetadata((String) row[0], (String) row[1], (String) row[2],
+                        (String) row[3], ((Number) row[4]).intValue())).toList();
+    }
     private List<AnalysisRecoveryView.OpenQuestion> openQuestions(AnalysisContinuationRun run) {
-        return questions(run).stream().filter(q -> Set.of("FAILED", "SKIPPED", "UNASSESSED", "CLARIFICATION").contains(q.state))
-                .map(q -> new AnalysisRecoveryView.OpenQuestion(q.questionKey,
-                        List.of(mapper.readValue(q.nodeCodes, String[].class)), q.error, q.attempts,
+        return openQuestions(questionMetadata(run));
+    }
+    private List<AnalysisRecoveryView.OpenQuestion> openQuestions(List<QuestionMetadata> questions) {
+        return questions.stream().filter(q -> Set.of("FAILED", "SKIPPED", "UNASSESSED", "CLARIFICATION").contains(q.state))
+                .map(q -> new AnalysisRecoveryView.OpenQuestion(q.key,
+                        payloads.parseLayout(q.nodeCodes).nodes(), q.error, q.attempts,
                         "SKIPPED".equals(q.state), q.error != null && q.error.startsWith("OUTCOME_UNCERTAIN"))).toList();
     }
     private AnalysisRecoveryView view(AnalysisContinuationRun run) {
-        var all = questions(run);
+        var all = questionMetadata(run);
         int complete = (int) all.stream().filter(q -> "SUCCESS".equals(q.state)).count();
         return new AnalysisRecoveryView(run.id, run.version, run.state, complete,
-                all.stream().mapToInt(q -> q.attempts).sum(), run.currentNode, openQuestions(run));
+                all.stream().mapToInt(q -> q.attempts).sum(), run.currentNode, openQuestions(all));
     }
     private void writeResult(AnalysisContinuationRun run, AnalysisResult result) {
         String json = mapper.writeValueAsString(result);
@@ -698,7 +849,12 @@ public class AnalysisContinuationStore {
         run.resultJson = json;
     }
     private AnalysisResult readResult(AnalysisContinuationRun run) {
-        return run.resultJson == null ? null : withRecovery(mapper.readValue(run.resultJson, AnalysisResult.class), run);
+        return run.resultJson == null ? null : readResult(run, view(run));
+    }
+    private AnalysisResult readResult(AnalysisContinuationRun run, AnalysisRecoveryView recovery) {
+        if (run.resultJson == null) return null;
+        var result = mapper.readValue(run.resultJson, AnalysisResult.class);
+        result.setRecovery(recovery); return result;
     }
     private AnalysisResult withRecovery(AnalysisResult result, AnalysisContinuationRun run) {
         result.setRecovery(view(run)); return result;
@@ -725,8 +881,11 @@ public class AnalysisContinuationStore {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "An owned isolated workspace is required");
     }
     private static void authorize(AnalysisContinuationRun run, WorkspaceContext scope) {
-        if (!run.username.equals(scope.username()) || !run.workspaceId.equals(scope.workspaceId())
-                || !run.branchName.equals(scope.currentBranch()) || !run.repositoryId.equals(scope.repositoryId())) throw notFound();
+        authorize(run.username, run.workspaceId, run.branchName, run.repositoryId, scope);
+    }
+    private static void authorize(String username, String workspaceId, String branchName, String repositoryId, WorkspaceContext scope) {
+        if (!username.equals(scope.username()) || !workspaceId.equals(scope.workspaceId())
+                || !branchName.equals(scope.currentBranch()) || !repositoryId.equals(scope.repositoryId())) throw notFound();
     }
     private static String requireId(String id) {
         try { if (!UUID.fromString(id).toString().equals(id)) throw new IllegalArgumentException(); return id; }

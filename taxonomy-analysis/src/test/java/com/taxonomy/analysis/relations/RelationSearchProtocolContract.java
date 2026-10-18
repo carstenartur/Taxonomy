@@ -32,6 +32,31 @@ public final class RelationSearchProtocolContract {
         new RelationSearchProtocol(prompt -> { sent.add(prompt); return VALID; }).contributions(ORIGINAL, List.of(SOURCE));
         check(sent.size() == 1 && sent.getFirst().contains(ORIGINAL) && sent.getFirst().contains("app.reader"), "actual original and exact ID sent");
     }
+    public static void testBothPhasesExplainTheRepositoryRealizationDirection() {
+        var capability = new Contribution(node("CP.example", "CP", false), "provide email dissemination", ORIGINAL, "");
+        var service = node("CR.example", "CR", false);
+        for (Phase phase : Phase.values()) {
+            var proposal = new Decision(service.id(), Outcome.MATCH, "email service", ORIGINAL,
+                    Necessity.OPTIONAL, "If the additional capability-facing view is selected", "", "Same functional realization", "");
+            String prompt = RelationSearchProtocol.decisionPrompt(new Query(ORIGINAL, capability, "REALIZES",
+                    Direction.INCOMING, phase, List.of(service), phase == Phase.VERIFY ? proposal : null), Map.of());
+            check(prompt.contains("capability is made real by the target service"),
+                    "The enum name alone reverses the repository's passive REALIZES meaning");
+            check(prompt.contains("INCOMING = candidate -> source contribution"),
+                    "Verification as well as navigation must explain how query direction maps canonical endpoints");
+            check(prompt.contains("not the active UML Realization convention"),
+                    "The model must not silently replace repository semantics with a similarly named standard connector");
+        }
+    }
+
+    public static void testInformationDependencyIsDefinedSeparatelyFromProductionAndReadAccess() {
+        var q = new Query(ORIGINAL, READ, "REQUIRES", Direction.OUTGOING, Phase.NAVIGATE, List.of(FOLDER), null);
+        String prompt = RelationSearchProtocol.decisionPrompt(q, Map.of());
+        check(prompt.contains("information-product dependency for capability delivery"),
+                "The actual information dependency must be explained, not guessed from the enum name");
+        check(prompt.contains("does not assert that the capability creates the information"),
+                "Requiring information must not manufacture data production");
+    }
     public static void testRejectsMissingCandidates() { rejects("{\"selections\":[]}"); }
     public static void testRejectsForeignCandidate() { rejects(VALID.replace("app.reader", "invented")); }
     public static void testRejectsInventedQuote() { rejects(VALID.replace("Readers may read evidence.", "Readers may delete evidence.")); }

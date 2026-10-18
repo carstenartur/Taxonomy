@@ -12,10 +12,25 @@ public final class RelationSearchModel {
     public enum Outcome { DESCEND, MATCH, REJECT, UNRESOLVED, VERIFIED }
     public enum Necessity { REQUIRED, OPTIONAL, ALTERNATIVE }
 
-    public record Node(String id, String root, String name, String description, boolean container) {
+    /**
+     * Full context remains the evidence for an offered catalogue node. Once its
+     * contribution has been assessed, the optional second representation retains
+     * its complete own description and established ancestor identities without
+     * resending every ancestor's prose for each new counterpart. Both forms are
+     * captured together and survive durable source/plan JSON round trips.
+     */
+    public record Node(String id, String root, String name, String description, boolean container,
+                       String assessedSourceDescription) {
+        /** Legacy retained nodes keep their entire description; never parse or cut free text. */
+        public Node(String id, String root, String name, String description, boolean container) {
+            this(id, root, name, description, container, null);
+        }
+
         public Node {
             required(id, "node id"); required(root, "root"); required(name, "name");
             description = description == null ? "" : description;
+            if (assessedSourceDescription != null && assessedSourceDescription.isBlank())
+                throw new IllegalArgumentException("Assessed source description must retain its catalogue context");
         }
     }
 
@@ -72,13 +87,21 @@ public final class RelationSearchModel {
         public String targetId() { return direction == Direction.OUTGOING ? target.id() : contribution.source().id(); }
     }
 
+    /** Optional replay context is absent in legacy reports; never infer that missing context. */
     public record Unfinished(String sourceId, String type, Direction direction, List<String> targets,
-                             String reason, String question) {
+                             String reason, String question, String contributionKey, String targetRoot) {
+        public Unfinished(String sourceId, String type, Direction direction, List<String> targets, String reason, String question) {
+            this(sourceId, type, direction, targets, reason, question, null, null);
+        }
         public Unfinished { targets = List.copyOf(targets); }
     }
 
     public record Trace(String sourceId, String type, Direction direction, Phase phase,
-                        String targetId, Outcome outcome, String rationale) { }
+                        String targetId, Outcome outcome, String rationale, String contributionKey) {
+        public Trace(String sourceId, String type, Direction direction, Phase phase, String targetId, Outcome outcome, String rationale) {
+            this(sourceId, type, direction, phase, targetId, outcome, rationale, null);
+        }
+    }
 
     public record Result(List<Edge> edges, List<Unfinished> unfinished, List<Trace> trace,
                          int calls, int visitedBatches, long durationMillis) {

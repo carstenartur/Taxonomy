@@ -19,6 +19,11 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         void finish(Question question, String state, LlmCallDetail detail);
         void checkActive();
         default void supersedeEvidence(String kind, String provider, java.util.function.Predicate<Question> covered) { }
+        /** Older journal adapters still apply their original full-input predicate. */
+        default void supersedeEvidence(String kind, String provider, Set<String> singletonCodes,
+                java.util.function.Predicate<Question> covered) {
+            supersedeEvidence(kind, provider, covered);
+        }
         default com.taxonomy.dto.RelationSearchReport previousRelations() { return null; }
     }
     private static final ThreadLocal<AnalysisCheckpointSession> CURRENT = new ThreadLocal<>();
@@ -43,6 +48,12 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     public static void supersedeEvidence(String kind, String provider, java.util.function.Predicate<Question> covered) {
         var current = CURRENT.get();
         if (current != null) current.store.supersedeEvidence(kind, provider, covered);
+    }
+
+    public static void supersedeEvidence(String kind, String provider, Set<String> singletonCodes,
+            java.util.function.Predicate<Question> covered) {
+        var current = CURRENT.get();
+        if (current != null) current.store.supersedeEvidence(kind, provider, Set.copyOf(singletonCodes), covered);
     }
 
     static Question evidenceQuestion(String kind, String provider, List<String> nodes, String input) {

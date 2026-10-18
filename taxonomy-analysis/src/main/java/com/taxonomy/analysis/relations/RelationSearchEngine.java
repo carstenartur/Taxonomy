@@ -119,15 +119,16 @@ public final class RelationSearchEngine {
                     throw new AssertionError("unreachable");
                 }
                 visited++;
+                String contributionKey = contributionKey(q);
                 for (int i = 0; i < q.candidates().size(); i++) {
                     Node node = q.candidates().get(i);
                     Decision decision = decisions.get(i);
                     trace.add(new Trace(q.contribution().source().id(), q.type(), q.direction(),
-                            q.phase(), node.id(), decision.outcome(), decision.rationale()));
+                            q.phase(), node.id(), decision.outcome(), decision.rationale(), contributionKey));
                     switch (decision.outcome()) {
                         case REJECT -> { /* Pruned by policy; trace retains the negative assessment. */ }
                         case UNRESOLVED -> unfinished.add(new Unfinished(q.contribution().source().id(),
-                                q.type(), q.direction(), List.of(node.id()), unfinishedReason(decision.question()), decision.question()));
+                                q.type(), q.direction(), List.of(node.id()), unfinishedReason(decision.question()), decision.question(), contributionKey, node.root()));
                         case MATCH -> enqueue(q.contribution(), q.type(), q.direction(), Phase.VERIFY,
                                 List.of(node), decision, work.depth(), work.path());
                         case VERIFIED -> {
@@ -151,7 +152,7 @@ public final class RelationSearchEngine {
             Query q = work.query();
             if (work.depth() >= limits.maxDepth()) {
                 unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),
-                        List.of(node.id()), "DEPTH_LIMIT", ""));
+                        List.of(node.id()), "DEPTH_LIMIT", "", contributionKey(q), node.root()));
                 return;
             }
             List<Node> children;
@@ -164,7 +165,7 @@ public final class RelationSearchEngine {
             catch (RuntimeException failed) { interrupt(work, failed); return; }
             if (children.isEmpty()) {
                 unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),
-                        List.of(node.id()), "NO_CHILDREN", "Refinement was requested but the catalogue has no children."));
+                        List.of(node.id()), "NO_CHILDREN", "Refinement was requested but the catalogue has no children.", contributionKey(q), node.root()));
                 return;
             }
             Set<String> path = new HashSet<>(work.path()); path.add(node.id());
@@ -172,7 +173,7 @@ public final class RelationSearchEngine {
             for (Node child : children) {
                 if (path.contains(child.id())) {
                     unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),
-                            List.of(child.id()), "CYCLE", ""));
+                            List.of(child.id()), "CYCLE", "", contributionKey(q), child.root()));
                 } else { safe.add(child); }
             }
             enqueue(q.contribution(), q.type(), q.direction(), Phase.NAVIGATE, safe, null,
@@ -225,13 +226,24 @@ public final class RelationSearchEngine {
             }
         }
         private void issue(Query q, String reason, String question) {
+            String root = q.candidates().stream().map(Node::root).distinct().count() == 1 ? q.candidates().getFirst().root() : null;
             unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),
-                    q.candidates().stream().map(Node::id).toList(), reason, question));
+                    q.candidates().stream().map(Node::id).toList(), reason, question, contributionKey(q), root));
         }
         private Result snapshot() {
             return new Result(List.copyOf(edges), unfinished, trace, calls, visited,
                     (System.nanoTime() - started) / 1_000_000);
         }
+    }
+
+    /** A target decision belongs to one contribution, independently of batching and navigation/verification. */
+    private static String contributionKey(Query query) {
+        return contributionKey(query.contribution(), query.type(), query.direction());
+    }
+    static String contributionKey(Contribution source, String type, Direction direction) {
+        // The enclosing report separately binds and validates the original requirement hash.
+        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(source.source().id(),
+                source.text(), source.quote(), source.condition(), type, direction.name());
     }
 
     /** Shared with the protocol so durable answers are validated before they are committed. */

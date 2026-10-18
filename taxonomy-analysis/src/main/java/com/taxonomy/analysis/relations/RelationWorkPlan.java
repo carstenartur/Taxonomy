@@ -58,9 +58,15 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
         verified.addAll(previous.result().edges());
         for (Task task : previous.tasks()) {
             Work value = work.get(new Pair(task.sourceId(), task.targetRoot()));
-            if (value != null && task.state() == State.COMPLETED) state(value, State.COMPLETED);
+            if (value != null && (task.state() == State.COMPLETED || task.state() == State.UNRESOLVED)) state(value, task.state());
         }
         publish();
+    }
+    void retainUnresolved(List<Task> previous, Set<String> retainedLegacySources) {
+        for (Task task : previous) if (task.state() == State.UNRESOLVED && retainedLegacySources.contains(task.sourceId())) {
+            Work value = work.get(new Pair(task.sourceId(), task.targetRoot()));
+            if (value != null) state(value, State.UNRESOLVED);
+        }
     }
     void sourceBatch(List<String> ids) {
         step = Step.SOURCES;
@@ -88,7 +94,8 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
         current = new Current(query.contribution().source().id(), query.candidates().getFirst().root(),
                 query.type(), query.direction(), depth, query.candidates().stream().map(Node::id).toList());
         Work value = work.get(new Pair(current.sourceId(), current.targetRoot()));
-        if (value != null && value.state == State.PENDING) state(value, State.RUNNING);
+        if (value != null && (value.state == State.PENDING || value.state == State.UNRESOLVED && value.finished == 0))
+            state(value, State.RUNNING);
         publish();
     }
     @Override public void finished(Intent intent, boolean complete) {

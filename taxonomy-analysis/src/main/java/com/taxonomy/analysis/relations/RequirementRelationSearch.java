@@ -57,6 +57,46 @@ public final class RequirementRelationSearch {
     }
 
     public RelationSearchReport search(String original, Map<String, ? extends Number> inputScores, Options options) {
+        return search(original, inputScores, options, new Budget(options));
+    }
+
+    /**
+     * Complete further source cohorts in a non-resumable local request while its
+     * original call/work budget permits. Durable sessions retain their explicit
+     * continuation boundary; their caller owns the saved journal and next budget.
+     */
+    public RelationSearchReport searchWithSourceContinuation(String original,
+            Map<String, ? extends Number> inputScores, Options options) {
+        if (AnalysisCheckpointSession.active()) return search(original, inputScores, options);
+        Objects.requireNonNull(inputScores); Objects.requireNonNull(options);
+        long started = System.nanoTime();
+        var budget = new Budget(options);
+        var journal = new LocalRelationJournal();
+        RelationSearchReport report;
+        int assessed = 0;
+        int maxCohorts = Math.max(1, (inputScores.size() + options.maxSources() - 1) / options.maxSources());
+        try (var session = new AnalysisCheckpointSession(journal)) {
+            report = search(original, inputScores, options, budget);
+            for (int cohort = 1; cohort < maxCohorts; cohort++) {
+                int nowAssessed = report.progress() == null ? 0 : report.progress().assessedSources();
+                if (!budget.sourceLimitReached || !report.stopReason().isEmpty()
+                        || budget.calls >= options.limits().maxCalls() || nowAssessed <= assessed) break;
+                // Replaying accepted/clarification/failed answers preserves their
+                // meaning. Only the newly admitted sources consume this cohort.
+                journal.previous = report;
+                assessed = nowAssessed;
+                budget.nextSourceCohort();
+                report = search(original, inputScores, options, budget);
+            }
+        }
+        return new RelationSearchReport(report.schemaVersion(), report.originalSha256(), report.policy(),
+                report.sources(), report.result(), report.totalCalls(), report.maxCalls(),
+                (System.nanoTime() - started) / 1_000_000, report.warnings(), report.stopReason(),
+                report.progress(), report.tasks());
+    }
+
+    private RelationSearchReport search(String original, Map<String, ? extends Number> inputScores,
+                                         Options options, Budget budget) {
         if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
         Objects.requireNonNull(inputScores); Objects.requireNonNull(options);
         Map<String, Double> scores = com.taxonomy.dto.AnalysisPercentages.copy(inputScores);
@@ -64,7 +104,6 @@ public final class RequirementRelationSearch {
         var previous = AnalysisCheckpointSession.previousRelations();
         if (previous != null && !previous.originalSha256().equals(sha256(original)))
             throw new IllegalArgumentException("Saved relation evidence belongs to another requirement");
-        Budget budget = new Budget(options);
         RelationWorkPlan plan = null;
         List<Node> nodes = List.of();
         List<SourceAssessment> sources = new ArrayList<>();
@@ -82,6 +121,7 @@ public final class RequirementRelationSearch {
             plan = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
             plan.restore(previous);
             budget.plan = plan;
+            plan.calls(budget.calls);
             var protocol = new RelationSearchProtocol(budget::complete, provider, (step, ids) -> {}, options.maxPromptCharacters());
             assessSources(original, nodes, options, protocol, plan, sources, warnings);
             List<Intent> intents = intents(sources, roots, warnings);
@@ -108,8 +148,18 @@ public final class RequirementRelationSearch {
             sources = new ArrayList<>(retainedSources.values());
             var edges = new LinkedHashSet<>(previous.result().edges()); edges.addAll(result.edges());
             var trace = new LinkedHashSet<>(previous.result().trace()); trace.addAll(result.trace());
-            result = new Result(List.copyOf(edges), result.unfinished(), List.copyOf(trace),
-                    result.calls(), result.visitedBatches(), result.durationMillis());
+            var currentTasks = plan == null ? List.<com.taxonomy.dto.RelationSearchProgress.Task>of() : plan.tasks();
+            Set<List<String>> completedTasks = new HashSet<>();
+            Set<String> completedSources = new HashSet<>(), retainedLegacySources = new HashSet<>();
+            currentTasks.forEach(t -> completedSources.add(t.sourceId()));
+            currentTasks.forEach(t -> {
+                if (t.state() == com.taxonomy.dto.RelationSearchProgress.State.COMPLETED)
+                    completedTasks.add(List.of(t.sourceId(), t.targetRoot()));
+                else completedSources.remove(t.sourceId());
+            });
+            result = new Result(List.copyOf(edges), retainedUnfinished(previous.result(), result, completedTasks,
+                    completedSources, retainedLegacySources), List.copyOf(trace), result.calls(), result.visitedBatches(), result.durationMillis());
+            if (plan != null) plan.retainUnresolved(previous.tasks(), retainedLegacySources);
         }
         sortSourcesByRank(sources, nodes);
         if (plan != null) plan.finish(warnings.isEmpty() && stop.isEmpty() && result.searchExhausted());
@@ -125,6 +175,31 @@ public final class RequirementRelationSearch {
                 sources, result, budget.calls, options.limits().maxCalls(),
                 (System.nanoTime() - start) / 1_000_000, warnings, stop,
                 progress, tasks);
+    }
+
+    private static List<Unfinished> retainedUnfinished(Result previous, Result current, Set<List<String>> completedTasks,
+            Set<String> completedSources, Set<String> retainedLegacySources) {
+        Set<List<String>> technicalFailures = new HashSet<>(), revisited = new HashSet<>();
+        current.unfinished().stream().filter(q -> q.contributionKey() != null
+                && q.question().startsWith("TECHNICAL_ASSESSMENT_FAILURE:"))
+                .forEach(q -> q.targets().forEach(target -> technicalFailures.add(List.of(q.contributionKey(), target))));
+        current.trace().stream().filter(t -> t.contributionKey() != null && t.outcome() != Outcome.MATCH
+                && !(t.outcome() == Outcome.UNRESOLVED && technicalFailures.contains(List.of(t.contributionKey(), t.targetId()))))
+                .forEach(t -> revisited.add(List.of(t.contributionKey(), t.targetId())));
+        var retained = new LinkedHashSet<Unfinished>();
+        for (Unfinished question : previous.unfinished()) {
+            if (completedSources.contains(question.sourceId()) || question.targetRoot() != null
+                    && completedTasks.contains(List.of(question.sourceId(), question.targetRoot()))) continue;
+            List<String> targets = question.targets().stream().filter(target -> question.contributionKey() == null
+                    || !revisited.contains(List.of(question.contributionKey(), target))).toList();
+            if (!targets.isEmpty()) {
+                retained.add(new Unfinished(question.sourceId(), question.type(), question.direction(), targets,
+                        question.reason(), question.question(), question.contributionKey(), question.targetRoot()));
+                if (question.targetRoot() == null) retainedLegacySources.add(question.sourceId());
+            }
+        }
+        retained.addAll(current.unfinished());
+        return List.copyOf(retained);
     }
 
     /**
@@ -346,13 +421,17 @@ public final class RequirementRelationSearch {
     private final class Budget {
         private final Options options;
         private int calls, newWork;
+        private boolean sourceLimitReached;
         private final Set<String> newSources = new HashSet<>();
         private RelationWorkPlan plan;
         Budget(Options options) { this.options = options; }
+        void nextSourceCohort() { newSources.clear(); sourceLimitReached = false; }
         String complete(Step step, List<String> nodes, String prompt) {
             if (calls >= options.limits().maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
-            if (step == Step.SOURCES && newSources.size() + nodes.stream().filter(id -> !newSources.contains(id)).count() > options.maxSources())
+            if (step == Step.SOURCES && newSources.size() + nodes.stream().filter(id -> !newSources.contains(id)).count() > options.maxSources()) {
+                sourceLimitReached = true;
                 throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
+            }
             if (step != Step.SOURCES && newWork >= options.limits().maxWorkItems())
                 throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
             if (step == Step.SOURCES) newSources.addAll(nodes);
@@ -360,6 +439,24 @@ public final class RequirementRelationSearch {
             calls++; plan.calls(calls);
             return completion.apply(prompt);
         }
+    }
+
+    /** Request-owned replay only; the enclosing run still checks cancellation and resources. */
+    private static final class LocalRelationJournal implements AnalysisCheckpointSession.Store {
+        private final Map<String, AnalysisCheckpointSession.Checkpoint> answers = new HashMap<>();
+        private RelationSearchReport previous;
+        public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question question) {
+            var saved = answers.get(question.key());
+            return saved == null ? new AnalysisCheckpointSession.Checkpoint(question, "ATTEMPT", null) : saved;
+        }
+        public void finish(AnalysisCheckpointSession.Question question, String state, com.taxonomy.dto.LlmCallDetail detail) {
+            // Deferred questions have no answer to retain; their identical input
+            // can be admitted by the next bounded cohort without a remote replay.
+            if ("READY".equals(state)) answers.remove(question.key());
+            else answers.put(question.key(), new AnalysisCheckpointSession.Checkpoint(question, state, detail));
+        }
+        public void checkActive() { }
+        public RelationSearchReport previousRelations() { return previous; }
     }
 
     private List<Node> sourceNodes(Map<String, Double> scores, List<String> warnings) {

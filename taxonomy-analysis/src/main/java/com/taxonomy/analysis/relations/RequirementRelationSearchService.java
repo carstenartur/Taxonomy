@@ -69,8 +69,17 @@ public class RequirementRelationSearchService {
         }
         var adapter = new RequirementRelationSearch.InputCatalogue() {
             private final Map<String, List<Node>> children = new HashMap<>();
-            public Node find(String id) { return scalar(catalogue.getNodeByCode(id)); }
-            public List<Node> roots() { return scalars(catalogue.getRootNodes()); }
+            private final Map<String, Node> sources = new HashMap<>();
+            private List<Node> roots;
+            public Node find(String id) {
+                // Include absent IDs: a later cohort cannot change this request's input.
+                if (!sources.containsKey(id)) sources.put(id, scalar(catalogue.getNodeByCode(id)));
+                return sources.get(id);
+            }
+            public List<Node> roots() {
+                if (roots == null) roots = scalars(catalogue.getRootNodes());
+                return roots;
+            }
             public List<Node> children(Node node) {
                 // Retain only successfully materialized immutable scalars, including
                 // empty lists. This adapter and its cache belong to one search.
@@ -78,7 +87,7 @@ public class RequirementRelationSearchService {
             }
         };
         return new RequirementRelationSearch(adapter, rules, this::complete, AnalysisRunControl::checkpoint, llm.getActiveProviderName())
-                .search(original, scores, runtimeOptions());
+                .searchWithSourceContinuation(original, scores, runtimeOptions());
     }
 
     /** Source preparation must receive the admission snapshot; there is no live-catalogue fallback. */
@@ -117,7 +126,7 @@ public class RequirementRelationSearchService {
     public String recoveryPolicyFingerprint() {
         // Request/provider scope owns model identity separately. Keep the policy identity
         // stable when a background worker restores that scope after admission.
-        return "relation-downwalk-v4/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/" + enabled
+        return "relation-downwalk-v7/relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/" + enabled
                 + "/" + options(false) + "/batch-override=" + batchSize + "/prompt-override=" + maxPromptCharacters;
     }
 
@@ -145,17 +154,17 @@ public class RequirementRelationSearchService {
     }
 
     private List<Node> scalars(List<TaxonomyNode> nodes) {
-        Map<String, String> descriptions = catalogue.getAssessmentDescriptions(nodes);
+        var descriptions = catalogue.getRelationAssessmentDescriptions(nodes);
         return nodes.stream().map(node -> scalar(node,
-                descriptions.getOrDefault(node.getCode(), node.getDescriptionEn()))).toList();
+                Objects.requireNonNull(descriptions.get(node.getCode()), "Captured relation catalogue context"))).toList();
     }
 
     private Node scalar(TaxonomyNode node) {
         return node == null ? null : scalars(List.of(node)).getFirst();
     }
 
-    private static Node scalar(TaxonomyNode node, String description) {
-        return new Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(), description,
-                node.getParentCode() == null || node.getParentCode().isBlank());
+    private static Node scalar(TaxonomyNode node, TaxonomyService.RelationAssessmentDescriptions descriptions) {
+        return new Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(), descriptions.full(),
+                node.getParentCode() == null || node.getParentCode().isBlank(), descriptions.assessedSource());
     }
 }

@@ -19,6 +19,47 @@ class RelationCorrectiveCheckpointTest {
     private static final Node FIRST = new Node("UA-first", "UA", "Time recording", "Record working time", false);
     private static final Node SECOND = new Node("UA-second", "UA", "Time sheet", "Enter contracted hours worked", false);
 
+    @Test void everyRecoveryPhaseOffersAllAcceptedSingletonCodesBeforeTheExactPredicate() {
+        for (String kind : List.of("SOURCES", "NAVIGATE", "VERIFY")) {
+            var selections = new java.util.ArrayList<java.util.Set<String>>();
+            var journal = new AnalysisCheckpointSession.Store() {
+                public AnalysisCheckpointSession.Checkpoint prepare(AnalysisCheckpointSession.Question question) {
+                    return new AnalysisCheckpointSession.Checkpoint(question, "ATTEMPT", null);
+                }
+                public void finish(AnalysisCheckpointSession.Question question, String state, com.taxonomy.dto.LlmCallDetail detail) { }
+                public void checkActive() { }
+                public void supersedeEvidence(String actualKind, String provider,
+                        java.util.function.Predicate<AnalysisCheckpointSession.Question> covered) {
+                    fail("The real protocol omitted its accepted-node preselection");
+                }
+                public void supersedeEvidence(String actualKind, String provider, java.util.Set<String> singletonCodes,
+                        java.util.function.Predicate<AnalysisCheckpointSession.Question> covered) {
+                    assertEquals(kind, actualKind);
+                    assertThrows(UnsupportedOperationException.class, () -> singletonCodes.add("foreign"));
+                    selections.add(singletonCodes);
+                }
+            };
+            boolean sources = kind.equals("SOURCES");
+            boolean verification = kind.equals("VERIFY");
+            try (var session = new AnalysisCheckpointSession(journal)) {
+                var protocol = new RelationSearchProtocol(prompt -> verification
+                        ? response(false, List.of(Map.of("targetId", FIRST.id(), "outcome", "VERIFIED",
+                                "rationale", "The requested function needs these data", "question", "")))
+                        : offeredResponse(sources, prompt, ORIGINAL));
+                if (sources) assess(true, protocol);
+                else {
+                    var contribution = new Contribution(new Node("BP-source", "BP", "Process", "Time recording", false),
+                            "Capture working time", ORIGINAL, "");
+                    var proposal = verification ? new Decision(FIRST.id(), Outcome.MATCH, "Working time data", ORIGINAL,
+                            Necessity.REQUIRED, "", "", "The requested function needs these data", "") : null;
+                    protocol.evaluateRecovering(new Query(ORIGINAL, contribution, "PRODUCES", Direction.OUTGOING,
+                            Phase.valueOf(kind), verification ? List.of(FIRST) : List.of(FIRST, SECOND), proposal));
+                }
+            }
+            assertEquals(List.of(verification ? java.util.Set.of(FIRST.id()) : java.util.Set.of(FIRST.id(), SECOND.id())), selections);
+        }
+    }
+
     @Test void aSuccessfulSourceParentRetryRetiresTheSelectedCorrectiveCheckpoint() {
         assertParentRetry(true);
     }

@@ -21,7 +21,8 @@ public final class RecoveryStopProbe {
         var query = Proxy.newProxyInstance(TypedQuery.class.getClassLoader(), new Class<?>[]{TypedQuery.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "setParameter" -> proxy;
-                    case "getResultList" -> List.of(skipped);
+                    case "getResultList" -> java.util.Collections.singletonList(new Object[]{
+                            skipped.questionKey, skipped.nodeCodes, skipped.state, skipped.error, skipped.attempts});
                     default -> throw new AssertionError("Unexpected query operation: " + method.getName());
                 });
         var em = (EntityManager) Proxy.newProxyInstance(EntityManager.class.getClassLoader(), new Class<?>[]{EntityManager.class},

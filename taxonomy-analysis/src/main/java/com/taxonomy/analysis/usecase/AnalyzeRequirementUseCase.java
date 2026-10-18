@@ -271,6 +271,10 @@ public class AnalyzeRequirementUseCase {
                 if (!"ERROR".equals(result.getStatus())) result.setStatus("PARTIAL");
                 String summary = "RELATION_SEARCH_PARTIAL: " + report.totalCalls() + "/" + report.maxCalls()
                         + " evaluation attempts; " + report.result().unfinished().size() + " unfinished search batches."
+                        + (report.progress() == null ? "" : " "
+                                + (report.progress().totalSources() - report.progress().assessedSources()) + " unassessed sources; "
+                                + report.progress().pendingSearches() + " pending and "
+                                + report.progress().unresolvedSearches() + " unresolved source/target searches.")
                         + (report.stopReason().isEmpty() ? "" : " " + report.stopReason());
                 if (result.getErrorMessage() == null) result.setErrorMessage(summary);
                 var warnings = new java.util.ArrayList<>(result.getWarnings());
