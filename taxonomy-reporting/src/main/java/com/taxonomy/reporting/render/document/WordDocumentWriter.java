@@ -16,12 +16,19 @@ import java.util.*;
 public final class WordDocumentWriter {
     private final XWPFDocument document;
     private final DecisionReportLabels labels;
+    private final int paragraphSpacingAfter;
     private XWPFTable contentsTable;
     private int contentsDepth;
 
     public WordDocumentWriter(XWPFDocument document, DecisionReportLabels labels) {
+        this(document, labels, 100);
+    }
+
+    /** Report-specific prose rhythm in twips; headings, tables and figures keep their own spacing. */
+    WordDocumentWriter(XWPFDocument document, DecisionReportLabels labels, int paragraphSpacingAfter) {
         this.document = document;
         this.labels = labels;
+        this.paragraphSpacingAfter = paragraphSpacingAfter;
         ensureStyles(document);
         // Reports carry their display values and internal navigation. Inheriting
         // update-on-open from a template makes Word show a misleading link prompt.
@@ -72,7 +79,7 @@ public final class WordDocumentWriter {
 
     public XWPFParagraph paragraph(String text) {
         var p = document.createParagraph();
-        p.setSpacingAfter(100);
+        p.setSpacingAfter(paragraphSpacingAfter);
         var r = p.createRun();
         r.setFontSize(10);
         r.setText(value(text));

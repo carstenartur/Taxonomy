@@ -19,7 +19,8 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
     @Override public byte[] render(ReformulationReportRenderer.Input report, FrozenReformulationArchitecture architecture) {
         try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {
             standalonePage(document);
-            var w = new WordDocumentWriter(document, new DecisionReportLabels(report.language()));
+            // Numerous short provenance records need a compact body rhythm, not smaller type.
+            var w = new WordDocumentWriter(document, new DecisionReportLabels(report.language()), 40);
             var graphNodes = new HashSet<String>();
             architecture.graph().nodes().forEach(node -> graphNodes.add(node.id()));
             var graphEdges = new HashSet<String>();
