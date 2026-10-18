@@ -112,11 +112,19 @@ class ScenarioIndependentPassCompletionTest {
         search.set("sources", JSON.valueToTree(List.of(
                 new SourceAssessment(acquisition, List.of(contribution), "F5 expressly requires acquisition of the incoming batch.", ""),
                 new SourceAssessment(picture, List.of(), "The product identity of the F5 input is not specified.", ""))));
+        // This completion-only fixture still needs the entire compatible plan,
+        // including completed scopes of the source with no positive contribution.
+        var rootsBySource = new LinkedHashMap<String, List<String>>();
+        rootsBySource.put("BP-1017", List.of("BR", "CI", "CO", "CR", "IP", "UA"));
+        rootsBySource.put("IP-1116", List.of("BP", "BR", "CI", "CP", "CR", "UA"));
+        var tasks = search.putArray("tasks");
+        rootsBySource.forEach((source, roots) -> roots.forEach(root -> tasks.addObject()
+                .put("sourceId", source).put("targetRoot", root)
+                .put("state", openIdentity && source.equals("BP-1017") && root.equals("IP")
+                        ? "UNRESOLVED" : "COMPLETED")));
         search.putObject("progress").put("totalSources", 2).put("assessedSources", 2)
-                .put("totalSearches", 1).put("completedSearches", openIdentity ? 0 : 1)
+                .put("totalSearches", tasks.size()).put("completedSearches", tasks.size() - (openIdentity ? 1 : 0))
                 .put("pendingSearches", 0).put("unresolvedSearches", openIdentity ? 1 : 0);
-        search.putArray("tasks").addObject().put("sourceId", "BP-1017").put("targetRoot", "IP")
-                .put("state", openIdentity ? "UNRESOLVED" : "COMPLETED");
         search.set("result", JSON.valueToTree(new Result(List.of(),
                 openIdentity ? List.of(new Unfinished("BP-1017", "CONSUMES", Direction.OUTGOING, List.of("IP-1116"), "UNRESOLVED", QUESTION)) : List.of(),
                 openIdentity ? List.of(new Trace("BP-1017", "CONSUMES", Direction.OUTGOING, Phase.NAVIGATE,

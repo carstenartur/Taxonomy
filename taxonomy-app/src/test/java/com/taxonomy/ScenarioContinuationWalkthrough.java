@@ -33,13 +33,17 @@ final class ScenarioContinuationWalkthrough {
             app.save("continuation-history.json", app.json.valueToTree(history));
             assertThat(operation.path("jobs")).hasSize(2);
             JsonNode selectedJob = null, selectedItem = null, permission = null;
+            int selectedCycles = Integer.MAX_VALUE;
             for (JsonNode job : operation.path("jobs")) for (JsonNode item : job.path("items")) {
                 if (!item.path("status").asText().equals("PARTIAL")) continue;
+                String candidateKey = job.path("id").asText() + ":" + item.path("id").asText();
+                int completedCycles = itemCycles.getOrDefault(candidateKey, 0);
+                if (completedCycles >= selectedCycles) continue;
                 String path = itemPath(projectId, job, item);
                 JsonNode eligibility = app.get(path + "/continuation");
                 if (eligibility.path("available").asBoolean()) {
                     selectedJob = job; selectedItem = item; permission = eligibility;
-                    break;
+                    selectedCycles = completedCycles;
                 }
             }
             if (permission == null) {
@@ -90,11 +94,17 @@ final class ScenarioContinuationWalkthrough {
             JsonNode completedItem = findItem(operation, jobId, itemId);
             assertThat(completedItem.path("attempt").asInt()).as("One action admits exactly one new attempt")
                     .isEqualTo(previousAttempt + 1);
+            assertThat(completedItem.path("status").asText())
+                    .as("Continuation attempt must finish with usable evidence: %s", completedItem)
+                    .isIn("SUCCESS", "PARTIAL");
             String nextId = completedItem.path("snapshotId").asText();
             assertThat(nextId).isNotBlank().isNotEqualTo(oldSnapshotId);
             JsonNode after = app.get("/api/projects/" + projectId + "/snapshots/" + nextId);
             app.save("snapshot.json", after);
             assertThat(app.get(oldPath)).as("Continuation must preserve its immutable input snapshot").isEqualTo(before);
+            assertThat(after.at("/analysis/recovery/state").asText())
+                    .as("Continuation stopped outside an execution budget: %s", after.at("/analysis/warnings"))
+                    .isIn("STOPPED", "COMPLETED", "COMPLETED_WITH_GAPS");
             assertThat(after.at("/analysis/recovery/id").asText()).isEqualTo(journal);
             assertThat(after.at("/analysis/recovery/version").asLong())
                     .isGreaterThan(permission.path("continuationVersion").asLong());

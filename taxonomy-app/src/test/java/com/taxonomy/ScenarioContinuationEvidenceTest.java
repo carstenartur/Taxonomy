@@ -26,6 +26,9 @@ class ScenarioContinuationEvidenceTest {
         assertThat(app.reads.get("/api/projects/1/snapshots/second-0")).isEqualTo(2);
         assertThat(app.reads.get("/api/projects/1/snapshots/first-0")).isEqualTo(2);
         assertThat(app.attempts).containsEntry("first", 1).containsEntry("second", 2);
+        assertThat(app.continuedPasses)
+                .as("Both original passes advance before another continuation of the same pass")
+                .containsExactly("first", "second", "second");
     }
 
     @Test
@@ -43,6 +46,7 @@ class ScenarioContinuationEvidenceTest {
         final Map<String, JsonNode> snapshots = new HashMap<>();
         final Map<String, JsonNode> saved = new HashMap<>();
         final Map<String, Integer> reads = new HashMap<>();
+        final java.util.ArrayList<String> continuedPasses = new java.util.ArrayList<>();
         final boolean changeBetweenReads;
         boolean mutated;
 
@@ -75,6 +79,7 @@ class ScenarioContinuationEvidenceTest {
         @Override synchronized JsonNode post(String path, Object body, int expectedStatus) {
             assertThat(expectedStatus).isEqualTo(202);
             String job = path.contains("/first/") ? "first" : "second";
+            continuedPasses.add(job);
             int before = attempts.get(job);
             assertThat(json.valueToTree(body).path("snapshotId").asText()).isEqualTo(job + "-" + before);
             assertThat(json.valueToTree(body).path("continuationVersion").asInt()).isEqualTo(before + 10);

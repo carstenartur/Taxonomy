@@ -37,7 +37,7 @@ class ScenarioRelationQualityTest {
         var report = json.readTree(Files.readString(directory.resolve("relation-quality.json")));
         assertEquals("AUTHORED_PLAYBACK_NOT_LIVE_MODEL", report.path("evidenceKind").stringValue());
         assertEquals(19, report.at("/evaluation/matchedRequired").asInt());
-        assertEquals("flood-functional-architecture-v3", report.path("referenceVersion").stringValue());
+        assertEquals("flood-functional-architecture-v4", report.path("referenceVersion").stringValue());
         assertTrue(report.path("referenceSha256").stringValue().matches("[0-9a-f]{64}"));
         assertEquals(20, report.path("coverageRequiredCount").asInt());
         assertEquals("SEPARATE_SNAPSHOT_AND_EXPORT_GATE", report.path("coverageAssessment").stringValue());
