@@ -149,6 +149,13 @@ class AlfabetReadClientTest {
         assertEquals("ALFABET_CREDENTIAL_REFLECTION", failure.code());
     }
 
+    @Test void rejectsEncodedCredentialReflectionBeforeLiteralPercentText() throws Exception {
+        String encoded = TOKEN.chars().mapToObj(c -> String.format("%%%02x", c)).collect(java.util.stream.Collectors.joining());
+        start((path, body) -> page(row("a-1", encoded + " (50% complete)")));
+        var failure = assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        assertEquals("ALFABET_CREDENTIAL_REFLECTION", failure.code());
+    }
+
     @Test void doesNotSilentlyDiscardNonEmptyNestedObjects() throws Exception {
         start((path, body) -> page(row("a-1", "App").replace("\"Values\":", "\"NestedObjects\":[{\"RefStr\":\"hidden\"}],\"Values\":")));
         var failure = assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));

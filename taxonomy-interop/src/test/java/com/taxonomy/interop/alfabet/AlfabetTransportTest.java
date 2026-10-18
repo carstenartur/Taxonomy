@@ -7,10 +7,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.InetSocketAddress;
+import java.net.InetAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -88,6 +91,33 @@ class AlfabetTransportTest {
         long start = System.nanoTime();
         assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 1)));
         assertTrue(java.time.Duration.ofNanos(System.nanoTime() - start).toSeconds() < 4);
+    }
+
+    @Test void boundsStalledDnsResolutionByTheReadDeadline() throws Exception {
+        var profile = new AlfabetReadProfile(new ExternalScope("alfabet", "test-instance", null), "1",
+                URI.create("http://stalled-resolver.test/alfabet/"), "Reader",
+                new AlfabetReadProfile.Authentication(AlfabetReadProfile.Grant.BEARER, null, "ALFABET_TOKEN"),
+                List.of(new AlfabetReadProfile.Report("Applications", "Application", AlfabetReadProfile.Kind.OBJECT, Map.of("name", "Name"))),
+                new AlfabetReadProfile.Limits(10, 5, 50, 1024, 2048, 1), true, true);
+        var resolverStarted = new CountDownLatch(1);
+        var resolverRelease = new CountDownLatch(1);
+        try (var transport = new AlfabetHttpTransport(profile, host -> {
+            resolverStarted.countDown();
+            try { resolverRelease.await(); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            try { return new InetAddress[]{InetAddress.getByAddress(new byte[]{127, 0, 0, 1})}; }
+            catch (java.net.UnknownHostException impossible) { throw new IllegalStateException(impossible); }
+        })) {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            long started = System.nanoTime();
+            var failure = assertThrows(IntegrationProblem.class,
+                    () -> transport.post(AlfabetHttpTransport.Endpoint.OBJECTS, "{}", null, 1024, deadline));
+            assertEquals("ALFABET_READ_TIMEOUT", failure.code());
+            assertTrue(resolverStarted.await(1, TimeUnit.SECONDS));
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 2500);
+        } finally {
+            resolverRelease.countDown();
+        }
     }
 
     private AlfabetReadClient client() { return new AlfabetReadClient(reference -> TOKEN); }

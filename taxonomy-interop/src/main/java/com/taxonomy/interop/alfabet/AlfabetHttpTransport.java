@@ -18,12 +18,27 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Fixed read endpoints only. DNS policy is enforced by the actual connection manager, as in OSLC. */
 final class AlfabetHttpTransport implements AutoCloseable {
+    @FunctionalInterface
+    interface HostLookup { InetAddress[] resolve(String host) throws UnknownHostException; }
+
+    private static final ThreadPoolExecutor DNS_LOOKUPS = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(16), runnable -> {
+                Thread thread = new Thread(runnable, "alfabet-read-dns"); thread.setDaemon(true); return thread;
+            });
     enum Endpoint {
         TOKEN("api/token", ContentType.APPLICATION_FORM_URLENCODED),
         OBJECTS("api/v2/objects", ContentType.APPLICATION_JSON);
@@ -33,16 +48,24 @@ final class AlfabetHttpTransport implements AutoCloseable {
     }
     private final URI base;
     private final CloseableHttpClient client;
+    private final HostLookup lookup;
+    private final AtomicLong resolutionDeadline = new AtomicLong();
     private final ScheduledExecutorService cancellation = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "alfabet-read-deadline"); thread.setDaemon(true); return thread;
     });
 
     AlfabetHttpTransport(AlfabetReadProfile profile) {
+        this(profile, InetAddress::getAllByName);
+    }
+
+    AlfabetHttpTransport(AlfabetReadProfile profile, HostLookup lookup) {
         base = profile.baseUri();
+        this.lookup = lookup;
         DnsResolver resolver = new DnsResolver() {
             @Override public InetAddress[] resolve(String host) throws UnknownHostException {
                 if (!base.getHost().equalsIgnoreCase(host)) throw new UnknownHostException("Origin outside read profile");
-                InetAddress[] addresses = InetAddress.getAllByName(host);
+                InetAddress[] addresses = resolveWithinDeadline(host, resolutionDeadline.get());
+                if (addresses.length == 0) throw new UnknownHostException("No addresses resolved");
                 for (InetAddress address : addresses)
                     if (!OslcTransport.allowedAddress(address, profile.allowPrivateNetworks()))
                         throw new UnknownHostException("Address outside integration network policy");
@@ -64,6 +87,7 @@ final class AlfabetHttpTransport implements AutoCloseable {
         if (maxBytes <= 0) throw problem("ALFABET_READ_LIMIT");
         // No API accepts a caller-supplied path, verb, query or redirect destination.
         HttpPost request = new HttpPost(base.resolve(endpoint.path));
+        resolutionDeadline.set(deadline);
         request.setHeader("Accept", "application/json");
         if (token != null) request.setHeader("Authorization", "Bearer " + token);
         request.setEntity(new StringEntity(body, endpoint.contentType.withCharset(java.nio.charset.StandardCharsets.UTF_8)));
@@ -100,6 +124,28 @@ final class AlfabetHttpTransport implements AutoCloseable {
             // The exception/cause can contain endpoint names or credential-bearing wire data. Do not retain it.
             throw problem("ALFABET_UNAVAILABLE");
         } finally { timer.cancel(false); }
+    }
+    private InetAddress[] resolveWithinDeadline(String host, long deadline) throws UnknownHostException {
+        requireTime(deadline);
+        Future<InetAddress[]> lookupResult;
+        try { lookupResult = DNS_LOOKUPS.submit(() -> lookup.resolve(host)); }
+        catch (RejectedExecutionException saturated) { throw new UnknownHostException("DNS resolver capacity is exhausted"); }
+        try {
+            InetAddress[] addresses = lookupResult.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            requireTime(deadline);
+            return Arrays.copyOf(addresses, addresses.length);
+        } catch (TimeoutException timeout) {
+            lookupResult.cancel(true);
+            DNS_LOOKUPS.purge();
+            throw new UnknownHostException("DNS resolution exceeded read deadline");
+        } catch (InterruptedException interrupted) {
+            lookupResult.cancel(true);
+            DNS_LOOKUPS.purge();
+            Thread.currentThread().interrupt();
+            throw new UnknownHostException("DNS resolution interrupted");
+        } catch (ExecutionException failure) {
+            throw new UnknownHostException("DNS resolution failed");
+        }
     }
     static void requireTime(long deadline) {
         if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline) throw problem("ALFABET_READ_TIMEOUT");

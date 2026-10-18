@@ -7,9 +7,9 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -166,12 +166,32 @@ public final class AlfabetReadClient {
         // Jackson has already decoded JSON escapes. Also cover percent-encoded response diagnostics.
         for (int pass = 0; pass < 3; pass++) {
             for (String secret : secrets) if (text.contains(secret)) throw problem("ALFABET_CREDENTIAL_REFLECTION");
-            String decoded;
-            try { decoded = URLDecoder.decode(text, StandardCharsets.UTF_8); }
-            catch (IllegalArgumentException invalidEscape) { return; }
+            String decoded = decodePercentEscapes(text);
             if (decoded.equals(text)) return;
             text = decoded;
         }
+    }
+
+    private static String decodePercentEscapes(String text) {
+        var decoded = new StringBuilder(text.length());
+        for (int index = 0; index < text.length();) {
+            if (text.charAt(index) != '%' || index + 2 >= text.length()
+                    || Character.digit(text.charAt(index + 1), 16) < 0
+                    || Character.digit(text.charAt(index + 2), 16) < 0) {
+                decoded.append(text.charAt(index++));
+                continue;
+            }
+            var bytes = new ByteArrayOutputStream();
+            while (index + 2 < text.length() && text.charAt(index) == '%'
+                    && Character.digit(text.charAt(index + 1), 16) >= 0
+                    && Character.digit(text.charAt(index + 2), 16) >= 0) {
+                bytes.write(Character.digit(text.charAt(index + 1), 16) * 16
+                        + Character.digit(text.charAt(index + 2), 16));
+                index += 3;
+            }
+            decoded.append(bytes.toString(StandardCharsets.UTF_8));
+        }
+        return decoded.toString();
     }
 
 }
