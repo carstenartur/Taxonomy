@@ -274,6 +274,56 @@ class PortfolioSnapshotPayloadReadTest {
         }
     }
 
+    @ParameterizedTest @org.junit.jupiter.params.provider.CsvSource({"0,PARTIAL", "1,PARTIAL", "0,PENDING", "1,RUNNING"})
+    void staleFinalizerCannotPromoteAnArchivedWinnerAfterEitherPassContinues(int pass, AnalysisStatus nextState) {
+        try (var f = new Fixture()) {
+            String continuedId = UUID.randomUUID().toString();
+            doAnswer(invocation -> {
+                Object ranked = invocation.callRealMethod();
+                // The old finalizer has read/ranked both immutable snapshots. A new
+                // generation commits before it reaches the promotion transaction.
+                f.transaction(em -> {
+                    var item = em.createQuery("from RequirementAnalysisJobItem i where i.jobId = :id", RequirementAnalysisJobItem.class)
+                            .setParameter("id", f.jobIds.get(pass)).getSingleResult();
+                    item.prepareBudgetContinuation(); item.getJob().markPending();
+                    if (nextState == AnalysisStatus.RUNNING) {
+                        item.markRunning(Fixture.TIME.plusSeconds(20)); item.getJob().markRunning(Fixture.TIME.plusSeconds(20));
+                    }
+                });
+                if (nextState == AnalysisStatus.PARTIAL) f.transaction(em -> {
+                    var job = em.find(RequirementAnalysisJob.class, f.jobIds.get(pass));
+                    var requirement = em.find(ProjectRequirement.class, f.requirementId);
+                    var analysis = new AnalysisResult(Map.of("BP-1000", 90d), List.of());
+                    em.persist(new RequirementAnalysisSnapshot(continuedId, em.find(ArchitectureProject.class, f.projectId),
+                            requirement, em.find(ProjectRequirementVersion.class, f.versionId), job, AnalysisStatus.PARTIAL,
+                            "continued-source", "CUSTOM_OPENAI", "model", "p".repeat(64), "t".repeat(64),
+                            f.scope.workspaceId(), f.scope.currentBranch(), "c".repeat(40), "owner", Fixture.TIME.plusSeconds(30),
+                            200L, 0, "CALL_BUDGET", f.codec.write(analysis), null, null, null));
+                    var item = em.createQuery("from RequirementAnalysisJobItem i where i.jobId = :id", RequirementAnalysisJobItem.class)
+                            .setParameter("id", job.getId()).getSingleResult();
+                    item.complete(AnalysisStatus.PARTIAL, continuedId, Fixture.TIME.plusSeconds(31), "CALL_BUDGET");
+                    job.complete(0, 1, 0, "CALL_BUDGET", Fixture.TIME.plusSeconds(31));
+                    requirement.pointToAnalysis(continuedId, Fixture.TIME.plusSeconds(31));
+                });
+                return ranked;
+            }).when(f.selector).selectForOperation(anyList());
+            f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+            assertThat(f.projects.getRequirement(f.projectId, f.requirementId, "owner", f.scope).currentAnalysisSnapshotId())
+                    .as("An older terminal-status read must not restore its archived winner")
+                    .isEqualTo(nextState == AnalysisStatus.PARTIAL ? continuedId : f.snapshotIds.get(1));
+            verifyNoInteractions(f.completion);
+            doCallRealMethod().when(f.selector).selectForOperation(anyList());
+            var fresh = f.copilot.getOperation(f.projectId, Fixture.OPERATION, "owner", f.scope);
+            if (nextState == AnalysisStatus.PARTIAL) {
+                assertThat(fresh.selectedSnapshotId()).isEqualTo(continuedId);
+                verify(f.completion).enrich(f.projectId, "owner", f.scope, false, false);
+            } else {
+                assertThat(fresh.status()).isEqualTo(nextState);
+                verifyNoInteractions(f.completion);
+            }
+        }
+    }
+
     @Test
     void anActualPointerChangeStillUsesTheManagedVersionedMutation() {
         try (var f = new Fixture()) {
@@ -295,7 +345,13 @@ class PortfolioSnapshotPayloadReadTest {
 
     @Test
     void unchangedSelectionStillLocksTheRequirementAgainstAConcurrentVersionChange() throws Exception {
-        try (var f = new Fixture(); var executor = Executors.newFixedThreadPool(2)) {
+        try (var f = new Fixture()) {
+            var executor = Executors.newFixedThreadPool(2, task -> {
+                var worker = new Thread(task, "snapshot-selection-lock-test");
+                worker.setDaemon(true);
+                return worker;
+            });
+            java.util.concurrent.Future<?> mutating = null;
             var lockHeld = new CountDownLatch(1);
             var releaseLock = new CountDownLatch(1);
             var mutationStarted = new CountDownLatch(1);
@@ -318,22 +374,28 @@ class PortfolioSnapshotPayloadReadTest {
                 assertThat(lockHeld.await(10, TimeUnit.SECONDS)).isTrue();
                 assertThat(f.sql).anyMatch(sql -> sql.contains("current_snapshot_id") && sql.endsWith(" for update"));
                 f.assertNoResultEntityLoads();
-                var mutating = executor.submit(() -> f.transaction(em -> {
+                var mutation = executor.submit(() -> f.transaction(em -> {
                     mutationStarted.countDown();
                     var requirements = new JpaRepositoryFactory(em).getRepository(ProjectRequirementRepository.class);
                     var requirement = requirements.findByIdAndProjectIdAndScopeKeyForUpdate(f.requirementId, f.projectId,
                             PortfolioScope.key("owner", f.scope)).orElseThrow();
                     requirement.pointToVersion(nextVersion[0], Fixture.TIME.plusSeconds(50));
                 }));
+                mutating = mutation;
                 assertThat(mutationStarted.await(10, TimeUnit.SECONDS)).isTrue();
-                assertThatThrownBy(() -> mutating.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                assertThatThrownBy(() -> mutation.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
                 releaseLock.countDown();
-                selecting.get(10, TimeUnit.SECONDS); mutating.get(10, TimeUnit.SECONDS);
+                selecting.get(10, TimeUnit.SECONDS); mutation.get(10, TimeUnit.SECONDS);
                 assertThatThrownBy(() -> f.selection.selectCurrentSnapshot(f.projectId, f.requirementId, f.snapshotIds.get(1), "owner", f.scope))
                         .isInstanceOfSatisfying(PortfolioException.class, failure ->
                                 assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.CONFLICT));
             } finally {
                 releaseLock.countDown();
+                selecting.cancel(true);
+                if (mutating != null) mutating.cancel(true);
+                executor.shutdownNow();
+                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS))
+                        .as("Locking test workers must terminate before fixture teardown").isTrue();
             }
         }
     }
@@ -352,6 +414,7 @@ class PortfolioSnapshotPayloadReadTest {
         final PortfolioAnalysisPersistenceService persistence;
         final CopilotResultPersistenceService selection;
         final CopilotCompletionService completion;
+        final CopilotResultSelector selector = spy(new CopilotResultSelector());
         final SolutionTaxonomyCoverageRepository coverage = mock(SolutionTaxonomyCoverageRepository.class);
         final boolean realEnrichment;
         final CopilotAutomationService copilot;
@@ -394,7 +457,7 @@ class PortfolioSnapshotPayloadReadTest {
                     repositories.getRepository(RequirementRelationMappingRepository.class), mock(AnalysisHypothesisLinkPort.class),
                     codec, new PortfolioSnapshotSelectionReader(shared, codec),
                     new DefaultListableBeanFactory().getBeanProvider(ProjectProviderBinding.class)));
-            selection = proxy(new CopilotResultPersistenceService(requirements, snapshots));
+            selection = proxy(new CopilotResultPersistenceService(requirements, snapshots, items));
             if (realEnrichment) {
                 var products = mock(ProductCatalogService.class);
                 var solutions = proxy(new SolutionPortfolioService(mock(SolutionDefinitionRepository.class), coverage,
@@ -410,7 +473,7 @@ class PortfolioSnapshotPayloadReadTest {
                     null, null, null, fingerprints, null, null, 100, 100, 900);
             var policy = mock(AiAutomationPolicy.class);
             when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
-            copilot = new CopilotAutomationService(analysis, projects, fingerprints, policy, new CopilotResultSelector(),
+            copilot = new CopilotAutomationService(analysis, projects, fingerprints, policy, selector,
                     selection, completion, null, mock(ExecutorService.class));
             seed(); resetReads();
         }

@@ -255,6 +255,8 @@ class CopilotAutomationServiceCoverageTest {
         when(fixture.analysisService.getSnapshotSelection(
                 PROJECT_ID, "snapshot-1", context.username(), context)).thenReturn(best);
         when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.of(best));
+        when(fixture.resultPersistenceService.selectCurrentSnapshot(PROJECT_ID, REQUIREMENT_ID,
+                "snapshot-1", List.of(success), context.username(), context)).thenReturn("snapshot-1");
         when(fixture.projectService.getRequirement(
                 PROJECT_ID, REQUIREMENT_ID, context.username(), context))
                 .thenReturn(requirement(version(), "snapshot-1"));
@@ -267,7 +269,7 @@ class CopilotAutomationServiceCoverageTest {
         assertThat(result.selectedSnapshotId()).isEqualTo("snapshot-1");
         assertThat(result.message()).contains("complete", "human review");
         verify(fixture.resultPersistenceService).selectCurrentSnapshot(
-                PROJECT_ID, REQUIREMENT_ID, "snapshot-1", context.username(), context);
+                PROJECT_ID, REQUIREMENT_ID, "snapshot-1", List.of(success), context.username(), context);
         verify(fixture.completionService).enrich(
                 PROJECT_ID, context.username(), context, true, true);
         verifyNoInteractions(fixture.coordinator);

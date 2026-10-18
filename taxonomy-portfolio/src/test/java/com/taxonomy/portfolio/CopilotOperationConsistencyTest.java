@@ -303,7 +303,7 @@ class CopilotOperationConsistencyTest {
 
         assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
         assertThat(result.selectedSnapshotId()).as("Expose the promoted winner, not the last completed pass").isEqualTo("snapshot-1");
-        verify(resultPersistenceService).selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context);
+        verify(resultPersistenceService).selectCurrentSnapshot(eq(41L), eq(7L), eq("snapshot-1"), anyList(), eq(context.username()), eq(context));
         verify(completionService).enrich(41L, context.username(), context, true, true);
     }
 
@@ -334,7 +334,7 @@ class CopilotOperationConsistencyTest {
 
         assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
         assertThat(result.selectedSnapshotId()).as("Fast completion still promotes the selected winner before returning").isEqualTo("snapshot-1");
-        verify(resultPersistenceService).selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context);
+        verify(resultPersistenceService).selectCurrentSnapshot(eq(41L), eq(7L), eq("snapshot-1"), anyList(), eq(context.username()), eq(context));
         verify(completionService).enrich(41L, context.username(), context, true, true);
     }
 
@@ -350,7 +350,7 @@ class CopilotOperationConsistencyTest {
         when(analysisService.getSnapshotSelection(41L, "snapshot-1", context.username(), context)).thenReturn(winner);
         when(analysisService.getSnapshotSelection(41L, "snapshot-2", context.username(), context)).thenReturn(mock(SnapshotSelection.class));
         when(resultSelector.selectForOperation(anyList())).thenReturn(Optional.of(winner));
-        when(resultPersistenceService.selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context)).thenAnswer(invocation -> {
+        when(resultPersistenceService.selectCurrentSnapshot(eq(41L), eq(7L), eq("snapshot-1"), anyList(), eq(context.username()), eq(context))).thenAnswer(invocation -> {
             currentSnapshot.set("snapshot-1");
             return "snapshot-1";
         });

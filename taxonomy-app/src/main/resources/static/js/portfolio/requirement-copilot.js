@@ -482,7 +482,8 @@
             try {
                 const current = await api().get(projectId, activeOperationId);
                 renderOperation(current);
-                if (!terminal.has(current.status)) startPolling(current.operationId);
+                if (terminal.has(current.status)) handleTerminal(current);
+                else startPolling(current.operationId);
             } catch (statusError) {
                 renderReconnect(statusError, ++consecutivePollFailures);
                 startPolling(activeOperationId);

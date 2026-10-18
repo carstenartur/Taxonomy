@@ -280,7 +280,7 @@ class CopilotSupportingServicesCoverageTest {
         RequirementAnalysisSnapshotRepository snapshots =
                 mock(RequirementAnalysisSnapshotRepository.class);
         CopilotResultPersistenceService service = new CopilotResultPersistenceService(
-                requirements, snapshots);
+                requirements, snapshots, mock(com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository.class));
         ProjectRequirement requirement = mock(ProjectRequirement.class);
         String scopeKey = PortfolioScope.key(context.username(), context);
         when(requirements.findAnalysisSelectionForUpdate(7L, 41L, scopeKey))
@@ -316,7 +316,7 @@ class CopilotSupportingServicesCoverageTest {
         RequirementAnalysisSnapshotRepository snapshots =
                 mock(RequirementAnalysisSnapshotRepository.class);
         CopilotResultPersistenceService service = new CopilotResultPersistenceService(
-                requirements, snapshots);
+                requirements, snapshots, mock(com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository.class));
         String scopeKey = PortfolioScope.key(context.username(), context);
         when(requirements.findAnalysisSelectionForUpdate(7L, 41L, scopeKey))
                 .thenReturn(Optional.empty());

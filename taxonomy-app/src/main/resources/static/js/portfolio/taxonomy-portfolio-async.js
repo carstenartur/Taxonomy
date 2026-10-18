@@ -713,6 +713,8 @@
             saved.promise = window.TaxonomyPortfolioApi.getAnalysisContinuation(job.projectId, job.id, item.id)
                 .then(function (decision) { saved.decision = decision; return decision; })
                 .catch(function (error) {
+                    // Keep this failure visible, but let a later render retry the read.
+                    continuationDecisions.delete(key);
                     saved.decision = { available: false, reason: error.message || m('continuationUnavailable') };
                     return saved.decision;
                 });

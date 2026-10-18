@@ -407,19 +407,22 @@ public class CopilotAutomationService {
         List<SnapshotSelection> snapshots = new ArrayList<>();
         for (JobWithKey entry : jobs) {
             for (AnalysisJobItemView item : entry.job().items()) {
-                if (item.snapshotId() != null) {
+                if (item.snapshotId() != null
+                        && (item.status() == AnalysisStatus.SUCCESS || item.status() == AnalysisStatus.PARTIAL)) {
                     snapshots.add(analysisService.getSnapshotSelection(
                             definition.projectId(), item.snapshotId(), username, context));
                 }
             }
         }
         resultSelector.selectForOperation(snapshots).ifPresent(best -> {
-            resultPersistenceService.selectCurrentSnapshot(
+            String selected = resultPersistenceService.selectCurrentSnapshot(
                     definition.projectId(),
                     definition.requirementId(),
                     best.id(),
+                    jobs.stream().map(JobWithKey::job).toList(),
                     username,
                     context);
+            if (selected == null) return;
             completionService.enrich(
                     definition.projectId(),
                     username,
