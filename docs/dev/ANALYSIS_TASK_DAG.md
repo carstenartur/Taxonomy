@@ -5,9 +5,14 @@ fan-out, frozen catalogue shards, cross-pod progress/cancellation and provider
 concurrency permits for [#1161](https://github.com/carstenartur/Taxonomy/issues/1161).
 `ArtemisClusterExecutionConfiguration` binds the production handlers; `local`
 remains the compatibility default and neither starts nor requires a broker.
-Existing resumable Copilot checkpoint operations retain their continuation path.
+Resumable HTTP analyses use `AnalysisContinuationService.beginDistributed` when
+Artemis execution is configured. Workers reconstruct the saved checkpoint binding;
+the in-process checkpoint path remains for local execution, not as evidence that
+all resumable analysis bypasses JMS. See [durable execution](CLUSTER_ANALYSIS_EXECUTION.md).
 Implementation and environment-dependent acceptance evidence are recorded
 separately in [the cluster verification record](../testing/analysis-cluster-acceptance.md).
+The [current JMS/API acceptance boundaries](JMS_API_ACCEPTANCE.md) distinguish
+implemented features from deployment guarantees that remain unverified.
 
 ## What exists
 

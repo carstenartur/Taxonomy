@@ -65,14 +65,20 @@ and non-dropping address-full policy. The broker transaction timeout must exceed
 the maximum physical HTTP duration. A permit message contains only schema version,
 quota group and a random permit ID; no prompt, response, API key or task payload.
 
-RPM remains **process local**. After a cluster wait, the local limiter revalidates
+With the separate `taxonomy.analysis.provider-quotas.enabled` feature disabled,
+RPM remains **process local**. This document describes concurrency permits, not
+the separate, now implemented [shared rate-quota protocol](../en/OPERATIONS_GUIDE.md#cluster-wide-physical-attempt-rate-quotas).
+That protocol adds durable RPM/RPD admission, shared cooldowns and explicitly
+supported TPM contracts; enabling permits alone does not enable it.
+After a cluster wait, the local limiter revalidates
 its reservation and any concurrent `Retry-After` before the physical attempt. If
 local admission is no longer valid, it returns the cluster permit before waiting
 again. The configured local maximum queue wait bounds the complete admission
 attempt across both stages and repeated revalidation; the cluster maximum wait
 adds its own limit. Failed or cancelled cluster acquisition refunds the unused
 local RPM reservation. This mechanism makes no claim of cluster-wide RPM, TPM or
-RPD enforcement.
+RPD enforcement by itself. See the [current acceptance boundaries](../dev/JMS_API_ACCEPTANCE.md)
+for the distinction between admitted attempts and outstanding remote computation.
 
 Cancellation/deadline checkpoints run before and after bounded 100 ms JMS receives.
 Broker connection/control calls remain bounded by the existing Artemis connection
