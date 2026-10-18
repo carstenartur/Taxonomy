@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Uses the same explicit, bounded continuation action exposed to the project client. */
 final class ScenarioContinuationWalkthrough {
     private static final Set<String> TERMINAL = Set.of("SUCCESS", "PARTIAL", "FAILED", "CANCELLED");
-    private static final int MAX_CONTINUATIONS_PER_PASS = 128;
+    static final int MAX_CONTINUATIONS_PER_PASS = 128;
     private record PassIdentity(long requirementId, long versionId, String provider, String reasonLength) { }
     private record ObservedSnapshot(String id, JsonNode value) { }
 
@@ -22,13 +22,21 @@ final class ScenarioContinuationWalkthrough {
         var itemCycles = new HashMap<String, Integer>();
         var browserPasses = new HashSet<String>();
         var originalSnapshots = new HashMap<String, ObservedSnapshot>();
+        // Bind the very first saved evidence to its fixture/revision before a
+        // continuation can fail or the parent can terminate this application.
+        for (JsonNode job : operation.path("jobs")) for (JsonNode item : job.path("items")) {
+            String id = item.path("snapshotId").asText();
+            JsonNode initial = app.get("/api/projects/" + projectId + "/snapshots/" + id);
+            originalSnapshots.put(job.path("id").asText() + ":" + item.path("id").asText(), new ObservedSnapshot(id, initial));
+            if (id.equals(operation.path("selectedSnapshotId").asText()))
+                app.checkpointSnapshot(projectId, item.path("requirementId").asLong(), initial);
+        }
         // Each independently assessed pass has its own bounded driver. This does
         // not change the provider's per-cycle resource policy or add a pass.
         for (int cycle = 0; cycle <= MAX_CONTINUATIONS_PER_PASS * originalPasses.size(); cycle++) {
             assertThat(passIdentities(operation)).as("Continuation retains the original passes and their admission")
                     .isEqualTo(originalPasses);
             app.save("operation.json", operation);
-            app.save("llm-calls.json", app.json.valueToTree(app.playback.calls()));
             app.save("playback-coverage.json", app.json.valueToTree(app.playback.relationCoverage()));
             app.save("continuation-history.json", app.json.valueToTree(history));
             assertThat(operation.path("jobs")).hasSize(2);
@@ -100,7 +108,7 @@ final class ScenarioContinuationWalkthrough {
             String nextId = completedItem.path("snapshotId").asText();
             assertThat(nextId).isNotBlank().isNotEqualTo(oldSnapshotId);
             JsonNode after = app.get("/api/projects/" + projectId + "/snapshots/" + nextId);
-            app.save("snapshot.json", after);
+            app.checkpointSnapshot(projectId, selectedItem.path("requirementId").asLong(), after);
             assertThat(app.get(oldPath)).as("Continuation must preserve its immutable input snapshot").isEqualTo(before);
             assertThat(after.at("/analysis/recovery/state").asText())
                     .as("Continuation stopped outside an execution budget: %s", after.at("/analysis/warnings"))

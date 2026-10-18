@@ -132,7 +132,9 @@ mkdir -p "${EVIDENCE_DIR}"
 rm -f -- "${EVIDENCE_DIR}/evidence.json" \
   "${EVIDENCE_DIR}/worker-loss-broker.json" "${EVIDENCE_DIR}/worker-loss-database.json" \
   "${EVIDENCE_DIR}"/{before-dispatch,after-dispatch}-coordinator-{pods,broker,database}.json \
-  "${EVIDENCE_DIR}"/coordinator-{before-dispatch,after-dispatch}.json
+  "${EVIDENCE_DIR}"/coordinator-{before-dispatch,after-dispatch}.json \
+  "${EVIDENCE_DIR}"/serial-{waiting-broker,first-dispatched,successor-dispatched,completed}.json \
+  "${EVIDENCE_DIR}"/broker-ip-{before-settlement,after-settlement,completed}.json
 rm -rf -- "${EVIDENCE_DIR}/startup" "${EVIDENCE_DIR}/diagnostics"
 [[ "${MODE}" == live || "${MODE}" == --render-only ]] || fail "Usage: $0 [--render-only]"
 [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail "SOURCE_SHA must be a full Git commit"
@@ -301,14 +303,28 @@ admitted() { [[ $(sql "select count(*) from analysis_cluster_run where username=
 await_until 120 "durable two-root admission with workers absent" admitted
 OPERATION=$(sql "select id from analysis_cluster_run where username='admin'")
 [[ "${OPERATION}" =~ ^[A-Za-z0-9_-]+$ ]] || fail "Unexpected operation identifier"
-[[ $(sql "select count(*) from analysis_cluster_work where operation_id='${OPERATION}' and state='QUEUED'") == 2 ]] || fail "Admission did not queue both roots"
-
-# Both real after-commit intents must be durable and recoverable while transport is down.
-waiting_dispatch() {
-  [[ $(sql "select count(*) from analysis_dispatch_intent where operation_id='${OPERATION}' and status in ('DISPATCH_PENDING','WAITING_FOR_BROKER')") == 2 ]] &&
-    [[ $(sql "select count(*) from analysis_dispatch_intent where operation_id='${OPERATION}' and status='WAITING_FOR_BROKER'") -ge 1 ]]
+# One coherent SQL snapshot proves exact per-root state, intent and completion counts.
+# Both roots/inputs are frozen at admission; only CP owns dispatch authority until
+# its coordinator settlement commits. The IP worker stays absent through that boundary.
+serial_snapshot() {
+  sql "select json_build_object(
+    'state',state,'completedRoots',completed_roots,'totalRoots',total_roots,'revision',event_revision,
+    'work',(select json_agg(json_build_object('root',root_code,'state',state,'settled',settled,'hasResult',result_json is not null,'attempts',delivery_attempts) order by ordinal_number) from analysis_cluster_work where operation_id='${OPERATION}'),
+    'inputs',(select json_agg(root_code order by root_code) from analysis_cluster_input where operation_id='${OPERATION}'),
+    'intents',(select coalesce(json_agg(json_build_object('root',routing_root,'status',status) order by routing_root),'[]'::json) from analysis_dispatch_intent where operation_id='${OPERATION}'),
+    'completions',(select coalesce(json_agg(w.root_code order by w.root_code),'[]'::json) from analysis_task_completion c left join analysis_cluster_work w on w.operation_id=c.operation_id and w.task_id=c.task_id where c.operation_id='${OPERATION}'))
+    from analysis_cluster_run where id='${OPERATION}'"
 }
-await_until 120 "real broker-unavailable durable intents" waiting_dispatch
+serial_state() {
+  serial_snapshot >"${PRIVATE_DIR}/serial-state.json" &&
+    node "${CHART_DIR}/verify-artemis-sequence.mjs" "$1" <"${PRIVATE_DIR}/serial-state.json" >"${EVIDENCE_DIR}/serial-$1.json"
+}
+
+# A real after-commit CP intent must become WAITING_FOR_BROKER, not merely pending.
+waiting_dispatch() {
+  serial_state waiting-broker
+}
+await_until 120 "real broker-unavailable CP intent with frozen IP waiting" waiting_dispatch
 frozen_identity() {
   # Hash immutable admitted data privately. Public evidence retains only the aggregate
   # digest, operation ID and revision, never source text, task envelopes or catalogue data.
@@ -319,7 +335,11 @@ frozen_identity() {
     'intents',(select json_agg(json_build_array(id,task_id,task_type,routing_root,md5(message_json)) order by task_id) from analysis_dispatch_intent where operation_id='${OPERATION}'),
     'events',(select json_agg(json_build_array(id,event_revision,md5(event_json)) order by event_revision) from analysis_cluster_event where operation_id='${OPERATION}'))" | jq -eSc '
       select(.run | length == 10) | select(.work | length == 2) | select(.inputs | length == 2)
-      | select(.intents | length == 2) | select(.events | length > 0)'
+      | select([.work[][3]] == ["CP","IP"])
+      | select([.work[][6]] == ["QUEUED","WAITING_PREDECESSOR"])
+      | select([.inputs[][1]] == ["CP","IP"])
+      | select(.intents | length == 1) | select(.intents[0][3] == "CP")
+      | select(.events | length > 0)'
 }
 frozen_identity >"${PRIVATE_DIR}/admitted-identity.json"
 ADMITTED_DIGEST=$(sha256sum "${PRIVATE_DIR}/admitted-identity.json" | cut -d ' ' -f 1)
@@ -373,21 +393,25 @@ kubectl rollout status deployment/smoke-broker --namespace "${NAMESPACE}" --time
 start_broker_forward
 await_until 90 "fresh broker configured queue readiness" broker_stats
 no_cp_consumers || fail "Replacement broker unexpectedly acquired CP consumers"
-dispatched() { [[ $(sql "select count(*) from analysis_dispatch_intent where operation_id='${OPERATION}' and status='DISPATCHED'") == 2 ]]; }
-await_until 120 "connection-event dispatch of both retained intents" dispatched
-# Both roots must be queued once on the fresh broker, before any worker starts.
+dispatched() { serial_state first-dispatched; }
+await_until 120 "connection-event dispatch of retained CP intent only" dispatched
+# CP must be queued once; IP must have no dispatch or broker debit before settlement.
 queued_once() { broker_stats && jq -e '.value.MessageCount == 1 and .value.MessagesAdded == 1 and .value.ConsumerCount == 0 and .value.DeliveringCount == 0' "${PRIVATE_DIR}/broker-stats.json" >/dev/null; }
 await_until 90 "CP queued once with workers absent" queued_once
-ip_queued_once() {
+ip_stats() {
   jq --arg bean "${BROKER_MBEAN//.CP/.IP}" '.mbean=$bean' "${PRIVATE_DIR}/broker-request.json" >"${PRIVATE_DIR}/ip-request.json"
-  curl --fail --silent --show-error --max-time 10 --config "${PRIVATE_DIR}/broker.curl" -H 'Content-Type: application/json' --data-binary "@${PRIVATE_DIR}/ip-request.json" http://127.0.0.1:18161/console/jolokia/ >"${PRIVATE_DIR}/ip-stats.json"
-  jq -e '.status == 200 and .value.MessageCount == 1 and .value.MessagesAdded == 1 and .value.ConsumerCount == 0 and .value.DeliveringCount == 0' "${PRIVATE_DIR}/ip-stats.json" >/dev/null
+  curl --fail --silent --show-error --max-time 10 --config "${PRIVATE_DIR}/broker.curl" -H 'Content-Type: application/json' --data-binary "@${PRIVATE_DIR}/ip-request.json" http://127.0.0.1:18161/console/jolokia/ >"${PRIVATE_DIR}/ip-stats.json" &&
+    jq -e '.status == 200 and (.value.DeliveringCount | type == "number")' "${PRIVATE_DIR}/ip-stats.json" >/dev/null
 }
-await_until 90 "IP queued once with workers absent" ip_queued_once
+ip_not_dispatched() {
+  ip_stats && jq -e '.value.MessageCount == 0 and .value.MessagesAdded == 0 and .value.MessagesAcknowledged == 0 and .value.ConsumerCount == 0 and .value.DeliveringCount == 0' "${PRIVATE_DIR}/ip-stats.json" >/dev/null
+}
+await_until 90 "IP queue untouched before CP settlement" ip_not_dispatched
+cp "${PRIVATE_DIR}/ip-stats.json" "${EVIDENCE_DIR}/broker-ip-before-settlement.json"
 LOSS_STAGE=after-dispatch
 replace_coordinator
 # Retain the broker unchanged in this second failure. Startup recovery must not republish DISPATCHED work.
-dispatched && queued_once && ip_queued_once && identity_unchanged || fail "Second coordinator restart duplicated or changed dispatched work"
+dispatched && queued_once && ip_not_dispatched && identity_unchanged || fail "Second coordinator restart duplicated CP or prematurely dispatched IP"
 [[ $(sql "select count(*) from analysis_task_completion where operation_id='${OPERATION}'") == 0 ]] || fail "Coordinator restart fabricated a completion"
 
 # Hold the operation row on a test-owned PostgreSQL connection. A delivered worker blocks
@@ -448,14 +472,24 @@ locked || fail "Acceptance row lock expired before the lost worker disconnected"
   || fail "Lost CP worker committed a start or result before lock release"
 [[ $(sql "select count(*) from analysis_task_completion where operation_id='${OPERATION}'") == 0 ]] \
   || fail "Completion effect appeared before replacement workers started"
+dispatched && ip_not_dispatched && identity_unchanged || fail "Worker loss changed frozen admission or prematurely dispatched IP"
 cp "${PRIVATE_DIR}/broker-stats.json" "${EVIDENCE_DIR}/broker-disconnected-worker.json"
 release_lock
 kubectl scale deployment/taxonomy-artemis-worker-cp --namespace "${NAMESPACE}" --replicas=2
-kubectl scale deployment/taxonomy-artemis-worker-ip --namespace "${NAMESPACE}" --replicas=1
 kubectl rollout status deployment/taxonomy-artemis-worker-cp --namespace "${NAMESPACE}" --timeout=10m
+# Do not start IP until CP's committed settlement releases its second durable intent.
+successor_dispatched() { serial_state successor-dispatched; }
+await_until 900 "committed CP settlement queues IP with the second durable dispatch" successor_dispatched
+ip_queued_once() {
+  ip_stats && jq -e '.value.MessageCount == 1 and .value.MessagesAdded == 1 and .value.MessagesAcknowledged == 0 and .value.ConsumerCount == 0 and .value.DeliveringCount == 0' "${PRIVATE_DIR}/ip-stats.json" >/dev/null
+}
+await_until 90 "IP queued exactly once after CP settlement with its workers absent" ip_queued_once
+cp "${PRIVATE_DIR}/ip-stats.json" "${EVIDENCE_DIR}/broker-ip-after-settlement.json"
+kubectl scale deployment/taxonomy-artemis-worker-ip --namespace "${NAMESPACE}" --replicas=1
 kubectl rollout status deployment/taxonomy-artemis-worker-ip --namespace "${NAMESPACE}" --timeout=10m
 durable_completed() { [[ $(sql "select state||':'||completed_roots||':'||total_roots from analysis_cluster_run where id='${OPERATION}'") == COMPLETED:2:2 ]]; }
 await_until 900 "same durable operation completed after both coordinator losses and worker redelivery" durable_completed
+serial_state completed || fail "Final serial roots, two dispatch intents or exactly-once effects differ"
 curl --fail --silent --show-error --max-time 30 --config "${PRIVATE_DIR}/web.curl" \
   "http://127.0.0.1:18081/api/analysis-runs/${OPERATION}/result?workspaceId=${WORKSPACE}" >"${EVIDENCE_DIR}/result.json"
 jq -e '.status == "SUCCESS" and .provider == "Mock" and (.rawScores | length > 0)' "${EVIDENCE_DIR}/result.json" >/dev/null
@@ -473,6 +507,11 @@ cp_acknowledged_once() {
 }
 await_until 90 "one CP message acknowledged after redelivery" cp_acknowledged_once
 cp "${PRIVATE_DIR}/broker-stats.json" "${EVIDENCE_DIR}/broker-after-worker-loss.json"
+ip_acknowledged_once() {
+  ip_stats && jq -e '.value.DeliveringCount == 0 and .value.MessageCount == 0 and .value.MessagesAdded == 1 and .value.MessagesAcknowledged == 1' "${PRIVATE_DIR}/ip-stats.json" >/dev/null
+}
+await_until 90 "one IP message acknowledged after serial release" ip_acknowledged_once
+cp "${PRIVATE_DIR}/ip-stats.json" "${EVIDENCE_DIR}/broker-ip-completed.json"
 curl --fail --silent --show-error --config "${PRIVATE_DIR}/web.curl" \
   "http://127.0.0.1:18081/api/analysis-runs/${OPERATION}?workspaceId=${WORKSPACE}" >"${EVIDENCE_DIR}/observation.json"
 jq -e '.transport == "artemis" and .status == "COMPLETED" and .cluster.completedRoots == 2' "${EVIDENCE_DIR}/observation.json" >/dev/null
@@ -486,7 +525,7 @@ jq -n --arg source "${SOURCE_SHA}" --arg tree "$(git -C "${ROOT_DIR}" rev-parse 
   '{schemaVersion:1,result:"passed",source:{commit:$source,tree:$tree},image:{reference:$image,localImageId:$imageId},startedAt:$started,completedAt:$completed,
     scenario:"coordinator loss before and after dispatch, then delivered worker loss before provider computation",provider:"MOCK",operationId:$operation,
     topology:{coordinator:1,cpWorkers:2,ipWorkers:1,sharedDatabase:"PostgreSQL",externalBroker:"Artemis TLS"},
-    assertions:{quota:true,brokerTls:true,allowedDatabaseAndBrokerEgress:true,deniedBrokerManagementEgress:true,coordinatorLossBeforeDispatch:true,coordinatorLossAfterDispatch:true,unchangedFrozenAdmissionAndRevision:true,scopedResultRecovery:true,workerLossRedelivery:true,oneCommittedEffectPerRoot:true,contiguousProgress:true,independentWorkerScaling:true},
+    assertions:{quota:true,brokerTls:true,allowedDatabaseAndBrokerEgress:true,deniedBrokerManagementEgress:true,coordinatorLossBeforeDispatch:true,coordinatorLossAfterDispatch:true,unchangedFrozenAdmissionAndRevision:true,scopedResultRecovery:true,workerLossRedelivery:true,serialRootDispatch:true,twoFinalDispatchIntents:true,oneBrokerMessagePerRoot:true,oneCommittedEffectPerRoot:true,contiguousProgress:true,independentWorkerScaling:true},
     loss:{pod:$lostPod,uid:$lostUid,replacementUids:$replacementUids},startupEvidence:"startup/ (heap/RSS/config; local-heap indexes, fixture only)",
     limits:["No broker durability/HA or DB pod replacement claim; disposable broker replaced only before first dispatch","No external provider or throughput claim","No during-provider-call failure claim"]}' >"${EVIDENCE_DIR}/evidence.json"
 echo "Artemis constrained smoke passed; evidence: ${EVIDENCE_DIR}/evidence.json"

@@ -25,6 +25,7 @@ public final class ScenarioLlmPlayback {
     private final List<String> prompts = new ArrayList<>();
     private final List<ScenarioLlmPlayback> adoptedSources = new ArrayList<>();
     private ResponsePause nextReformulationPause;
+    private ScenarioCallJournal.Writer callJournal;
 
     /** Hold one validated remote response while the real HTTP client changes the proposal. */
     public synchronized ResponsePause pauseNextReformulation() {
@@ -93,6 +94,23 @@ public final class ScenarioLlmPlayback {
     }
     public JsonNode fixture() { return fixture.deepCopy(); }
 
+    public synchronized void recordCallsTo(java.nio.file.Path journal) throws java.io.IOException {
+        require(callJournal == null && calls().isEmpty(), "Call journal must be registered before any exchange");
+        if (journal.getParent() != null) java.nio.file.Files.createDirectories(journal.getParent());
+        java.nio.file.Files.createFile(journal);
+        callJournal = new ScenarioCallJournal.Writer(journal);
+    }
+
+    private void accepted(Call call) {
+        if (callJournal != null) {
+            try { callJournal.accept(call); }
+            catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException("Cannot journal accepted provider exchange", failure);
+            }
+        }
+        calls.add(call);
+    }
+
     /** Test driver registers only text read back after its explicit authenticated adoption command. */
     public synchronized void registerAdoptedSource(String source) {
         require(fixture.path("scenarioReformulation").asBoolean(false), "Only the scenario workflow binds adoption sources");
@@ -101,7 +119,9 @@ public final class ScenarioLlmPlayback {
         require(adoptedSources.stream().noneMatch(p -> p.fixture.at("/requirement/text").asText().equals(source)), "Duplicate adoption source");
         var next = (tools.jackson.databind.node.ObjectNode) fixture.deepCopy();
         ((tools.jackson.databind.node.ObjectNode) next.path("requirement")).put("text", source);
-        adoptedSources.add(new ScenarioLlmPlayback(next));
+        var playback = new ScenarioLlmPlayback(next);
+        playback.callJournal = callJournal;
+        adoptedSources.add(playback);
     }
 
     public synchronized String respond(String prompt) {
@@ -118,14 +138,14 @@ public final class ScenarioLlmPlayback {
                 if (pause != null) pause.hold();
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
-                calls.add(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body));
+                accepted(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body));
                 return body;
             }
             if (prompt.startsWith(ScenarioRelationPlayback.PREFIX)) {
                 var reply = relationPlayback.respond(prompt);
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
-                calls.add(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body));
+                accepted(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body));
                 return body;
             }
             String requirement = unique(REQUIREMENT, prompt, "requirement");
@@ -151,7 +171,7 @@ public final class ScenarioLlmPlayback {
             }
             String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                     Map.of("role", "assistant", "content", json.writeValueAsString(answer))))));
-            calls.add(new Call(rule.path("id").asText(), sha256(prompt), sha256(body), prompt, body));
+            accepted(new Call(rule.path("id").asText(), sha256(prompt), sha256(body), prompt, body));
             return body;
         } catch (RuntimeException failure) {
             failures.add(failure.getMessage());

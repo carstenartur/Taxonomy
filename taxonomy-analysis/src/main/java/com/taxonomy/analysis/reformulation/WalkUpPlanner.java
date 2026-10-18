@@ -2,12 +2,20 @@ package com.taxonomy.analysis.reformulation;
 
 import com.taxonomy.reformulation.Statement;
 import java.util.*;
+import java.math.BigDecimal;
 
 /** Deterministic DAG plan. Terminal analysis contributions are grouped at their nearest parent. */
 public class WalkUpPlanner {
     public static final String DOCUMENT_ROOT="@document";
-    public record Node(String id,List<String> parentIds,String description,int score,List<Statement> directContributions) {
-        public Node { parentIds=List.copyOf(parentIds);directContributions=List.copyOf(directContributions); }
+    public record Node(String id,List<String> parentIds,String description,BigDecimal score,List<Statement> directContributions) {
+        public Node {
+            parentIds=List.copyOf(parentIds);directContributions=List.copyOf(directContributions);
+            score=FrozenReformulationScores.canonical(score);
+        }
+        /** Retain the existing construction contract for integral assessments. */
+        public Node(String id,List<String> parentIds,String description,int score,List<Statement> directContributions) {
+            this(id,parentIds,description,BigDecimal.valueOf(score),directContributions);
+        }
     }
     public record Step(String nodeId,List<String> terminalIds,List<String> childTaskIds,List<String> directNodeIds) {
         public Step { terminalIds=List.copyOf(terminalIds);childTaskIds=List.copyOf(childTaskIds);directNodeIds=List.copyOf(directNodeIds); }
@@ -26,7 +34,7 @@ public class WalkUpPlanner {
         var ordered=new ArrayList<String>();var completed=new HashSet<String>();
         for(String id:byId.keySet()) visit(id,children,new LinkedHashSet<>(),completed,ordered);
         var relevant=new HashSet<String>();
-        for(String id:ordered) if(byId.get(id).score()>0 || !byId.get(id).directContributions().isEmpty() || children.get(id).stream().anyMatch(relevant::contains)) relevant.add(id);
+        for(String id:ordered) if(byId.get(id).score().signum()>0 || !byId.get(id).directContributions().isEmpty() || children.get(id).stream().anyMatch(relevant::contains)) relevant.add(id);
         if(relevant.isEmpty()) return List.of(new Step(DOCUMENT_ROOT,List.of(),List.of(),List.of()));
         var tasks=new HashSet<String>();
         for(String id:ordered) if(relevant.contains(id) && (children.get(id).stream().anyMatch(relevant::contains) || byId.get(id).parentIds().isEmpty())) tasks.add(id);
@@ -35,7 +43,7 @@ public class WalkUpPlanner {
             var terminals=children.get(id).stream().filter(relevant::contains).filter(c->!tasks.contains(c)).toList();
             var childTasks=children.get(id).stream().filter(tasks::contains).toList();
             var node=byId.get(id);
-            result.add(new Step(id,terminals,childTasks,node.score()>0 || !node.directContributions().isEmpty()?List.of(id):List.of()));
+            result.add(new Step(id,terminals,childTasks,node.score().signum()>0 || !node.directContributions().isEmpty()?List.of(id):List.of()));
         }
         return List.copyOf(result);
     }

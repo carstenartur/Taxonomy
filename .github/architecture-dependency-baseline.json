@@ -300,7 +300,7 @@
       "fromPackage": "com.taxonomy.composition.analysis.artemis",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.dag",
-      "classDependencyCount": 53
+      "classDependencyCount": 55
     },
     {
       "fromContext": "app-composition",

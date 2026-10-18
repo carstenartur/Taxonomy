@@ -1,0 +1,24 @@
+{
+  "note": "Administrative example, not automatically loaded; source and subtype mapping require local validation.",
+  "instanceId": "replace-with-confirmed-source-instance",
+  "origin": "https://your-subdomain.leanix.net/",
+  "profile": "leanix-read",
+  "profileVersion": "1",
+  "configurationRevision": "company-projection-1",
+  "authority": "LINK_ONLY",
+  "readUsageRelations": true,
+  "selectedIds": [],
+  "projections": [
+    {"sourceType": "Application", "defaultKind": "APPLICATION", "subtypeField": null, "subtypeKinds": {}, "textFields": {}},
+    {"sourceType": "ITComponent", "defaultKind": "OTHER", "subtypeField": null, "subtypeKinds": {}, "textFields": {}}
+  ],
+  "limits": {
+    "pageSize": 100,
+    "maxRequests": 100,
+    "maxObjects": 2000,
+    "maxRelations": 5000,
+    "maxResponseBytes": 1048576,
+    "maxTotalBytes": 8388608,
+    "timeoutSeconds": 60
+  }
+}

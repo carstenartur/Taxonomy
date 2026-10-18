@@ -330,7 +330,7 @@ public final class ScenarioArchitectureQuality {
                 check(openTasks.contains(key), "Unreferenced unresolved search task " + key); retainedOpenTasks.add(key);
             }
         }
-        Set<String> expectedKeys = expectedTaskKeys(sources);
+        Set<String> expectedKeys = expectedTaskKeys(retained);
         check(keys.equals(expectedKeys), "Retained search task keys differ from the exact compatible source/root plan; missing="
                 + difference(expectedKeys, keys) + "; unexpected=" + difference(keys, expectedKeys));
         check(completedTasks == completed && retainedOpenTasks.equals(openTasks), "Search task counters differ from their retained states");
@@ -340,19 +340,49 @@ public final class ScenarioArchitectureQuality {
         return new SearchEvidence(Map.copyOf(sources), openPoints);
     }
 
-    private static Set<String> expectedTaskKeys(Map<String, SourceAssessment> sources) {
+    /** Shared by the standalone saved-snapshot relation gate and the export gate. */
+    static Set<String> expectedTaskKeys(JsonNode sources) {
         var rules = new RelationCompatibilityMatrix(); var keys = new LinkedHashSet<String>();
         Set<String> roots = Set.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA");
-        for (SourceAssessment source : sources.values()) {
-            check(roots.contains(source.node().root()), "Source has an unknown catalogue root: " + source.node().id());
+        for (JsonNode source : sources) {
+            JsonNode node = object(source, "node");
+            String id = text(node, "id"), sourceRoot = text(node, "root");
+            check(roots.contains(sourceRoot), "Source has an unknown catalogue root: " + id);
             for (String root : roots) for (RelationType type : RelationType.values()) {
-                if (rules.allowedTargetRoots(source.node().root(), type).contains(root)
-                        || rules.allowedTargetRoots(root, type).contains(source.node().root())) {
-                    keys.add(source.node().id() + "|" + root); break;
+                if (rules.allowedTargetRoots(sourceRoot, type).contains(root)
+                        || rules.allowedTargetRoots(root, type).contains(sourceRoot)) {
+                    keys.add(id + "|" + root); break;
                 }
             }
         }
         return keys;
+    }
+
+    static boolean hasExactTaskPlan(JsonNode search) {
+        if (!search.path("tasks").isArray() || !search.path("sources").isArray()) return false;
+        var actual = new HashSet<String>();
+        long completed = 0, unresolved = 0, pending = 0;
+        for (JsonNode task : search.path("tasks")) {
+            if (!task.path("sourceId").isString() || !task.path("targetRoot").isString()
+                    || !actual.add(task.path("sourceId").asText() + "|" + task.path("targetRoot").asText())) return false;
+            switch (task.path("state").asText()) {
+                case "COMPLETED" -> completed++;
+                case "UNRESOLVED" -> unresolved++;
+                case "PENDING" -> pending++;
+                default -> { return false; }
+            }
+        }
+        // Missing root evidence is incomplete, not an excuse to infer a smaller plan.
+        for (JsonNode source : search.path("sources")) {
+            if (!source.at("/node/root").isString() || !Set.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")
+                    .contains(source.at("/node/root").asText())) return false;
+        }
+        JsonNode progress = search.path("progress");
+        return actual.equals(expectedTaskKeys(search.path("sources")))
+                && actual.size() == progress.path("totalSearches").asLong(-1)
+                && completed == progress.path("completedSearches").asLong(-1)
+                && unresolved == progress.path("unresolvedSearches").asLong(-1)
+                && pending == progress.path("pendingSearches").asLong(-1);
     }
 
     private static Set<String> difference(Set<String> first, Set<String> second) {

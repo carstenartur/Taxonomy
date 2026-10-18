@@ -433,6 +433,11 @@
     font-size: 0.875em;
     line-height: 1.25;
 }
+#analysisWorkProgress .analysis-taxonomy-state {
+    margin-inline-start: 0.5rem;
+    font-size: 0.875em;
+    font-weight: 400;
+}
 #analysisWorkProgress .analysis-taxonomy-progress .analysis-work-meter-count,
 #analysisWorkProgress .analysis-taxonomy-progress .analysis-work-meter-detail {
     font-size: 0.8125em;

@@ -99,6 +99,11 @@ function workBar(fixture, kind, root = '') {
         && element.getAttribute('data-progress-kind') === kind
         && (element.getAttribute('data-taxonomy-root') || '') === root);
 }
+function taxonomyRow(fixture, root) {
+    return descendants(fixture.elements.get('analysisWorkProgress')).find(element => element.children.some(child =>
+        child.tag === 'progress' && child.getAttribute('data-progress-kind') === 'nodes'
+        && child.getAttribute('data-taxonomy-root') === root));
+}
 function response(data, status = 200) {
     return new Response(status === 202 ? null : JSON.stringify(data), { status });
 }
@@ -352,6 +357,93 @@ function relationshipWork() {
             { root: 'IP', total: 4, completed: 2, unresolved: 1, pending: 1 }
         ] };
 }
+
+test('taxonomy rows distinguish waiting active zero and failed assessments in catalogue order', async () => {
+    const parts = [
+        { root: 'BP', total: 3, assessed: 1, excluded: 2, open: 0, positive: 0, allocatedPercent: 0, rootPercent: 0 },
+        { root: 'BR', total: 2, assessed: 0, excluded: 0, open: 2, positive: 0, allocatedPercent: 0, rootPercent: null },
+        { root: 'CI', total: 4, assessed: 1, excluded: 0, open: 3, positive: 1, allocatedPercent: 0, rootPercent: 70 },
+        { root: 'CP', total: 3, assessed: 0, excluded: 0, open: 3, positive: 0, allocatedPercent: 0, rootPercent: null }
+    ];
+    let value = { ...snapshot(), node: 'CI-child', calls: [{ id: 1, node: 'BR', status: 'FAILED' },
+        { id: 2, node: 'CI-child', status: 'STARTED' }],
+        nodeProgress: { total: 12, assessed: 2, excluded: 2, open: 8, taxonomies: parts.slice().reverse() } };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    f.window.TaxonomyState = { taxonomyData: parts.map(part => ({ code: part.root })) };
+    await f.step(0);
+    assert.equal(taxonomyRow(f, 'BP').getAttribute('data-assessment-state'), 'COMPLETED_ZERO');
+    assert.match(taxonomyRow(f, 'BP').textContent, /Completed.*0%/);
+    assert.equal(taxonomyRow(f, 'BR').getAttribute('data-assessment-state'), 'FAILED');
+    assert.match(taxonomyRow(f, 'BR').textContent, /Assessment failed/);
+    assert.doesNotMatch(taxonomyRow(f, 'BR').textContent, /0%/);
+    assert.equal(taxonomyRow(f, 'CI').getAttribute('data-assessment-state'), 'RUNNING');
+    assert.equal(taxonomyRow(f, 'CI').getAttribute('data-active'), 'true');
+    assert.match(taxonomyRow(f, 'CI').textContent, /Assessing/);
+    assert.equal(taxonomyRow(f, 'CP').getAttribute('data-assessment-state'), 'NOT_STARTED');
+    assert.match(taxonomyRow(f, 'CP').textContent, /Not started/);
+    assert.doesNotMatch(taxonomyRow(f, 'CP').textContent, /0%/);
+    assert.deepEqual(descendants(f.elements.get('analysisWorkProgress')).filter(element => element.tag === 'progress'
+        && element.getAttribute('data-taxonomy-root')).map(element => element.getAttribute('data-taxonomy-root')),
+        ['BP', 'BR', 'CI', 'CP']);
+
+    value = { ...value, sequence: 2, status: 'PARTIAL', phase: 'FINISHED', calls: [] };
+    await f.step(1000);
+    assert.equal(taxonomyRow(f, 'CI').getAttribute('data-assessment-state'), 'PARTIAL');
+    assert.match(taxonomyRow(f, 'CI').textContent, /Incomplete/);
+    assert.notEqual(taxonomyRow(f, 'CI').getAttribute('data-active'), 'true');
+    assert.equal(taxonomyRow(f, 'CP').getAttribute('data-assessment-state'), 'NOT_STARTED');
+    f.monitor.stop();
+});
+
+test('current node changes refresh localized taxonomy assessment state without new scores', async () => {
+    let value = { ...snapshot(), node: 'custom-node', calls: [], nodeProgress: {
+        total: 2, assessed: 0, excluded: 0, open: 2, taxonomies: [
+            { root: 'BP', total: 1, assessed: 0, excluded: 0, open: 1, rootPercent: null },
+            { root: 'IP', total: 1, assessed: 0, excluded: 0, open: 1, rootPercent: null }
+        ] } };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    f.document.documentElement.lang = 'de';
+    f.window.TaxonomyState = { taxonomyData: [{ code: 'BP', children: [{ code: 'custom-node', taxonomyRoot: 'BP' }] }, { code: 'IP' }] };
+    await f.step(0);
+    assert.match(taxonomyRow(f, 'BP').textContent, /Wird bewertet/);
+    assert.match(taxonomyRow(f, 'IP').textContent, /Noch nicht begonnen/);
+    value = { ...value, sequence: 2, node: 'IP' };
+    await f.step(1000);
+    assert.equal(taxonomyRow(f, 'IP').getAttribute('data-assessment-state'), 'RUNNING');
+    assert.notEqual(taxonomyRow(f, 'BP').getAttribute('data-active'), 'true');
+    f.monitor.stop();
+});
+
+test('durable failed taxonomy tasks stay incomplete even when their root has a positive score', async () => {
+    const f = fixture(async () => response({ ...clusterSnapshot(), node: 'CP',
+        calls: [{ id: 1, node: 'CP', status: 'STARTED' }], nodeProgress: {
+        total: 4, assessed: 1, excluded: 0, open: 3, taxonomies: [
+            { root: 'CP', total: 2, assessed: 1, excluded: 0, open: 1, rootPercent: 80 },
+            { root: 'IP', total: 2, assessed: 0, excluded: 0, open: 2, rootPercent: null }
+        ] }, cluster: { completedRoots: 1, totalRoots: 2, tasks: [
+            { taskType: 'SUBTAXONOMY_ANALYSIS', root: { code: 'CP' }, queued: 0, running: 0, completed: 0, failed: 1 },
+            { taskType: 'SUBTAXONOMY_ANALYSIS', root: { code: 'IP' }, queued: 0, running: 1, completed: 0, failed: 0 }
+        ] } }), 'workspace-a', true);
+    await f.step(0);
+    assert.equal(taxonomyRow(f, 'CP').getAttribute('data-assessment-state'), 'PARTIAL');
+    assert.match(taxonomyRow(f, 'CP').textContent, /Incomplete/);
+    assert.equal(taxonomyRow(f, 'IP').getAttribute('data-assessment-state'), 'RUNNING');
+    f.monitor.stop();
+});
+
+test('a durable root failure overrides uncommitted zero coverage from a crashed worker', async () => {
+    const f = fixture(async () => response({ ...clusterSnapshot(), node: 'CP', calls: [], nodeProgress: {
+        total: 1, assessed: 1, excluded: 0, open: 0, taxonomies: [
+            { root: 'CP', total: 1, assessed: 1, excluded: 0, open: 0, rootPercent: 0 }
+        ] }, cluster: { completedRoots: 1, totalRoots: 1, tasks: [
+            { taskType: 'SUBTAXONOMY_ANALYSIS', root: { code: 'CP' }, queued: 0, running: 0, completed: 0, failed: 1 }
+        ] } }), 'workspace-a', true);
+    await f.step(0);
+    assert.equal(taxonomyRow(f, 'CP').getAttribute('data-assessment-state'), 'PARTIAL');
+    assert.match(taxonomyRow(f, 'CP').textContent, /Incomplete/);
+    assert.doesNotMatch(taxonomyRow(f, 'CP').textContent, /Completed.*relevance/);
+    f.monitor.stop();
+});
 
 test('one catalogue-ordered node bar per taxonomy survives relation work and recolours only completed positive sources', async () => {
     let value = { ...snapshot(), nodeProgress: coverage() };

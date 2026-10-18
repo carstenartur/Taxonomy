@@ -52,6 +52,39 @@ class ScenarioRelationQualityTest {
         assertArrayEquals(before, Files.readAllBytes(directory.resolve("relation-quality.json")));
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void truncatedCompatiblePlanCannotPassWithSelfConsistentCounters(boolean openIdentity) throws Exception {
+        var snapshot = inputs();
+        if (openIdentity) identityQuestion(snapshot, true);
+        var search = (ObjectNode) snapshot.at("/analysis/relationSearchReport");
+        var tasks = (ArrayNode) search.path("tasks");
+        for (int index = tasks.size() - 1; index >= 0; index--) {
+            if (tasks.get(index).path("state").asString().equals("COMPLETED")) {
+                tasks.remove(index);
+                var progress = (ObjectNode) search.path("progress");
+                progress.put("totalSearches", progress.path("totalSearches").asInt() - 1);
+                progress.put("completedSearches", progress.path("completedSearches").asInt() - 1);
+                break;
+            }
+        }
+        assertInconclusive(snapshot);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void foreignTargetRootCannotReplaceACompatibleTask(boolean openIdentity) throws Exception {
+        var snapshot = inputs();
+        if (openIdentity) identityQuestion(snapshot, true);
+        for (var task : snapshot.at("/analysis/relationSearchReport/tasks")) {
+            if (task.path("state").asString().equals("COMPLETED")) {
+                ((ObjectNode) task).put("targetRoot", "FOREIGN");
+                break;
+            }
+        }
+        assertInconclusive(snapshot);
+    }
+
     @Test void unfinishedSearchCannotPassDespiteSuccessfulTopLevelStatus() throws Exception {
         var snapshot = inputs();
         ((ObjectNode) snapshot.at("/analysis/relationSearchReport/result")).putArray("unfinished").addObject();
@@ -497,6 +530,7 @@ class ScenarioRelationQualityTest {
         tasks.addObject().put("sourceId", "UA-1580").put("targetRoot", "IP").put("state", "COMPLETED");
         ((ObjectNode) search.path("progress")).put("totalSearches", tasks.size()).put("completedSearches", 1)
                 .put("unresolvedSearches", questionCount).put("pendingSearches", 0);
+        completeTaskPlan(search);
         var warnings = analysis.putArray("warnings");
         warnings.add("RELATION_SEARCH_PARTIAL: 136/256 evaluation attempts; " + questionCount
                 + " unfinished search batches. 0 unassessed sources; 0 pending and " + questionCount + " unresolved source/target searches.");
@@ -537,6 +571,7 @@ class ScenarioRelationQualityTest {
         ((ObjectNode) search.path("progress")).put("totalSources", retained.size()).put("assessedSources", retained.size())
                 .put("totalSearches", tasks.size()).put("completedSearches", 1)
                 .put("unresolvedSearches", taskKeys.size()).put("pendingSearches", 0);
+        completeTaskPlan(search);
         var warnings = analysis.putArray("warnings");
         warnings.add("RELATION_SEARCH_PARTIAL: 136/256 evaluation attempts; " + unfinished.size()
                 + " unfinished search batches. 0 unassessed sources; 0 pending and " + taskKeys.size() + " unresolved source/target searches.");
@@ -580,12 +615,36 @@ class ScenarioRelationQualityTest {
         for (String source : sourceIds) sources.addObject().put("question", "").putObject("node").put("id", source);
         search.putObject("progress").put("totalSources", sourceIds.size()).put("assessedSources", sourceIds.size())
                 .put("totalSearches", 38).put("completedSearches", 38).put("unresolvedSearches", 0).put("pendingSearches", 0);
+        completeTaskPlan(search);
         saveSnapshot(snapshot);
         var run = json.createObjectNode().put("scenario", "flood-information-v1")
                 .put("fixtureSha256", "c".repeat(64)).put("snapshotId", "snapshot-1")
                 .put("sourceRevision", "d".repeat(40)).put("llmCalls", 350);
         Files.writeString(directory.resolve("run.json"), run.toString());
         return snapshot;
+    }
+
+    private void completeTaskPlan(ObjectNode search) {
+        var unresolved = new TreeSet<String>();
+        for (var task : search.path("tasks")) if (task.path("state").asString().equals("UNRESOLVED"))
+            unresolved.add(task.path("sourceId").asString() + "|" + task.path("targetRoot").asString());
+        var tasks = search.putArray("tasks");
+        var matrix = new com.taxonomy.relations.service.RelationCompatibilityMatrix();
+        for (var source : search.path("sources")) {
+            var node = (ObjectNode) source.path("node");
+            String id = node.path("id").asString(), root = id.substring(0, id.indexOf('-'));
+            node.put("root", root);
+            for (String target : List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")) {
+                for (var type : com.taxonomy.model.RelationType.values()) {
+                    if (matrix.allowedTargetRoots(root, type).contains(target) || matrix.allowedTargetRoots(target, type).contains(root)) {
+                        tasks.addObject().put("sourceId", id).put("targetRoot", target)
+                                .put("state", unresolved.contains(id + "|" + target) ? "UNRESOLVED" : "COMPLETED");
+                        break;
+                    }
+                }
+            }
+        }
+        ((ObjectNode) search.path("progress")).put("totalSearches", tasks.size()).put("completedSearches", tasks.size() - unresolved.size());
     }
 
     private void saveSnapshot(ObjectNode snapshot) throws Exception {

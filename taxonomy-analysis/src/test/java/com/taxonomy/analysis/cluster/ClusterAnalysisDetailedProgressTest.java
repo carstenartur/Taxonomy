@@ -16,6 +16,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClusterAnalysisDetailedProgressTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
 
+    private static SubtaxonomyAnalysisTask releaseIpAfterUnassessedCp(Database db) {
+        var failed = new AnalysisResult(Map.of(), List.of()); failed.setStatus("ERROR");
+        db.store.accept(db.complete(db.task(CP), failed));
+        return db.task(IP);
+    }
+
     @Test void relationAggregationNeverPublishesProgressIntoTheCallingWorker() {
         var node = new RelationSearchModel.Node("source", "CP", "Source", "", false);
         var contribution = new RelationSearchModel.Contribution(node, "requirement", "requirement", "");
@@ -57,7 +63,7 @@ class ClusterAnalysisDetailedProgressTest {
     @Test void distributedSnapshotsCountPositiveNodesAndLeafWeightFromFrozenWorkerEvidence() {
         try (var db = new Database(); var observation = observation(db.store)) {
             var context = context("score-progress"); db.admitFrozen(context);
-            var task = db.task(IP); var input = db.store.start(task);
+            var task = releaseIpAfterUnassessedCp(db); var input = db.store.start(task);
             var worker = db.store.diagnostics(task, input.deliveryAttempt());
             var scores = new LlmCallDetail();
             scores.setScores(Map.of("IP", 80d, "fixture-ip-child", 0.125d));
@@ -78,7 +84,7 @@ class ClusterAnalysisDetailedProgressTest {
     @Test void liveAssessmentsDeduplicateByFrozenIdentityAndPersistProviderWaitReasons() {
         try (var db = new Database(); var observation = observation(db.store)) {
             var context = context("live-progress"); db.admitFrozen(context);
-            var task = db.task(IP); var input = db.store.start(task);
+            var task = releaseIpAfterUnassessedCp(db); var input = db.store.start(task);
             var worker = db.store.diagnostics(task, input.deliveryAttempt());
             worker.assessment(scores(Map.of("IP", 0, "foreign", 80)));
             worker.phase("WAITING_PROVIDER_CAPACITY", "IP");
@@ -102,7 +108,7 @@ class ClusterAnalysisDetailedProgressTest {
 
     @Test void ordinaryWorkerCallsPublishParsedCoverageBeforeARootCommitsAndIgnoreSupersededResponses() {
         try (var db = new Database(); var observation = observation(db.store)) {
-            var context = context("ordinary-call-progress"); db.admitFrozen(context); var task = db.task(IP);
+            var context = context("ordinary-call-progress"); db.admitFrozen(context); var task = releaseIpAfterUnassessedCp(db);
             var input = db.store.start(task); var first = db.store.diagnostics(task, input.deliveryAttempt());
             var guard = new com.taxonomy.analysis.service.AnalysisMemoryGuard(
                     new com.taxonomy.analysis.service.AnalysisMemoryGuard.Policy(80, 90, 1024 * 1024, 1000, 60000),
@@ -123,7 +129,7 @@ class ClusterAnalysisDetailedProgressTest {
 
     @Test void supersededAndDuplicateSessionsCannotOverwriteNewerCoverageOrWaitState() {
         try (var db = new Database(); var observation = observation(db.store)) {
-            var context = context("fenced-progress"); db.admitFrozen(context); var task = db.task(IP);
+            var context = context("fenced-progress"); db.admitFrozen(context); var task = releaseIpAfterUnassessedCp(db);
             var firstInput = db.store.start(task); var first = db.store.diagnostics(task, firstInput.deliveryAttempt());
             first.assessment(scores(Map.of("IP", 80)));
             var secondInput = db.store.start(task); var second = db.store.diagnostics(task, secondInput.deliveryAttempt());

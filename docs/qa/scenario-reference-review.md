@@ -1,5 +1,7 @@
 # Flood scenario: independent functional architecture reference
 
+Historical review record: status statements and verification counts below describe their recorded reference/corpus revisions, not present acceptance. The present repair retains the full scenario and quality gates with a measured 40-minute child / 60-minute workflow allowance. Exact-head CI determines current acceptance; these historical results do not claim full scenario completion.
+
 ## Purpose and authority
 
 The machine-readable reference is [flood-quality-reference.json](../../taxonomy-app/src/test/resources/scenarios/flood-quality-reference.json), version `flood-functional-architecture-v3`. It was authored independently from the unchanged FLOOD-001 requirement, the actual prompt contracts and full catalogue descriptions. It is not generated from `flood-information.json`, its scores, its answers or its `relationPlayback` claims.

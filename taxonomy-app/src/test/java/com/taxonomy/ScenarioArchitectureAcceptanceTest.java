@@ -65,8 +65,10 @@ class ScenarioArchitectureAcceptanceTest {
     final HttpClient http = HttpClient.newBuilder().cookieHandler(sessionCookies)
             .connectTimeout(Duration.ofSeconds(10)).build();
     final ScenarioHttpSession httpSession = new ScenarioHttpSession(http, sessionCookies, json, "admin", PASSWORD);
-    final Path output = Path.of("target/scenario-acceptance");
+    final Path output = Path.of(System.getProperty("scenario.output", "target/scenario-acceptance"));
     final Map<String, com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.Cycle> observedAnalysisCycles = new LinkedHashMap<>();
+    private boolean initialCheckpointPublished;
+    private JsonNode evidenceIdentity;
 
     @Test void generatesAndReopensScenarioArchitectureThroughTheRealCopilot() throws Exception {
         ScenarioAcceptanceProcess.verify();
@@ -74,7 +76,9 @@ class ScenarioArchitectureAcceptanceTest {
 
     void verifyScenario() throws Exception {
         Files.createDirectories(output);
+        playback.recordCallsTo(output.resolve("llm-calls.jsonl"));
         JsonNode fixture = playback.fixture();
+        evidenceIdentity = ScenarioAcceptanceProcess.runIdentity(fixture, System.getProperty("scenario.runId", "direct-test"));
         JsonNode catalogue = get("/api/taxonomy");
         save("prompt-catalogue.json", catalogue);
         var names = new LinkedHashMap<String, String>();
@@ -94,15 +98,14 @@ class ScenarioArchitectureAcceptanceTest {
             String operationPath = "/api/projects/" + projectId + "/copilot-operations/" + run.operationId();
             JsonNode operation = ScenarioContinuationWalkthrough.finishIndependentBudgetWork(this, projectId, operationPath, browser);
             save("operation.json", operation);
-            save("llm-calls.json", json.valueToTree(playback.calls()));
             save("playback-coverage.json", json.valueToTree(playback.relationCoverage()));
             // Keep the actual evidence even when a quality gate rejects a partial run.
             String snapshotId = operation.path("selectedSnapshotId").asText();
             assertThat(snapshotId).isNotBlank();
             String snapshotPath = "/api/projects/" + projectId + "/snapshots/" + snapshotId;
             JsonNode snapshot = get(snapshotPath);
-            save("snapshot.json", snapshot);
-            saveRun(fixture, projectId, requirementId, snapshotId);
+            checkpointSnapshot(projectId, requirementId, snapshot);
+            ScenarioAcceptanceProcess.materializeCheckpoint(output, evidenceIdentity);
             assertThat(playback.failures()).isEmpty();
             // The independent reference retains one genuine, non-core F5 input-identity
             // question. Its exact scope is checked below; it must not become false success.
@@ -227,7 +230,7 @@ class ScenarioArchitectureAcceptanceTest {
             playback.verifyCoverage(2);
             playback.verifyRelationCoverage(2);
             assertFrozenWordSourceSurvivesLiveStateMutations(projectId,snapshotId,projection);
-            saveRun(fixture, projectId, requirementId, snapshotId);
+            saveRun(projectId, requirementId, snapshotId);
         }
     }
 
@@ -245,14 +248,33 @@ class ScenarioArchitectureAcceptanceTest {
         }
     }
 
-    private void saveRun(JsonNode fixture, long projectId, long requirementId, String snapshotId) throws Exception {
+    void checkpointSnapshot(long projectId, long requirementId, JsonNode snapshot) throws Exception {
+        String snapshotId = snapshot.at("/summary/id").asText();
+        assertThat(snapshotId).as("Checkpoint identifies its actual immutable snapshot").isNotBlank();
+        JsonNode run = runManifest(projectId, requirementId, snapshotId);
+        var checkpoint = json.createObjectNode().put("schemaVersion", 1)
+                .put("snapshotSha256", ScenarioLlmPlayback.sha256(snapshot.toString()));
+        checkpoint.set("run", run); checkpoint.set("snapshot", snapshot);
+        // This single atomic replacement is the recovery authority. Conventional
+        // files are mirrors, never guessed or rebound from an unrelated snapshot.
+        save("checkpoint.json", checkpoint);
+        if (!initialCheckpointPublished) {
+            save("snapshot.json", snapshot); save("run.json", run);
+            initialCheckpointPublished = true;
+        }
+    }
+
+    private void saveRun(long projectId, long requirementId, String snapshotId) throws Exception {
         save("playback-coverage.json", json.valueToTree(playback.relationCoverage()));
-        save("run.json", json.valueToTree(Map.of("scenario", fixture.path("id").asText(),
-                "fixtureSha256", ScenarioLlmPlayback.sha256(fixture.toString()),
-                "projectId", projectId, "requirementId", requirementId, "snapshotId", snapshotId,
-                "llmCalls", playback.calls().size(), "mockBoundary", "remote LLM HTTP response only",
-                "sourceRevision", System.getenv().getOrDefault("GITHUB_SHA", "local-working-tree"),
-                "ciRun", System.getenv().getOrDefault("GITHUB_RUN_ID", "local"))));
+        save("run.json", runManifest(projectId, requirementId, snapshotId));
+    }
+
+    private JsonNode runManifest(long projectId, long requirementId, String snapshotId) {
+        if (evidenceIdentity == null) evidenceIdentity = ScenarioAcceptanceProcess.runIdentity(
+                playback.fixture(), System.getProperty("scenario.runId", "direct-test"));
+        var run = (tools.jackson.databind.node.ObjectNode) evidenceIdentity.deepCopy();
+        return run.put("projectId", projectId).put("requirementId", requirementId).put("snapshotId", snapshotId)
+                .put("llmCalls", playback.calls().size()).put("mockBoundary", "remote LLM HTTP response only");
     }
 
     private static JsonNode semanticArchitecture(JsonNode architecture) {
@@ -362,7 +384,7 @@ class ScenarioArchitectureAcceptanceTest {
         return httpSession.request(port, method, path);
     }
     void save(String file, JsonNode value) throws Exception {
-        json.writerWithDefaultPrettyPrinter().writeValue(output.resolve(file).toFile(), value);
+        ScenarioAcceptanceProcess.saveArtifact(output.resolve(file), value);
     }
     static void catalogueNames(JsonNode nodes, Map<String, String> names) {
         for (JsonNode node : nodes) {

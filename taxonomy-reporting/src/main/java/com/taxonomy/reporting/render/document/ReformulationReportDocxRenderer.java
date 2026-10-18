@@ -52,6 +52,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             w.heading(t(de, "Fragen und Antworten", "Questions and answers"), 1, "rf_questions");
             if (report.questions().isEmpty()) w.paragraph(t(de, "Keine Fragen gespeichert; dies bedeutet keine Freigabe.",
                     "No questions recorded; this does not imply approval."));
+            var discoveryContexts = new LinkedHashMap<String, Integer>();
             for (var question : report.questions()) {
                 w.heading(question.id() + " — " + question.wording(), 2, bookmark("question", question.id()));
                 w.paragraph("Status: " + question.state());
@@ -62,7 +63,8 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                         + " · " + t(de, "Abhängige Fragen: ", "Dependent questions: ") + question.dependentQuestionIds());
                 question.discoveries().forEach(discovery -> {
                     w.paragraph(t(de, "Entdeckung: ", "Discovery: ")
-                            + discovery.location() + " · " + discovery.context() + " · " + discovery.rationale());
+                            + discovery.location() + " · " + discovery.rationale());
+                    discoveryContext(w, discoveryContexts, discovery.context(), de);
                     references(w, discovery.nodeIds(), graphNodes, de);
                     references(w, discovery.edgeIds(), graphEdges, de);
                 });
@@ -83,9 +85,9 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                             + origin.dependentQuestionIds());
                     origin.discoveries().forEach(discovery -> {
                         w.paragraph(t(de, "Entdeckt bei: ", "Discovered at: ") + discovery.location()
-                                + " · " + t(de, "Kontext: ", "Context: ") + discovery.context()
                                 + " · " + t(de, "Begründung: ", "Rationale: ") + discovery.rationale()
                                 + " · " + t(de, "Quellstellen: ", "Source spans: ") + discovery.sourceSpans());
+                        discoveryContext(w, discoveryContexts, discovery.context(), de);
                         references(w, discovery.nodeIds(), graphNodes, de);
                         references(w, discovery.edgeIds(), graphEdges, de);
                     });
@@ -184,6 +186,19 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             return output.toByteArray();
         } catch (Exception exception) {
             throw new IllegalStateException("Could not render frozen reformulation Word report", exception);
+        }
+    }
+    private static void discoveryContext(WordDocumentWriter w, Map<String, Integer> contexts,
+            String context, boolean de) {
+        Integer number = contexts.get(context);
+        if (number != null) {
+            w.link(w.paragraph(t(de, "Kontext: ", "Context: ")), "rf_context_" + number,
+                    t(de, "Siehe Kontext ", "See context ") + number);
+        } else {
+            number = contexts.size() + 1;
+            contexts.put(context, number);
+            var paragraph = w.paragraph(t(de, "Kontext ", "Context ") + number + ": " + context);
+            w.bookmark(paragraph, "rf_context_" + number);
         }
     }
     private static void answerSchema(WordDocumentWriter w, DecisionQuestion.AnswerSchema schema, boolean de) {

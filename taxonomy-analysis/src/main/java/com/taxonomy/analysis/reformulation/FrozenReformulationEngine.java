@@ -34,12 +34,8 @@ public class FrozenReformulationEngine {
         if(!catalogue.isArray()) throw new IllegalArgumentException("Malformed frozen catalogue");
         var descriptions=new TreeMap<String,String>();var parents=new TreeMap<String,Set<String>>();
         collect(catalogue,null,descriptions,parents,new LinkedHashSet<>());
-        var payload=json.readTree(baseline.snapshotPayload());
-        var raw=payload.has("rawScores")?payload.path("rawScores"):payload.path("scores");
-        var scores=new HashMap<String,Integer>();raw.properties().forEach(e->scores.put(e.getKey(),e.getValue().asInt()));
-        var mappings=json.readTree(baseline.frozenContext().getOrDefault("elementMappings","[]"));
-        for(var mapping:mappings) if(mapping.has("directScore")) scores.put(mapping.path("nodeCode").asText(),mapping.path("directScore").asInt());
-        var hierarchy=descriptions.keySet().stream().map(id->new WalkUpPlanner.Node(id,parents.get(id).stream().sorted().toList(),descriptions.get(id),scores.getOrDefault(id,0),List.<Statement>of())).toList();
+        var scores=FrozenReformulationScores.read(baseline,json);
+        var hierarchy=descriptions.keySet().stream().map(id->new WalkUpPlanner.Node(id,parents.get(id).stream().sorted().toList(),descriptions.get(id),scores.getOrDefault(id,java.math.BigDecimal.ZERO),List.<Statement>of())).toList();
         var plan=new WalkUpPlanner().plan(hierarchy);var byId=new HashMap<String,WalkUpPlanner.Node>();hierarchy.forEach(n->byId.put(n.id(),n));
         var sourceSpans=anchors(baseline.originalText());var sourceStatements=new ArrayList<Statement>();
         var verbatimSource=baseline.originalText().isEmpty()?List.<Statement.SourceSpan>of():List.of(new Statement.SourceSpan(0,baseline.originalText().length(),baseline.originalText()));
@@ -66,12 +62,15 @@ public class FrozenReformulationEngine {
                 var generated=steps.execute("NODE",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps));
                 var evidence=new ArrayList<Statement>(retainedStatements);
                 children.forEach(c->evidence.addAll(c.statementProposals()));
-                var result=RejectedWordingGuard.review(generated,evidence,InheritedDecisionContext.rejected(input,json));
+                var questionEvidence=new ArrayList<DecisionQuestion>(openDecisions);
+                children.forEach(c->questionEvidence.addAll(c.questionProposals()));
+                var result=retainKnownEvidence(RejectedWordingGuard.review(generated,evidence,
+                        InheritedDecisionContext.rejected(input,json)),evidence,questionEvidence);
                 var carriedStatements=new LinkedHashMap<String,Statement>();var carriedQuestions=new LinkedHashMap<String,DecisionQuestion>();
                 retainedStatements.forEach(v->carriedStatements.put(v.id(),v));openDecisions.forEach(q->carriedQuestions.put(q.id(),q));
-                children.forEach(c->{c.statementProposals().forEach(v->carriedStatements.put(v.id(),v));c.questionProposals().forEach(q->carriedQuestions.put(q.id(),q));});
-                result.statementProposals().forEach(v->carriedStatements.put(v.id(),v));
-                result.questionProposals().forEach(q->carriedQuestions.put(q.id(),q));
+                children.forEach(c->{c.statementProposals().forEach(v->carriedStatements.putIfAbsent(v.id(),v));c.questionProposals().forEach(q->carriedQuestions.putIfAbsent(q.id(),q));});
+                result.statementProposals().forEach(v->carriedStatements.putIfAbsent(v.id(),v));
+                result.questionProposals().forEach(q->carriedQuestions.putIfAbsent(q.id(),q));
                 var complete=new NodeSynthesisResult(result.nodeId(),result.summary(),List.copyOf(carriedStatements.values()),result.preservedStatementIds(),List.copyOf(carriedQuestions.values()),result.preservedQuestionIds(),result.uncoveredSourceRefs(),result.conflictCandidates());
                 return new Completed(result,complete);
             };
@@ -159,13 +158,15 @@ public class FrozenReformulationEngine {
             var input=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(metadata),anchors(baseline.originalText()),direct,children,localBoundary,
                     answers.stream().filter(a->localQIds.contains(a.questionId())).toList(),localQuestions,
                     "Only reword this affected section. Preserve human wording and all retained evidence. REJECTED additions must not be reintroduced or paraphrased. Independent branch records stay unchanged.");
-            var generated=RejectedWordingGuard.review(steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps)),statements.values(),InheritedDecisionContext.rejected(input,json));
+            var generated=retainKnownEvidence(RejectedWordingGuard.review(
+                    steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps)),
+                    statements.values(),InheritedDecisionContext.rejected(input,json)),statements.values(),questions.values());
             var additions=new ArrayList<Statement>();
             for(var statement:generated.statementProposals()) {
                 var retained=statements.putIfAbsent(statement.id(),statement);
                 additions.add(retained==null?statement:retained);
             }
-            generated.questionProposals().forEach(q->questions.put(q.id(),q));
+            generated.questionProposals().forEach(q->questions.putIfAbsent(q.id(),q));
             var sectionStatements=new LinkedHashSet<>(section.statementIds());additions.forEach(s->sectionStatements.add(s.id()));
             var sectionQuestions=new LinkedHashSet<>(section.questionIds());generated.questionProposals().forEach(q->sectionQuestions.add(q.id()));
             String summary=generated.summary();
@@ -178,11 +179,34 @@ public class FrozenReformulationEngine {
         } else result=new NodeSynthesisResult(id,section.summary(),direct,List.of(),localQuestions,List.of(),List.of(),List.of());
         // Ancestors consume completed details including original preserved evidence, not only newly generated additions.
         var allStatements=new LinkedHashMap<String,Statement>();direct.forEach(s->allStatements.put(s.id(),s));
-        children.forEach(c->c.statementProposals().forEach(s->allStatements.put(s.id(),s)));result.statementProposals().forEach(s->allStatements.put(s.id(),s));
+        children.forEach(c->c.statementProposals().forEach(s->allStatements.putIfAbsent(s.id(),s)));result.statementProposals().forEach(s->allStatements.putIfAbsent(s.id(),s));
         var allQuestions=new LinkedHashMap<String,DecisionQuestion>();localQuestions.forEach(q->allQuestions.put(q.id(),q));
-        children.forEach(c->c.questionProposals().forEach(q->allQuestions.put(q.id(),q)));result.questionProposals().forEach(q->allQuestions.put(q.id(),q));
+        children.forEach(c->c.questionProposals().forEach(q->allQuestions.putIfAbsent(q.id(),q)));result.questionProposals().forEach(q->allQuestions.putIfAbsent(q.id(),q));
         result=new NodeSynthesisResult(id,result.summary(),List.copyOf(allStatements.values()),result.preservedStatementIds(),List.copyOf(allQuestions.values()),result.preservedQuestionIds(),result.uncoveredSourceRefs(),result.conflictCandidates());
         results.put(id,result);visiting.remove(id);return result;
+    }
+    /** Replayed proposals cannot overwrite human wording or previously decided question records. */
+    private static NodeSynthesisResult retainKnownEvidence(NodeSynthesisResult generated,
+            Collection<Statement> retainedStatements,Collection<DecisionQuestion> retainedQuestions) {
+        var knownStatements=new LinkedHashMap<String,Statement>();
+        retainedStatements.forEach(s->knownStatements.putIfAbsent(s.id(),s));
+        var knownQuestions=new LinkedHashMap<String,DecisionQuestion>();
+        retainedQuestions.forEach(q->q.referenceIds().forEach(id->knownQuestions.putIfAbsent(id,q)));
+        var statements=new LinkedHashMap<String,Statement>();
+        for(var proposed:generated.statementProposals()) {
+            var retained=knownStatements.getOrDefault(proposed.id(),proposed);
+            statements.putIfAbsent(retained.id(),retained);
+        }
+        var questions=new LinkedHashMap<String,DecisionQuestion>();
+        for(var proposed:generated.questionProposals()) {
+            // A merged question may be replayed under one of its historical IDs.
+            // Keep the canonical record, aliases, discoveries and decision state together.
+            var retained=knownQuestions.getOrDefault(proposed.id(),proposed);
+            questions.putIfAbsent(retained.id(),retained);
+        }
+        return new NodeSynthesisResult(generated.nodeId(),generated.summary(),List.copyOf(statements.values()),
+                generated.preservedStatementIds(),List.copyOf(questions.values()),generated.preservedQuestionIds(),
+                generated.uncoveredSourceRefs(),generated.conflictCandidates());
     }
     /** Include only directed edges touching this step, collapsed terminals or carried child evidence. */
     private Map<String,String> boundariesFor(WalkUpPlanner.Step step, WalkUpPlanner.Node node,

@@ -295,7 +295,7 @@ public final class ScenarioRelationQuality {
     /** This exception accepts a named open identity, never an arbitrary partial run or source gap. */
     private static List<Map<String, Object>> acceptedOpenPoints(JsonNode search, JsonNode warnings,
                                                                RunState reportedState, Completeness complete) {
-        if (reportedState != RunState.PARTIAL || complete.exhausted() || complete.sourceQuestions()
+        if (reportedState != RunState.PARTIAL || !complete.exactTaskPlan() || complete.exhausted() || complete.sourceQuestions()
                 || complete.totalSources() <= 0 || complete.totalSources() != complete.assessedSources()
                 || complete.assessedSources() != complete.retainedSources() || complete.pendingSearches() != 0
                 || complete.unresolvedSearches() <= 0
@@ -393,11 +393,11 @@ public final class ScenarioRelationQuality {
 
     private record Completeness(long totalSources, long assessedSources, int retainedSources,
                                 long totalSearches, long completedSearches, long unresolvedSearches,
-                                long pendingSearches, boolean exhausted, boolean sourceQuestions) {
+                                long pendingSearches, boolean exhausted, boolean sourceQuestions, boolean exactTaskPlan) {
         boolean complete() {
             return totalSources > 0 && totalSources == assessedSources && assessedSources == retainedSources
                     && totalSearches == completedSearches && pendingSearches == 0 && unresolvedSearches == 0
-                    && exhausted && !sourceQuestions;
+                    && exhausted && !sourceQuestions && exactTaskPlan;
         }
     }
 
@@ -413,7 +413,8 @@ public final class ScenarioRelationQuality {
         }
         return new Completeness(count(progress, "totalSources"), count(progress, "assessedSources"), sources.size(),
                 count(progress, "totalSearches"), count(progress, "completedSearches"), count(progress, "unresolvedSearches"),
-                count(progress, "pendingSearches"), exhausted.booleanValue(), questions);
+                count(progress, "pendingSearches"), exhausted.booleanValue(), questions,
+                ScenarioArchitectureQuality.hasExactTaskPlan(search));
     }
 
     private static String csv(Evaluation value) {
