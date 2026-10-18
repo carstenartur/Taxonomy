@@ -27,7 +27,19 @@ class ScenarioArchitectureQualityEvidenceTest {
     private static final String ORIGINAL = REFERENCE.path("requirement").path("text").asText();
     private static final String SNAPSHOT = "independent-snapshot";
     private static final String A1 = "Within test design assumption A1.";
+    private static final String FORWARDED_WARNING_OUTPUT = "forwarded-warning-notification";
     private static final String CHANNEL = "A delivery uses this channel only when selected by the subscriber; channel support is required.";
+    // Independently enumerated compatible scopes in RelationWorkPlan's either-direction contract.
+    // BR is still searched although this fixture has no retained BR source.
+    private static final Map<String, List<String>> TASK_ROOTS = Map.of(
+            "BP", List.of("BR", "CI", "CO", "CR", "IP", "UA"),
+            "BR", List.of("BP", "CI", "CR", "IP"),
+            "CP", List.of("CI", "CR", "IP"),
+            "CI", List.of("BP", "BR", "CO", "CP", "CR", "IP", "UA"),
+            "CO", List.of("BP", "CI", "CR", "UA"),
+            "CR", List.of("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA"),
+            "IP", List.of("BP", "BR", "CI", "CP", "CR", "UA"),
+            "UA", List.of("BP", "CI", "CO", "CR", "IP"));
     // This hand-maintained list is test data, not generated from the reference's expected relation table.
     private static final List<Spec> RELATIONS = List.of(
             new Spec("R01", "UA-1580", "CONSUMES", "IP-1116", "F1", "F1"),
@@ -150,6 +162,87 @@ class ScenarioArchitectureQualityEvidenceTest {
         assertFailure(new Fixture(value.snapshot(), value.projection(), value.document(), other.xmi()), "XMI");
     }
 
+    @Test void allPermittedBindingsContributeEndpointClauses() {
+        assertEquals("PASS", verify(fixture("",
+                new Spec("L40", "CR-1022", "FULFILLS", "CP-1122", "F4", "F4", Necessity.OPTIONAL,
+                        "Only if an additional coarse IT-service view of F4 subscriber identity lifecycle is selected; no identity provider or platform is introduced."),
+                new Spec("L42", "CP-1122", "REALIZES", "CR-1022", "F4", "F4", Necessity.OPTIONAL,
+                        "Only if an additional coarse capability-facing IT-service view of F4 subscriber identity lifecycle is selected; no identity provider or platform is introduced."),
+                new Spec("L25", "BP-1017", "USES", "CI-1052", "F1", "F5", Necessity.OPTIONAL,
+                        "Only if the existing hydrographic read-access provider is selected for published water observations; no new survey, forecast or REP input identity is implied."))).get("verdict"));
+    }
+
+    @Test void laterPermittedF5BindingsContributeEndpointClauses() {
+        assertEquals("PASS", verify(fixture("", new Spec("L25", "BP-1017", "USES", "CI-1052", "F1", "F5", Necessity.OPTIONAL,
+                "Only if the existing hydrographic read-access provider is selected for published water observations; no new survey, forecast or REP input identity is implied."))).get("verdict"));
+    }
+
+    @Test void sourceRoleMeaningMustBeDeclaredEvenWithTheCorrectA1Quote() {
+        assertFailure(fixture("public-reading-under-A1"), "R07");
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"Introduce a new forecast.", "Issue new official flood warnings."})
+    void aValidProviderSelectionCannotHideAnExcludedFunction(String excluded) {
+        assertFailure(fixture("", new Spec("L25", "BP-1017", "USES", "CI-1052", "F1", "F5", Necessity.OPTIONAL,
+                "Only if the existing hydrographic read-access provider is selected for published water observations. " + excluded)), "L25");
+    }
+
+    @Test void aValidLifecycleSelectionCannotChooseAnIdentityProvider() {
+        assertFailure(fixture("", new Spec("L40", "CR-1022", "FULFILLS", "CP-1122", "F4", "F4", Necessity.OPTIONAL,
+                "Only if the additional F4 identity lifecycle view is selected. Select an identity provider.")), "L40");
+    }
+
+    @Test void substitutingAnUnplannedTaskWithMatchingCountersIsRejected() {
+        var value = fixture(""); ObjectNode search = (ObjectNode) value.snapshot().path("analysis").path("relationSearchReport");
+        ((ObjectNode) search.path("tasks").get(0)).put("targetRoot", "SY");
+        assertFailure(value, "task");
+    }
+
+    @Test void deletingTasksAndMatchingTheirCountersCannotCertifySearchCompletion() {
+        var value = fixture(""); ObjectNode search = (ObjectNode) value.snapshot().path("analysis").path("relationSearchReport");
+        search.set("tasks", JSON.valueToTree(List.of(Map.of("sourceId", "UA-1580", "targetRoot", "BP", "state", "COMPLETED"))));
+        ((ObjectNode) search.path("progress")).put("totalSearches", 1).put("completedSearches", 1);
+        assertFailure(value, "task");
+    }
+
+    @Test void publicReadingCannotReplaceTheReliableDeliverySourceRole() {
+        assertFailure(fixture("public-reading-for-queue"), "R07");
+    }
+
+    @Test void aPermittedForwardingEdgeCannotIntroduceOfficialWarningAuthority() {
+        assertFailure(fixture("", forwarding("Issue new official flood warnings")), "L26");
+    }
+
+    @Test void forwardingRequiresItsOwnLocallyBoundContribution() {
+        assertFailure(fixture("", forwarding("Only if a separate output view for forwarding an already published warning is selected; no new official warning authority is introduced.")), "L26");
+    }
+
+    @Test void aForwardingContributionCannotExcuseNewOfficialWarningAuthority() {
+        assertFailure(fixture("forwarded-warning", forwarding("Only if the separate output view for forwarding an already published warning is selected. Issue new official flood warnings.")), "L26");
+    }
+
+    @Test void sourceForwardingCannotTurnAGenericPublishedWarningInputIntoNotificationOutput() {
+        assertFailure(fixture("forwarded-warning-source-only", forwarding("Only if a separate output view for forwarding an already published warning is selected; no new official warning authority is introduced.")), "L26");
+    }
+
+    @Test void aSeparatePublishedWarningForwardingContributionIsAccepted() {
+        var value = fixture("forwarded-warning", forwarding("Only if a separate output view for forwarding an already published warning is selected; no new official warning authority is introduced."));
+        List<String> warningDeclarations = new ArrayList<>();
+        for (JsonNode source : value.snapshot().path("analysis").path("relationSearchReport").path("sources"))
+            if (source.path("node").path("id").asText().equals("IP-2130")) for (JsonNode contribution : source.path("contributions")) {
+                assertEquals(quote("F1"), contribution.path("quote").asText());
+                warningDeclarations.add(contribution.path("text").asText());
+            }
+        assertEquals(2, warningDeclarations.size(), "The warning input and forwarded notification output remain separate F1 contributions at the same endpoint.");
+        assertTrue(warningDeclarations.contains("Represent each published flood warning with its affected area, source and observation time."));
+        assertTrue(warningDeclarations.stream().anyMatch(text -> text.contains("notification output")));
+        assertEquals("PASS", verify(value).get("verdict"));
+    }
+
+    private static Spec forwarding(String condition) {
+        return new Spec("L26", "BP-1535", "PRODUCES", "IP-2130", "F3", "F1", Necessity.OPTIONAL, condition);
+    }
+
     static Fixture fixture(String mutation, Spec... additionalRelations) {
         Map<String, Map<String, String>> declarations = declarations();
         Set<String> additionalEndpoints = new LinkedHashSet<>();
@@ -157,12 +250,20 @@ class ScenarioArchitectureQualityEvidenceTest {
         if (additionalEndpoints.contains("CP-1041")) add(declarations, "CP-1041", "F3", "Disseminate notifications for subscribed areas with required text, phone and email channel capabilities; individual deliveries follow the subscriber's choice.");
         if (additionalEndpoints.contains("CP-1123")) add(declarations, "CP-1123", "A1", "Protect subscriber details and restrict account access under test design assumption A1.");
         if (additionalEndpoints.contains("CI-1096")) add(declarations, "CI-1096", "F1", "Compile the understandable environmental view from existing published observations, preserving source and observation time.");
+        if (additionalEndpoints.contains("CP-1122")) add(declarations, "CP-1122", "F4", "Maintain subscriber identity and contact details and deprovision deleted accounts.");
+        if (additionalEndpoints.contains("CI-1052")) {
+            add(declarations, "CI-1052", "F1", "Provide existing published water observations through bounded read access.");
+            add(declarations, "CI-1052", "F5", "Supply the latest existing water observation batch through the selected read provider.");
+        }
+        if (mutation.equals("forwarded-warning") || mutation.equals("forwarded-warning-source-only")) declarations.get("BP-1535").put("F3", "Forward an already published official flood warning to subscribed areas using the subscriber's selected channels.");
+        if (mutation.equals("forwarded-warning")) add(declarations, "IP-2130", FORWARDED_WARNING_OUTPUT,
+                "Represent the outgoing forwarded-warning notification output carrying an already published flood warning, separately from the original published-warning input.");
         declarations.forEach((id, byClause) -> byClause.replaceAll((clause, text) -> mutate(mutation, id, clause, text)));
         Map<String, Node> nodes = new LinkedHashMap<>(); Map<String, Map<String, Contribution>> contributions = new LinkedHashMap<>();
         declarations.forEach((id, byClause) -> {
             Node node = new Node(id, id.substring(0, 2), "Handwritten " + id, "Small independent test witness.", false); nodes.put(id, node);
             Map<String, Contribution> scoped = new LinkedHashMap<>();
-            byClause.forEach((clause, text) -> scoped.put(clause, new Contribution(node, text, quote(clause),
+            byClause.forEach((clause, text) -> scoped.put(clause, new Contribution(node, text, quote(clause.equals(FORWARDED_WARNING_OUTPUT) ? "F1" : clause),
                     clause.equals("A1") && !mutation.equals("unscoped-assumption") ? A1 : "")));
             contributions.put(id, scoped);
         });
@@ -184,6 +285,8 @@ class ScenarioArchitectureQualityEvidenceTest {
             boolean reverseGraph = spec.id().equals("R10") && mutation.equals("reversed-phone-relation");
             String source = reverseGraph ? spec.target() : spec.source(), target = reverseGraph ? spec.source() : spec.target();
             Contribution from = contributions.get(spec.source()).get(spec.sourceClause()), to = contributions.get(spec.target()).get(spec.targetClause());
+            if (mutation.equals("forwarded-warning") && spec.id().equals("L26")) to = contributions.get(spec.target()).get(FORWARDED_WARNING_OUTPUT);
+            if (mutation.equals("public-reading-for-queue") && spec.id().equals("R07")) from = contributions.get("BP-1535").get("F1");
             boolean incoming = mutation.equals("incoming-evidence") && spec.id().equals("R01");
             if (incoming) { Contribution swap = from; from = to; to = swap; }
             String condition = !spec.condition().isBlank() ? spec.condition()
@@ -212,7 +315,9 @@ class ScenarioArchitectureQualityEvidenceTest {
         }
         DiagramModel graph = new DiagramModel("Independent architecture", diagramNodes, diagramEdges, new DiagramLayout("LR", false));
         List<SourceAssessment> sources = nodes.values().stream().map(n -> new SourceAssessment(n, new ArrayList<>(contributions.get(n.id()).values()), "Scoped reading.", "")).toList();
-        List<Map<String, String>> tasks = nodes.keySet().stream().map(id -> Map.of("sourceId", id, "targetRoot", "BP", "state", "COMPLETED")).toList();
+        List<Map<String, String>> tasks = new ArrayList<>();
+        for (Node source : nodes.values()) for (String root : TASK_ROOTS.get(source.root()))
+            tasks.add(Map.of("sourceId", source.id(), "targetRoot", root, "state", "COMPLETED"));
         Map<String, Object> summary = new LinkedHashMap<>(Map.of("id", SNAPSHOT, "requirementKey", "FLOOD-001", "requirementId", 7,
                 "requirementVersionId", 11, "projectId", 5, "status", "SUCCESS", "taxonomyFingerprint", "b".repeat(64), "workspaceId", "test-workspace", "branchName", "draft", "commitSha", "a".repeat(40)));
         Map<String, Object> search = Map.of("originalSha256", sha256(ORIGINAL), "sources", sources, "searchExhausted", true,
@@ -258,6 +363,7 @@ class ScenarioArchitectureQualityEvidenceTest {
         values.computeIfAbsent(node, ignored -> new LinkedHashMap<>()).merge(clause, text, (a, b) -> a + " " + b);
     }
     private static String mutate(String mutation, String id, String clause, String text) {
+        if (mutation.equals("public-reading-under-A1") && id.equals("BP-1535") && clause.equals("A1")) return "Retrieve and present published information for public reading.";
         if (mutation.equals("global-text-only")) return ORIGINAL;
         if (mutation.startsWith("open-identity") && id.equals("BP-1017") && clause.equals("F5"))
             return text + " The incoming observation batch has an unspecified product identity; it is not assumed to be an assembled Recognized Environmental Picture."
