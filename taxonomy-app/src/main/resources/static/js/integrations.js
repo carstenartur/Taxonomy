@@ -97,7 +97,9 @@
                     var label = document.createElement('label'), mapping = document.createElement('select'); label.textContent = t('mapping.' + field); option(mapping, '', t('profileDefault'));
                     var values = field !== 'canonicalType' ? Object.keys(artifact.attributes) : artifact.kind === 'ELEMENT' ? ['Capability', 'Process', 'CoreService', 'COIService', 'CommunicationsService', 'UserApplication', 'InformationProduct', 'BusinessRole', 'System', 'Component'] : ['REALIZES', 'SUPPORTS', 'ASSIGNED_TO', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
                     if (field === 'canonicalType' && artifact.kind === 'RELATION' && operation.context.profile.startsWith('sparx-')) {
-                        values = ['REALIZES', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
+                        values = operation.context.profile === 'sparx-xmi-2.1' && operation.context.profileVersion === '3'
+                            ? ['REALIZES', 'SUPPORTS', 'CONSUMES', 'USES', 'FULFILLS', 'ASSIGNED_TO', 'DEPENDS_ON', 'PRODUCES', 'COMMUNICATES_WITH', 'CONTAINS', 'REQUIRES', 'RELATED_TO']
+                            : ['REALIZES', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
                     }
                     values.forEach(function (key) { option(mapping, key, artifact.extensions['definition:' + key] || key); });
                     mapping.value = mappings[change.id] && mappings[change.id][field] || '';
@@ -111,7 +113,7 @@
                     target.addEventListener('input', function () { if (!mappings[change.id]) mappings[change.id] = {}; mappings[change.id].internalIdentity = target.value.trim() || null; });
                     targetLabel.append(target); advanced.append(targetLabel); fields.push('internalIdentity');
                 }
-                if (artifact.kind === 'RELATION' && operation.context.profileVersion === '2' && operation.context.profile.startsWith('sparx-')) {
+                if (artifact.kind === 'RELATION' && ['2', '3'].includes(operation.context.profileVersion) && operation.context.profile.startsWith('sparx-')) {
                     var endpointLabel = document.createElement('label'), projection = document.createElement('select');
                     endpointLabel.textContent = t('endpointProjection'); option(projection, '', t('choose'));
                     ['ARCHITECTURE_RELATION', 'REQUIREMENT_MAPPING', 'PRESERVE_ONLY'].forEach(function (value) { option(projection, value, t('projection.' + value)); });
@@ -266,7 +268,7 @@
         if (value.operationId && value.phase) { showPublication(value); return; }
         publication = null; el('integrationPublicationOutcomes').hidden = true; el('integrationPredecessor').hidden = true;
         operation = value; endpoints = Object.assign({}, value.review ? value.review.endpoints : {}); endpointOptions = {};
-        if (value.status === 'PREVIEWED' && value.context.profileVersion === '2' && value.context.profile.startsWith('sparx-')) {
+        if (value.status === 'PREVIEWED' && ['2', '3'].includes(value.context.profileVersion) && value.context.profile.startsWith('sparx-')) {
             api.read(prefix() + '/operations/' + value.id + '/endpoint-options').then(function (result) { if (operation && operation.id === value.id) { endpointOptions = result.external; renderChanges(); } }).catch(report);
         }
         decisions = Object.assign({}, value.review ? value.review.decisions : {}); mappings = Object.assign({}, value.review ? value.review.mappings : {}); page = 0;

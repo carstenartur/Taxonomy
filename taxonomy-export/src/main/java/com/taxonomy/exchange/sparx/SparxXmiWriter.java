@@ -19,7 +19,7 @@ final class SparxXmiWriter {
             throw ExchangeXml.invalid("PROFILE_VERSION_CHANGED", "Sparx output needs the exact supported mapping profile");
         var validated = SparxModelValidator.model(source);
         var objects = validated.objects();
-        if (version.equals("2")) for (MappingLoss loss : source.losses()) {
+        if (!version.equals("1")) for (MappingLoss loss : source.losses()) {
             Artifact feature = loss.artifactId() == null ? null : objects.get(loss.artifactId());
             if (feature != null && feature.kind() == ArtifactKind.FEATURE && loss.disposition() == LossDisposition.UNSUPPORTED)
                 throw ExchangeXml.invalid("SPARX_FEATURE_EXPORT_UNSUPPORTED", "Reviewed feature contains unsupported content; reject it before lossy delivery");
@@ -34,6 +34,7 @@ final class SparxXmiWriter {
         Element model = ExchangeXml.append(root, UML, "uml:Model"); model.setAttributeNS(XMI, "xmi:id", xmiId(modelId, true));
         model.setAttribute("name", source.metadata().getOrDefault("title", "Taxonomy"));
         Element extension = ExchangeXml.append(root, XMI, "xmi:Extension"); extension.setAttribute("extender", "Enterprise Architect");
+        if (version.equals("3")) SparxMetadataV3.write(extension, model, source.metadata());
         Element elements = ExchangeXml.append(extension, null, "elements"), connectors = ExchangeXml.append(extension, null, "connectors");
         Map<String, Element> nodes = new HashMap<>();
         for (Artifact artifact : objects.values()) {
@@ -54,7 +55,7 @@ final class SparxXmiWriter {
             if (artifact.extensions().containsKey("stereotype")) properties.setAttribute("stereotype", artifact.extensions().get("stereotype"));
             if (artifact.kind() == ArtifactKind.REQUIREMENT) properties.setAttribute("sType", "Requirement");
             tags(detail, artifact.attributes(), artifact.extensions());
-            if (version.equals("2")) evidence(detail, artifact.attributes(), artifact.extensions());
+            if (!version.equals("1")) evidence(detail, artifact.attributes(), artifact.extensions());
         }
         // Create every node before attaching children, so parent order cannot affect the result.
         objects.values().stream().filter(a -> a.kind() != ArtifactKind.FEATURE).sorted(Comparator.comparingInt((Artifact a) -> byObject.containsKey(a.id()) ? byObject.get(a.id()).position() : Integer.MAX_VALUE)
@@ -63,11 +64,13 @@ final class SparxXmiWriter {
             Element parent = p == null || p.parentId() == null ? model : nodes.get(byId.get(p.parentId()).artifactId());
             parent.appendChild(nodes.get(artifact.id()));
         });
-        if (version.equals("2")) writeFeatures(source, elements, nodes);
+        if (!version.equals("1")) writeFeatures(source, elements, nodes);
         for (Relation relation : source.relations().stream().sorted(Comparator.comparing(Relation::id)).toList()) {
             Element node = ExchangeXml.append(model, null, "packagedElement");
             node.setAttributeNS(XMI, "xmi:id", xmiId(relation.id(), false));
             boolean association = Set.of("Association", "Composition").contains(relation.type());
+            boolean reverse = version.equals("3") && "Destination -> Source".equals(relation.extensions().get("direction"));
+            String semanticSource = reverse ? relation.target() : relation.source(), semanticTarget = reverse ? relation.source() : relation.target();
             node.setAttributeNS(XMI, "xmi:type", "uml:" + (association ? "Association" : relation.type()));
             if (relation.attributes().containsKey("name")) node.setAttribute("name", relation.attributes().get("name"));
             if (association) {
@@ -77,10 +80,13 @@ final class SparxXmiWriter {
                 sourceEnd.setAttributeNS(XMI, "xmi:id", prefix + "_source"); targetEnd.setAttributeNS(XMI, "xmi:id", prefix + "_target");
                 sourceEnd.setAttribute("type", xmiId(relation.source(), objects.get(relation.source()).kind() == ArtifactKind.SPECIFICATION));
                 targetEnd.setAttribute("type", xmiId(relation.target(), objects.get(relation.target()).kind() == ArtifactKind.SPECIFICATION));
-                if (relation.type().equals("Composition")) targetEnd.setAttribute("aggregation", "composite");
+                if (relation.type().equals("Composition")) (reverse ? sourceEnd : targetEnd).setAttribute("aggregation", "composite");
+                if (version.equals("3") && !"Unspecified".equals(relation.extensions().get("direction")))
+                    node.setAttribute("navigableOwnedEnd", prefix + (reverse ? "_source" : "_target"));
             } else {
-                node.setAttribute("client", xmiId(relation.source(), objects.get(relation.source()).kind() == ArtifactKind.SPECIFICATION));
-                node.setAttribute("supplier", xmiId(relation.target(), objects.get(relation.target()).kind() == ArtifactKind.SPECIFICATION));
+                boolean flow = version.equals("3") && relation.type().equals("InformationFlow");
+                node.setAttribute(flow ? "informationSource" : "client", xmiId(semanticSource, objects.get(semanticSource).kind() == ArtifactKind.SPECIFICATION));
+                node.setAttribute(flow ? "informationTarget" : "supplier", xmiId(semanticTarget, objects.get(semanticTarget).kind() == ArtifactKind.SPECIFICATION));
             }
             Element detail = detail(connectors, "connector", relation.id(), false);
             ExchangeXml.append(detail, null, "source").setAttributeNS(XMI, "xmi:idref", xmiId(relation.source(), objects.get(relation.source()).kind() == ArtifactKind.SPECIFICATION));
@@ -89,8 +95,14 @@ final class SparxXmiWriter {
             properties.setAttribute("direction", relation.extensions().getOrDefault("direction", "Source -> Destination"));
             if (relation.extensions().containsKey("stereotype")) properties.setAttribute("stereotype", relation.extensions().get("stereotype"));
             if (relation.attributes().containsKey("description")) properties.setAttribute("documentation", relation.attributes().get("description"));
+            if (version.equals("3") && relation.attributes().containsKey("description")) {
+                Element comment = ExchangeXml.append(node, null, "ownedComment");
+                comment.setAttributeNS(XMI, "xmi:type", "uml:Comment");
+                comment.setAttributeNS(XMI, "xmi:id", xmiId(relation.id(), false) + "_comment");
+                ExchangeXml.text(comment, null, "body", relation.attributes().get("description"));
+            }
             tags(detail, relation.attributes(), relation.extensions());
-            if (version.equals("2")) evidence(detail, relation.attributes(), relation.extensions());
+            if (!version.equals("1")) evidence(detail, relation.attributes(), relation.extensions());
         }
         byte[] output = ExchangeXml.write(document);
         // Reparse with the same security and identity checks before any file can be delivered.
@@ -180,7 +192,7 @@ final class SparxXmiWriter {
         Map<String, String> values = new TreeMap<>(attributes);
         extensions.forEach((key, value) -> { if (key.startsWith("taxonomy:")) values.put("tag:taxonomy." + key.substring(9), value); });
         values.forEach((key, value) -> {
-            if (key.startsWith("tag:")) { Element tag = ExchangeXml.append(tags, null, "tag"); if (version.equals("2")) tag.setAttribute("projection", "true"); tag.setAttribute("name", key.substring(4)); tag.setAttribute("value", value); }
+            if (key.startsWith("tag:")) { Element tag = ExchangeXml.append(tags, null, "tag"); if (!version.equals("1")) tag.setAttribute("projection", "true"); tag.setAttribute("name", key.substring(4)); tag.setAttribute("value", value); }
         });
     }
 }

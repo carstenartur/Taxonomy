@@ -54,10 +54,17 @@ public final class EvidenceRelationProjection {
             relation.setSourceCode(edge.sourceId()); relation.setTargetCode(edge.targetId()); relation.setRelationType(edge.type());
             relation.setOrigin(RelationOrigin.LLM_SUPPORTED);
             relation.setRequirementEvidence(List.copyOf(evidence));
+            boolean outgoing = edge.direction() == Direction.OUTGOING;
+            String sourceContribution = outgoing ? edge.contribution().text() : edge.evidence().contribution();
+            String targetContribution = outgoing ? edge.evidence().contribution() : edge.contribution().text();
+            String sourceQuote = outgoing ? edge.contribution().quote() : edge.evidence().quote();
+            String targetQuote = outgoing ? edge.evidence().quote() : edge.contribution().quote();
+            String sourceCondition = outgoing ? edge.contribution().condition() : edge.evidence().condition();
+            String targetCondition = outgoing ? edge.evidence().condition() : edge.contribution().condition();
             String reason = "Proposed, separately checked against requirement: " + edge.evidence().rationale()
-                    + " | Source contribution: " + edge.contribution().text() + " | Target contribution: " + edge.evidence().contribution()
-                    + " | Evidence: " + edge.contribution().quote() + " / " + edge.evidence().quote()
-                    + " | Conditions: " + edge.contribution().condition() + " / " + edge.evidence().condition();
+                    + " | Source contribution: " + sourceContribution + " | Target contribution: " + targetContribution
+                    + " | Evidence: " + sourceQuote + " / " + targetQuote
+                    + " | Conditions: " + sourceCondition + " / " + targetCondition;
             if (evidence.size() > 1) reason += " | Additional requirement scopes and choices retained in structured evidence.";
             relation.setPresenceReason(summary(reason)); relation.setDerivationReason(summary(reason)); relation.setIncludedBecause(summary(reason));
             // Numeric confidence remains its legacy layout/index default, not measured evidence.

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.diagram.*;
 import com.taxonomy.exchange.ExchangeXml;
 import com.taxonomy.exchange.sparx.SparxMappingProfile;
+import com.taxonomy.exchange.sparx.SparxRelationProfileV3;
 import com.taxonomy.exchange.sparx.SparxXmiCodec;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 
@@ -19,7 +20,7 @@ import java.util.zip.ZipOutputStream;
 
 /** Read-only working-view handoff. Reuses the reviewed codec; never creates a sync checkpoint. */
 public final class SparxDiagramHandoff {
-    public static final String PROFILE = "taxonomy-sparx-working-view-v1";
+    public static final String PROFILE = "taxonomy-sparx-working-view-v3";
     private static final Map<String, String> NODE_TYPES = Map.ofEntries(
             Map.entry("Capabilities", "Capability"), Map.entry("Business Processes", "Process"),
             Map.entry("Business Roles", "BusinessRole"), Map.entry("Services", "CoreService"),
@@ -28,9 +29,6 @@ public final class SparxDiagramHandoff {
             Map.entry("Applications", "UserApplication"), Map.entry("User Applications", "UserApplication"),
             Map.entry("Information Products", "InformationProduct"), Map.entry("Systems", "System"),
             Map.entry("Components", "Component"));
-    // An explicit broad visual handoff, not a claim of native semantic equivalence.
-    private static final Set<String> ASSOCIATION_PROJECTIONS = Set.of(
-            "SUPPORTS", "ENABLES", "USES", "FULFILLS", "IMPLEMENTS", "ASSIGNED_TO", "PRODUCES", "REQUIRES", "PART_OF");
     private SparxDiagramHandoff() { }
 
     /** A namespace identifies this delivery, not a persisted repository or bidirectional connection. */
@@ -46,6 +44,7 @@ public final class SparxDiagramHandoff {
             if (canonical == null && !node.container()) throw new IllegalArgumentException("No Sparx mapping for element type: " + node.type());
             String id = identity(namespace, "node", node.id());
             Map<String, String> attributes = new TreeMap<>();
+            attributes.put("tag:taxonomy.mappingProfile", SparxMappingProfile.PROFILE + "@3");
             attributes.put("tag:taxonomy.sourceId", node.id());
             attributes.put("tag:taxonomy.sourceType", node.type());
             attributes.put("tag:taxonomy.relevance", Double.toString(node.relevance()));
@@ -68,39 +67,56 @@ public final class SparxDiagramHandoff {
             nodeEvidence.add(evidence);
         }
         for (DiagramEdge edge : graph.edges().stream().sorted(Comparator.comparing(DiagramEdge::id)).toList()) {
-            String canonical = edge.relationType(), transport = SparxMappingProfile.eaRelation(canonical);
-            if (transport == null) {
-                if (!ASSOCIATION_PROJECTIONS.contains(canonical)) throw new IllegalArgumentException("No Sparx mapping for relation type: " + canonical);
-                canonical = "RELATED_TO"; transport = "Association";
-                losses.add(new MappingLoss(edge.id(), "relationType", "BROAD_ASSOCIATION", LossDisposition.TRANSFORMED,
-                        edge.relationType() + " is a labelled Association; its original type is retained, not native semantic equivalence."));
+            String canonical = edge.relationType(), transport = SparxRelationProfileV3.transport(canonical);
+            if (SparxRelationProfileV3.ASSOCIATION_TRANSPORTS.contains(canonical)) {
+                losses.add(new MappingLoss(edge.id(), "relationType", "TAXONOMY_ASSOCIATION_TRANSPORT", LossDisposition.PRESERVED_EXTENSION,
+                        canonical + " is retained exactly by profile 3 tags and stereotype. Association is its bounded transport, without a claim of native UML equivalence."));
             }
             Map<String, String> attributes = new TreeMap<>();
             attributes.put("name", edge.relationType());
+            attributes.put("tag:taxonomy.mappingProfile", SparxMappingProfile.PROFILE + "@3");
+            attributes.put(SparxRelationProfileV3.TYPE_TAG, canonical);
+            attributes.put(SparxRelationProfileV3.DIRECTION_TAG, "Source -> Destination");
             attributes.put("tag:taxonomy.sourceId", edge.id());
             attributes.put("tag:taxonomy.sourceType", edge.relationType());
             attributes.put("tag:taxonomy.relevance", Double.toString(edge.relevance()));
             if (edge.relationCategory() != null) attributes.put("tag:taxonomy.relationCategory", edge.relationCategory());
+            attributes.put("tag:taxonomy.provenanceStatus", DiagramPresentation.relationshipStatus(edge.metadata()));
+            attributes.put("description", String.join("\n", DiagramPresentation.relationshipDetails(edge.metadata())));
+            if (edge.metadata() != null) {
+                attributes.put("tag:taxonomy.relationProvenance", new ObjectMapper().writeValueAsString(edge.metadata()));
+                com.taxonomy.archimate.exchange.ArchiMateRelationProvenance.write(edge.metadata())
+                        .forEach((key, value) -> attributes.put("tag:" + key, value.value()));
+            }
+            Map<String, String> extensions = new TreeMap<>(Map.of("canonicalType", canonical, "direction", "Source -> Destination",
+                    "stereotype", SparxRelationProfileV3.stereotype(canonical)));
+            if (edge.metadata() != null && edge.metadata().proposed()) extensions.put("taxonomy:status", "proposed");
             String id = identity(namespace, "edge", edge.id());
             relations.add(new Relation(id, transport, identity(namespace, "node", edge.sourceId()), identity(namespace, "node", edge.targetId()),
-                    attributes, Map.of("canonicalType", canonical, "direction", "Source -> Destination")));
+                    attributes, extensions));
             relationEvidence.add(Map.of("sourceId", edge.id(), "exportGuid", id, "source", edge.sourceId(), "target", edge.targetId(),
-                    "sourceType", edge.relationType(), "transportType", transport, "attributes", attributes));
+                    "sourceType", edge.relationType(), "transportType", transport, "attributes", attributes, "extensions", extensions));
         }
         losses.add(new MappingLoss(null, "layout", "DISPLAY_ONLY_LAYOUT", LossDisposition.UNSUPPORTED,
                 "Diagram coordinates, colors and display-only hierarchy are not EA diagram XML. Source parent IDs remain attributes."));
         String modelId = identity(namespace, "model", "working-view");
-        var document = new ExchangeDocument(SparxMappingProfile.PROFILE, SparxMappingProfile.VERSION, null, false, null,
+        var document = new ExchangeDocument(SparxMappingProfile.PROFILE, "3", null, false, null,
                 artifacts, relations, List.of(), Map.of("identifier", modelId, "title", graph.title() == null ? "Architecture" : graph.title()), losses);
-        byte[] xmi = new SparxXmiCodec().write(document);
+        byte[] xmi = new SparxXmiCodec("3").write(document);
         Map<String, Object> manifest = new TreeMap<>();
-        manifest.put("profile", PROFILE); manifest.put("exchangeProfile", SparxMappingProfile.PROFILE + "@" + SparxMappingProfile.VERSION);
+        manifest.put("profile", PROFILE); manifest.put("exchangeProfile", SparxMappingProfile.PROFILE + "@3");
+        manifest.put("relationSemantics", "Exact Taxonomy type and direction are carried by profile 3 metadata and visible stereotype; the transport table does not claim native UML equivalence.");
         manifest.put("mode", "fresh-copy"); manifest.put("sourceAuthority", "client-provided-working-view");
         manifest.put("productCompatibility", "not-certified"); manifest.put("syncCheckpointChanged", false);
         manifest.put("deliveryNamespace", namespace.toString()); manifest.put("elements", nodeEvidence); manifest.put("relations", relationEvidence);
         manifest.put("losses", losses); manifest.put("sha256", digest(xmi));
         byte[] json = new ObjectMapper().enable(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest);
         String instructions = "Sparx EA / XMI — experimental fresh-copy handoff\n\n"
+                + "The selected Taxonomy mapping profile is sparx-xmi-2.1@3. Profiles 1 and 2 have different, unchanged contracts.\n"
+                + "Exact relation meaning is in taxonomy.relationType, taxonomy.relationDirection, and the Taxonomy::TYPE stereotype.\n"
+                + "SUPPORTS, USES, FULFILLS, ASSIGNED_TO, PRODUCES, and REQUIRES use Association only as transport.\n"
+                + "That bounded transport is not a claim of native UML equivalence. Do not remove its tags or stereotype.\n"
+                + "Recorded provenance, exact quotes, conditions, and proposal status are retained in tags and connector notes.\n"
                 + "Extract architecture.xmi and inspect manifest.json, including every mapping loss, before importing.\n"
                 + "This exports exactly the supplied working view, without analysis or persistence.\n"
                 + "GUIDs belong to this delivery. Repeated fresh exports are separate copies, not updates.\n"
