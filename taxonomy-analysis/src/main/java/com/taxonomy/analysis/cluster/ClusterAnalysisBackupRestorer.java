@@ -84,7 +84,7 @@ public final class ClusterAnalysisBackupRestorer {
                         }
                     } else if (work.resultJson() != null && source.relationPlanJson() != null) restored.resultJson = run.relationPlanJson;
                 }
-                boolean unfinished = Set.of("QUEUED", "RUNNING").contains(work.sourceState());
+                boolean unfinished = Set.of("WAITING_PREDECESSOR", "QUEUED", "RUNNING").contains(work.sourceState());
                 restored.state = unfinished ? "STOPPED" : work.sourceState(); restored.settled = work.settled();
                 restored.failureReason = interrupted && work.failureReason() == null && work.resultJson() == null
                         ? INTERRUPTED : work.failureReason();
@@ -163,7 +163,7 @@ public final class ClusterAnalysisBackupRestorer {
         for (var work : archive.work()) {
             requireReference(work.sourceId(), "analysis.cluster-work", work.run(), run, sourceIds);
             require(taskIds.add(work.taskId()) && ordinals.add(work.ordinal()) && work.ordinal() >= 0 && work.attempts() >= 0, "Invalid archived task identity");
-            require(Set.of("QUEUED", "RUNNING", "COMPLETED", "PARTIAL", "FAILED", "STOPPED").contains(work.sourceState()), "Invalid archived task state");
+            require(Set.of("WAITING_PREDECESSOR", "QUEUED", "RUNNING", "COMPLETED", "PARTIAL", "FAILED", "STOPPED").contains(work.sourceState()), "Invalid archived task state");
             var message = decode(work.messageJson());
             require(message instanceof AnalysisTaskMessage, "Expected archived task message"); var task = (AnalysisTaskMessage) message;
             require(ClusterAnalysisBackupExport.sameContext(task.envelope(), source) && task.taskId().value().equals(work.taskId())
@@ -223,7 +223,7 @@ public final class ClusterAnalysisBackupRestorer {
                                  String state, AnalysisTaskMessage task) {
         if (progress == null) return;
         require(progress.revision() <= revision && (progress.delivery() <= attempts
-                || attempts == 0 && !Set.of("QUEUED", "RUNNING").contains(state)), "Invalid archived worker progress delivery");
+                || attempts == 0 && !Set.of("WAITING_PREDECESSOR", "QUEUED", "RUNNING").contains(state)), "Invalid archived worker progress delivery");
         require(task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS || progress.scores().isEmpty(), "Foreign worker coverage");
         require(task.taskType() == AnalysisTaskType.RELATION_ANALYSIS || progress.relations() == null, "Foreign relation progress");
     }

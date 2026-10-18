@@ -111,6 +111,9 @@ public final class ArtemisClusterCoordinator implements AutoCloseable {
                     finalizeContext = ClusterAnalysisStore.context(completion.envelope());
                     diagnostic(subscription, queue, decoded, failureReason);
                 } else diagnostic(subscription, queue, decoded, "INVALID_CONTRACT");
+            } catch (com.taxonomy.analysis.dag.AnalysisTaskDeferredException waiting) {
+                // Expiry/dead-letter of an injected early delivery cannot settle
+                // a root whose first dispatch still belongs to its predecessor.
             } catch (IllegalArgumentException | IllegalStateException invalid) {
                 // Unknown/foreign references can never establish operation authority. Database
                 // availability/transaction exceptions escape to rollback and broker redelivery.

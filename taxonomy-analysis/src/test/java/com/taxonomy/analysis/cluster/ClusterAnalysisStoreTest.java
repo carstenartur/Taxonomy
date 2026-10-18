@@ -22,11 +22,105 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClusterAnalysisStoreTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
 
+    @Test void dispatchesOneRootAtATimeInCatalogueOrderAfterDurableSettlement() {
+        try (var db = new Database()) {
+            var context = context("ordered-roots");
+            var ci = TaxonomyShardRoot.of("CI");
+            var roots = Map.of(IP, "{}", CP, "{}", ci, "{}");
+            var command = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice",
+                    command("requirement").workspaceContext(), null,
+                    new AnalysisScope(Set.of("CI", "CP", "IP"), AnalysisMode.TAXONOMIES_ONLY));
+            db.store.admit(context, command, null, roots);
+
+            assertEquals(List.of(ci), db.sent.stream().map(AnalysisTaskMessage::routingRoot).toList());
+            var first = db.task(ci);
+            assertTrue(db.store.start(first).executable());
+            var completion = db.complete(first, result("CI", 0));
+            assertEquals(1, db.sent.size(), "Preparing a result must not release the next root");
+            assertTrue(db.store.accept(completion));
+            assertFalse(db.store.accept(completion), "Redelivery must not release another root");
+            assertEquals(List.of(ci, CP), db.sent.stream().map(AnalysisTaskMessage::routingRoot).toList());
+
+            var failed = new AnalysisResult(Map.of(), List.of()); failed.setStatus("ERROR");
+            assertTrue(db.store.accept(db.complete(db.task(CP), failed)));
+            assertEquals(List.of(ci, CP, IP), db.sent.stream().map(AnalysisTaskMessage::routingRoot).toList());
+            assertTrue(db.store.accept(db.complete(db.task(IP), result("IP", 60))));
+            assertEquals(ClusterAnalysisState.PARTIAL, db.store.snapshot(context).state());
+            assertFalse(db.store.snapshot(context).result().getRawScores().containsKey("CP"));
+        }
+    }
+
+    @Test void cancellationOrCooperativeStopDoesNotDispatchWaitingRoots() {
+        for (boolean cancel : List.of(false, true)) try (var db = new Database()) {
+            var context = context(cancel ? "ordered-cancel" : "ordered-stop"); db.admit(context);
+            assertEquals(1, db.sent.size());
+            var task = db.task(CP); db.store.start(task);
+            if (cancel) {
+                assertTrue(db.store.cancel(context));
+                assertFalse(db.store.accept(db.complete(task, result("CP", 50))));
+            } else {
+                var completion = new AnalysisMessageFactory(context, Clock.systemUTC())
+                        .completed(task, AnalysisTaskOutcome.STOPPED, 50d, 1, "TIME_LIMIT");
+                db.completions.commit(new PreparedAnalysisCompletion<>(completion,
+                        () -> db.store.persistResult(task, result("CP", 50))));
+                assertTrue(db.store.accept(completion));
+                assertFalse(db.store.accept(completion));
+            }
+            assertEquals(1, db.sent.size(), "Stopping an operation must retain undispatched roots");
+            assertTrue(db.store.snapshot(context).state().terminal());
+        }
+    }
+
+    @Test void earlyDeliveryCannotStartALaterRootOrConsumeItsAttempt() {
+        try (var db = new Database()) {
+            var context = context("early-root"); db.admit(context);
+            var future = (SubtaxonomyAnalysisTask) new AnalysisMessageFactory(context, Clock.systemUTC())
+                    .task(AnalysisTaskGraph.plan(context.operationId(), List.of(CP, IP), false).tasks().getLast());
+            assertThrows(AnalysisTaskDeferredException.class, () -> db.store.start(future));
+            assertEquals(0, db.store.snapshot(context).tasks().getLast().attempts());
+            assertEquals("WAITING_PREDECESSOR", db.store.snapshot(context).tasks().getLast().state());
+            assertTrue(db.store.accept(db.complete(db.task(CP), result("CP", 70))));
+            assertTrue(db.store.start(future).executable());
+            assertEquals(1, db.store.snapshot(context).tasks().getLast().attempts());
+        }
+    }
+
+    @Test void earlyFailureNoticeCannotSettleAWaitingRootOrRecordACompletion() {
+        try (var db = new Database()) {
+            var context = context("early-failure"); db.admit(context);
+            var future = db.expectedTask(IP);
+            var failed = new AnalysisMessageFactory(context, Clock.systemUTC())
+                    .completed(future, AnalysisTaskOutcome.FAILED, null, 0, null);
+            assertThrows(AnalysisTaskDeferredException.class, () -> db.completions.commit(
+                    new PreparedAnalysisCompletion<>(failed, () -> db.store.persistFailure(future, "BROKER_DEAD_LETTER"))));
+            assertTrue(db.completions.find(future).isEmpty());
+            assertEquals(0, db.store.snapshot(context).completedRoots());
+            assertTrue(db.store.accept(db.complete(db.task(CP), result("CP", 70))));
+            assertTrue(db.store.start(db.task(IP)).executable());
+        }
+    }
+
+    @Test void previouslyAdmittedQueuedRootsRetainTheirExecutionPolicy() {
+        try (var db = new Database()) {
+            var context = context("legacy-queued"); db.admit(context);
+            var later = db.expectedTask(IP);
+            new TransactionTemplate(db.transactions).executeWithoutResult(status ->
+                    emulatedLegacyQueue(db, context));
+            assertTrue(db.store.start(db.task(CP)).executable());
+            assertTrue(db.store.start(later).executable(), "A previously dispatched legacy root must not enter a broker retry loop");
+        }
+    }
+
+    private static void emulatedLegacyQueue(Database db, AnalysisOperationContext context) {
+        db.em.createQuery("update ClusterAnalysisWork w set w.state='QUEUED' where w.operationId=:run and w.root='IP'")
+                .setParameter("run", context.operationId()).executeUpdate();
+    }
+
     @Test void acceptsOnlyExactInputsAndDispatchesAfterCommit() {
         try (var db = new Database()) {
             var context = context("admission");
             db.admit(context);
-            assertEquals(2, db.sent.size());
+            assertEquals(1, db.sent.size());
             assertEquals(2, db.store.snapshot(context).totalRoots());
             assertEquals(0, db.store.snapshot(context).completedRoots());
             assertEquals("QUEUED", db.store.snapshot(context).state().name());
@@ -98,18 +192,20 @@ class ClusterAnalysisStoreTest {
 
             assertEquals(before, db.store.snapshot(context));
             assertEquals(events, db.store.events(context, 0, 100));
-            assertEquals(2, db.sent.size());
+            assertEquals(1, db.sent.size());
             assertEquals(1, progress.size());
         }
     }
 
-    @Test void reverseAndDuplicateCompletionsAggregateExactlyOnce() {
+    @Test void legacyReverseAndDuplicateCompletionsAggregateExactlyOnce() {
         try (var db = new Database()) {
             var context = context("reverse"); db.admit(context);
-            var cp = db.task(CP); var ip = db.task(IP);
+            new TransactionTemplate(db.transactions).executeWithoutResult(status -> emulatedLegacyQueue(db, context));
+            var cp = db.task(CP); var ip = db.expectedTask(IP);
             assertEquals("requirement", db.store.start(cp).command().businessText());
             db.store.start(ip);
             assertEquals(2, db.store.snapshot(context).runningTasks());
+            // Old concurrently admitted runs can already have durable effects in reverse order.
             var cpCompletion = db.complete(cp, result("CP", 50));
             var ipCompletion = db.complete(ip, result("IP", 70));
             assertEquals(0, db.store.snapshot(context).completedRoots(), "Only the coordinator settles progress");
@@ -177,7 +273,7 @@ class ClusterAnalysisStoreTest {
             assertEquals(ClusterAnalysisState.CANCELLED, db.store.snapshot(context).state());
             assertEquals(revision, db.store.snapshot(context).revision());
             assertTrue(db.store.snapshot(context).result().getRawScores().isEmpty());
-            assertFalse(db.store.start(db.task(IP)).executable());
+            assertFalse(db.store.start(db.expectedTask(IP)).executable());
             var restarted = new ClusterAnalysisStore(db.em, db.transactions, new ObjectMapper(), db.dispatch);
             assertEquals(ClusterAnalysisState.CANCELLED, restarted.snapshot(context).state());
         }
@@ -232,8 +328,8 @@ class ClusterAnalysisStoreTest {
                     AnalysisCoverage.Descendants.COMPLETE, null);
             ip.setAnalysisCoverage(new AnalysisCoverage(Map.of("IP", excluded), 1, 0, 0));
 
-            db.store.accept(db.complete(db.task(IP), ip));
             db.store.accept(db.complete(db.task(CP), cp));
+            db.store.accept(db.complete(db.task(IP), ip));
 
             var coverage = db.store.snapshot(context).result().getAnalysisCoverage();
             assertNotNull(coverage, "Cluster aggregation must retain the workers' assessment evidence");
@@ -434,6 +530,17 @@ class ClusterAnalysisStoreTest {
         }
         SubtaxonomyAnalysisTask task(TaxonomyShardRoot root) {
             return sent.stream().filter(t -> t.routingRoot().equals(root)).map(SubtaxonomyAnalysisTask.class::cast).findFirst().orElseThrow();
+        }
+        SubtaxonomyAnalysisTask task(AnalysisOperationContext context, TaxonomyShardRoot root) {
+            return sent.stream().filter(t -> t.envelope().operationId().equals(context.operationId()) && t.routingRoot().equals(root))
+                    .map(SubtaxonomyAnalysisTask.class::cast).findFirst().orElseThrow();
+        }
+        /** Reads the admitted contract for deliberate early/legacy-delivery tests; it does not publish it. */
+        SubtaxonomyAnalysisTask expectedTask(TaxonomyShardRoot root) {
+            String message = em.createQuery("select w.messageJson from ClusterAnalysisWork w where w.root=:root", String.class)
+                    .setParameter("root", root.code()).getSingleResult();
+            return (SubtaxonomyAnalysisTask) new com.taxonomy.analysis.dag.json.AnalysisMessageCodec()
+                    .decode(message.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
         AnalysisCompletionMessage complete(SubtaxonomyAnalysisTask task, AnalysisResult result) {
             var e = task.envelope();

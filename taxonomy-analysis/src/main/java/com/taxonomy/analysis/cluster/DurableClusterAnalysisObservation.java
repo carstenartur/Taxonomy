@@ -210,13 +210,13 @@ public final class DurableClusterAnalysisObservation implements ClusterAnalysisO
         }
     }
 
-    private enum TaskState { QUEUED, RUNNING, COMPLETED, PARTIAL, FAILED, STOPPED }
+    private enum TaskState { WAITING_PREDECESSOR, QUEUED, RUNNING, COMPLETED, PARTIAL, FAILED, STOPPED }
     private record TaskKey(AnalysisTaskType type, TaxonomyShardRoot root) { }
     private static final class TaskCounts {
         private int queued, running, completed, failed;
         private void include(TaskState state) {
             switch (state) {
-                case QUEUED -> queued++;
+                case WAITING_PREDECESSOR, QUEUED -> queued++;
                 case RUNNING -> running++;
                 case COMPLETED -> completed++;
                 case PARTIAL, FAILED -> failed++;

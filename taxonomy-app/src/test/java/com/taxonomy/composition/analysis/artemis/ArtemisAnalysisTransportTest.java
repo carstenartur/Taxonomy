@@ -541,7 +541,7 @@ class ArtemisAnalysisTransportTest {
         db.store().admit(context, command, null, shards);
     }
 
-    @Test void eightRootWorkersOverlapAndCoordinatorReplaysPersistedCompletionsAfterRestart() throws Exception {
+    @Test void rootWorkersFollowCatalogueOrderAndCoordinatorReplaysPersistedCompletionsAfterRestart() throws Exception {
         var db = clusteredDatabase(true);
         var releaseFinalAcceptance = new CountDownLatch(1);
         var progressPublisher = publisher(connect());
@@ -559,13 +559,12 @@ class ArtemisAnalysisTransportTest {
                 }
             }
         });
-        var entered = new CountDownLatch(8); var computations = new AtomicInteger();
+        var computations = new AtomicInteger();
+        var processingOrder = new java.util.concurrent.CopyOnWriteArrayList<String>();
         for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) {
             var service = new ClusterAnalysisService(db.store(), (input, task, cancelled) -> {
                 assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-                computations.incrementAndGet(); entered.countDown();
-                try { if (!entered.await(15, TimeUnit.SECONDS)) throw new IllegalStateException("Root work serialized"); }
-                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }
+                computations.incrementAndGet(); processingOrder.add(task.root().code());
                 var result = new AnalysisResult(Map.of(task.root().code(), 61), List.of()); result.setStatus("SUCCESS"); return result;
             }, new ClusterAnalysisSignals());
             var worker = worker(new AnalysisTaskHandlers(service::prepare, null), db.ledger(), root.code());
@@ -576,7 +575,8 @@ class ArtemisAnalysisTransportTest {
         }
         var context = factory("eight-roots").operation();
         admit(db, context, TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).collect(java.util.stream.Collectors.toSet()));
-        await(() -> db.sent().stream().allMatch(t -> db.ledger().find(t).isPresent()), "eight persisted worker results");
+        await(() -> db.sent().stream().allMatch(t -> db.ledger().find(t).isPresent()), "first persisted worker result");
+        assertThat(db.sent()).hasSize(1);
         assertThat(db.store().snapshot(context).completedRoots()).isZero();
         var observed = new ClusterAnalysisSignals();
         var complete = new CountDownLatch(1);
@@ -600,6 +600,8 @@ class ArtemisAnalysisTransportTest {
         assertThat(snapshot.completedRoots()).isEqualTo(8);
         assertThat(snapshot.result().getRawScores()).hasSize(8).allSatisfy((root, score) -> assertThat(score).isEqualTo(61));
         assertThat(computations).hasValue(8);
+        assertThat(processingOrder).containsExactlyElementsOf(TaxonomyShardRoot.DEFAULT_ROOTS.stream()
+                .sorted().map(TaxonomyShardRoot::code).toList());
     }
 
     @Test void deadLetterAndActualExpirySettleExplicitPartialOutcomes() throws Exception {

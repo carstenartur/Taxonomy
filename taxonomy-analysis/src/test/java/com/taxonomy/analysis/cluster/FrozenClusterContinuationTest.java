@@ -152,19 +152,11 @@ class FrozenClusterContinuationTest {
             assertThat(requests).hasValue(1);
             assertThat(AnalysisCheckpointSession.active()).isFalse();
             var service = new ClusterAnalysisService(store, fixture.worker(store), new ClusterAnalysisSignals());
-            // Independent root workers share only durable authority; both scopes execute concurrently.
-            var prepared = new java.util.ArrayList<java.util.concurrent.Future<PreparedAnalysisCompletion<SubtaxonomyAnalysisCompleted>>>();
+            // Each root runs on an independent worker scope after its predecessor settles.
             try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
-                var ready = new java.util.concurrent.CountDownLatch(2);
                 for (var node : AnalysisTaskGraph.plan(context.operationId(), List.of(TaxonomyShardRoot.of("CP"), TaxonomyShardRoot.of("IP")), false).tasks()) {
                     var actualTask = (SubtaxonomyAnalysisTask) new AnalysisMessageFactory(context, java.time.Clock.systemUTC()).task(node);
-                    prepared.add(executor.submit(() -> {
-                        ready.countDown(); assertThat(ready.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-                        return service.prepare(actualTask);
-                    }));
-                }
-                for (var pending : prepared) {
-                    var completion = pending.get(15, java.util.concurrent.TimeUnit.SECONDS);
+                    var completion = executor.submit(() -> service.prepare(actualTask)).get(15, java.util.concurrent.TimeUnit.SECONDS);
                     new org.springframework.transaction.support.TransactionTemplate(db.transactions).executeWithoutResult(status -> completion.persistEffect().run());
                     store.accept(completion.completion());
                 }
