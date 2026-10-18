@@ -95,6 +95,8 @@ class ArchitectureVisioHandoffAcceptanceTest {
         var imported = new com.taxonomy.archimate.exchange.ArchiMateExchangeReader().read(entry(archimate.content(), "model.archimate.xml"));
         assertEquals("Recorded scoped relationship reason", imported.relationships().getFirst().properties()
                 .get("taxonomy.provenance.presenceReason").value());
+        assertEquals(source.value.elements().get("CP-1").presenceReason(),
+                imported.elements().getFirst().properties().get("taxonomy.presenceReason").value());
         var visio = service.exportVisioBundle(42L, "snapshot-965", "alice", CONTEXT);
         var visioManifest = JSON.readTree(entry(visio.content(), "manifest.json")).path("handoff");
         assertEquals("Recorded scoped relationship reason", visioManifest.at("/pages/0/relationships/0/properties/taxonomy.presenceReason/value").asText());
@@ -109,7 +111,8 @@ class ArchitectureVisioHandoffAcceptanceTest {
                             && loss.path("rationale").asText().contains("scoped relationship evidence");
                 }
             }
-            assertTrue(elementOmission, "Unrelated element explanation omission remains explicit");
+            assertEquals(manifest == visioManifest, elementOmission,
+                    "ArchiMate retains the recorded element reason; Visio reports its omission");
             assertTrue(rawEvidencePolicy, "Raw model evidence must remain distinguished from retained scoped relationship evidence");
         }
     }

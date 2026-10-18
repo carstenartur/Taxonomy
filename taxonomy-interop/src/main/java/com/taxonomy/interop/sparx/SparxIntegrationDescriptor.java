@@ -10,7 +10,7 @@ public final class SparxIntegrationDescriptor {
     public static IntegrationDescriptor xmi() { return xmi("1"); }
     public static IntegrationDescriptor xmi(String version) {
         return new IntegrationDescriptor(SparxMappingProfile.PROFILE, SparxMappingProfile.version(version),
-                "Sparx EA XMI 2.1 (experimental)",
+                "3".equals(version) ? "Sparx EA XMI 2.1 / Taxonomy semantics v3 (experimental)" : "Sparx EA XMI 2.1 (experimental)",
                 Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT, Capability.ARCHITECTURE_MODEL),
                 Set.of("application/xmi+xml", "application/xml"));
     }

@@ -7,6 +7,14 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ExchangeConnectorRegistryTest {
+    @Test void versionThreeIsRegisteredOnlyByExplicitOptInAndDoesNotMoveLegacyDefaults() {
+        var registry = new ExchangeConnectorRegistry(List.of(new SparxXmiConnector(), new SparxXmiV2Connector(), new SparxXmiV3Connector()));
+        assertEquals("1", registry.require(SparxMappingProfile.PROFILE).descriptor().version());
+        assertEquals("2", registry.require(SparxMappingProfile.PROFILE, "2").descriptor().version());
+        assertEquals("3", registry.require(SparxMappingProfile.PROFILE, "3").descriptor().version());
+        assertThrows(IntegrationProblem.class, () -> registry.require(SparxMappingProfile.PROFILE, "4"));
+    }
+
     @Test void exactVersionLookupKeepsLegacyDefaultAndRejectsUnknownVersion() {
         var registry = new ExchangeConnectorRegistry(List.of(new SparxXmiConnector(), new SparxXmiV2Connector()));
         assertEquals("1", registry.require(SparxMappingProfile.PROFILE).descriptor().version());

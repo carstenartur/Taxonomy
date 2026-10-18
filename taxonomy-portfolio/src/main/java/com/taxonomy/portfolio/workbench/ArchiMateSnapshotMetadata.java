@@ -11,7 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Allowlisted immutable authority and authorized human decision data for external handoff. */
+/** Allowlisted immutable requirement, scoped contributions and review data for an inspectable handoff. */
 final class ArchiMateSnapshotMetadata {
     private ArchiMateSnapshotMetadata() { }
 
@@ -28,6 +28,13 @@ final class ArchiMateSnapshotMetadata {
         put(properties, "branch", projection.branchName());
         put(properties, "authoritativeCommit", projection.commitSha());
         put(properties, "canonicalGraphSha256", graphSha256);
+        if (projection.requirementText() != null) {
+            put(properties, "requirementText", projection.requirementText());
+            put(properties, "requirementSha256", sha256(projection.requirementText()));
+        } else {
+            losses.add(new ArchiMateLoss("model", id, "requirementText", "OMITTED",
+                    "The original requirement is not retained in this frozen projection; no current text was substituted."));
+        }
         if (projection.exportProvenance() != null) {
             put(properties, "requirementVersionId", projection.exportProvenance().requirementVersionId());
             put(properties, "taxonomyFingerprint", projection.exportProvenance().taxonomyFingerprint());
@@ -39,7 +46,7 @@ final class ArchiMateSnapshotMetadata {
                         "Not retained in the authorized persisted snapshot projection; no current-state value was substituted."));
             }
         }
-        for (String field : List.of("requirementText", "providerPayload", "prompt", "sourceEvidence", "warnings")) {
+        for (String field : List.of("providerPayload", "prompt", "sourceEvidence", "warnings")) {
             losses.add(new ArchiMateLoss("model", id, field, "OMITTED",
                     field.equals("sourceEvidence")
                             ? "Raw model-level provider/source evidence is omitted; recorded scoped relationship evidence is retained where present."
@@ -62,8 +69,7 @@ final class ArchiMateSnapshotMetadata {
                 put(values, "decisionBy", metadata.decisionBy());
                 put(values, "decisionAt", metadata.decisionAt());
                 put(values, "decisionRationale", metadata.decisionComment());
-                losses.add(new ArchiMateLoss("element", node.id(), "presenceReason", "OMITTED",
-                        "Provider-derived explanation excluded; selection flags and reviewed human rationale are retained."));
+                put(values, "presenceReason", metadata.presenceReason());
             } else {
                 losses.add(new ArchiMateLoss("element", node.id(), "reviewMetadata", "OMITTED",
                         "No persisted mapping metadata is available for this selected element."));
@@ -92,5 +98,12 @@ final class ArchiMateSnapshotMetadata {
 
     private static void put(Map<String, ArchiMateProperty> properties, String name, Object value) {
         if (value != null) properties.put("taxonomy." + name, ArchiMateProperty.text(value.toString()));
+    }
+
+    private static String sha256(String value) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 }
