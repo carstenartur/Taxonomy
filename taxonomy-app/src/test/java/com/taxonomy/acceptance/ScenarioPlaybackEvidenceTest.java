@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashSet;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -190,6 +192,144 @@ class ScenarioPlaybackEvidenceTest {
         for (var constraint : reference.path("coverageConstraints")) checks.add(() ->
                 assertEquals("PASS", ScenarioArchitectureQuality.verifyConstraint(constraint, witnesses, clauses).get("verdict")));
         assertEquals(20, checks.size()); assertAll(checks);
+    }
+
+    @Test void everyAuthoredOpenIdentityHasItsOwnDeliveredF5ObservationInputWitness() throws Exception {
+        var value = identityCorpus();
+        var checks = new ArrayList<Executable>();
+        for (var expected : value.reference().path("openIdentityQuestions")) checks.add(() -> {
+            var result = verifyOriginalOpenIdentityGate(value, expected, value.witnesses());
+            assertEquals(1, result.size());
+            assertEquals(expected.path("id").asText(), result.getFirst().get("id"));
+            assertEquals("OPEN_NONCORE_INPUT_IDENTITY", result.getFirst().get("status"));
+        });
+        assertEquals(7, checks.size());
+        assertEquals(14, value.observations().values().stream().mapToInt(List::size).sum());
+        assertAll(checks);
+    }
+
+    @Test void originalOpenIdentityGateStillRejectsLostF5BindingMissingUncertaintyAndContradictoryRecognizedInput() throws Exception {
+        var value = identityCorpus();
+        JsonNode expected = value.reference().path("openIdentityQuestions").get(0);
+        assertEquals("X03", expected.path("id").asText());
+        var witness = value.witnesses().stream().filter(item -> item.endpointId().equals("BP-1017")
+                && item.quote().startsWith("F5:")).findFirst().orElseThrow();
+        assertEquals(1, verifyOriginalOpenIdentityGate(value, expected, List.of(witness)).size());
+        for (var changed : List.of(
+                new ScenarioArchitectureQuality.Witness("ELEMENT", "BP-1017", "BP-1017", witness.text(),
+                        value.reference().at("/requirement/clauses/F1").asText(), witness.condition()),
+                new ScenarioArchitectureQuality.Witness("ELEMENT", "BP-1017", "BP-1017", "Acquire the latest observation batch.",
+                        witness.quote(), witness.condition()),
+                new ScenarioArchitectureQuality.Witness("ELEMENT", "BP-1017", "BP-1017", witness.text()
+                        + " The incoming observation batch is an already recognized environmental picture.", witness.quote(), witness.condition()))) {
+            assertThrows(AssertionError.class, () -> verifyOriginalOpenIdentityGate(value, expected, List.of(changed)));
+        }
+    }
+
+    @Test void publicF1RolesDoNotDuplicateTheFourDistinctF5InputIdentityQuestions() throws Exception {
+        var corpus = capture(); var playback = new ScenarioLlmPlayback(corpus.fixture());
+        var protocol = protocol(playback); String original = corpus.fixture().at("/requirement/text").asText();
+        var checks = new ArrayList<Executable>();
+        for (String source : List.of("BP-1529", "BP-1534", "CI-1096", "CP-1020")) {
+            JsonNode authored = corpus.fixture().at("/relationPlayback/sourceContributions").valueStream().filter(value ->
+                    value.path("nodeId").asText().equals(source) && value.path("contributionId").asText("default").equals("default"))
+                    .findFirst().orElseThrow();
+            assertTrue(authored.path("quote").asText().startsWith("F1:"));
+            var part = corpus.sources().get(source).contributions().stream().filter(value ->
+                    value.text().equals(authored.path("text").asText()) && value.quote().equals(authored.path("quote").asText()))
+                    .findFirst().orElseThrow();
+            checks.add(() -> {
+                var answer = protocol.evaluate(new Query(original, part, source.equals("CP-1020") ? "REQUIRES" : "CONSUMES",
+                        Direction.OUTGOING, Phase.NAVIGATE, List.of(corpus.sources().get("IP-1116").node()), null)).getFirst();
+                assertEquals(Outcome.REJECT, answer.outcome(), source + " F1 role must not duplicate its distinct F5 identity question");
+                assertTrue(answer.question().isEmpty());
+            });
+        }
+        assertAll(checks);
+    }
+
+    private record IdentityCorpus(JsonNode reference, Corpus corpus, List<Edge> edges,
+                                  ArchitectureViewContext context, List<ScenarioArchitectureQuality.Witness> witnesses,
+                                  Map<String, List<Unfinished>> observations) { }
+
+    private static IdentityCorpus identityCorpus() throws Exception {
+        var corpus = capture(); var playback = new ScenarioLlmPlayback(corpus.fixture());
+        var protocol = protocol(playback); String original = corpus.fixture().at("/requirement/text").asText();
+        JsonNode reference;
+        try (var input = ScenarioPlaybackEvidenceTest.class.getResourceAsStream("/scenarios/flood-quality-reference.json")) {
+            assertNotNull(input); reference = JSON.readTree(input);
+        }
+        assertEquals(List.of("X03", "X08", "X09", "X10", "X11", "X12", "X13"),
+                reference.path("openIdentityQuestions").valueStream().map(value -> value.path("id").asText()).toList());
+        var observations = new LinkedHashMap<String, List<Unfinished>>();
+        for (var expected : reference.path("openIdentityQuestions")) {
+            var observed = new ArrayList<Unfinished>();
+            for (Direction direction : Direction.values()) {
+                String source = expected.path(direction == Direction.OUTGOING ? "sourceId" : "targetId").asText();
+                String target = expected.path(direction == Direction.OUTGOING ? "targetId" : "sourceId").asText();
+                JsonNode scope = corpus.fixture().at("/relationPlayback/exclusions/openScopes").valueStream().filter(value ->
+                        value.path("sourceIds").valueStream().anyMatch(id -> id.asText().equals(source))
+                                && value.path("candidateIds").valueStream().anyMatch(id -> id.asText().equals(target))
+                                && value.path("type").asText().equals(expected.path("type").asText())
+                                && value.path("direction").asText().equals(direction.name())).findFirst().orElseThrow();
+                String partId = scope.path("sourceContributionIds").get(0).asText();
+                JsonNode authored = corpus.fixture().at("/relationPlayback/sourceContributions").valueStream().filter(value ->
+                        value.path("nodeId").asText().equals(source)
+                                && value.path("contributionId").asText("default").equals(partId)).findFirst().orElseThrow();
+                var part = corpus.sources().get(source).contributions().stream().filter(value ->
+                        value.text().equals(authored.path("text").asText()) && value.quote().equals(authored.path("quote").asText()))
+                        .findFirst().orElseThrow();
+                var answer = protocol.evaluate(new Query(original, part, expected.path("type").asText(), direction,
+                        Phase.NAVIGATE, List.of(corpus.sources().get(target).node()), null)).getFirst();
+                assertEquals(Outcome.UNRESOLVED, answer.outcome());
+                assertEquals(expected.path("question").asText(), answer.question());
+                observed.add(new Unfinished(source, expected.path("type").asText(), direction, List.of(target), "UNRESOLVED", answer.question()));
+            }
+            observations.put(expected.path("id").asText(), List.copyOf(observed));
+        }
+        List<Edge> edges = corpus.edges().values().stream().flatMap(List::stream).toList();
+        var report = new RelationSearchReport(1, ScenarioLlmPlayback.sha256(original), "authored-open-identity-test",
+                List.copyOf(corpus.sources().values()), new Result(edges,
+                observations.values().stream().flatMap(List::stream).toList(), List.of(), 0, 0, 0), 0, 0, 0, List.of(), "");
+        var context = new ArchitectureViewContext(Map.of(), original, 0, null);
+        EvidenceRelationProjection.apply(context, report);
+        var witnesses = new ArrayList<ScenarioArchitectureQuality.Witness>();
+        var presence = new LinkedHashMap<String, String>();
+        context.getElements().forEach(element -> presence.put(element.getNodeCode(), element.getPresenceReason()));
+        // Exactly the full quality gate's local delivered text/condition filter, without mirroring its meaning predicates.
+        corpus.sources().values().forEach(source -> source.contributions().forEach(part -> {
+            String local = presence.getOrDefault(source.node().id(), "");
+            if (local.contains(part.text())) witnesses.add(new ScenarioArchitectureQuality.Witness("ELEMENT", source.node().id(),
+                    source.node().id(), part.text(), part.quote(), local.contains(part.condition()) ? part.condition() : ""));
+        }));
+        return new IdentityCorpus(reference, corpus, edges, context, witnesses, observations);
+    }
+
+    /** Invoke the unchanged private quality gate rather than create a second interpretation predicate. */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> verifyOriginalOpenIdentityGate(IdentityCorpus value, JsonNode expected,
+            List<ScenarioArchitectureQuality.Witness> witnesses) throws Exception {
+        Class<?> quality = ScenarioArchitectureQuality.class;
+        var referenceMethod = quality.getDeclaredMethod("reference"); referenceMethod.setAccessible(true);
+        Object reference = referenceMethod.invoke(null);
+        Class<?> openType = Class.forName(quality.getName() + "$OpenIdentity");
+        var openConstructor = openType.getDeclaredConstructor(JsonNode.class, List.class); openConstructor.setAccessible(true);
+        Object open = openConstructor.newInstance(expected, value.observations().get(expected.path("id").asText()));
+        Class<?> searchType = Class.forName(quality.getName() + "$SearchEvidence");
+        var searchConstructor = searchType.getDeclaredConstructor(Map.class, List.class); searchConstructor.setAccessible(true);
+        Object search = searchConstructor.newInstance(value.corpus().sources(), List.of(open));
+        Class<?> tripleType = Class.forName(quality.getName() + "$Triple");
+        var tripleConstructor = tripleType.getDeclaredConstructor(String.class, String.class, String.class); tripleConstructor.setAccessible(true);
+        Set<Object> projected = new LinkedHashSet<>();
+        for (var relation : value.context().getRelationships()) projected.add(tripleConstructor.newInstance(
+                relation.getSourceCode(), relation.getRelationType(), relation.getTargetCode()));
+        var gate = quality.getDeclaredMethod("verifyOpenIdentityWitnesses", searchType, List.class, reference.getClass(), Set.class, List.class);
+        gate.setAccessible(true);
+        try { return (List<Map<String, Object>>) gate.invoke(null, search, witnesses, reference, projected, value.edges()); }
+        catch (java.lang.reflect.InvocationTargetException failure) {
+            if (failure.getCause() instanceof AssertionError assertion) throw assertion;
+            throw failure;
+        }
     }
 
     private record Corpus(JsonNode fixture, Map<String, SourceAssessment> sources, Map<String, List<Edge>> edges) { }

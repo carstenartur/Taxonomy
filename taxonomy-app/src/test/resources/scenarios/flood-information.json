@@ -1115,6 +1115,14 @@
         "rationale": "F1 asks to reuse published warnings and existing area/observation information. Collection is the relevant part of this broader collect/create/generate process. Its creation label cannot justify new measurements, forecasts or issuing official warnings. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
       },
       {
+        "nodeId": "BP-1529",
+        "contributionId": "observation-input",
+        "text": "Collect the latest existing observation batch while retaining that its input datatype is unspecified; the batch is not assumed to be an assembled environmental picture. This observation-input facet adds no new sensing, measurements or newly generated information.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": "",
+        "rationale": "F5 names an existing observation batch for intake but does not establish its product identity. Collection retains that uncertainty separately from the F1 published-warning and public-view role; it does not select a new source or create an environmental picture."
+      },
+      {
         "nodeId": "BP-1530",
         "text": "Dispose of removed account and subscription information when the user deletes an account or removes areas. Deprovision the account identity; the requirement specifies no retention period or resolution of delivery-history retention versus account deletion, so neither indefinite retention nor an invented duration is asserted.",
         "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
@@ -1135,6 +1143,14 @@
         "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
         "condition": "",
         "rationale": "F3 supplies area subscriptions and selected channels. Organising those choices for retrieval is a bounded information-organisation function, not a new public-data product, provider or account-control mechanism."
+      },
+      {
+        "nodeId": "BP-1534",
+        "contributionId": "observation-input",
+        "text": "Organise the latest existing observation batch for retrieval while retaining its unspecified input datatype; the batch is not assumed to be an assembled environmental picture. This public observation-input facet does not maintain private subscriptions or select a database.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": "",
+        "rationale": "F5 requires the latest observation batch to remain usable with stale and unavailable states. Its incoming product identity remains unspecified during organisation; private F3 subscription choices and the F1 understandable output remain separate roles."
       },
       {
         "nodeId": "BP-1535",
@@ -1185,7 +1201,7 @@
       {
         "nodeId": "BP-1866",
         "contributionId": "availability-state",
-        "text": "Preserve stale and unavailable input states in the prepared information instead of presenting old or missing observations as current. No numerical stale-age threshold or new forecast is specified.",
+        "text": "Preserve stale and unavailable input states in the prepared information instead of presenting old or missing observations as current. No numerical stale-age threshold or new forecast is specified. The prepared observation batch has an unspecified input datatype; it is not assumed to be an assembled environmental picture.",
         "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
         "condition": "",
         "rationale": "F5 requires both stale and unavailable data to be shown. Preparation must preserve those states for display; it does not thereby acquire the upstream feed or select another service interface."
@@ -1226,6 +1242,14 @@
         "rationale": "F1 combines existing warning, area and observation information into an understandable view. The catalogue aggregation function supports that bounded view, with attribution retained. Formal operational-picture agreement, data fusion analysis and new warning authority are not requested. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
       },
       {
+        "nodeId": "CI-1096",
+        "contributionId": "observation-input",
+        "text": "For the latest observation batch supplied to the bounded downstream environmental view, retain that the input datatype is unspecified; the batch is not assumed to be an assembled environmental picture. The upstream batch is distinct from the understandable output view.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": "",
+        "rationale": "F5 supplies an observation input without declaring its product identity. The existing aggregation function must retain that uncertainty rather than infer that its input already has the identity of the assembled F1 output; no extra provider or analytical function is selected."
+      },
+      {
         "nodeId": "CO-1048",
         "text": "Provide short-message delivery access for the requested text-notification capability. The capability must be supported; individual delivery uses it only when the subscriber selects text.",
         "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
@@ -1254,6 +1278,14 @@
         "rationale": "F1 relies on already published warnings and existing area/observation inputs. Acquiring those sources is the information-collection ability needed here; the military collection platforms named in the catalogue do not imply new sensing or an official warning source. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
       },
       {
+        "nodeId": "CP-1020",
+        "contributionId": "observation-input",
+        "text": "Provide collection ability for the latest existing observation batch while keeping its input datatype unspecified; the batch is not assumed to be an assembled environmental picture. This observation-input facet adds no sensing, new measurement or source-provider choice.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": "",
+        "rationale": "F5 requires consumption of an existing latest observation batch but leaves the input product identity unspecified. The collection capability preserves that input limitation without adding a military collection platform, a new measurement or an official warning source."
+      },
+      {
         "nodeId": "CP-1041",
         "text": "Provide the ability to disseminate existing information through text, phone and email as selected by the subscriber. All three capabilities are required; selecting one for a notification does not remove the other capabilities.",
         "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
@@ -1270,7 +1302,7 @@
       {
         "nodeId": "CP-1097",
         "contributionId": "availability-state",
-        "text": "Provide processing ability to preserve stale and unavailable observation states for display. This is state preservation, without a new prediction, numerical stale threshold or additional input-product identity.",
+        "text": "Provide processing ability to preserve stale and unavailable observation states for display. This is state preservation, without a new prediction, numerical stale threshold or additional input-product identity. The processed observation batch has an unspecified input datatype; it is not assumed to be an assembled environmental picture.",
         "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
         "condition": "",
         "rationale": "F5 explicitly requires stale and unavailable data to be shown. Processing retains those supplied states; this added facet selects no additional platform, provider or semantic input product."

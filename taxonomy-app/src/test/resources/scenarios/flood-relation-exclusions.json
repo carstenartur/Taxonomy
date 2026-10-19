@@ -7311,6 +7311,1714 @@
       ],
       "rationale": "F3 dispatch applies subscribed areas and user-selected notification channels to existing published-warning content and prepared notification work. Simulation Terrain Databases describe natural/man-made terrain for simulation applications; this dispatch function does not run a simulation or select a simulation-terrain input. Required affected-area information remains retained, without adding a simulation workflow. This judgment uses the product's own purpose, not its overlay parent assignment.",
       "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-SUPPORTS-OUTGOING-BP",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "BP"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This F5 facet preserves the unspecified identity of an upstream observation batch; it does not select an additional business-process support relationship. The service's separate F1 assembly and presentation functions remain represented by their own contributions, not by this input datatype limitation."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-REALIZES-OUTGOING-CR",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 observation-input facet states a collection ability and an unspecified incoming datatype. It does not specify a technical Core Services implementation or make the capability realize a concrete service; existing F1 collection-function relationships remain separate."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-SUPPORTS-INCOMING-CI",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CI"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "Organising the F5 batch retains its unspecified input identity for retrieval; that limitation does not select a COI service provider. Existing public-information support belongs to the separate F1 organisation role, not a new provider inferred from an unknown datatype."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-SUPPORTS-INCOMING-CI",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CI"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This F5 collection facet preserves the unknown datatype of already existing observations. It does not select an additional COI source service; the separate F1 published-warning and public-information collection relationships remain unchanged."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-SUPPORTS-OUTGOING-BR",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "BR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "Preserving an unspecified F5 input datatype does not assign support to a named institutional business role. Residents and public authorities are recipients in F1, not an additional role-duty binding supplied by the observation-batch identity question."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-FULFILLS-INCOMING-CI",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CI"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 input limitation does not select a particular COI service to fulfil the collection capability. Its unknown observation datatype supplies no new provider binding; the capability's separately authored F1 collection relationships remain intact."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-SUPPORTS-INCOMING-CO",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CO"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 organisation facet preserves an input identity for retrieval. It does not select a communication bearer or Community of Interest access service; neither an unknown observation datatype nor stale/unavailable state specifies a transport provider."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-SUPPORTS-INCOMING-CO",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CO"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "Collecting an existing F5 observation batch with an unspecified datatype does not select a communication bearer or access service. This facet adds no transmission mechanism; existing information-source and notification-channel roles remain separate."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-FULFILLS-INCOMING-CR",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The unknown F5 observation datatype does not name a Core Service realization of the collection capability. No additional technical provider or service mechanism is selected by this input-only facet."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-SUPPORTS-INCOMING-CR",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "Retaining the unspecified input datatype while organising the F5 batch does not choose a Core Services provider. The facet selects no database, integration endpoint or other implementation service for its information-organisation role."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-SUPPORTS-INCOMING-CR",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet retains the observation batch's unknown product identity without choosing a Core Services provider. It does not select an additional service implementation or input interface from that datatype uncertainty."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-USES-INCOMING-BP",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "BP"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This F5 facet concerns the upstream batch's unknown identity, not a new process-client use of the downstream environmental-view service. Process use of the F1 assembled public view remains a separate authored role and is not implied by this datatype limitation."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-SUPPORTS-INCOMING-UA",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "UA"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 input-organisation facet retains an unspecified batch datatype; it does not select a further user application to support organisation. The separate F1 public presentation and F3 subscription-choice roles remain unchanged."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-SUPPORTS-INCOMING-UA",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "UA"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet preserves an unknown observation-input datatype. It does not select an additional user application or collection client; public presentation of the collected material belongs to the separate F1 role."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-USES-INCOMING-UA",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "UA"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The upstream F5 identity question does not select an additional user application using the environmental-view service. Existing F1 public-view application use remains represented separately; an unknown incoming batch datatype is not another client workflow."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-FULFILLS-OUTGOING-CP",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CP"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet retains an unknown upstream observation datatype rather than declaring another service capability. It does not establish an additional capability-fulfilment relationship; existing F1 aggregation and environmental-view capabilities remain separate."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-USES-OUTGOING-CI",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CI"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "Organising the F5 observation batch preserves its unspecified input identity without selecting a direct COI service-client interface. The separately scoped F1 public-information role retains its existing service use; no additional API binding follows from datatype uncertainty."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-USES-OUTGOING-CI",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CI"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "Collecting the F5 batch retains an unspecified input datatype, not a selected COI service-client interface. It does not introduce an additional provider API; separately scoped F1 information-source relationships remain unchanged."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-DEPENDS_ON-OUTGOING-CR",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 input-identity facet does not select a supporting Core Services implementation dependency. An unknown upstream datatype does not specify a database, processing platform, integration service or other technical dependency of the separate F1 view-assembly function."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-USES-OUTGOING-CR",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This F5 organisation facet preserves the unknown input datatype for retrieval; it does not select a direct Core Services API, database or other technical client relationship. The existing organisation function does not gain an implementation binding from an unspecified batch type."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-USES-OUTGOING-CR",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet does not choose a direct Core Services interface or processing mechanism. Retaining an unspecified upstream observation datatype supplies no additional technical client binding, while the separately scoped F1 collection role remains intact."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-DEPENDS_ON-INCOMING-CR",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This F5 facet records uncertainty about an upstream input, not an additional Core Service that depends on the environmental-view service. It does not select a reverse technical dependency or implementation consumer from an unspecified observation datatype."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-ASSIGNED_TO-INCOMING-BR",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "ASSIGNED_TO",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "BR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 observation-input facet does not assign an institutional business role to information organisation. Keeping an input datatype unspecified supplies no accountable owner, command duty or other role-to-process assignment; public recipients and private subscriptions remain separate."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-ASSIGNED_TO-INCOMING-BR",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "ASSIGNED_TO",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "BR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 observation-batch identity limitation does not assign a named institutional business role to collection. It establishes no accountable owner or operational duty; F1 recipients do not become process-role assignments merely because input information is collected."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-PRODUCES-OUTGOING-IP",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This F5 facet describes an existing upstream observation batch whose input datatype is unspecified. It does not produce another information product or identify that incoming batch with the downstream assembled environmental view; the separate F1 output-production role remains unchanged."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-PRODUCES-OUTGOING-IP",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "Organising the existing F5 observation batch for retrieval does not generate a new information product. This facet preserves its unknown incoming datatype rather than asserting a new output or relabelling the incoming material as an assembled environmental picture."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-PRODUCES-OUTGOING-IP",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet takes an already existing observation batch and retains its unknown datatype. It does not generate new observations, measurements or a separate information product; the incoming batch is not thereby an asserted assembled environmental picture."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-COMMUNICATES_WITH-INCOMING-CO",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "COMMUNICATES_WITH",
+      "direction": "INCOMING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "CO"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "Preserving an unknown F5 observation-input datatype does not select a communication bearer or COI access-service exchange. This input-identity facet adds no communication endpoint; notification-channel choices and downstream public-view use remain separate roles."
+    },
+    {
+      "id": "MEASURED-F1-BP-1529-not-F5-input-identity",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1116"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "The selected F1 role collects existing published warning, area and public observation information. It does not assert a separate F5 raw-batch product binding to IP-1116 in that public-information facet; the same node's distinct F5 observation-input contribution retains the unchanged unknown-product question rather than claiming a known input datatype."
+    },
+    {
+      "id": "MEASURED-F1-BP-1534-not-F5-input-identity",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1116"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "The selected F1 role organises public warning, area and observation content for understandable retrieval. It does not assert the incoming F5 raw-batch identity as IP-1116 in that public-view facet; the distinct F5 observation-input contribution preserves that product binding as an open question, separate from private subscription records."
+    },
+    {
+      "id": "MEASURED-F1-CI-1096-not-F5-input-identity",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1116"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "The selected F1 role assembles a bounded understandable environmental view from published information. It does not assert the incoming F5 raw-batch product identity in that output-assembly facet; the distinct F5 observation-input contribution retains the same IP-1116 identity question as unknown, without promoting the upstream batch to the assembled output."
+    },
+    {
+      "id": "MEASURED-F1-CP-1020-not-F5-input-identity",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1116"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "The selected F1 role provides collection ability for existing published warning, area and observation information. It does not establish IP-1116 as a necessary incoming F5 raw-batch product within that public-information facet; the distinct F5 observation-input contribution retains the unchanged unknown-product question and adds no sensing or source provider."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-IP-1078",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1078"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet retains an existing observation batch with an unspecified input datatype. Operation Enabling Information Products concern targeting, operational-environment preparation, force protection and coordination in support of operational outputs. This supplementary public observation input does not select such an operational-enabling product or workflow; its environmental-picture identity remains explicitly unknown on its separate path."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-IP-1079",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1079"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet preserves existing water observations and an unknown input datatype. Operation Support Information Products sustain force or organisational operational effectiveness and include specialised METOC data as well as personnel, logistics, medical, financial, simulation and training support. F5 does not select one of those operational-support products or workflows. This does not deny the relevance of water observations or resolve the separate unknown environmental-picture input identity."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-IP-2049",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-2049"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet concerns the latest public observation input, not a product about planning, organising or controlling organisational resources, processes or personnel. It does not select a Management Information Product, delivery audit record or retry-feedback input. A1 delivery-history duties remain separate, and the F5 observation-batch datatype remains unknown."
+    },
+    {
+      "id": "MEASURED-F1-BP-1529-not-recognized-picture-intake",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1102"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "The selected F1 collection role uses published public warning, area and observation information; it does not select an upstream Recognized Pictures stream from sensor-feed fusion and coordination-centre management. Its published-warning input remains on the separate IP-1069/IP-2130 path. The same node's distinct F5 observation-input facet retains the unresolved environmental-picture identity under this branch, without claiming that datatype is known."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-IP-1078",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1078"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet retains an existing observation batch with an unspecified input datatype. Operation Enabling Information Products concern targeting, operational-environment preparation, force protection and coordination in support of operational outputs. This supplementary public observation input does not select such an operational-enabling product or workflow; its environmental-picture identity remains explicitly unknown on its separate path."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-IP-1079",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1079"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet preserves existing water observations and an unknown input datatype. Operation Support Information Products sustain force or organisational operational effectiveness and include specialised METOC data as well as personnel, logistics, medical, financial, simulation and training support. F5 does not select one of those operational-support products or workflows. This does not deny the relevance of water observations or resolve the separate unknown environmental-picture input identity."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-IP-2049",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-2049"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet concerns the latest public observation input, not a product about planning, organising or controlling organisational resources, processes or personnel. It does not select a Management Information Product, delivery audit record or retry-feedback input. A1 delivery-history duties remain separate, and the F5 observation-batch datatype remains unknown."
+    },
+    {
+      "id": "MEASURED-F1-BP-1534-not-recognized-picture-intake",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1102"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "The selected F1 information organisation role uses published public warning, area and observation information; it does not select an upstream Recognized Pictures stream from sensor-feed fusion and coordination-centre management. Its published-warning input remains on the separate IP-1069/IP-2130 path. The same node's distinct F5 observation-input facet retains the unresolved environmental-picture identity under this branch, without claiming that datatype is known."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-IP-1078",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1078"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet retains an existing observation batch with an unspecified input datatype. Operation Enabling Information Products concern targeting, operational-environment preparation, force protection and coordination in support of operational outputs. This supplementary public observation input does not select such an operational-enabling product or workflow; its environmental-picture identity remains explicitly unknown on its separate path."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-IP-1079",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1079"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet preserves existing water observations and an unknown input datatype. Operation Support Information Products sustain force or organisational operational effectiveness and include specialised METOC data as well as personnel, logistics, medical, financial, simulation and training support. F5 does not select one of those operational-support products or workflows. This does not deny the relevance of water observations or resolve the separate unknown environmental-picture input identity."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-IP-2049",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-2049"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet concerns the latest public observation input, not a product about planning, organising or controlling organisational resources, processes or personnel. It does not select a Management Information Product, delivery audit record or retry-feedback input. A1 delivery-history duties remain separate, and the F5 observation-batch datatype remains unknown."
+    },
+    {
+      "id": "MEASURED-F1-CI-1096-not-recognized-picture-intake",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1102"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "The selected F1 environmental-view assembly role uses published public warning, area and observation information; it does not select an upstream Recognized Pictures stream from sensor-feed fusion and coordination-centre management. Its published-warning input remains on the separate IP-1069/IP-2130 path. The same node's distinct F5 observation-input facet retains the unresolved environmental-picture identity under this branch, without claiming that datatype is known."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-IP-1078",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1078"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet retains an existing observation batch with an unspecified input datatype. Operation Enabling Information Products concern targeting, operational-environment preparation, force protection and coordination in support of operational outputs. This supplementary public observation input does not select such an operational-enabling product or workflow; its environmental-picture identity remains explicitly unknown on its separate path."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-IP-1079",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1079"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet preserves existing water observations and an unknown input datatype. Operation Support Information Products sustain force or organisational operational effectiveness and include specialised METOC data as well as personnel, logistics, medical, financial, simulation and training support. F5 does not select one of those operational-support products or workflows. This does not deny the relevance of water observations or resolve the separate unknown environmental-picture input identity."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-IP-2049",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-2049"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet concerns the latest public observation input, not a product about planning, organising or controlling organisational resources, processes or personnel. It does not select a Management Information Product, delivery audit record or retry-feedback input. A1 delivery-history duties remain separate, and the F5 observation-batch datatype remains unknown."
+    },
+    {
+      "id": "MEASURED-F1-CP-1020-not-recognized-picture-intake",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1102"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "The selected F1 collection capability role uses published public warning, area and observation information; it does not select an upstream Recognized Pictures stream from sensor-feed fusion and coordination-centre management. Its published-warning input remains on the separate IP-1069/IP-2130 path. The same node's distinct F5 observation-input facet retains the unresolved environmental-picture identity under this branch, without claiming that datatype is known."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-IP-1028",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1028"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet retains an existing public water-observation batch with an unspecified datatype. Domain-Specific Information Products are facts unique to a particular military domain with no similar instantiation elsewhere. This supplementary public flood-observation input does not select a military-domain-unique product; its environmental-picture identity remains separately unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-IP-1049",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1049"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet concerns existing observation input, not doctrine, organisational authority, operational intentions or desired military end-states. It does not select a Governance Information Product or command instruction. The batch's environmental-picture identity remains unknown without turning public flood observations into an authority or operational-planning product."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-IP-1028",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1028"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet retains an existing public water-observation batch with an unspecified datatype. Domain-Specific Information Products are facts unique to a particular military domain with no similar instantiation elsewhere. This supplementary public flood-observation input does not select a military-domain-unique product; its environmental-picture identity remains separately unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-IP-1049",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1049"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet concerns existing observation input, not doctrine, organisational authority, operational intentions or desired military end-states. It does not select a Governance Information Product or command instruction. The batch's environmental-picture identity remains unknown without turning public flood observations into an authority or operational-planning product."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-IP-1028",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1028"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet retains an existing public water-observation batch with an unspecified datatype. Domain-Specific Information Products are facts unique to a particular military domain with no similar instantiation elsewhere. This supplementary public flood-observation input does not select a military-domain-unique product; its environmental-picture identity remains separately unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-IP-1049",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1049"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet concerns existing observation input, not doctrine, organisational authority, operational intentions or desired military end-states. It does not select a Governance Information Product or command instruction. The batch's environmental-picture identity remains unknown without turning public flood observations into an authority or operational-planning product."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-IP-1028",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1028"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet retains an existing public water-observation batch with an unspecified datatype. Domain-Specific Information Products are facts unique to a particular military domain with no similar instantiation elsewhere. This supplementary public flood-observation input does not select a military-domain-unique product; its environmental-picture identity remains separately unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-IP-1049",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1049"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet concerns existing observation input, not doctrine, organisational authority, operational intentions or desired military end-states. It does not select a Governance Information Product or command instruction. The batch's environmental-picture identity remains unknown without turning public flood observations into an authority or operational-planning product."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-other-recognized-domains",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1103",
+        "IP-1104",
+        "IP-1105",
+        "IP-1106",
+        "IP-1107",
+        "IP-1108",
+        "IP-1109",
+        "IP-1110",
+        "IP-1111",
+        "IP-1112",
+        "IP-1113",
+        "IP-1114",
+        "IP-1115"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet preserves public water observations, not air/space tracks, cyber security, naval contacts, ground forces, intelligence/JISR, electronic warfare, civil-military coordination, CBRN, CIS operations, engineering-force status, logistics resources or medical-support capabilities. Public residents do not establish a CIMIC picture, and flood subject matter does not select naval, engineering or medical operational data. These exact candidate products have those stated purposes; this judgment does not include IP-1116 or resolve the separately open environmental-picture identity."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-force-control-measures",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1010"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet retains an existing observation batch with an unspecified datatype. Situational Awareness Controls provide map/display symbology to regulate forces and warfighting functions. The supplied public flood-observation input does not select operational control measures or a force-regulation workflow; public affected-area context remains intact and the environmental-picture identity stays unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-mapping-reference-basis",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1069"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet takes an existing observation batch, not a separately selected map-data or imagery reference model onto which additional information is projected. It does not select a Mapping Information Product or map-basis workflow merely because observations concern an area. The separate F1 warning-input path remains intact, and the F5 environmental-picture identity remains unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-organisational-situation-report",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1088"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet preserves existing public water observations. Situation Reports answer another organisational entity's situational-information request or are generated/transmitted under contingent-event operating procedures. F5 does not select that inter-organisational reporting product or workflow. This uses the candidate's own purpose, not its overlay parent, and leaves the observation-batch environmental-picture identity unresolved."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1529-not-exercise-control-picture",
+      "sourceIds": [
+        "BP-1529"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1673"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection facet concerns an existing public water-observation batch, not information for an Exercise Control organisation in collective training and exercises. No CTE event or exercise-control picture is selected. This judgment uses the candidate's own stated purpose rather than its overlay parent, and does not decide whether the observation batch is an environmental picture."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-other-recognized-domains",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1103",
+        "IP-1104",
+        "IP-1105",
+        "IP-1106",
+        "IP-1107",
+        "IP-1108",
+        "IP-1109",
+        "IP-1110",
+        "IP-1111",
+        "IP-1112",
+        "IP-1113",
+        "IP-1114",
+        "IP-1115"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet preserves public water observations, not air/space tracks, cyber security, naval contacts, ground forces, intelligence/JISR, electronic warfare, civil-military coordination, CBRN, CIS operations, engineering-force status, logistics resources or medical-support capabilities. Public residents do not establish a CIMIC picture, and flood subject matter does not select naval, engineering or medical operational data. These exact candidate products have those stated purposes; this judgment does not include IP-1116 or resolve the separately open environmental-picture identity."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-force-control-measures",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1010"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet retains an existing observation batch with an unspecified datatype. Situational Awareness Controls provide map/display symbology to regulate forces and warfighting functions. The supplied public flood-observation input does not select operational control measures or a force-regulation workflow; public affected-area context remains intact and the environmental-picture identity stays unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-mapping-reference-basis",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1069"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet takes an existing observation batch, not a separately selected map-data or imagery reference model onto which additional information is projected. It does not select a Mapping Information Product or map-basis workflow merely because observations concern an area. The separate F1 warning-input path remains intact, and the F5 environmental-picture identity remains unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-organisational-situation-report",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1088"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet preserves existing public water observations. Situation Reports answer another organisational entity's situational-information request or are generated/transmitted under contingent-event operating procedures. F5 does not select that inter-organisational reporting product or workflow. This uses the candidate's own purpose, not its overlay parent, and leaves the observation-batch environmental-picture identity unresolved."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-BP-1534-not-exercise-control-picture",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1673"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 information organisation facet concerns an existing public water-observation batch, not information for an Exercise Control organisation in collective training and exercises. No CTE event or exercise-control picture is selected. This judgment uses the candidate's own stated purpose rather than its overlay parent, and does not decide whether the observation batch is an environmental picture."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-other-recognized-domains",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1103",
+        "IP-1104",
+        "IP-1105",
+        "IP-1106",
+        "IP-1107",
+        "IP-1108",
+        "IP-1109",
+        "IP-1110",
+        "IP-1111",
+        "IP-1112",
+        "IP-1113",
+        "IP-1114",
+        "IP-1115"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet preserves public water observations, not air/space tracks, cyber security, naval contacts, ground forces, intelligence/JISR, electronic warfare, civil-military coordination, CBRN, CIS operations, engineering-force status, logistics resources or medical-support capabilities. Public residents do not establish a CIMIC picture, and flood subject matter does not select naval, engineering or medical operational data. These exact candidate products have those stated purposes; this judgment does not include IP-1116 or resolve the separately open environmental-picture identity."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-force-control-measures",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1010"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet retains an existing observation batch with an unspecified datatype. Situational Awareness Controls provide map/display symbology to regulate forces and warfighting functions. The supplied public flood-observation input does not select operational control measures or a force-regulation workflow; public affected-area context remains intact and the environmental-picture identity stays unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-mapping-reference-basis",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1069"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet takes an existing observation batch, not a separately selected map-data or imagery reference model onto which additional information is projected. It does not select a Mapping Information Product or map-basis workflow merely because observations concern an area. The separate F1 warning-input path remains intact, and the F5 environmental-picture identity remains unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-organisational-situation-report",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1088"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet preserves existing public water observations. Situation Reports answer another organisational entity's situational-information request or are generated/transmitted under contingent-event operating procedures. F5 does not select that inter-organisational reporting product or workflow. This uses the candidate's own purpose, not its overlay parent, and leaves the observation-batch environmental-picture identity unresolved."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CI-1096-not-exercise-control-picture",
+      "sourceIds": [
+        "CI-1096"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1673"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 upstream environmental-view input facet concerns an existing public water-observation batch, not information for an Exercise Control organisation in collective training and exercises. No CTE event or exercise-control picture is selected. This judgment uses the candidate's own stated purpose rather than its overlay parent, and does not decide whether the observation batch is an environmental picture."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-other-recognized-domains",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1103",
+        "IP-1104",
+        "IP-1105",
+        "IP-1106",
+        "IP-1107",
+        "IP-1108",
+        "IP-1109",
+        "IP-1110",
+        "IP-1111",
+        "IP-1112",
+        "IP-1113",
+        "IP-1114",
+        "IP-1115"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet preserves public water observations, not air/space tracks, cyber security, naval contacts, ground forces, intelligence/JISR, electronic warfare, civil-military coordination, CBRN, CIS operations, engineering-force status, logistics resources or medical-support capabilities. Public residents do not establish a CIMIC picture, and flood subject matter does not select naval, engineering or medical operational data. These exact candidate products have those stated purposes; this judgment does not include IP-1116 or resolve the separately open environmental-picture identity."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-force-control-measures",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1010"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet retains an existing observation batch with an unspecified datatype. Situational Awareness Controls provide map/display symbology to regulate forces and warfighting functions. The supplied public flood-observation input does not select operational control measures or a force-regulation workflow; public affected-area context remains intact and the environmental-picture identity stays unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-mapping-reference-basis",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1069"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet takes an existing observation batch, not a separately selected map-data or imagery reference model onto which additional information is projected. It does not select a Mapping Information Product or map-basis workflow merely because observations concern an area. The separate F1 warning-input path remains intact, and the F5 environmental-picture identity remains unknown."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-organisational-situation-report",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1088"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet preserves existing public water observations. Situation Reports answer another organisational entity's situational-information request or are generated/transmitted under contingent-event operating procedures. F5 does not select that inter-organisational reporting product or workflow. This uses the candidate's own purpose, not its overlay parent, and leaves the observation-batch environmental-picture identity unresolved."
+    },
+    {
+      "id": "MEASURED-F5-INPUT-CP-1020-not-exercise-control-picture",
+      "sourceIds": [
+        "CP-1020"
+      ],
+      "sourceContributionIds": [
+        "observation-input"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "phases": [
+        "NAVIGATE"
+      ],
+      "candidateIds": [
+        "IP-1673"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 collection capability facet concerns an existing public water-observation batch, not information for an Exercise Control organisation in collective training and exercises. No CTE event or exercise-control picture is selected. This judgment uses the candidate's own stated purpose rather than its overlay parent, and does not decide whether the observation batch is an environmental picture."
     }
   ],
   "openScopes": [
@@ -7342,6 +9050,7 @@
     {
       "id": "OPEN-F5-input-identity-BP-1529-outgoing",
       "sourceIds": ["BP-1529"],
+      "sourceContributionIds": ["observation-input"],
       "type": "CONSUMES",
       "direction": "OUTGOING",
       "candidateIds": ["IP-1116"],
@@ -7366,6 +9075,7 @@
     {
       "id": "OPEN-F5-input-identity-BP-1534-outgoing",
       "sourceIds": ["BP-1534"],
+      "sourceContributionIds": ["observation-input"],
       "type": "CONSUMES",
       "direction": "OUTGOING",
       "candidateIds": ["IP-1116"],
@@ -7414,6 +9124,7 @@
     {
       "id": "OPEN-F5-input-identity-CI-1096-outgoing",
       "sourceIds": ["CI-1096"],
+      "sourceContributionIds": ["observation-input"],
       "type": "CONSUMES",
       "direction": "OUTGOING",
       "candidateIds": ["IP-1116"],
@@ -7438,6 +9149,7 @@
     {
       "id": "OPEN-F5-input-identity-CP-1020-outgoing",
       "sourceIds": ["CP-1020"],
+      "sourceContributionIds": ["observation-input"],
       "type": "REQUIRES",
       "direction": "OUTGOING",
       "candidateIds": ["IP-1116"],
