@@ -29,7 +29,7 @@ class RelationWorkMessageTest {
         assertEquals(2, header.derive(AnalysisMessageType.RELATION_ANALYSIS_COMPLETED, Instant.now()).schemaVersion());
         assertThrows(IllegalArgumentException.class, () -> envelope(1, id, cp));
         assertThrows(IllegalArgumentException.class, () -> envelope(2, id, TaxonomyShardRoot.of("IP")));
-        assertThrows(IllegalArgumentException.class, () -> envelope(2, new AnalysisTaskId("op:relation:CP.w000512"), cp));
+        assertThrows(IllegalArgumentException.class, () -> envelope(2, new AnalysisTaskId("op:relation:CP.w100000"), cp));
         assertThrows(IllegalArgumentException.class, () -> envelope(3, id, cp));
     }
     private static AnalysisEnvelope envelope(int version, AnalysisTaskId task, TaxonomyShardRoot root) {

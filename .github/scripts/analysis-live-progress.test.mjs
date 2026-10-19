@@ -343,6 +343,24 @@ test('preserves provider wait reasons while showing relation work and its separa
     f.monitor.stop();
 });
 
+test('live relation progress displays cumulative consumption without turning a full budget into completed work', async () => {
+    const f = fixture(async () => response({ ...snapshot(), relationProgress: {
+        totalSources: 40, assessedSources: 32, totalSearches: 80, completedSearches: 28,
+        unresolvedSearches: 4, pendingSearches: 48, calls: 768, maxCalls: 768, verifiedRelations: 12,
+        step: 'PAUSED', taxonomies: [], budget: { callsPerSlice: 256, maxTotalCalls: 4096,
+            newCalls: 512, spentCalls: 4096, automatic: true }
+    } }), 'workspace-a', true);
+    await f.step(0);
+    const text = f.elements.get('analysisLiveProgress').textContent;
+    assert.match(text, /28 of 80/);
+    assert.match(text, /Total budget.*4096.*4096/);
+    assert.match(text, /New evaluations.*512/);
+    assert.match(text, /Initial budget.*256/);
+    assert.match(text, /Relationship search incomplete/);
+    assert.doesNotMatch(text, /Call budget for this execution|80 of 80/);
+    f.monitor.stop();
+});
+
 function coverage() {
     return { total: 12, assessed: 4, excluded: 3, open: 5, taxonomies: [
         { root: 'BP', nameEn: 'Business processes', nameDe: 'Geschäftsprozesse', total: 8, assessed: 3, excluded: 2, open: 3 },
@@ -549,6 +567,20 @@ test('a budget stop explains retained work without exposing a raw stop code as t
     assert.match(f.elements.get('analysisProgressDiagnostics').textContent, /CALL_BUDGET/);
     f.monitor.stop();
 });
+
+for (const stopReason of ['TOTAL_CALL_BUDGET', 'SOURCE_LIMIT', 'WORK_LIMIT']) {
+    test(`${stopReason} explains the applicable relationship limit and pending work`, async () => {
+        const f = fixture(async () => response({ ...snapshot(1, 'PARTIAL'), stopReason }), 'workspace-a', true);
+        await f.step(0);
+        const warning = f.elements.get('analysisLiveProgress').children.find(child => child.className === 'fw-bold');
+        assert.match(warning.textContent, stopReason === 'TOTAL_CALL_BUDGET' ? /total.*budget/i
+            : stopReason === 'SOURCE_LIMIT' ? /source limit/i : /work limit/i);
+        assert.match(warning.textContent, /open|incomplete/i);
+        assert.doesNotMatch(warning.textContent, new RegExp(stopReason));
+        assert.match(f.elements.get('analysisProgressDiagnostics').textContent, new RegExp(stopReason));
+        f.monitor.stop();
+    });
+}
 
 test('every taxonomy has a visible labelled bar while direct and excluded node coverage stay distinct', async () => {
     const value = { ...clusterSnapshot(), nodeProgress: coverage(), relationProgress: relationshipWork() };

@@ -110,6 +110,9 @@ final class ClusterAnalysisProgress {
 
     private static RelationSearchProgress relations(ClusterAnalysisState state, List<ClusterAnalysisWork> tasks,
             Map<ClusterAnalysisWork, Worker> workers, String planJson, RelationSearchReport retained, ObjectMapper json) {
+        if (planJson == null && state.terminal() && retained != null && retained.progress() != null)
+            return withActivity(retained.progress(), state == ClusterAnalysisState.COMPLETED && retained.isSearchExhausted()
+                    ? RelationSearchProgress.Step.FINISHED : RelationSearchProgress.Step.PAUSED, null, retained.progress().calls());
         var live = workers.entrySet().stream().filter(entry -> AnalysisTaskType.RELATION_ANALYSIS.name().equals(entry.getKey().taskType)
                         && "RUNNING".equals(entry.getKey().state) && entry.getValue().delivery() == entry.getKey().attempts
                         && entry.getValue().relations() != null)
@@ -118,6 +121,8 @@ final class ClusterAnalysisProgress {
             var preparation = workers.entrySet().stream().filter(entry -> AnalysisTaskType.RELATION_ANALYSIS.name().equals(entry.getKey().taskType)
                             && entry.getKey().inputJson == null && entry.getValue().relations() != null)
                     .max(Comparator.comparingLong(entry -> entry.getValue().revision())).map(entry -> entry.getValue().relations()).orElse(null);
+            if (preparation == null && retained != null && retained.progress() != null)
+                return withActivity(retained.progress(), RelationSearchProgress.Step.PAUSED, null, retained.progress().calls());
             return preparation == null ? null : withActivity(preparation,
                     state.terminal() ? RelationSearchProgress.Step.PAUSED : preparation.step(), state.terminal() ? null : preparation.current(), preparation.calls());
         }
@@ -125,7 +130,7 @@ final class ClusterAnalysisProgress {
         var results = tasks.stream().filter(task -> AnalysisTaskType.RELATION_ANALYSIS.name().equals(task.taskType)
                         && task.inputJson != null && task.resultJson != null)
                 .map(task -> json.readValue(task.resultJson, RelationSearchDistribution.WorkResult.class)).toList();
-        var report = RelationSearchDistribution.retainAcceptedRelations(RelationSearchDistribution.combine(plan, results), retained);
+        var report = RelationSearchDistribution.combine(plan, results, retained);
         var progress = report.progress(); int calls = progress.calls();
         for (var entry : workers.entrySet()) if (entry.getKey().inputJson != null && entry.getKey().resultJson == null
                 && entry.getValue().relations() != null) calls += entry.getValue().relations().calls();
@@ -133,14 +138,18 @@ final class ClusterAnalysisProgress {
         var step = state.terminal() ? (state == ClusterAnalysisState.COMPLETED && report.isSearchExhausted()
                 ? RelationSearchProgress.Step.FINISHED : RelationSearchProgress.Step.PAUSED)
                 : report.isSearchExhausted() ? RelationSearchProgress.Step.FINISHED
+                : calls >= progress.maxCalls() ? RelationSearchProgress.Step.PAUSED
                 : live != null && live.relations().current() != null ? live.relations().step() : RelationSearchProgress.Step.NAVIGATE;
         return withActivity(progress, step, state.terminal() || live == null ? null : live.relations().current(), calls);
     }
     private static RelationSearchProgress withActivity(RelationSearchProgress progress, RelationSearchProgress.Step step,
                                                         RelationSearchProgress.Current current, int calls) {
+        var budget = progress.budget();
+        if (budget != null && calls != progress.calls()) budget = budget.withSpentCalls(budget.spentCalls() - budget.newCalls() + calls,
+                budget.spentCalls() - budget.newCalls());
         return new RelationSearchProgress(progress.totalSources(), progress.assessedSources(), progress.totalSearches(),
                 progress.completedSearches(), progress.unresolvedSearches(), progress.pendingSearches(), calls, progress.maxCalls(),
-                progress.verifiedRelations(), step, current, progress.taxonomies(), progress.sourceTaxonomies());
+                progress.verifiedRelations(), step, current, progress.taxonomies(), progress.sourceTaxonomies(), budget);
     }
 
     static void validateRelations(RelationSearchProgress p) {

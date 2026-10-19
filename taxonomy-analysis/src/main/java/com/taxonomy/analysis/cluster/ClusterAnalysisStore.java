@@ -144,6 +144,20 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                                 : com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED);
             }
             public com.taxonomy.dto.RelationSearchReport previousRelations() { return continuations.previousRelations(claim); }
+            public int sourceCohortSize() { return binding.sourceCohortSize(); }
+            public com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() { return binding.relationBudget(); }
+            public int relationCallsSpent() {
+                return tx.execute(status -> {
+                    diagnosticAuthority(task, input.deliveryAttempt());
+                    return continuations.relationCallsSpent(claim);
+                });
+            }
+            public void beforeRelationCall(int maximum) {
+                tx.executeWithoutResult(status -> {
+                    diagnosticAuthority(task, input.deliveryAttempt());
+                    continuations.beforeRelationCall(claim, maximum);
+                });
+            }
         });
     }
     public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task) { return diagnostics.session(task); }
@@ -215,8 +229,17 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 if (oldId != null && !oldId.equals(context.operationId())) {
                     var old = requireRun(oldId, true);
                     if (!old.state.terminal()) {
+                        var oldBinding = read(old.commandJson, AnalyzeRequirementCommand.class).continuationBinding();
+                        var nextBinding = command.continuationBinding();
+                        if (oldBinding == null || !oldBinding.id().equals(nextBinding.id()))
+                            throw new IllegalStateException("Superseded operation belongs to another continuation");
+                        // A retry can revoke the old token before its coordinator settles.
+                        // The new claim still owns that journal's prior evidence before attach.
+                        var handoff = Objects.equals(oldBinding.token(), nextBinding.token()) ? null
+                                : new RelationHandoff(retainedRelations(command), nextBinding.relationBudget() == null
+                                        ? null : nextBinding.relationBudget().callsBeforeExecution());
                         old.state = ClusterAnalysisState.PARTIAL;
-                        var partial = aggregate(old); partial.setStatus("PARTIAL"); partial.setErrorMessage("SUPERSEDED: explicit continuation decision");
+                        var partial = aggregate(old, handoff); partial.setStatus("PARTIAL"); partial.setErrorMessage("SUPERSEDED: explicit continuation decision");
                         old.resultJson = json(partial); for (var work : works(old.id)) if (!work.settled) work.state = "STOPPED";
                         appendEvent(old, AnalysisProgressPhase.OPERATION_STOPPED);
                     }
@@ -340,7 +363,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 || !plan.preparationId().equals(run.id + ":relations")
                 || !plan.originalSha256().equals(task.envelope().requirement().textSha256())
                 || !plan.sourceResultIds().equals(task.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList())
-                || plan.options().limits().maxWorkItems() > 512)
+                || plan.options().limits().maxWorkItems() > 100_000)
             throw new IllegalArgumentException("Relation preparation does not match admitted source cohort");
         run.relationPlanJson = json(plan); work.resultJson = run.relationPlanJson;
         work.state = "COMPLETED"; work.finishedAt = System.currentTimeMillis();
@@ -517,15 +540,23 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                 }
             }
             var command = read(run.commandJson, AnalyzeRequirementCommand.class);
-            var retained = command.retainedAnalysis() == null ? null : command.retainedAnalysis().getRelationSearchReport();
+            var result = run.resultJson == null ? null : read(run.resultJson, AnalysisResult.class);
+            // A later continuation rotates its claim. Historical snapshots remain
+            // bound to this operation's committed evidence and cumulative count.
+            var committed = run.state.terminal() && result != null ? result.getRelationSearchReport() : null;
+            var retained = committed == null ? retainedRelations(command) : committed;
             var progress = ClusterAnalysisProgress.combine(context, run.state, work, roots,
-                    command.analysisScope().includesRelations() ? run.relationPlanJson : null, retained, mapper);
+                    command.analysisScope().includesRelations() && (committed == null || committed.progress() == null)
+                            ? run.relationPlanJson : null, retained, mapper);
+            if (progress.relations() != null) progress = new ClusterAnalysisProgress.View(progress.nodes(),
+                    progress.relations().withBudget(committed == null ? relationBudget(command, progress.relations().budget())
+                            : committed.budget()), progress.phase(), progress.node());
             var tasks = work.stream().map(w -> new TaskView(w.taskId, w.taskType, w.root, w.state,
                     w.attempts, w.startedAt, w.finishedAt)).toList();
             return new Snapshot(run.id, run.state, run.revision, run.completedRoots, run.totalRoots,
                     (int) tasks.stream().filter(t -> t.state().equals("RUNNING")).count(),
                     (int) tasks.stream().filter(t -> t.state().equals("QUEUED") || t.state().equals("WAITING_PREDECESSOR")).count(), run.createdAt, run.updatedAt,
-                    tasks, run.resultJson == null ? null : read(run.resultJson, AnalysisResult.class), progress);
+                    tasks, result, progress);
         });
     }
 
@@ -773,13 +804,19 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         return result;
     }
 
-    private AnalysisResult aggregate(ClusterAnalysisRun run) {
+    private record RelationHandoff(RelationSearchReport previous, Integer finalCalls) { }
+
+    private AnalysisResult aggregate(ClusterAnalysisRun run) { return aggregate(run, null); }
+
+    private AnalysisResult aggregate(ClusterAnalysisRun run, RelationHandoff handoff) {
         var scores = new LinkedHashMap<String, Double>(); var reasons = new LinkedHashMap<String, String>();
         var contexts = new LinkedHashMap<String, AnalysisScoreSemantics.NodeContext>();
         List<TaxonomyNodeDto> tree = new ArrayList<>(); List<String> warnings = new ArrayList<>();
         List<TaxonomyDiscrepancy> discrepancies = new ArrayList<>(); List<ProductCoverageGap> gaps = new ArrayList<>();
         var coverage = new ClusterAnalysisCoverage();
-        var retained = read(run.commandJson, AnalyzeRequirementCommand.class).retainedAnalysis();
+        var command = read(run.commandJson, AnalyzeRequirementCommand.class);
+        var retained = command.retainedAnalysis();
+        var previousRelations = handoff == null || handoff.previous() == null ? retainedRelations(command) : handoff.previous();
         String provider = retained == null ? null : retained.getProvider();
         if (retained != null) warnings.addAll(retained.getWarnings());
         for (var work : works(run.id)) {
@@ -811,9 +848,9 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         for (var work : works(run.id)) if (work.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name()) && work.failureReason != null)
             warnings.add(work.failureReason + ": relation work incomplete; no negative finding");
         if (run.relationPlanJson != null) {
-            var report = RelationSearchDistribution.retainAcceptedRelations(
-                    RelationSearchDistribution.combine(read(run.relationPlanJson, RelationSearchDistribution.Plan.class), relationResults(run.id)),
-                    retained == null ? null : retained.getRelationSearchReport());
+            var report = RelationSearchDistribution.combine(read(run.relationPlanJson, RelationSearchDistribution.Plan.class),
+                    relationResults(run.id), previousRelations);
+            report = report.withBudget(relationBudget(command, report.budget()));
             result.setRelationSearchReport(report); result.setProvisionalRelations(List.of());
             if (!report.isSearchExhausted()) {
                 String summary = "RELATION_SEARCH_PARTIAL: " + report.totalCalls() + "/" + report.maxCalls()
@@ -823,11 +860,20 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             }
         }
         if (run.relationPlanJson == null) {
+            if (previousRelations != null) result.setRelationSearchReport(
+                    previousRelations.withBudget(relationBudget(command, null)));
             result.setProvisionalRelations(works(run.id).stream()
                     .filter(work -> work.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name())
                             && work.inputJson == null && work.resultJson != null)
                     .flatMap(work -> read(work.resultJson, ClusterRelationComputation.ScoreOnly.class).hypotheses().stream())
                     .toList());
+        }
+        var report = result.getRelationSearchReport();
+        if (handoff != null && handoff.finalCalls() != null && report != null && report.budget() != null) {
+            var usage = report.budget();
+            var oldPolicy = command.continuationBinding().relationBudget();
+            int before = oldPolicy == null ? usage.spentCalls() - usage.newCalls() : oldPolicy.callsBeforeExecution();
+            result.setRelationSearchReport(report.withBudget(usage.withSpentCalls(handoff.finalCalls(), before)));
         }
         result.setWarnings(warnings);
         if (retained == null) { result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps); }
@@ -839,6 +885,39 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         result.setViewContext(run.viewJson == null ? null : read(run.viewJson, ViewContext.class));
         result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));
         return result;
+    }
+
+    private RelationSearchReport retainedRelations(AnalyzeRequirementCommand command) {
+        if (!command.analysisScope().includesRelations()) return null;
+        var binding = command.continuationBinding();
+        if (continuations != null && binding != null) {
+            var previous = continuations.previousRelations(new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(
+                    binding.id(), binding.token(), null));
+            if (previous != null) return previous;
+        }
+        return command.retainedAnalysis() == null ? null : command.retainedAnalysis().getRelationSearchReport();
+    }
+
+    /** Read committed new-call counts without reopening or mutating a paused/terminal claim. */
+    private RelationSearchBudget relationBudget(AnalyzeRequirementCommand command, RelationSearchBudget usage) {
+        var binding = command.continuationBinding();
+        if (continuations == null || binding == null) return usage;
+        var policy = binding.relationBudget();
+        if (policy != null) {
+            boolean currentAdmission = usage != null && usage.spentCalls() - usage.newCalls() == policy.callsBeforeExecution()
+                    && usage.callsPerSlice() == policy.callsPerSlice() && usage.maxTotalCalls() == policy.maxTotalCalls()
+                    && usage.automatic() == policy.automatic() && usage.sourcesPerSlice() == policy.sourcesPerSlice()
+                    && usage.workItemsPerSlice() == policy.workItemsPerSlice() && usage.sourceCohortSize() == policy.sourceCohortSize();
+            usage = new RelationSearchBudget(policy.callsPerSlice(), policy.maxTotalCalls(), currentAdmission ? usage.newCalls() : 0,
+                    currentAdmission ? usage.spentCalls() : policy.callsBeforeExecution(), policy.automatic(),
+                    currentAdmission ? usage.slices() : 0, policy.sourcesPerSlice(), policy.workItemsPerSlice(), policy.sourceCohortSize());
+        }
+        if (usage == null) return null;
+        var counts = em.createQuery("select r.relationCallsSpent from AnalysisContinuationRun r where r.id=:id and r.claimToken=:token", Integer.class)
+                .setParameter("id", binding.id()).setParameter("token", binding.token()).getResultList();
+        if (counts.isEmpty() || counts.getFirst() == null) return usage;
+        int before = policy == null ? usage.spentCalls() - usage.newCalls() : policy.callsBeforeExecution();
+        return usage.withSpentCalls(counts.getFirst(), before);
     }
 
     private void appendEvent(ClusterAnalysisRun run, AnalysisProgressPhase phase) {

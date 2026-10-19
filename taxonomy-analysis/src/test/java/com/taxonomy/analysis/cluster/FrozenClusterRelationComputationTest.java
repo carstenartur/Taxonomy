@@ -37,6 +37,7 @@ class FrozenClusterRelationComputationTest {
     @Test void preparationRanksSourcesByEffectiveRelevanceBeforeApplyingSourceLimit() {
         var fixture = new Fixture(); fixture.productScores();
         ReflectionTestUtils.setField(fixture.relations, "maxSources", 1);
+        ReflectionTestUtils.setField(fixture.relations, "autoContinue", false);
         assertThat(fixture.store.roots.getRawScores().get("product")).isEqualTo(100);
         assertThat(fixture.store.roots.getScores().get("product")).isEqualTo(10);
         var task = ClusterRelationServiceTest.task(fixture.store.context, null);
@@ -82,7 +83,8 @@ class FrozenClusterRelationComputationTest {
         var prepared = (ClusterRelationComputation.Preparation) fixture.computation("all", "BP,BR,CP,CI,CO,CR,IP,UA")
                 .compute(fixture.store.start(preparation), preparation, () -> false);
         var plan = prepared.plan();
-        assertThat(plan.options().limits().maxWorkItems()).isEqualTo(512);
+        assertThat(plan.options().limits().maxWorkItems()).isEqualTo(4096);
+        assertThat(plan.options().budget().workItemsPerSlice()).isEqualTo(4096);
         assertThat(plan.sources()).hasSize(1);
         assertThat(plan.sourceResultIds()).containsExactly("relations:subtaxonomy:BP");
         assertThat(fixture.store.reads).containsExactlyInAnyOrderElementsOf(TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).toList());

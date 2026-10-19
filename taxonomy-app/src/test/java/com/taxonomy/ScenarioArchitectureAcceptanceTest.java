@@ -42,6 +42,7 @@ class ScenarioArchitectureAcceptanceTest {
             "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2",
             // Exhaustive authored response coverage, not a change to the production budget.
             "taxonomy.analysis.relations.hierarchical.max-calls=256",
+            "taxonomy.analysis.relations.hierarchical.max-total-calls=256",
             "taxonomy.analysis.relations.hierarchical.batch-size=10",
             "taxonomy.analysis.relations.hierarchical.max-prompt-characters=120000"
     })

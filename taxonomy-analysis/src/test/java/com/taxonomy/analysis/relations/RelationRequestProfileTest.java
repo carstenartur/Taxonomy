@@ -67,11 +67,58 @@ class RelationRequestProfileTest {
     }
 
     @Test
-    void standardProvidersRetainTheirExistingTraversalCapacity() {
+    void standardProvidersUseTheLargerBoundedTraversalDefaults() {
         var fixture = new Fixture("OPENAI");
         assertEquals(10, fixture.options().limits().batchSize());
         assertEquals(120_000, fixture.options().maxPromptCharacters());
-        assertEquals(24, fixture.options().limits().maxCalls());
+        assertEquals(256, fixture.options().limits().maxCalls());
+        assertEquals(128, fixture.options().maxSources());
+        assertEquals(4096, fixture.options().limits().maxWorkItems());
+    }
+
+    @Test
+    void changingExecutionBudgetsPreservesTheSemanticRecoveryIdentity() {
+        var fixture = new Fixture("OPENAI");
+        String before = fixture.service.recoveryPolicyFingerprint();
+        ReflectionTestUtils.setField(fixture.service, "maxCalls", 1000);
+        ReflectionTestUtils.setField(fixture.service, "maxSources", 256);
+        ReflectionTestUtils.setField(fixture.service, "maxWorkItems", 20_000);
+        assertEquals(1000, fixture.options().limits().maxCalls());
+        assertEquals(256, fixture.options().maxSources());
+        assertEquals(20_000, fixture.options().limits().maxWorkItems());
+        assertEquals(before, fixture.service.recoveryPolicyFingerprint());
+    }
+
+    @Test
+    void changingTraversalDepthStillInvalidatesTheSemanticRecoveryIdentity() {
+        var fixture = new Fixture("OPENAI");
+        String before = fixture.service.recoveryPolicyFingerprint();
+        ReflectionTestUtils.setField(fixture.service, "maxDepth", 9);
+        assertNotEquals(before, fixture.service.recoveryPolicyFingerprint());
+    }
+
+    @Test
+    void runtimePreferencesApplyToTheNextExecutionWithoutMutatingCapturedOptions() {
+        var fixture = new Fixture("OPENAI");
+        var committed = new AtomicReference<>(new RelationSearchBudgetSettings.Snapshot(12, 48, false, 3, 8));
+        var settings = new RelationSearchBudgetSettings() {
+            @Override public Snapshot snapshot() { return committed.get(); }
+        };
+        ReflectionTestUtils.setField(fixture.service, "budgetSettings", settings);
+        var captured = fixture.options();
+        String identity = fixture.service.recoveryPolicyFingerprint();
+
+        committed.set(new RelationSearchBudgetSettings.Snapshot(512, 8192, true, 256, 100_000));
+
+        assertEquals(12, captured.limits().maxCalls());
+        assertEquals(3, captured.maxSources());
+        assertEquals(8, captured.limits().maxWorkItems());
+        var next = fixture.options();
+        assertEquals(512, next.limits().maxCalls());
+        assertEquals(256, next.maxSources());
+        assertEquals(100_000, next.limits().maxWorkItems());
+        assertEquals(committed.get(), fixture.service.executionBudget());
+        assertEquals(identity, fixture.service.recoveryPolicyFingerprint());
     }
 
     @Test

@@ -4,15 +4,15 @@ import test from 'node:test';
 import vm from 'node:vm';
 const i18nSource = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/taxonomy-i18n.js', import.meta.url), 'utf8');
 const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js', import.meta.url), 'utf8');
-function harness(scoped) {
+function harness(scoped, language = 'en') {
   const elements = new Map();
   const window = { location: { pathname: '/projects/1/requirements/2', search: '' }, TaxonomyUtils: { escapeHtml: value => String(value ?? '') } };
-  const document = { documentElement: { lang: 'en' }, addEventListener() {}, getElementById(id) { if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
+  const document = { documentElement: { lang: language }, addEventListener() {}, getElementById(id) { if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
   document.cookie = ''; document.dispatchEvent = () => {};
   // Load the real shared formatter required by the production page.
   vm.runInNewContext(i18nSource, { window, document, fetch: async () => ({ ok: true, json: async () => ({}) }), CustomEvent: class {} });
   // Expose private rendering functions in the test closure; execute their unchanged production bodies.
-  const instrumented = source.replace(/\}\)\(\);\s*$/, 'window.probe = { state, renderMappings, renderRelations }; })();');
+  const instrumented = source.replace(/\}\)\(\);\s*$/, 'window.probe = { state, renderMappings, renderRelations, renderAnalysisSummary }; })();');
   vm.runInNewContext(instrumented, { window, document, URLSearchParams });
   window.probe.state.snapshotDetail = { analysis: scoped ? { relationSearchReport: {} } : {} };
   return { ...window.probe, elements };
@@ -29,6 +29,22 @@ test('existing snapshot confidence display remains unchanged', () => {
   const h = harness(false); h.renderMappings([{ nodeCode: 'source', directScore: 95, relevance: 0.2, confidence: 0.8 }]);
   assert.match(h.elements.get('mappingTable').innerHTML, /80%/);
 });
+
+for (const language of ['en', 'de']) {
+  test(`${language} saved portfolio results separate total consumption from completed relationship work`, () => {
+    const h = harness(true, language);
+    const report = { budget: { callsPerSlice: 256, maxTotalCalls: 4096, newCalls: 512,
+      spentCalls: 4096, automatic: true }, searchExhausted: false,
+      progress: { completedSearches: 28, totalSearches: 80, unresolvedSearches: 4, pendingSearches: 48 } };
+    const html = h.renderAnalysisSummary({ analysis: { relationSearchReport: report } });
+    assert.match(html, language === 'de' ? /Gesamtbudget.*4096.*4096/ : /Total budget.*4096.*4096/);
+    assert.match(html, language === 'de' ? /Neue Prüfungen.*512/ : /New evaluations.*512/);
+    assert.match(html, language === 'de' ? /28 von 80/ : /28 of 80/);
+    assert.match(html, language === 'de' ? /Sucharbeit.*offen/ : /search work.*open/i);
+    assert.doesNotMatch(html, /80 of 80|80 von 80/);
+    assert.doesNotMatch(h.renderAnalysisSummary({ analysis: {} }), /snapshotRelationSearch/);
+  });
+}
 
 test('scoped mappings use raw and effective score evidence, not numeric index defaults', () => {
   const h = harness(true);

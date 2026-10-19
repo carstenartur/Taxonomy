@@ -13,20 +13,29 @@ The default adds bounded remote evaluations using the selected provider:
 
 ```properties
 taxonomy.analysis.relations.hierarchical.enabled=true
-taxonomy.analysis.relations.hierarchical.max-calls=24
+taxonomy.analysis.relations.hierarchical.max-calls=256
+taxonomy.analysis.relations.hierarchical.max-total-calls=4096
+taxonomy.analysis.relations.hierarchical.auto-continue=true
 taxonomy.analysis.relations.hierarchical.max-depth=8
 # batch-size is automatic: 3 for custom OpenAI-compatible models, otherwise 10
-taxonomy.analysis.relations.hierarchical.max-work-items=512
-taxonomy.analysis.relations.hierarchical.max-sources=32
+taxonomy.analysis.relations.hierarchical.max-work-items=4096
+taxonomy.analysis.relations.hierarchical.max-sources=128
 ```
 
-These are server properties, not yet a new Preferences editor. The existing
+The five runtime-budget settings are exposed in **Settings (⚙) → Server settings →
+Relationship Search**, backed by runtime Preferences keys
+`analysis.relations.max-calls`, `analysis.relations.max-total-calls`,
+`analysis.relations.auto-continue`, `analysis.relations.max-work-items` and
+`analysis.relations.max-sources`. The properties above supply deployment defaults;
+persisted administrator values take precedence. Missing keys in older snapshots
+receive those defaults without a read-time commit. Enabled, depth, batch and
+prompt/context limits remain deployment settings. The existing
 analysis endpoints and selected provider are reused. No additional credentials,
 microservice, database, or search engine is required. Explicit `llm.mock=true`
 uses a bounded, clearly labelled **MOCK demonstration**, not a semantic assessment
 of the supplied requirement. It executes the real extraction/navigation/verification
 protocol using three concrete example nodes, keeps original text literal, and
-stays within the ordinary 24-call budget. The old saved example remains readable.
+stays within the configured call budget. The old saved example remains readable.
 Malformed-response tests inject their failures explicitly instead of using mock mode
 as a surrogate failure. Unrelated raw mock tasks retain their empty-array response.
 
@@ -37,17 +46,26 @@ groups for the simulated provider. Optional SMS is retained in evidence, not pro
 Source-only role contributions are visible but never selected for impact analysis.
 This proves software behavior, not real-provider architectural quality.
 
-`max-calls` covers **new evaluation attempts per execution** for contribution
+`max-calls` sets the **initial allowance for new evaluation attempts** for contribution
 extraction, navigation and separate verification. Validated durable answers are
 replayed without consuming this budget or contacting the provider. It does not include the earlier
 node-scoring phase or turn a provider's internal HTTP retries into separate model
-evaluations. The existing prompt budget is checked for every prepared request;
+evaluations. `max-total-calls` caps **all new relation attempts in the same saved
+search**, across automatic and manual continuation. Without automatic continuation,
+each operation receives the smaller of `max-calls` and the remaining total. With
+automatic continuation, the same operation can extend the initial allowance up
+to the remaining total and admit further source/work sections. The default envelope
+starts at 256 new attempts and permits up to a cumulative ceiling of 4096.
+The existing prompt budget is checked for every prepared request;
 there is no new cumulative token/dollar budget or calibrated cost prediction.
-Zero calls is supported and leaves work explicitly unassessed. Other bounds are
-validated on startup. The application run's cancellation/memory/time checkpoints
+Zero in either call budget permits only replay of saved answers. New work remains
+explicitly unassessed; a committed answer can still be recovered after worker loss.
+Deployment defaults are validated at startup; runtime changes are validated and
+saved atomically. An admitted execution keeps its limits, and the next execution
+uses the current settings. The application run's cancellation/memory/time checkpoints
 remain active and partial evidence survives a stop.
 
-The source limit also bounds **new source extraction per execution**, not the
+The source limit also bounds **new source admission per section**, not the
 complete plan. Before the first extraction, every eligible positive concrete
 source is paired with every target taxonomy supported by the compatibility rules.
 The live display and saved report retain that fixed denominator, including pending
@@ -56,13 +74,25 @@ contribution/type/direction searches finish, or an explicit source rejection mak
 them unnecessary. Unresolved and interrupted work never counts as completed.
 
 The normal resumable analysis uses the existing question journal for validated
-relation exchanges as well as scoring. Budget exhaustion leaves an execution
-stopped; explicit continuation reuses successful answers and admits new work.
+relation exchanges as well as scoring. Automatic continuation runs inside the
+same server operation without browser retries or another HTTP request per section;
+eligible unfinished work advances within the remaining cumulative budget.
+With it disabled, explicit continuation reuses
+successful answers and admits new work. Reaching the cumulative limit retains
+the partial result; increasing the runtime budget permits further work with the
+same saved answers.
+The source cohort width is persisted at admission, before the first response or
+report exists. If later source sections are smaller than a frozen request batch,
+automatic continuation can admit that batch across section boundaries without
+changing its question identity. A source reservation that would strand funded
+work continues in the preparation worker under the same frozen catalogue and
+journal; the resulting inline report cannot also dispatch target grants.
 Invalid or unresolved replies offer the existing retry / leave-open decision.
-Catalogue, requirement, provider and policy changes invalidate reuse. Automatic
+Catalogue, requirement, provider and semantic-policy changes invalidate reuse;
+changing only these runtime budgets preserves reuse. Automatic
 corrections share the existing budget and are limited to one per failed entry.
 The work-item limit counts only new navigation and
-verification evaluations per execution; replay never consumes it. The structural
+verification evaluations per section; replay never consumes it. The structural
 depth limit remains an explicit policy boundary: continuing unchanged cannot
 resolve a depth-limited branch. Changing that policy requires a new analysis.
 
@@ -70,7 +100,16 @@ Node progress is measured independently from the bounded preview buffer: direct
 assessments, descendants excluded by a successful parent decision, and open nodes
 are separate counts, overall and per taxonomy. Relationship progress separately
 shows completed source/target tasks, current direction/type and hierarchy depth,
-verified proposals, and call budget. A spent call budget is not 100% completion.
+verified proposals, new evaluations in the operation, initial allowance and cumulative consumption. Completed
+search work and consumed calls remain separate: a spent call budget is not 100% completion.
+The optional `budget` object in progress and final reports contains `callsPerSlice`,
+`maxTotalCalls`, `newCalls`, `spentCalls`, `automatic`, `slices`, `sourcesPerSlice`,
+`workItemsPerSlice` and `sourceCohortSize`. Existing `totalCalls` / `maxCalls` fields
+retain their execution/grant meaning; old reports without budget metadata keep
+their previous presentation. Distributed live consumption is labelled as the last
+saved state; the final report uses durable cumulative consumption. Budget-stop
+dialogs offer administrators a direct link to the runtime settings, retaining the
+saved analysis and explicit continuation action.
 
 ## Flow and guarantees
 
@@ -173,7 +212,7 @@ Configuration:
 | `custom.llm.max-output-tokens` / `CUSTOM_LLM_MAX_OUTPUT_TOKENS` | `4096` | Output allowance reserved when context capacity is known |
 | `custom.llm.structured-output-enabled` / `CUSTOM_LLM_STRUCTURED_OUTPUT_ENABLED` | `true` | Enable schema-constrained custom completions; disable for an endpoint without this capability |
 
-Smaller groups can consume more calls. The existing total-call limit is unchanged;
+Smaller groups can consume more calls within the configured cumulative limit;
 exhausting it preserves partial results and unfinished work. These offline regression
 tests do not constitute a quality benchmark of a particular Gemma/vLLM deployment.
 Full-lifecycle scenario fixtures explicitly choose a larger request profile for
@@ -256,9 +295,11 @@ against a commit-bound runtime when a full Maven dependency download is unavaila
 That verification is not a substitute for the complete current-head reactor suite.
 
 Browser contract tests are `.github/scripts/relation-search-report.test.mjs` and
-`.github/scripts/relation-search-confidence.test.mjs`, within the existing Node test
-suite. They check budget/questions, escaped evidence, bounded previews, no accidental
-adoption controls and unavailable-vs-legacy confidence presentation.
+`.github/scripts/relation-search-confidence.test.mjs`, executed through the existing
+Maven `JavascriptContractTest` JUnit bridge. Alongside the preferences, live-progress
+and recovery suites, they check runtime values and validation, separate cumulative
+consumption and completed work, admin navigation, escaped evidence, bounded previews,
+no accidental adoption controls and unavailable-vs-legacy confidence presentation.
 
 ## Reviewed module dependencies
 

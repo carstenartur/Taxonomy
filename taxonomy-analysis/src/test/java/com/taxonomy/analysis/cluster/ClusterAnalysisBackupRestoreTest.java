@@ -652,6 +652,107 @@ class ClusterAnalysisBackupRestoreTest {
         }
     }
 
+    @Test void largerRelationBudgetsRestoreMoreThan512AdmittedWorkItems() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("large-relation-source"); ClusterRelationCoordinatorTest.admit(source, original);
+            for (var root : List.of(CP, IP)) source.store.accept(source.complete(source.task(root), result(root.code(), 45)));
+            var preparation = (RelationAnalysisTask) source.sent.getLast();
+            var template = ClusterRelationCoordinatorTest.plan(original, preparation);
+            var item = template.items().getFirst();
+            var items = new ArrayList<RelationSearchDistribution.Item>();
+            for (int ordinal = 0; ordinal < 520; ordinal++) items.add(new RelationSearchDistribution.Item(
+                    ordinal, item.sourceIndex(), item.contributionIndex(), item.type(), item.direction(), item.targetRoot(), 1));
+            var plan = new RelationSearchDistribution.Plan(1, template.preparationId(), template.originalSha256(),
+                    template.sourceResultIds(), new com.taxonomy.analysis.relations.RequirementRelationSearch.Options(
+                    new com.taxonomy.dto.RelationSearchModel.Limits(521, 8, 10, 520), 16), template.sourceNodes(),
+                    template.targetRoots(), template.sources(), items, 1, 0, List.of(), "", true);
+            var prepared = ClusterRelationCoordinatorTest.completion(original, preparation);
+            source.completions.commit(new PreparedAnalysisCompletion<>(prepared, () -> source.store.persistRelationPlan(preparation, plan)));
+            source.store.accept(prepared);
+            var archive = archive(source, original.operationId());
+            assertEquals(523, archive.work().size());
+            var requested = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "bob", targetCommand().workspaceContext(),
+                    null, JSON.readValue(archive.run().commandJson(), AnalyzeRequirementCommand.class).analysisScope());
+            var restored = targetContext("large-relation-restored");
+
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, requested);
+
+            assertEquals(523, target.store.snapshot(restored).tasks().size());
+            assertEquals(520, target.store.relationPlan(restored).items().size());
+            assertNoOperationalState(target);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"NAVIGATE", "VERIFY", "PAUSED", "cache-only", "inline-plan",
+            "foreign-source", "foreign-target", "manual", "plan-budget", "ordinary-plan"})
+    void automaticPreparationRestoresTargetProgressOnlyWithinItsFrozenCatalogue(String variant) throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("inline-progress-source");
+            var scope = new com.taxonomy.dto.AnalysisScope(Set.of("CP", "IP"), com.taxonomy.dto.AnalysisMode.FULL);
+            var command = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice",
+                    command("requirement").workspaceContext(), null, scope);
+            var roots = new LinkedHashMap<TaxonomyShardRoot, String>();
+            for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) roots.put(root, JSON.writeValueAsString(
+                    DurableClusterAnalysisExecutionTest.root(DurableClusterAnalysisExecutionTest.source(original), root.code())));
+            source.store.admit(original, command, null, Map.of(CP, roots.get(CP), IP, roots.get(IP)), roots);
+            for (var root : List.of(CP, IP)) source.store.accept(source.complete(source.task(root), result(root.code(), 45)));
+            var preparation = (RelationAnalysisTask) source.sent.getLast(); var input = source.store.start(preparation);
+            var worker = source.store.diagnostics(preparation, input.deliveryAttempt());
+            var step = Set.of("NAVIGATE", "VERIFY", "PAUSED").contains(variant)
+                    ? com.taxonomy.dto.RelationSearchProgress.Step.valueOf(variant) : com.taxonomy.dto.RelationSearchProgress.Step.NAVIGATE;
+            var current = new com.taxonomy.dto.RelationSearchProgress.Current(
+                    variant.equals("foreign-source") ? "outside-source" : "CP", "CR", "REALIZES",
+                    com.taxonomy.dto.RelationSearchModel.Direction.OUTGOING, 0,
+                    List.of(variant.equals("foreign-target") ? "outside-target" : "CR"));
+            var progress = new com.taxonomy.dto.RelationSearchProgress(1, 1, 1, 0, 0, 1, 2, variant.equals("cache-only") ? 2 : 20, 0, step, current,
+                    List.of(new com.taxonomy.dto.RelationSearchProgress.Taxonomy("CR", 1, 0, 0, 1)))
+                    .withBudget(new com.taxonomy.dto.RelationSearchBudget(2, 20, 2, 2,
+                            !Set.of("manual", "cache-only").contains(variant), 1,
+                            variant.equals("plan-budget") ? 64 : 128, 4096, 128));
+            worker.relations(progress);
+            com.taxonomy.dto.RelationSearchReport inline = null;
+            if (Set.of("inline-plan", "plan-budget", "ordinary-plan").contains(variant)) {
+                var node = new com.taxonomy.dto.RelationSearchModel.Node("CP", "CP", "Capability", "Frozen source", false);
+                var assessment = new com.taxonomy.dto.RelationSearchModel.SourceAssessment(node, List.of(
+                        new com.taxonomy.dto.RelationSearchModel.Contribution(node, "requirement", "requirement", "")), "Required", "");
+                var budget = new com.taxonomy.dto.RelationSearchBudget(2, 20, 2, 2, true, 1, 128, 4096, 128);
+                inline = new com.taxonomy.dto.RelationSearchReport(2, original.requirement().textSha256(), "inline-test", List.of(assessment),
+                        new com.taxonomy.dto.RelationSearchModel.Result(List.of(), List.of(), List.of(), 1, 1, 0),
+                        2, 20, 0, List.of(), "", progress.withBudget(budget), List.of()).withBudget(budget);
+                var plan = new RelationSearchDistribution.Plan(1, original.operationId() + ":relations", original.requirement().textSha256(),
+                        preparation.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList(),
+                        new com.taxonomy.analysis.relations.RequirementRelationSearch.Options(
+                                new com.taxonomy.dto.RelationSearchModel.Limits(20, 8, 10, 4096), 128, 16_000,
+                                new com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy(2, 20, 0, true, 128, 4096, 128)),
+                        List.of(node), List.of(new com.taxonomy.dto.RelationSearchModel.Node("CR", "CR", "Services", "Frozen root", true)),
+                        List.of(assessment), List.of(), 1, 0, List.of(), "", true, variant.equals("ordinary-plan") ? null : inline);
+                var prepared = ClusterRelationCoordinatorTest.completion(original, preparation);
+                source.completions.commit(new PreparedAnalysisCompletion<>(prepared, () -> source.store.persistRelationPlan(preparation, plan)));
+            }
+            var archive = archive(source, original.operationId());
+            var restorer = new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON);
+            var restored = targetContext("inline-progress-restored");
+            var requested = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "bob",
+                    targetCommand().workspaceContext(), null, scope);
+
+            if (Set.of("NAVIGATE", "VERIFY", "PAUSED", "cache-only", "inline-plan").contains(variant)) {
+                restorer.restore(archive, restored, requested);
+                assertNotNull(target.store.snapshot(restored).progress().relations());
+                assertEquals(ClusterAnalysisState.CANCELLED, target.store.snapshot(restored).state());
+                if (inline != null) {
+                    assertEquals(inline, target.store.relationPlan(restored).inlineReport());
+                    assertEquals(inline, target.store.snapshot(restored).result().getRelationSearchReport());
+                    assertTrue(target.store.relationPlan(restored).sourceResultIds().stream()
+                            .allMatch(id -> id.startsWith(restored.operationId() + ":")));
+                }
+            } else {
+                assertThrows(IllegalArgumentException.class, () -> restorer.restore(archive, restored, requested));
+                assertRestoredClosureEmpty(target);
+            }
+            assertNoOperationalState(target);
+        }
+    }
+
     @Test void interruptedScoreOnlyPreparationRetainsCommittedProvisionalEvidenceWithoutAPlan() throws Exception {
         restoreScoreOnlyPreparation(false);
     }

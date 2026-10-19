@@ -135,7 +135,7 @@ public final class ClusterAnalysisBackupRestorer {
         require(run.sourceId().equals(new SourceRecordId("analysis.cluster-run", source.operationId())), "Invalid archived operation reference");
         require(!source.operationId().equals(target.operationId()), "Restore must allocate a new operation identity");
         require(run.totalRoots() > 0 && run.totalRoots() <= 8 && run.completedRoots() >= 0 && run.completedRoots() <= run.totalRoots()
-                && run.revision() > 0 && run.revision() < Long.MAX_VALUE && archive.work().size() <= 521 && archive.inputs().size() <= 8
+                && run.revision() > 0 && run.revision() < Long.MAX_VALUE && archive.work().size() <= 100_009 && archive.inputs().size() <= 8
                 && archive.events().size() <= 100_000, "Invalid archived aggregate bounds");
         var sourceCommand = read(run.commandJson(), AnalyzeRequirementCommand.class);
         try {
@@ -266,15 +266,50 @@ public final class ClusterAnalysisBackupRestorer {
                         && current.targetRoot().equals(grant.targetRoot().code()) && current.type().equals(item.type())
                         && current.direction() == item.direction(), "Foreign archived current relation search");
             }
-        } else if (p.current() != null) {
-            var sourceCodes = new HashSet<String>();
+        } else {
+            var admitted = archive.run().relationPlanJson() == null ? null
+                    : read(archive.run().relationPlanJson(), RelationSearchDistribution.Plan.class);
+            if (admitted != null && admitted.options().budget() != null) {
+                var policy = admitted.options().budget(); var usage = p.budget();
+                require(usage != null && p.maxCalls() == admitted.options().limits().maxCalls()
+                        && usage.callsPerSlice() == policy.callsPerSlice() && usage.maxTotalCalls() == policy.maxTotalCalls()
+                        && usage.automatic() == policy.automatic() && usage.sourcesPerSlice() == policy.sourcesPerSlice()
+                        && usage.workItemsPerSlice() == policy.workItemsPerSlice() && usage.sourceCohortSize() == policy.sourceCohortSize()
+                        && usage.newCalls() == p.calls() && usage.spentCalls() == (long) policy.callsBeforeExecution() + p.calls()
+                        && (admitted.inlineReport() == null || p.calls() <= admitted.inlineReport().totalCalls()),
+                        "Progress differs from admitted preparation budget");
+            }
+            if (p.current() == null) return;
+            var sourceRoots = new HashMap<String, String>();
             for (var work : archive.work()) if (work.taskType().equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) {
-                var root = roots.get(work.root()); if (root != null) root.nodes().forEach(node -> sourceCodes.add(node.code()));
+                var root = roots.get(work.root()); if (root != null) root.nodes().forEach(node -> sourceRoots.put(node.code(), root.rootCode()));
             }
             var current = p.current();
-            require(p.step() == RelationSearchProgress.Step.SOURCES && current.targetRoot().isEmpty() && current.type().isEmpty()
-                    && current.direction() == null && current.depth() == 0 && sourceCodes.containsAll(current.candidates())
-                    && current.sourceId().equals(String.join(", ", current.candidates())), "Foreign archived source assessment progress");
+            if (current.targetRoot().isEmpty()) {
+                require(p.step() == RelationSearchProgress.Step.SOURCES && current.type().isEmpty()
+                        && current.direction() == null && current.depth() == 0 && sourceRoots.keySet().containsAll(current.candidates())
+                        && current.sourceId().equals(String.join(", ", current.candidates())), "Foreign archived source assessment progress");
+            } else {
+                // Automatic source overflow or cache-only reconstruction may
+                // continue target work before an immutable final plan exists.
+                var root = roots.get(current.targetRoot());
+                String sourceRoot = sourceRoots.get(current.sourceId());
+                require(p.budget() != null && (p.budget().automatic() || p.calls() == p.maxCalls())
+                        && (admitted == null || admitted.inlineReport() != null)
+                        && Set.of(RelationSearchProgress.Step.NAVIGATE, RelationSearchProgress.Step.VERIFY,
+                                RelationSearchProgress.Step.PAUSED).contains(p.step())
+                        && task instanceof RelationAnalysisTask relation && relation.targetRoots().stream()
+                                .anyMatch(target -> target.code().equals(current.targetRoot()))
+                        && sourceRoot != null && root != null && current.direction() != null
+                        && !current.candidates().isEmpty() && root.nodes().stream().map(RootCatalogueSnapshot.Node::code)
+                                .collect(java.util.stream.Collectors.toSet()).containsAll(current.candidates()),
+                        "Foreign archived automatic relation progress");
+                var type = com.taxonomy.model.RelationType.valueOf(current.type());
+                String origin = current.direction() == RelationSearchModel.Direction.OUTGOING ? sourceRoot : current.targetRoot();
+                String destination = current.direction() == RelationSearchModel.Direction.OUTGOING ? current.targetRoot() : sourceRoot;
+                require(new com.taxonomy.relations.service.RelationCompatibilityMatrix().allowedTargetRoots(origin, type)
+                        .contains(destination), "Foreign archived automatic relation route");
+            }
         }
     }
 
@@ -385,7 +420,7 @@ public final class ClusterAnalysisBackupRestorer {
     private RelationSearchDistribution.Plan remapPlan(RelationSearchDistribution.Plan plan, String operation) {
         return new RelationSearchDistribution.Plan(plan.schemaVersion(), operation + ":relations", plan.originalSha256(),
                 plan.sourceResultIds().stream().map(id -> remapTaskId(new AnalysisTaskId(id), operation).value()).toList(), plan.options(),
-                plan.sourceNodes(), plan.targetRoots(), plan.sources(), plan.items(), plan.sourceCalls(), plan.durationMillis(), plan.warnings(), plan.stopReason(), plan.included());
+                plan.sourceNodes(), plan.targetRoots(), plan.sources(), plan.items(), plan.sourceCalls(), plan.durationMillis(), plan.warnings(), plan.stopReason(), plan.included(), plan.inlineReport());
     }
     private static RelationSearchDistribution.Work remapGrant(RelationSearchDistribution.Work grant, String operation) {
         return new RelationSearchDistribution.Work(operation + ":relations", grant.ordinal(), grant.targetRoot(), grant.maxCalls(), grant.maxWorkItems());

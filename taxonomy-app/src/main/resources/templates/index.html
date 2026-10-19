@@ -1412,6 +1412,56 @@
                     </div>
                 </div>
 
+                <section class="card mb-3" id="pref-relations-section" tabindex="-1"
+                         aria-labelledby="pref-relations-heading">
+                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0" id="pref-relations-heading" th:text="#{preferences.section.relations}">Relationship Search</h6>
+                        <span class="badge bg-info text-dark" th:text="#{preferences.scope.system}">&#9729;&#65039; System</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted" th:text="#{preferences.relations.info}">These limits apply to new relationship assessments. Saved answers are reused. Changes apply to the next execution, including continuation of saved work.</p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="pref-relations-max-calls" class="form-label" th:text="#{preferences.relations.maxcalls}">Initial budget (new evaluations)</label>
+                                <input type="number" class="form-control" id="pref-relations-max-calls"
+                                       data-pref-key="analysis.relations.max-calls" min="0" max="10000" step="1" required
+                                       aria-describedby="pref-relations-max-calls-help"/>
+                                <div class="form-text" id="pref-relations-max-calls-help" th:text="#{preferences.relations.maxcalls.help}">Starts the operation with this allowance for new evaluation attempts. Automatic continuation can extend it within the same operation. Reused answers do not consume it. Zero allows no new evaluations.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="pref-relations-max-total-calls" class="form-label" th:text="#{preferences.relations.maxtotalcalls}">Total Relationship Search Budget</label>
+                                <input type="number" class="form-control" id="pref-relations-max-total-calls"
+                                       data-pref-key="analysis.relations.max-total-calls" min="0" max="10000" step="1" required
+                                       aria-describedby="pref-relations-max-total-calls-help"/>
+                                <div class="form-text" id="pref-relations-max-total-calls-help" th:text="#{preferences.relations.maxtotalcalls.help}">Counts all new assessments for one search across automatic and manual continuation. Every execution is also limited by the remaining total. Zero allows no new assessments.</div>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="pref-relations-auto-continue"
+                                           data-pref-key="analysis.relations.auto-continue"
+                                           aria-describedby="pref-relations-auto-continue-help"/>
+                                    <label for="pref-relations-auto-continue" class="form-check-label" th:text="#{preferences.relations.autocontinue}">Continue Automatically</label>
+                                </div>
+                                <div class="form-text" id="pref-relations-auto-continue-help" th:text="#{preferences.relations.autocontinue.help}">Extends the initial budget and advances further sections in the same operation while total budget remains. Open domain questions still require a decision.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="pref-relations-max-sources" class="form-label" th:text="#{preferences.relations.maxsources}">Sources per section</label>
+                                <input type="number" class="form-control" id="pref-relations-max-sources"
+                                       data-pref-key="analysis.relations.max-sources" min="1" max="256" step="1" required
+                                       aria-describedby="pref-relations-max-sources-help"/>
+                                <div class="form-text" id="pref-relations-max-sources-help" th:text="#{preferences.relations.maxsources.help}">Limits new source contributions admitted per section. Automatic continuation can admit further sections. Pending sources remain available for continuation.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="pref-relations-max-work-items" class="form-label" th:text="#{preferences.relations.maxworkitems}">Search steps per section</label>
+                                <input type="number" class="form-control" id="pref-relations-max-work-items"
+                                       data-pref-key="analysis.relations.max-work-items" min="1" max="100000" step="1" required
+                                       aria-describedby="pref-relations-max-work-items-help"/>
+                                <div class="form-text" id="pref-relations-max-work-items-help" th:text="#{preferences.relations.maxworkitems.help}">Limits new navigation and verification steps per section. Automatic continuation can advance further sections. Completed search work is counted separately from consumed evaluations.</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <p class="text-muted small mb-3" th:text="#{preferences.repository.info}">
                     Repository branches, remotes, credentials and workspace synchronization are repository-scoped and are not global runtime preferences.
                 </p>

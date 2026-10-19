@@ -11,6 +11,7 @@ Das Einstellungssystem bietet **zur Laufzeit konfigurierbare Optionen** für den
 - [Verfügbare Einstellungen](#verfügbare-einstellungen)
 - [LLM-Konfiguration](#llm-konfiguration)
 - [Begründungsumfang der Analyse](#begründungsumfang-der-analyse)
+- [Budgets der Relationssuche](#budgets-der-relationssuche)
 - [Repository- und Altschlüssel](#repository--und-altschlüssel)
 - [Größenbeschränkungen](#größenbeschränkungen)
 - [Diagramm-Konfiguration](#diagramm-konfiguration)
@@ -45,6 +46,7 @@ Die folgende Tabelle verdeutlicht den Geltungsbereich für jede Einstellungskate
 | Kategorie | Geltungsbereich | Wer kann ändern | Betrifft |
 |---|---|---|---|
 | **LLM-Konfiguration** | ☁️ System | Nur Admin | Alle Analyseanfragen für alle Benutzer |
+| **Relationssuche** | ☁️ System | Nur Admin | Neue Relationssuchdurchläufe, einschließlich Fortsetzen gespeicherter Arbeit |
 | **Größenbeschränkungen** | ☁️ System | Nur Admin | Standardwerte und Grenzen für Ad-hoc-Analyseanfragen |
 | **Diagramm-Konfiguration** | ☁️ System | Nur Admin | Architekturdiagramm-Darstellung für alle Benutzer |
 
@@ -79,20 +81,21 @@ curl -u admin:password -X PUT \
 
 ## Verwendung der Web-Oberfläche
 
-Der Tab **Einstellungen** in der Navigationsleiste bietet eine grafische Oberfläche für die unterstützten Laufzeiteinstellungen. Dieser Tab ist nur für Benutzer mit Admin-Rechten sichtbar.
+Der Menüeintrag **Einstellungen (⚙) → Servereinstellungen** öffnet die grafische Oberfläche für die unterstützten Laufzeiteinstellungen. Dieser Eintrag ist nur für Benutzer mit Admin-Rechten sichtbar.
 
 ### Einstellungen öffnen
 
-1. Klicken Sie auf **⚙️ Preferences** in der Hauptnavigationsleiste (nur sichtbar, wenn als Admin angemeldet).
-2. Die Einstellungsseite öffnet sich und zeigt alle Einstellungen in drei Abschnitten.
+1. Öffnen Sie **Einstellungen (⚙)** in der Hauptnavigationsleiste und wählen Sie **Servereinstellungen** (nur sichtbar, wenn als Admin angemeldet).
+2. Die Einstellungsseite öffnet sich und zeigt alle Einstellungen in vier Abschnitten.
 
 ### Einstellungen bearbeiten
 
-Die Einstellungsseite hat drei Karten:
+Die Einstellungsseite hat vier Karten:
 
 1. **🤖 LLM-Konfiguration** — Anfragerate, Timeout, eingehendes LLM-Kontingent und Begründungsumfang.
-2. **📈 Größenbeschränkungen** — Maximale Ad-hoc-Geschäftstextlänge und Standardwert für Architekturknoten.
-3. **Diagramm-Konfiguration** — Auswahlrichtlinie für Architekturdiagramme.
+2. **Relationssuche** — Start- und Gesamtbudget, automatisches Fortsetzen sowie Quellen- und Suchschrittgrenzen.
+3. **📈 Größenbeschränkungen** — Maximale Ad-hoc-Geschäftstextlänge und Standardwert für Architekturknoten.
+4. **Diagramm-Konfiguration** — Auswahlrichtlinie für Architekturdiagramme.
 
 Repository-Branches, Remotes und Zugangsdaten werden im jeweiligen Repository-Kontext verwaltet. Historische `dsl.*`- und Mindest-Relevanzschlüssel können in gespeicherten Snapshots verbleiben, sind aber keine aktiven UI-Steuerelemente.
 
@@ -133,7 +136,7 @@ Das eingehende Kontingent `rate-limit.per-minute` wird erst nach Authentifizieru
 
 ### Begründungsumfang der Analyse
 
-Unter **Einstellungen → LLM-Konfiguration → Begründungsumfang** wählen Sie, wie ausführlich das Modell seine Bewertungen erläutern soll. Klicken Sie anschließend auf **Speichern**. Die Einstellung gilt systemweit für neu angenommene Analyseläufe.
+Unter **Einstellungen (⚙) → Servereinstellungen → LLM-Konfiguration → Begründungsumfang** wählen Sie, wie ausführlich das Modell seine Bewertungen erläutern soll. Klicken Sie anschließend auf **Speichern**. Die Einstellung gilt systemweit für neu angenommene Analyseläufe.
 
 | Auswahl | Zielumfang je Entscheidung | Inhalt |
 |---|---|---|
@@ -152,6 +155,78 @@ Die Laufzeiteinstellung lässt sich auch mit `PUT /api/preferences` ändern:
 ```
 
 Nur die drei angegebenen Stringwerte sind erlaubt. Ungültige Werte werden mit HTTP `400` abgewiesen, bevor Änderungen gespeichert werden. `TAXONOMY_ANALYSIS_REASON_LENGTH` beziehungsweise `taxonomy.analysis.reason-length` setzt den Deployment-Standard; ohne Vorgabe gilt `standard`. Eine ältere Preferences-Datei ohne diesen Schlüssel erhält den effektiven Standardwert, ohne allein durch das Lesen einen neuen Historieneintrag zu erzeugen.
+
+### Budgets der Relationssuche
+
+Unter **Einstellungen (⚙) → Servereinstellungen → Relationssuche** sehen und ändern
+Sie die wirksamen Laufzeitgrenzen. Das **Startbudget beträgt 256 neue Prüfungen**,
+das **Gesamtbudget 4096 Prüfungen** für eine gespeicherte Relationssuche.
+Automatisches Fortsetzen ist standardmäßig aktiviert: Der Server kann das
+Startbudget erweitern und weitere Abschnitte im selben Vorgang bearbeiten.
+
+| Schlüssel | Typ | Standard | Zulässige Werte | Bedeutung |
+|---|---|---|---|---|
+| `analysis.relations.max-calls` | int | `256` | `0`–`10000` | Startbudget für neue Beziehungsprüfversuche; automatisches Fortsetzen kann es erweitern |
+| `analysis.relations.max-total-calls` | int | `4096` | `0`–`10000` | Maximale neue Versuche derselben gespeicherten Suche über automatisches und manuelles Fortsetzen hinweg |
+| `analysis.relations.auto-continue` | boolean | `true` | `true`, `false` | Startbudget erweitern und weitere Abschnitte im selben Vorgang aufnehmen, solange Gesamtbudget bleibt |
+| `analysis.relations.max-sources` | int | `128` | `1`–`256` | Maximale neue Quellbeiträge je Abschnitt |
+| `analysis.relations.max-work-items` | int | `4096` | `1`–`100000` | Maximale neue Navigations- und Verifikationsaufgaben je Abschnitt |
+
+Das Gesamtbudget wird fortlaufend gezählt. Bei ausgeschaltetem automatischem
+Fortsetzen erhält ein Vorgang höchstens den kleineren Wert aus Startbudget und
+verbleibendem Gesamtbudget. Bei eingeschaltetem automatischem Fortsetzen darf
+geeignete Arbeit über das Startbudget hinaus bis zum verbleibenden Gesamtbudget
+weiterlaufen. Der Browser sendet dafür keine weitere Analyseanfrage je Abschnitt.
+Beide Aufrufbudgets dürfen null sein; dann sind keine neuen Prüfungen zulässig.
+Ein Gesamtbudget unterhalb des Startbudgets ist gültig. Quellen- und Arbeitsgrenzen
+begrenzen die Aufnahme je Abschnitt; automatisches Fortsetzen kann weitere
+Abschnitte bearbeiten. Offene Arbeit bleibt im Prüfplan.
+
+Erfolgreiche gespeicherte Antworten werden ohne weitere Anbieteranfrage und ohne
+erneuten Verbrauch eines Aufrufbudgets wiederverwendet. Der Verbrauch zählt neue
+Versuche; erledigte Suchaufträge zwischen Quelle und Ziel-Teiltaxonomie sind ein
+separates Fortschrittsmaß. Ein Stopp am Gesamtbudget hinterlässt ein ausdrückliches
+Teilergebnis. Offene fachliche Fragen behalten die Entscheidungen zur Prüfung,
+Neubewertung oder zum Offenlassen. Im Dialog eines Budgetstopps führt
+**Budgeteinstellungen** Administratoren direkt zu dieser Karte. Nach der Erhöhung
+setzt **Gespeicherten Stand fortsetzen** dieselbe gespeicherte Suche fort.
+
+Mit **Speichern** werden alle geänderten Einstellungen gemeinsam übernommen.
+Neue Durchläufe verwenden die aktualisierten Grenzen; ein bereits laufender
+Durchlauf behält seine beim Start übernommenen Grenzen. Nach einer Budgeterhöhung
+kann dieselbe gespeicherte Suche ihre vorhandenen Antworten weiterverwenden.
+Das Speichern der Einstellungen startet keine neue Analyse und ersetzt weder
+den aktuellen Entwurf noch Anforderungstext oder Belege. Berichte, Live-Fortschritt
+und gespeicherte Portfolio-Ergebnisse zeigen neue Prüfungen getrennt vom
+Gesamtverbrauch und den erledigten Suchaufträgen. Bei verteilter Arbeit ist die
+Live-Gesamtsumme als letzter gespeicherter Stand beschriftet; der Abschlussbericht
+enthält die gespeicherte Gesamtsumme nach diesem Vorgang.
+
+Dieselben Einstellungen lassen sich mit `PUT /api/preferences` ändern, etwa:
+
+```json
+{
+  "analysis.relations.max-calls": 256,
+  "analysis.relations.max-total-calls": 4096,
+  "analysis.relations.auto-continue": true,
+  "analysis.relations.max-sources": 128,
+  "analysis.relations.max-work-items": 4096
+}
+```
+
+Verwenden Sie ganze JSON-Zahlen und einen JSON-Wahrheitswert. Ungültige Werte
+weisen die gesamte Änderung mit HTTP `400` zurück. Die entsprechenden
+`taxonomy.analysis.relations.hierarchical.*`-Eigenschaften und langen
+`TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_*`-Umgebungsvariablen liefern die
+Deployment-Standards. Bereits gespeicherte gültige Einstellungen haben Vorrang;
+fehlende Schlüssel in älteren Snapshots erhalten die Deployment-Standards ohne
+Commit beim Lesen. Zurücksetzen stellt diese konfigurierten Standards wieder her.
+
+Tiefe, anbieterabhängige Batchgröße, Prompt-/Kontextgrenzen und der
+Aktivierungsschalter bleiben Deployment-Einstellungen. Ausgehende RPM,
+eingehendes Kontingent und HTTP-Timeout sind unabhängig von diesen Suchbudgets.
+Die [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md#anforderungsbezogene-beziehungssuche)
+nennt ihre genauen Namen und Geltungsbereiche.
 
 ### Repository- und Altschlüssel
 

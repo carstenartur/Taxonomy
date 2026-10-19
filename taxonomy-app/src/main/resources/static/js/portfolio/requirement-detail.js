@@ -72,6 +72,11 @@
             gapDescription: 'Gap description', patternDescription: 'Pattern description',
             missingElement: 'Missing element',
             resultReady: 'The immutable Copilot result is ready for review.',
+            relationSearch: 'Relationship search', relationBudgetTotal: 'Total budget',
+            relationBudgetNew: 'New evaluations in this execution', relationBudgetInitial: 'Initial budget',
+            relationTasks: 'search tasks complete', relationUnresolved: 'unresolved', relationPending: 'pending',
+            relationPartial: 'Further search work or domain questions remain open. Saved answers are retained. Budget consumption does not measure completed work.',
+            relationExhausted: 'Search tasks were processed under the configured search policy. This is not a completeness proof; all relationships remain proposals.',
             broadComparison: 'This large changed block is shown as a complete replacement. Every line is retained for review.'
         },
         de: {
@@ -119,6 +124,11 @@
             gapDescription: 'Lückenbeschreibung', patternDescription: 'Musterbeschreibung',
             missingElement: 'Fehlendes Element',
             resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.',
+            relationSearch: 'Relationssuche', relationBudgetTotal: 'Gesamtbudget',
+            relationBudgetNew: 'Neue Prüfungen dieses Durchlaufs', relationBudgetInitial: 'Startbudget',
+            relationTasks: 'Suchaufträge abgeschlossen', relationUnresolved: 'ungeklärt', relationPending: 'ausstehend',
+            relationPartial: 'Weitere Sucharbeit oder fachliche Fragen sind offen. Gespeicherte Antworten bleiben erhalten. Der Budgetverbrauch misst nicht die erledigte Arbeit.',
+            relationExhausted: 'Die Suchaufträge wurden nach der eingestellten Suchstrategie bearbeitet. Das ist kein Vollständigkeitsnachweis; alle Beziehungen bleiben Vorschläge.',
             broadComparison: 'Dieser große Änderungsblock wird vollständig als Ersetzung angezeigt. Alle Zeilen bleiben für die Prüfung erhalten.'
         }
     };
@@ -523,12 +533,31 @@
             + `<summary><span>${escapeHtml(t('technicalData'))}</span><small>${escapeHtml(t('technicalDataHint'))}</small></summary>`
             + `<pre>${escapeHtml(JSON.stringify(technical, null, 2))}</pre></details>`;
 
-        return overview + warningHtml
+        const relationReport = Object.prototype.hasOwnProperty.call(analysis, 'relationSearchReport')
+            ? analysis.relationSearchReport : analysis.architectureView?.relationSearchReport;
+        return overview + renderRelationSearchSummary(relationReport) + warningHtml
             + `<div class="portfolio-result-grid mt-3">`
             + renderGapResult(gap, missing, coverage, incomplete)
             + renderPatternResult(patterns, matched)
             + renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning)
             + `</div>` + technicalHtml;
+    }
+
+    function renderRelationSearchSummary(report) {
+        const b = report?.budget;
+        if (!b || ![b.callsPerSlice, b.maxTotalCalls, b.newCalls, b.spentCalls]
+                .every(value => Number.isSafeInteger(value) && value >= 0)) return '';
+        const p = report.progress;
+        const hasProgress = p && [p.completedSearches, p.totalSearches, p.unresolvedSearches, p.pendingSearches]
+            .every(value => Number.isSafeInteger(value) && value >= 0);
+        return `<section id="snapshotRelationSearch" class="border rounded p-3 mt-3" aria-labelledby="snapshotRelationSearchTitle">`
+            + `<h3 id="snapshotRelationSearchTitle" class="h6">${escapeHtml(t('relationSearch'))}</h3>`
+            + `<p class="small mb-2">${escapeHtml(t('relationBudgetTotal'))}: ${b.spentCalls} / ${b.maxTotalCalls}`
+            + ` · ${escapeHtml(t('relationBudgetNew'))}: ${b.newCalls}`
+            + ` · ${escapeHtml(t('relationBudgetInitial'))}: ${b.callsPerSlice}</p>`
+            + (hasProgress ? `<p class="fw-bold mb-2">${p.completedSearches}${locale === 'de' ? ' von ' : ' of '}${p.totalSearches} ${escapeHtml(t('relationTasks'))}`
+                + ` · ${p.unresolvedSearches} ${escapeHtml(t('relationUnresolved'))} · ${p.pendingSearches} ${escapeHtml(t('relationPending'))}</p>` : '')
+            + `<p class="small mb-0">${escapeHtml(t(report.searchExhausted ? 'relationExhausted' : 'relationPartial'))}</p></section>`;
     }
 
     function resultMetric(label, value, detail, variant) {

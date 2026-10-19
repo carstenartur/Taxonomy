@@ -19,8 +19,24 @@ public final class RequirementRelationSearch {
         Node find(String id);
         List<Node> roots();
     }
-    public record Options(Limits limits, int maxSources, int maxPromptCharacters) {
+    /** Frozen execution envelope; later preference commits cannot change admitted work. */
+    public record BudgetPolicy(int callsPerSlice, int maxTotalCalls, int callsBeforeExecution,
+            boolean automatic, int sourcesPerSlice, int workItemsPerSlice, int sourceCohortSize) {
+        public BudgetPolicy {
+            new com.taxonomy.dto.RelationSearchBudget(callsPerSlice, maxTotalCalls, 0, callsBeforeExecution,
+                    automatic, 0, sourcesPerSlice, workItemsPerSlice, sourceCohortSize);
+        }
+        com.taxonomy.dto.RelationSearchBudget usage(int calls, int sources, int work) {
+            int sections = calls == 0 ? 0 : Math.max(1, (calls + Math.max(1, callsPerSlice) - 1) / Math.max(1, callsPerSlice));
+            sections = Math.max(sections, (sources + sourcesPerSlice - 1) / sourcesPerSlice);
+            sections = Math.max(sections, (work + workItemsPerSlice - 1) / workItemsPerSlice);
+            return new com.taxonomy.dto.RelationSearchBudget(callsPerSlice, maxTotalCalls, calls,
+                    callsBeforeExecution + calls, automatic, sections, sourcesPerSlice, workItemsPerSlice, sourceCohortSize);
+        }
+    }
+    public record Options(Limits limits, int maxSources, int maxPromptCharacters, BudgetPolicy budget) {
         public Options(Limits limits, int maxSources) { this(limits, maxSources, 16_000); }
+        public Options(Limits limits, int maxSources, int maxPromptCharacters) { this(limits, maxSources, maxPromptCharacters, null); }
         public Options {
             Objects.requireNonNull(limits);
             if (maxSources < 1 || maxSources > 256) throw new IllegalArgumentException("maxSources must be 1..256");
@@ -61,23 +77,30 @@ public final class RequirementRelationSearch {
     }
 
     /**
-     * Complete further source cohorts in a non-resumable local request while its
-     * original call/work budget permits. Durable sessions retain their explicit
-     * continuation boundary; their caller owns the saved journal and next budget.
+     * Advance source sections inside the same execution and journal. Accepted
+     * answers, open questions, cancellation and cumulative admission remain owned
+     * by the original durable session when one is active.
      */
     public RelationSearchReport searchWithSourceContinuation(String original,
             Map<String, ? extends Number> inputScores, Options options) {
-        if (AnalysisCheckpointSession.active()) return search(original, inputScores, options);
+        return searchWithSourceContinuation(original, inputScores, options, 0);
+    }
+
+    private RelationSearchReport searchWithSourceContinuation(String original,
+            Map<String, ? extends Number> inputScores, Options options, int callsAlreadySpent) {
         Objects.requireNonNull(inputScores); Objects.requireNonNull(options);
         long started = System.nanoTime();
         var budget = new Budget(options);
-        var journal = new LocalRelationJournal();
+        budget.calls = callsAlreadySpent;
+        var journal = AnalysisCheckpointSession.active() ? null : new LocalRelationJournal();
+        var previous = new RelationSearchReport[] { AnalysisCheckpointSession.previousRelations() };
         RelationSearchReport report;
         int assessed = 0;
         // A source-call boundary can precede the node-count boundary. Progress,
         // the shared total budget and this finite source count bound continuation.
         int maxCohorts = Math.max(1, inputScores.size());
-        try (var session = new AnalysisCheckpointSession(journal)) {
+        try (var session = journal == null ? null : new AnalysisCheckpointSession(journal);
+             var section = AnalysisCheckpointSession.withPreviousRelations(() -> previous[0])) {
             report = search(original, inputScores, options, budget);
             for (int cohort = 1; cohort < maxCohorts; cohort++) {
                 int nowAssessed = report.progress() == null ? 0 : report.progress().assessedSources();
@@ -85,7 +108,7 @@ public final class RequirementRelationSearch {
                         || budget.calls >= options.limits().maxCalls() || nowAssessed <= assessed) break;
                 // Replaying accepted/clarification/failed answers preserves their
                 // meaning. Only the newly admitted sources consume this cohort.
-                journal.previous = report;
+                previous[0] = report;
                 assessed = nowAssessed;
                 budget.nextSourceCohort();
                 report = search(original, inputScores, options, budget);
@@ -94,7 +117,7 @@ public final class RequirementRelationSearch {
         return new RelationSearchReport(report.schemaVersion(), report.originalSha256(), report.policy(),
                 report.sources(), report.result(), report.totalCalls(), report.maxCalls(),
                 (System.nanoTime() - started) / 1_000_000, report.warnings(), report.stopReason(),
-                report.progress(), report.tasks());
+                report.progress(), report.tasks(), report.budget());
     }
 
     private RelationSearchReport search(String original, Map<String, ? extends Number> inputScores,
@@ -123,6 +146,7 @@ public final class RequirementRelationSearch {
             budget.targetRoutes(hasTargetRoutes(nodes, roots));
             plan = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
             plan.restore(previous);
+            if (options.budget() != null) plan.budget(() -> options.budget().usage(budget.calls, budget.totalSources.size(), budget.newWork));
             budget.plan = plan;
             plan.calls(budget.calls);
             var protocol = new RelationSearchProtocol(budget::complete, provider, (step, ids) -> {}, options.maxPromptCharacters());
@@ -174,13 +198,14 @@ public final class RequirementRelationSearch {
                     p.completedSearches(), p.unresolvedSearches(), p.pendingSearches(), budget.calls,
                     options.limits().maxCalls(), p.verifiedRelations(), Step.PAUSED, null, p.taxonomies(), p.sourceTaxonomies());
         }
-        return new RelationSearchReport(2, sha256(original), "relation-downwalk-v2/complete-plan/resumable-exchanges",
+        var report = new RelationSearchReport(2, sha256(original), "relation-downwalk-v2/complete-plan/resumable-exchanges",
                 sources, result, budget.calls, options.limits().maxCalls(),
                 (System.nanoTime() - start) / 1_000_000, warnings, stop,
                 progress, tasks);
+        return options.budget() == null ? report : report.withBudget(options.budget().usage(budget.calls, budget.totalSources.size(), budget.newWork));
     }
 
-    private static List<Unfinished> retainedUnfinished(Result previous, Result current, Set<List<String>> completedTasks,
+    static List<Unfinished> retainedUnfinished(Result previous, Result current, Set<List<String>> completedTasks,
             Set<String> completedSources, Set<String> retainedLegacySources) {
         Set<List<String>> unassessedTargets = new HashSet<>(), revisited = new HashSet<>();
         current.unfinished().stream().filter(q -> q.contributionKey() != null
@@ -213,6 +238,17 @@ public final class RequirementRelationSearch {
      */
     public RelationSearchDistribution.Plan prepare(String preparationId, String original,
             Map<String, ? extends Number> inputScores, List<String> sourceResultIds, Options options, boolean includeRelations) {
+        Objects.requireNonNull(options);
+        // The uncommon source-overflow path continues in this preparation worker.
+        // It must reuse source answers even when the caller has no durable journal.
+        var journal = AnalysisCheckpointSession.active() || options.budget() == null ? null : new LocalRelationJournal();
+        try (var scope = journal == null ? null : new AnalysisCheckpointSession(journal)) {
+            return prepareInternal(preparationId, original, inputScores, sourceResultIds, options, includeRelations);
+        }
+    }
+
+    private RelationSearchDistribution.Plan prepareInternal(String preparationId, String original,
+            Map<String, ? extends Number> inputScores, List<String> sourceResultIds, Options options, boolean includeRelations) {
         if (original == null || original.isBlank()) throw new IllegalArgumentException("Missing original requirement");
         Objects.requireNonNull(inputScores); Objects.requireNonNull(options);
         Map<String, Double> scores = com.taxonomy.dto.AnalysisPercentages.copy(inputScores); Objects.requireNonNull(sourceResultIds);
@@ -229,19 +265,30 @@ public final class RequirementRelationSearch {
             ChildAssessmentContract.validateCandidates(offered.stream().map(Node::id).toList());
             roots = offered.stream().sorted(Comparator.comparing(Node::id)).toList();
             nodes = sourceNodes(scores, warnings);
-            int sourceAllowance = hasTargetRoutes(nodes, roots)
-                    ? sourceCallAllowance(options.limits().maxCalls()) : options.limits().maxCalls();
+            int[] sourceAllowance = { hasTargetRoutes(nodes, roots)
+                    ? sourceCallAllowance(options.limits().maxCalls()) : options.limits().maxCalls() };
             var progress = new RelationWorkPlan(nodes, roots, rules, options.limits().maxCalls());
+            if (options.budget() != null) progress.budget(() -> options.budget().usage(charged[0], charged[1], 0));
             Set<String> admittedSources = new HashSet<>();
-            var protocol = new RelationSearchProtocol((step, ids, prompt) -> completion.apply(prompt), provider, (step, ids) -> {
+            var protocol = new RelationSearchProtocol((step, ids, prompt) -> {
+                beforeNewCall(options);
+                return completion.apply(prompt);
+            }, provider, (step, ids) -> {
                 if (charged[0] >= options.limits().maxCalls())
-                    throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
-                if (charged[0] >= sourceAllowance)
+                    throw new AnalysisCheckpointSession.DeferredException(callBudgetReason(options));
+                if (charged[0] >= sourceAllowance[0] && options.budget() != null && options.budget().automatic()
+                        && sources.stream().allMatch(source -> source.contributions().isEmpty()))
+                    sourceAllowance[0] += sourceCallAllowance(options.limits().maxCalls() - charged[0]);
+                if (charged[0] >= sourceAllowance[0])
                     throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
                 long additional = ids.stream().filter(id -> !admittedSources.contains(id)).count();
-                if (admittedSources.size() + additional > options.maxSources())
-                    throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
-                charged[0]++; admittedSources.addAll(ids); charged[1] = admittedSources.size(); progress.calls(charged[0]);
+                if (admittedSources.size() + additional > options.maxSources()) {
+                    if (options.budget() == null || !options.budget().automatic()
+                            || ids.size() > options.budget().sourceCohortSize())
+                        throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
+                    admittedSources.clear();
+                }
+                charged[0]++; admittedSources.addAll(ids); charged[1] += additional; progress.calls(charged[0]);
             }, options.maxPromptCharacters());
             assessSources(original, nodes, options, protocol, progress, sources, warnings);
             List<Intent> intents = intents(sources, roots, warnings);
@@ -262,6 +309,18 @@ public final class RequirementRelationSearch {
             }
         } catch (RuntimeException failure) { stop = failureReason(failure); }
         sortSourcesByRank(sources, nodes);
+        boolean sourceOverflow = sources.size() < nodes.size() && warnings.stream().anyMatch(w -> w.startsWith("SOURCE_LIMIT"));
+        if (includeRelations && options.budget() != null && stop.isEmpty()
+                && (options.budget().automatic() && sourceOverflow || charged[0] == options.limits().maxCalls())) {
+            // Reservation for target workers must not strand funded source work.
+            // Continue under the same journal and full frozen catalogue, retaining
+            // charges already admitted above. At zero remaining calls this only
+            // reconstructs committed answers; every new request remains deferred.
+            var report = searchWithSourceContinuation(original, scores, options, charged[0]);
+            return new RelationSearchDistribution.Plan(1, preparationId, sha256(original), sourceResultIds, options,
+                    nodes, roots, report.sources(), List.of(), charged[0], (System.nanoTime() - started) / 1_000_000,
+                    report.warnings(), report.stopReason(), true, report);
+        }
         return new RelationSearchDistribution.Plan(1, preparationId, sha256(original), sourceResultIds, options,
                 nodes, roots, sources, items, charged[0], (System.nanoTime() - started) / 1_000_000,
                 warnings, stop, includeRelations);
@@ -297,6 +356,7 @@ public final class RequirementRelationSearch {
         progress.expect(List.of(intent));
         var protocol = new RelationSearchProtocol((step, ids, prompt) -> {
             if (step == Step.SOURCES) throw new IllegalStateException("Prepared source extraction cannot repeat");
+            beforeNewCall(plan.options());
             return completion.apply(prompt);
         }, provider, (step, ids) -> {
             if (calls[0] >= work.maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
@@ -356,8 +416,9 @@ public final class RequirementRelationSearch {
         // Stable source cohorts preserve the partial last group at a source-limit
         // boundary, including across replay. A group of three must not strand two
         // available source slots or force already accepted requests to change keys.
-        for (int offset = 0; offset < nodes.size(); offset += options.maxSources()) {
-            var cohort = nodes.subList(offset, Math.min(offset + options.maxSources(), nodes.size()));
+        int cohortSize = options.budget() == null ? options.maxSources() : options.budget().sourceCohortSize();
+        for (int offset = 0; offset < nodes.size(); offset += cohortSize) {
+            var cohort = nodes.subList(offset, Math.min(offset + cohortSize, nodes.size()));
             Map<String, List<Node>> taxonomies = new LinkedHashMap<>();
             for (Node node : cohort) taxonomies.computeIfAbsent(node.root(), unused -> new ArrayList<>()).add(node);
             for (List<Node> taxonomy : taxonomies.values()) {
@@ -378,7 +439,7 @@ public final class RequirementRelationSearch {
                 result.failures().forEach((id, error) -> warnings.add(
                         ("RELATION_LEFT_OPEN".equals(error) ? "SOURCE_LEFT_OPEN" : "INVALID_SOURCE_RESPONSE")
                                 + " [" + id + "]: " + error));
-                result.failures().values().stream().filter(error -> error.startsWith("CALL_BUDGET:") || error.startsWith("SOURCE_LIMIT:")
+                result.failures().values().stream().filter(error -> error.startsWith("CALL_BUDGET:") || error.startsWith("TOTAL_CALL_BUDGET:") || error.startsWith("SOURCE_LIMIT:")
                         || error.startsWith("WORK_LIMIT:")).findFirst().ifPresent(warnings::add);
             } catch (AnalysisCheckpointSession.DeferredException deferred) {
                 warnings.add(deferred.getMessage() + ": " + (nodes.size() - processed) + " sources remain unassessed.");
@@ -441,6 +502,7 @@ public final class RequirementRelationSearch {
         private int sourceAllowance;
         private boolean sourceLimitReached;
         private final Set<String> newSources = new HashSet<>();
+        private final Set<String> totalSources = new HashSet<>();
         private RelationWorkPlan plan;
         Budget(Options options) {
             this.options = options;
@@ -455,22 +517,34 @@ public final class RequirementRelationSearch {
             sourceAllowance = sourceCallAllowance(options.limits().maxCalls() - calls);
         }
         String complete(Step step, List<String> nodes, String prompt) {
-            if (calls >= options.limits().maxCalls()) throw new AnalysisCheckpointSession.DeferredException("CALL_BUDGET");
+            if (calls >= options.limits().maxCalls()) throw new AnalysisCheckpointSession.DeferredException(callBudgetReason(options));
             if (step == Step.SOURCES && sourceCalls >= sourceAllowance) {
                 sourceLimitReached = true;
                 throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
             }
-            if (step == Step.SOURCES && newSources.size() + nodes.stream().filter(id -> !newSources.contains(id)).count() > options.maxSources()) {
+            if (step == Step.SOURCES && newSources.size() + nodes.stream().filter(id -> !newSources.contains(id)).count() > options.maxSources()
+                    && !(options.budget() != null && options.budget().automatic() && newSources.isEmpty()
+                         && nodes.size() <= options.budget().sourceCohortSize())) {
                 sourceLimitReached = true;
                 throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
             }
             if (step != Step.SOURCES && newWork >= options.limits().maxWorkItems())
                 throw new AnalysisCheckpointSession.DeferredException("WORK_LIMIT");
-            if (step == Step.SOURCES) { newSources.addAll(nodes); sourceCalls++; }
+            beforeNewCall(options);
+            if (step == Step.SOURCES) { newSources.addAll(nodes); totalSources.addAll(nodes); sourceCalls++; }
             else newWork++;
             calls++; plan.calls(calls);
             return completion.apply(prompt);
         }
+    }
+
+    static String callBudgetReason(Options options) {
+        return options.budget() != null && options.budget().callsBeforeExecution() + options.limits().maxCalls()
+                >= options.budget().maxTotalCalls() ? "TOTAL_CALL_BUDGET" : "CALL_BUDGET";
+    }
+
+    private static void beforeNewCall(Options options) {
+        if (options.budget() != null) AnalysisCheckpointSession.beforeRelationCall(options.budget().maxTotalCalls());
     }
 
     /** Leave at least half of the remaining calls for target navigation and verification. */

@@ -7,7 +7,13 @@ import static com.taxonomy.dto.RelationSearchModel.Direction;
 public record RelationSearchProgress(int totalSources, int assessedSources, int totalSearches,
         int completedSearches, int unresolvedSearches, int pendingSearches,
         int calls, int maxCalls, int verifiedRelations, Step step, Current current,
-        List<Taxonomy> taxonomies, List<SourceTaxonomy> sourceTaxonomies) {
+        List<Taxonomy> taxonomies, List<SourceTaxonomy> sourceTaxonomies, RelationSearchBudget budget) {
+    public RelationSearchProgress(int totalSources, int assessedSources, int totalSearches,
+            int completedSearches, int unresolvedSearches, int pendingSearches, int calls, int maxCalls,
+            int verifiedRelations, Step step, Current current, List<Taxonomy> taxonomies, List<SourceTaxonomy> sourceTaxonomies) {
+        this(totalSources, assessedSources, totalSearches, completedSearches, unresolvedSearches, pendingSearches,
+                calls, maxCalls, verifiedRelations, step, current, taxonomies, sourceTaxonomies, null);
+    }
     public RelationSearchProgress {
         taxonomies = List.copyOf(taxonomies);
         sourceTaxonomies = sourceTaxonomies == null ? List.of() : List.copyOf(sourceTaxonomies);
@@ -17,6 +23,11 @@ public record RelationSearchProgress(int totalSources, int assessedSources, int 
             int verifiedRelations, Step step, Current current, List<Taxonomy> taxonomies) {
         this(totalSources, assessedSources, totalSearches, completedSearches, unresolvedSearches, pendingSearches,
                 calls, maxCalls, verifiedRelations, step, current, taxonomies, List.of());
+    }
+    public RelationSearchProgress withBudget(RelationSearchBudget usage) {
+        return new RelationSearchProgress(totalSources, assessedSources, totalSearches, completedSearches,
+                unresolvedSearches, pendingSearches, calls, maxCalls, verifiedRelations, step, current,
+                taxonomies, sourceTaxonomies, usage);
     }
     public enum Step { SOURCES, NAVIGATE, VERIFY, FINISHED, PAUSED }
     public enum State { PENDING, RUNNING, COMPLETED, UNRESOLVED }

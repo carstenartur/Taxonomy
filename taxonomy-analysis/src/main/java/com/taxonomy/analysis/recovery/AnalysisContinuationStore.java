@@ -15,6 +15,7 @@ import java.util.*;
 @Service
 public class AnalysisContinuationStore {
     private static final int MAX_CALLS = 4096;
+    private static final int MAX_QUESTIONS = 16_384;
     private static final int MAX_QUESTION_CHARACTERS = 2_000_000;
     private static final long MAX_RUN_CHARACTERS = 24_000_000;
     // Must exceed the existing evaluator's 30 minute active-work limit. No automatic replay on expiry.
@@ -62,6 +63,7 @@ public class AnalysisContinuationStore {
             run.repositoryId = scope.repositoryId(); run.branchName = scope.currentBranch();
             run.inputHash = signature; run.requestJson = mapper.writeValueAsString(request);
             run.state = "NEW";
+            run.relationCallsSpent = 0;
             AnalysisResult retained = null;
             if (request.getRelationSourceContinuationId() != null) {
                 var source = relationSource(request, scope, LockModeType.PESSIMISTIC_WRITE);
@@ -267,7 +269,7 @@ public class AnalysisContinuationStore {
         } else {
             long count = em.createQuery("select count(q) from AnalysisQuestionCheckpoint q where q.run.id=:id", Long.class)
                     .setParameter("id", run.id()).getSingleResult();
-            if (count >= MAX_CALLS) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            if (count >= MAX_QUESTIONS) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Continuation checkpoint limit reached; completed answers remain stored");
             question = new AnalysisQuestionCheckpoint();
             question.id = run.id() + ":" + request.key();
@@ -330,6 +332,35 @@ public class AnalysisContinuationStore {
                 ? key : null;
     }
 
+    /** Only inline relation execution and its eight routed targets share exact question identities. */
+    private static Set<String> inlineBridgeKeys(String namespace, AnalysisCheckpointSession.Question request) {
+        if (!AnalysisCheckpointSession.isRelationQuestion(request.key())) return Set.of();
+        var roots = com.taxonomy.analysis.dag.TaxonomyShardRoot.DEFAULT_ROOTS;
+        List<String> alternatives;
+        if ("RELATION_ANALYSIS:all".equals(namespace))
+            alternatives = roots.stream().map(root -> "RELATION_ANALYSIS:" + root.code()).toList();
+        else if (roots.stream().anyMatch(root -> ("RELATION_ANALYSIS:" + root.code()).equals(namespace)))
+            alternatives = List.of("RELATION_ANALYSIS:all");
+        else return Set.of();
+        var keys = new LinkedHashSet<String>();
+        for (String alternative : alternatives) keys.add("R" + AnalysisCheckpointSession.digest(
+                "distributed-question-v1", alternative, request.key(), request.inputHash()).substring(1));
+        return keys;
+    }
+
+    private String inlineBridgeQuestionKey(String runId, AnalysisCheckpointSession.Question request, Set<String> keys) {
+        if (keys.isEmpty()) return null;
+        var matching = em.createQuery("select q.questionKey, q.nodeCodes, q.inputHash, q.provider from AnalysisQuestionCheckpoint q "
+                        + "where q.run.id=:id and q.questionKey in :keys and q.inputHash=:hash and q.provider=:provider", Object[].class)
+                .setParameter("id", runId).setParameter("keys", keys).setParameter("hash", request.inputHash())
+                .setParameter("provider", request.provider()).getResultList().stream()
+                .filter(row -> keys.contains((String) row[0]) && request.inputHash().equals(row[2])
+                        && request.provider().equals(row[3]) && payloads.parseLayout((String) row[1]).nodes().equals(request.nodes()))
+                .map(row -> (String) row[0]).toList();
+        if (matching.size() > 1) throw conflict("Ambiguous saved inline relation scope; use the original distributed context");
+        return matching.isEmpty() ? null : matching.getFirst();
+    }
+
     /** A physical question belongs to one captured delivery and one worker session. */
     public record QuestionOwner(String operationId, String taskId, int delivery, String owner, String namespace) {
         public QuestionOwner {
@@ -355,6 +386,13 @@ public class AnalysisContinuationStore {
                 existing = legacy; request = input;
             }
         }
+        if (existing == null) {
+            String bridge = inlineBridgeQuestionKey(run.id(), input, inlineBridgeKeys(owner.namespace(), input));
+            if (bridge != null) {
+                existing = question(run.id(), bridge);
+                request = new AnalysisCheckpointSession.Question(bridge, input.inputHash(), input.provider(), input.nodes(), input.prompt());
+            }
+        }
         if (existing != null && "ATTEMPT".equals(existing.state)) {
             existing.state = "FAILED";
             existing.error = "OUTCOME_UNCERTAIN: another delivery found a committed question START without an accepted outcome; explicit retry or leave-open is required";
@@ -367,6 +405,12 @@ public class AnalysisContinuationStore {
             question.attemptOwner = owner.owner(); question.clusterOperationId = owner.operationId();
             question.clusterTaskId = owner.taskId(); question.clusterDelivery = owner.delivery();
             em.flush();
+        } else if (existing != null && Set.of("SUCCESS", "CLARIFICATION", "DECOMPOSED", "UNASSESSED", "SKIPPED").contains(admitted.state())
+                && (!Objects.equals(existing.clusterOperationId, owner.operationId())
+                    || !Objects.equals(existing.clusterTaskId, owner.taskId()))) {
+            // A new operation reuses accepted evidence without spending its newly issued grants.
+            // Redelivery within the original operation must preserve its original admission debit.
+            return new AnalysisCheckpointSession.Checkpoint(admitted.question(), admitted.state(), admitted.detail(), false);
         }
         return admitted;
     }
@@ -421,7 +465,11 @@ public class AnalysisContinuationStore {
             if (owner != null) {
                 String scopedKey = "R" + AnalysisCheckpointSession.digest("distributed-question-v1", owner.namespace(),
                         question.key(), question.inputHash()).substring(1);
-                if (!saved.questionKey.equals(scopedKey) && !saved.questionKey.equals(question.key())) continue;
+                if (!saved.questionKey.equals(scopedKey) && !saved.questionKey.equals(question.key())) {
+                    var bridge = inlineBridgeKeys(owner.namespace(), question);
+                    if (!bridge.contains(saved.questionKey)
+                            || !saved.questionKey.equals(inlineBridgeQuestionKey(run.id(), question, bridge))) continue;
+                }
             } else if (!saved.questionKey.equals(question.key())) {
                 String compatible = compatibleQuestionKey(run.id(), question);
                 if (!saved.questionKey.equals(compatible)) continue;
@@ -492,6 +540,87 @@ public class AnalysisContinuationStore {
         return mapper.readValue(rows.getFirst(), AnalysisResult.class).getRelationSearchReport();
     }
 
+    /** Claimed, scalar accounting; only a legacy journal needs its saved report loaded once. */
+    @Transactional
+    public int relationCallsSpent(Claim claim) {
+        checkpointOwner(claim, true);
+        return initializeRelationCalls(claim);
+    }
+
+    /** The first admitted source grouping survives a crash even before any report is available. */
+    @Transactional
+    public int freezeRelationSourceCohort(Claim claim, int proposed) {
+        if (proposed < 1 || proposed > 256) throw new IllegalArgumentException("Relation source cohort must be 1..256");
+        checkpointOwner(claim, true);
+        Integer saved = em.createQuery("select r.relationSourceCohortSize from AnalysisContinuationRun r where r.id=:id", Integer.class)
+                .setParameter("id", claim.id()).getSingleResult();
+        if (saved != null) return validSourceCohort(saved);
+        em.flush();
+        long now = System.currentTimeMillis();
+        int updated = em.createQuery("update AnalysisContinuationRun r set r.relationSourceCohortSize=:cohort, "
+                        + "r.updatedAt=:now, r.version=r.version+1 where r.id=:id and r.claimToken=:token "
+                        + "and r.state='RUNNING' and r.claimUntil>=:now and r.relationSourceCohortSize is null")
+                .setParameter("cohort", proposed).setParameter("now", now).setParameter("id", claim.id())
+                .setParameter("token", claim.token()).executeUpdate();
+        if (updated == 1) return proposed;
+        checkpointOwner(claim, true);
+        Integer retained = em.createQuery("select r.relationSourceCohortSize from AnalysisContinuationRun r where r.id=:id", Integer.class)
+                .setParameter("id", claim.id()).getSingleResult();
+        if (retained == null) throw conflict("Source grouping no longer belongs to this claim");
+        return validSourceCohort(retained);
+    }
+
+    private static int validSourceCohort(int cohort) {
+        if (cohort < 1 || cohort > 256) throw new IllegalStateException("Invalid saved relation source cohort");
+        return cohort;
+    }
+
+    /** Commits admission independently of a provider outcome, never from checkpoint attempt counts. */
+    @Transactional
+    public void beforeRelationCall(Claim claim, int maximum) {
+        if (maximum < 0) throw new IllegalArgumentException("Relation call maximum must be nonnegative");
+        checkpointOwner(claim, true);
+        initializeRelationCalls(claim);
+        em.flush();
+        long now = System.currentTimeMillis();
+        int updated = em.createQuery("update AnalysisContinuationRun r set r.relationCallsSpent=r.relationCallsSpent+1, "
+                        + "r.updatedAt=:now, r.version=r.version+1 where r.id=:id and r.claimToken=:token "
+                        + "and r.state='RUNNING' and r.claimUntil>=:now and r.relationCallsSpent<:maximum")
+                .setParameter("now", now).setParameter("id", claim.id()).setParameter("token", claim.token())
+                .setParameter("maximum", maximum).executeUpdate();
+        if (updated == 0) {
+            checkpointOwner(claim, true); // A lost claim is not a harmless exhausted allowance.
+            throw new AnalysisCheckpointSession.DeferredException("TOTAL_CALL_BUDGET");
+        }
+    }
+
+    private int initializeRelationCalls(Claim claim) {
+        Integer spent = em.createQuery("select r.relationCallsSpent from AnalysisContinuationRun r where r.id=:id", Integer.class)
+                .setParameter("id", claim.id()).getSingleResult();
+        if (spent != null) {
+            if (spent < 0) throw new IllegalStateException("Invalid saved relation call ledger");
+            return spent;
+        }
+        String saved = em.createQuery("select r.resultJson from AnalysisContinuationRun r where r.id=:id", String.class)
+                .setParameter("id", claim.id()).getSingleResult();
+        var report = saved == null ? null : mapper.readValue(saved, AnalysisResult.class).getRelationSearchReport();
+        int baseline = report == null ? 0 : report.budget() == null
+                ? Math.max(0, report.totalCalls()) : report.budget().spentCalls();
+        em.flush();
+        long now = System.currentTimeMillis();
+        int updated = em.createQuery("update AnalysisContinuationRun r set r.relationCallsSpent=:spent, "
+                        + "r.updatedAt=:now, r.version=r.version+1 where r.id=:id and r.claimToken=:token "
+                        + "and r.state='RUNNING' and r.claimUntil>=:now and r.relationCallsSpent is null")
+                .setParameter("spent", baseline).setParameter("now", now).setParameter("id", claim.id())
+                .setParameter("token", claim.token()).executeUpdate();
+        if (updated == 1) return baseline;
+        checkpointOwner(claim, true);
+        Integer initialized = em.createQuery("select r.relationCallsSpent from AnalysisContinuationRun r where r.id=:id", Integer.class)
+                .setParameter("id", claim.id()).getSingleResult();
+        if (initialized == null || initialized < 0) throw conflict("Relation call ledger no longer belongs to this claim");
+        return initialized;
+    }
+
     @Transactional
     public AnalysisResult complete(Claim claim, AnalysisResult result, List<TaxonomyNodeDto> tree) {
         return completeWithFallback(claim, result, () -> tree);
@@ -524,6 +653,7 @@ public class AnalysisContinuationStore {
         result.setAnalysisReasonLength(frozenRequest.getAnalysisReasonLength());
         if (previous != null && result.getRelationSearchReport() == null)
             result.setRelationSearchReport(previous.getRelationSearchReport());
+        retainRelationBudget(run, result);
         var metadata = failUncertainAttempts(run, questionMetadata(run));
         var open = openQuestions(metadata);
         if ("CANCELLED".equals(run.state)) result.setStatus("CANCELLED");
@@ -601,7 +731,7 @@ public class AnalysisContinuationStore {
 
     private static boolean relationBudgetStopped(RelationSearchReport report) {
         if (report == null) return false;
-        var reasons = Set.of("CALL_BUDGET", "SOURCE_LIMIT", "WORK_LIMIT");
+        var reasons = Set.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "SOURCE_LIMIT", "WORK_LIMIT");
         return report.result().unfinished().stream().anyMatch(item -> reasons.contains(item.reason()))
                 || report.warnings().stream().anyMatch(warning -> reasons.stream().anyMatch(warning::startsWith));
     }
@@ -641,7 +771,18 @@ public class AnalysisContinuationStore {
         if (!Objects.equals(report.originalSha256(), com.taxonomy.analysis.dag.RequirementReference.sha256(request.getBusinessText())))
             throw conflict("Relation evidence belongs to a different requirement");
         result.setRelationSearchReport(report);
-        if (result.getArchitectureView() != null) result.getArchitectureView().setRelationSearchReport(report);
+        retainRelationBudget(run, result);
+        if (result.getArchitectureView() != null) result.getArchitectureView().setRelationSearchReport(result.getRelationSearchReport());
+    }
+    /** Scheduler grants may include cached answers; only the claimed ledger measures new provider work. */
+    private static void retainRelationBudget(AnalysisContinuationRun run, AnalysisResult result) {
+        var report = result.getRelationSearchReport();
+        if (report == null || report.budget() == null || run.relationCallsSpent == null) return;
+        var budget = report.budget();
+        result.setRelationSearchReport(report.withBudget(budget.withSpentCalls(run.relationCallsSpent,
+                budget.spentCalls() - budget.newCalls())));
+        if (result.getArchitectureView() != null)
+            result.getArchitectureView().setRelationSearchReport(result.getRelationSearchReport());
     }
     /** Retry only resets extension-attempt diagnostics; original node notes and gaps remain authoritative. */
     private void resetRelationAttempt(AnalysisResult result, AnalysisRequest request) {

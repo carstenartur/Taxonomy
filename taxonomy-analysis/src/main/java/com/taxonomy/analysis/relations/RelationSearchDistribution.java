@@ -20,7 +20,15 @@ public final class RelationSearchDistribution {
                        List<String> sourceResultIds, RequirementRelationSearch.Options options,
                        List<Node> sourceNodes, List<Node> targetRoots, List<SourceAssessment> sources,
                        List<Item> items, int sourceCalls, long durationMillis,
-                       List<String> warnings, String stopReason, boolean included) {
+                       List<String> warnings, String stopReason, boolean included, RelationSearchReport inlineReport) {
+        public Plan(int schemaVersion, String preparationId, String originalSha256,
+                List<String> sourceResultIds, RequirementRelationSearch.Options options,
+                List<Node> sourceNodes, List<Node> targetRoots, List<SourceAssessment> sources,
+                List<Item> items, int sourceCalls, long durationMillis,
+                List<String> warnings, String stopReason, boolean included) {
+            this(schemaVersion, preparationId, originalSha256, sourceResultIds, options, sourceNodes, targetRoots,
+                    sources, items, sourceCalls, durationMillis, warnings, stopReason, included, null);
+        }
         public Plan {
             if (schemaVersion != 1) throw new IllegalArgumentException("Unsupported relation preparation schema");
             required(preparationId); required(originalSha256); Objects.requireNonNull(options);
@@ -33,7 +41,8 @@ public final class RelationSearchDistribution {
             stopReason = stopReason == null ? "" : stopReason;
             if (sourceCalls < 0 || sourceCalls > options.limits().maxCalls() || durationMillis < 0)
                 throw new IllegalArgumentException("Invalid preparation budget");
-            if (sources.size() > options.maxSources()) throw new IllegalArgumentException("Source limit exceeded");
+            if (sources.size() > (options.budget() == null ? options.maxSources() : sourceNodes.size()))
+                throw new IllegalArgumentException("Source limit exceeded");
             if (!sources.isEmpty() && sourceResultIds.isEmpty())
                 throw new IllegalArgumentException("Assessed sources require persisted source references");
             Set<TaxonomyShardRoot> roots = new HashSet<>();
@@ -48,7 +57,96 @@ public final class RelationSearchDistribution {
             }
             if (!included && (!sourceNodes.isEmpty() || !sources.isEmpty() || !items.isEmpty() || sourceCalls != 0))
                 throw new IllegalArgumentException("Disabled relations cannot contain work");
+            if (inlineReport != null && (!included || options.budget() == null
+                    || !options.budget().automatic() && sourceCalls != options.limits().maxCalls()
+                    || !items.isEmpty() || !inlineReport.originalSha256().equals(originalSha256)
+                    || !inlineReport.sources().equals(sources) || !inlineReport.warnings().equals(warnings)
+                    || !inlineReport.stopReason().equals(stopReason)
+                    || inlineReport.maxCalls() != options.limits().maxCalls()
+                    || inlineReport.totalCalls() < sourceCalls || inlineReport.totalCalls() > options.limits().maxCalls()
+                    || inlineReport.budget() == null
+                    || inlineReport.budget().callsPerSlice() != options.budget().callsPerSlice()
+                    || inlineReport.budget().maxTotalCalls() != options.budget().maxTotalCalls()
+                    || inlineReport.budget().automatic() != options.budget().automatic()
+                    || inlineReport.budget().sourcesPerSlice() != options.budget().sourcesPerSlice()
+                    || inlineReport.budget().workItemsPerSlice() != options.budget().workItemsPerSlice()
+                    || inlineReport.budget().sourceCohortSize() != options.budget().sourceCohortSize()
+                    || inlineReport.budget().newCalls() != inlineReport.totalCalls()
+                    || inlineReport.budget().spentCalls() != (long) options.budget().callsBeforeExecution() + inlineReport.totalCalls()))
+                throw new IllegalArgumentException("Invalid inline relation continuation");
+            if (inlineReport != null) validateInlineEvidence(sourceNodes, targetRoots, sources, inlineReport);
         }
+    }
+
+    /** Inline preparation must retain the same contribution and route authority as target grants. */
+    private static void validateInlineEvidence(List<Node> sourceNodes, List<Node> targetRoots,
+            List<SourceAssessment> sources, RelationSearchReport report) {
+        Set<Node> frozenSources = new HashSet<>(sourceNodes);
+        Set<String> sourceIds = new HashSet<>(), roots = new HashSet<>();
+        sourceNodes.forEach(node -> sourceIds.add(node.id()));
+        targetRoots.forEach(node -> roots.add(node.root()));
+        var contributions = new HashMap<String, List<Contribution>>();
+        for (SourceAssessment source : sources) {
+            if (!frozenSources.contains(source.node()) || source.node().container()
+                    || contributions.putIfAbsent(source.node().id(), source.contributions()) != null
+                    || source.contributions().stream().anyMatch(value -> !source.node().equals(value.source())))
+                throw new IllegalArgumentException("Foreign inline source assessment");
+        }
+        Set<Contribution> accepted = new HashSet<>();
+        contributions.values().forEach(accepted::addAll);
+        var rules = new RelationCompatibilityMatrix();
+        for (Edge edge : report.result().edges()) {
+            if (!accepted.contains(edge.contribution()) || edge.target() == null || edge.target().container()
+                    || !roots.contains(edge.target().root()) || edge.evidence() == null
+                    || edge.evidence().outcome() != Outcome.VERIFIED
+                    || !edge.target().id().equals(edge.evidence().targetId())
+                    || !inlineRoute(contributions, roots, rules, edge.contribution().source().id(),
+                            edge.type(), edge.direction(), null, edge.target().root()))
+                throw new IllegalArgumentException("Foreign inline relation evidence");
+        }
+        for (Trace trace : report.result().trace()) {
+            if (trace.phase() == null || trace.outcome() == null || trace.targetId() == null || trace.targetId().isBlank()
+                    || !inlineRoute(contributions, roots, rules, trace.sourceId(), trace.type(), trace.direction(),
+                            trace.contributionKey(), null))
+                throw new IllegalArgumentException("Foreign inline relation trace");
+        }
+        for (Unfinished unfinished : report.result().unfinished()) {
+            if (unfinished.targets().isEmpty() || unfinished.targets().stream().anyMatch(id -> id == null || id.isBlank())
+                    || !inlineRoute(contributions, roots, rules, unfinished.sourceId(), unfinished.type(), unfinished.direction(),
+                            unfinished.contributionKey(), unfinished.targetRoot()))
+                throw new IllegalArgumentException("Foreign inline unfinished relation");
+        }
+        var result = report.result();
+        if (result.calls() < 0 || result.visitedBatches() < 0 || result.visitedBatches() > result.calls()
+                || result.durationMillis() < 0 || report.durationMillis() < 0)
+            throw new IllegalArgumentException("Invalid inline relation diagnostics");
+        var progress = report.progress();
+        if (progress != null && (progress.calls() != report.totalCalls() || progress.maxCalls() != report.maxCalls()
+                || !Objects.equals(progress.budget(), report.budget())
+                || progress.totalSources() != sourceNodes.size() || progress.assessedSources() != sources.size()
+                || progress.taxonomies().stream().anyMatch(taxonomy -> !roots.contains(taxonomy.root()))))
+            throw new IllegalArgumentException("Invalid inline relation progress");
+        if (report.tasks().stream().anyMatch(task -> !sourceIds.contains(task.sourceId()) || !roots.contains(task.targetRoot())))
+            throw new IllegalArgumentException("Foreign inline relation task");
+    }
+
+    private static boolean inlineRoute(Map<String, List<Contribution>> contributions, Set<String> roots,
+            RelationCompatibilityMatrix rules, String sourceId, String type, Direction direction,
+            String contributionKey, String targetRoot) {
+        if (type == null || direction == null || targetRoot != null && !roots.contains(targetRoot)) return false;
+        var relation = com.taxonomy.model.RelationType.valueOf(type);
+        for (Contribution contribution : contributions.getOrDefault(sourceId, List.of())) {
+            // A missing key in legacy retained reports stays unspecified; a
+            // supplied key must identify this exact contribution and route.
+            if (contributionKey != null && !contributionKey.equals(RelationSearchEngine.contributionKey(contribution, type, direction))) continue;
+            for (String root : roots) {
+                if (targetRoot != null && !targetRoot.equals(root)) continue;
+                String origin = direction == Direction.OUTGOING ? contribution.source().root() : root;
+                String destination = direction == Direction.OUTGOING ? root : contribution.source().root();
+                if (rules.allowedTargetRoots(origin, relation).contains(destination)) return true;
+            }
+        }
+        return false;
     }
 
     /** One ordered intent, referring to the immutable assessment rather than copying it. */
@@ -121,11 +219,24 @@ public final class RelationSearchDistribution {
 
     /** Aggregate in original intent order, irrespective of broker completion order. */
     public static RelationSearchReport combine(Plan plan, List<WorkResult> persisted) {
+        return combine(plan, persisted, null);
+    }
+
+    /** Saved progress and questions remain visible before the new grants replay their evidence. */
+    public static RelationSearchReport combine(Plan plan, List<WorkResult> persisted, RelationSearchReport previous) {
         Schedule schedule = schedule(plan, persisted);
+        if (plan.inlineReport() != null) return retainAcceptedRelations(plan.inlineReport(), previous);
+        if (previous != null && !plan.originalSha256().equals(previous.originalSha256()))
+            throw new IllegalArgumentException("Saved relation evidence belongs to another requirement");
         var progress = new RelationWorkPlan(plan.sourceNodes(), plan.targetRoots(),
                 new RelationCompatibilityMatrix(), plan.options().limits().maxCalls(), false);
+        progress.restore(previous);
         plan.sources().forEach(progress::assessed);
         progress.expect(plan.items().stream().map(i -> intent(plan, i)).toList());
+        Set<List<String>> previouslyCompleted = new HashSet<>();
+        if (previous != null) previous.tasks().stream()
+                .filter(task -> task.state() == com.taxonomy.dto.RelationSearchProgress.State.COMPLETED)
+                .forEach(task -> previouslyCompleted.add(List.of(task.sourceId(), task.targetRoot())));
         Set<Edge> edges = new LinkedHashSet<>();
         List<Trace> trace = new ArrayList<>();
         List<Unfinished> unfinished = new ArrayList<>();
@@ -135,13 +246,14 @@ public final class RelationSearchDistribution {
         // The sequential engine records the first denied frontier query as an
         // attempted batch, then drains later intents. Preserve that diagnostic
         // and task state without dispatching a zero-allowance provider request.
-        boolean deniedFrontier = Set.of("CALL_BUDGET", "WORK_LIMIT").contains(schedule.pendingReason())
+        boolean deniedFrontier = Set.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "WORK_LIMIT").contains(schedule.pendingReason())
                 && schedule.results().values().stream().flatMap(r -> r.result().unfinished().stream())
-                .noneMatch(u -> Set.of("CALL_BUDGET", "WORK_LIMIT").contains(u.reason()));
+                .noneMatch(u -> Set.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "WORK_LIMIT").contains(u.reason()));
         for (Item item : plan.items()) {
             WorkResult completed = schedule.results().get(item.ordinal());
             Intent intent = intent(plan, item);
             if (completed == null) {
+                if (previouslyCompleted.contains(List.of(intent.contribution().source().id(), item.targetRoot().code()))) continue;
                 unfinished.add(new Unfinished(intent.contribution().source().id(), item.type(), item.direction(),
                         intent.roots().stream().map(Node::id).toList(), schedule.pendingReason(), "",
                         RelationSearchEngine.contributionKey(intent.contribution(), item.type(), item.direction()), item.targetRoot().code()));
@@ -161,12 +273,33 @@ public final class RelationSearchDistribution {
                     || !blocksFurtherWork(stop) && blocksFurtherWork(completed.stopReason()))) stop = completed.stopReason();
         }
         progress.calls(calls);
+        var sources = new LinkedHashMap<String, SourceAssessment>();
+        if (previous != null) {
+            previous.sources().forEach(source -> sources.put(source.node().id(), source));
+            Set<List<String>> completedTasks = new HashSet<>();
+            Set<String> completedSources = new HashSet<>(), retainedLegacySources = new HashSet<>();
+            progress.tasks().forEach(task -> completedSources.add(task.sourceId()));
+            progress.tasks().forEach(task -> {
+                if (task.state() == com.taxonomy.dto.RelationSearchProgress.State.COMPLETED)
+                    completedTasks.add(List.of(task.sourceId(), task.targetRoot()));
+                else completedSources.remove(task.sourceId());
+            });
+            unfinished = RequirementRelationSearch.retainedUnfinished(previous.result(),
+                    new Result(List.copyOf(edges), unfinished, trace, engineCalls, visited, duration),
+                    completedTasks, completedSources, retainedLegacySources);
+            progress.retainUnresolved(previous.tasks(), retainedLegacySources);
+            var accepted = new LinkedHashSet<>(previous.result().edges()); accepted.addAll(edges); edges = accepted;
+            var observations = new LinkedHashSet<>(previous.result().trace()); observations.addAll(trace); trace = List.copyOf(observations);
+        }
+        plan.sources().forEach(source -> sources.put(source.node().id(), source));
         progress.finish(plan.warnings().isEmpty() && stop.isEmpty() && unfinished.isEmpty());
-        return new RelationSearchReport(2, plan.originalSha256(),
+        var report = new RelationSearchReport(2, plan.originalSha256(),
                 "relation-downwalk-v2/complete-plan/resumable-exchanges",
-                plan.sources(), new Result(List.copyOf(edges), unfinished, trace, engineCalls, visited, duration),
+                List.copyOf(sources.values()), new Result(List.copyOf(edges), unfinished, trace, engineCalls, visited, duration),
                 calls, plan.options().limits().maxCalls(), duration, plan.warnings(), stop,
                 progress.snapshot(), progress.tasks());
+        return plan.options().budget() == null ? report : report.withBudget(
+                plan.options().budget().usage(calls, plan.sources().size(), Math.max(0, calls - plan.sourceCalls())));
     }
 
     /** Carry accepted findings across attempts without crediting the current plan for prior work or calls. */
@@ -186,7 +319,8 @@ public final class RelationSearchDistribution {
                 progress.step(), progress.current(), progress.taxonomies(), progress.sourceTaxonomies());
         return new RelationSearchReport(current.schemaVersion(), current.originalSha256(), current.policy(), current.sources(),
                 new Result(List.copyOf(edges), result.unfinished(), result.trace(), result.calls(), result.visitedBatches(), result.durationMillis()),
-                current.totalCalls(), current.maxCalls(), current.durationMillis(), current.warnings(), current.stopReason(), progress, current.tasks());
+                current.totalCalls(), current.maxCalls(), current.durationMillis(), current.warnings(), current.stopReason(), progress,
+                current.tasks(), current.budget()).withBudget(current.budget());
     }
 
     static Intent intent(Plan plan, Item item) {
@@ -204,6 +338,10 @@ public final class RelationSearchDistribution {
 
     private static Schedule schedule(Plan plan, List<WorkResult> persisted) {
         Objects.requireNonNull(plan); Objects.requireNonNull(persisted);
+        if (plan.inlineReport() != null) {
+            if (!persisted.isEmpty()) throw new IllegalArgumentException("Inline relations cannot also contain worker results");
+            return new Schedule(List.of(), Map.of(), "");
+        }
         Map<Integer, WorkResult> byOrdinal = new TreeMap<>();
         for (WorkResult result : persisted) {
             Work work = result.work();
@@ -215,12 +353,14 @@ public final class RelationSearchDistribution {
         Map<Integer, WorkResult> checked = new TreeMap<>();
         int calls = plan.options().limits().maxCalls() - plan.sourceCalls();
         int workItems = plan.options().limits().maxWorkItems();
-        int taskLimit = Math.min(plan.items().size(), plan.options().limits().maxWorkItems());
+        // Ordinals identify all intents, including free accepted replay. The
+        // configured work allowance is debited below by actual grant charges.
+        int taskLimit = Math.min(plan.items().size(), 100_000);
         int next = 0;
         String reason = plan.stopReason().isEmpty() ? "PENDING" : "INTERRUPTED";
         List<Work> ready = List.of();
         while (next < taskLimit && plan.stopReason().isEmpty()) {
-            if (calls == 0 || workItems == 0) { reason = calls == 0 ? "CALL_BUDGET" : "WORK_LIMIT"; break; }
+            if (calls == 0 || workItems == 0) { reason = calls == 0 ? RequirementRelationSearch.callBudgetReason(plan.options()) : "WORK_LIMIT"; break; }
             int reserved = 0;
             List<Work> wave = new ArrayList<>();
             while (next < taskLimit) {

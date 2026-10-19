@@ -13,7 +13,12 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     public record Question(String key, String inputHash, String provider, List<String> nodes, String prompt) {
         public Question { nodes = List.copyOf(nodes); }
     }
-    public record Checkpoint(Question question, String state, LlmCallDetail detail) { }
+    public record Checkpoint(Question question, String state, LlmCallDetail detail, boolean chargeReplay) {
+        /** Existing journals retain their original admission behavior for cached answers. */
+        public Checkpoint(Question question, String state, LlmCallDetail detail) {
+            this(question, state, detail, true);
+        }
+    }
     public interface Store {
         Checkpoint prepare(Question question);
         void finish(Question question, String state, LlmCallDetail detail);
@@ -25,6 +30,12 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
             supersedeEvidence(kind, provider, covered);
         }
         default com.taxonomy.dto.RelationSearchReport previousRelations() { return null; }
+        default int sourceCohortSize() { return 0; }
+        default com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() { return null; }
+        /** Cumulative admitted relation calls; accepted answer replay does not spend again. */
+        default int relationCallsSpent() { return 0; }
+        /** Called only inside a new relation completion, after its local/grant allowance succeeds. */
+        default void beforeRelationCall(int maximum) { }
     }
     private static final ThreadLocal<AnalysisCheckpointSession> CURRENT = new ThreadLocal<>();
     private final AnalysisCheckpointSession previous;
@@ -37,6 +48,48 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     public static com.taxonomy.dto.RelationSearchReport previousRelations() {
         var current = CURRENT.get();
         return current == null ? null : current.store.previousRelations();
+    }
+    public static int relationCallsSpent() {
+        var current = CURRENT.get();
+        return current == null ? 0 : current.store.relationCallsSpent();
+    }
+    public static int sourceCohortSize() {
+        var current = CURRENT.get();
+        return current == null ? 0 : current.store.sourceCohortSize();
+    }
+    public static com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() {
+        var current = CURRENT.get();
+        return current == null ? null : current.store.relationBudget();
+    }
+    public static void beforeRelationCall(int maximum) {
+        var current = CURRENT.get();
+        if (current != null) current.store.beforeRelationCall(maximum);
+    }
+
+    /** Advances a slice's retained report while every journal and ownership callback stays authoritative. */
+    public static AnalysisCheckpointSession withPreviousRelations(
+            Supplier<com.taxonomy.dto.RelationSearchReport> previousRelations) {
+        Objects.requireNonNull(previousRelations, "previousRelations");
+        var owner = CURRENT.get();
+        if (owner == null) throw new IllegalStateException("A retained relation scope requires an active checkpoint session");
+        Store delegate = owner.store;
+        return new AnalysisCheckpointSession(new Store() {
+            public Checkpoint prepare(Question question) { return delegate.prepare(question); }
+            public void finish(Question question, String state, LlmCallDetail detail) { delegate.finish(question, state, detail); }
+            public void checkActive() { delegate.checkActive(); }
+            public void supersedeEvidence(String kind, String provider, java.util.function.Predicate<Question> covered) {
+                delegate.supersedeEvidence(kind, provider, covered);
+            }
+            public void supersedeEvidence(String kind, String provider, Set<String> singletonCodes,
+                    java.util.function.Predicate<Question> covered) {
+                delegate.supersedeEvidence(kind, provider, singletonCodes, covered);
+            }
+            public com.taxonomy.dto.RelationSearchReport previousRelations() { return previousRelations.get(); }
+            public int sourceCohortSize() { return delegate.sourceCohortSize(); }
+            public com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() { return delegate.relationBudget(); }
+            public int relationCallsSpent() { return delegate.relationCallsSpent(); }
+            public void beforeRelationCall(int maximum) { delegate.beforeRelationCall(maximum); }
+        });
     }
     /** No provider request was made; the existing question remains ready for explicit continuation. */
     public static final class DeferredException extends RuntimeException {
@@ -65,12 +118,22 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
     /** Relation evidence uses the same scoped journal without fabricating node scores. */
     public static LlmCallDetail evaluateEvidence(String kind, String provider, List<String> nodes,
                                                 String input, Supplier<LlmCallDetail> operation) {
+        return evaluateEvidence(kind, provider, nodes, input, operation, () -> { });
+    }
+
+    /** Prior-operation evidence is free; same-delivery replay retains its original grant debit. */
+    public static LlmCallDetail evaluateEvidence(String kind, String provider, List<String> nodes,
+                                                String input, Supplier<LlmCallDetail> operation, Runnable admission) {
+        Objects.requireNonNull(operation, "operation");
+        Objects.requireNonNull(admission, "admission");
         var current = CURRENT.get();
-        if (current == null) return operation.get();
+        if (current == null) { admission.run(); return operation.get(); }
         current.store.checkActive();
         Question question = evidenceQuestion(kind, provider, nodes, input);
         Checkpoint saved = current.store.prepare(question);
         question = saved.question();
+        if (saved.chargeReplay() && Set.of("SUCCESS", "CLARIFICATION", "DECOMPOSED", "UNASSESSED", "SKIPPED").contains(saved.state()))
+            admission.run();
         if (Set.of("SUCCESS", "CLARIFICATION", "DECOMPOSED").contains(saved.state())) return copy(saved.detail());
         if ("UNASSESSED".equals(saved.state())) return unassessed(saved.detail());
         if ("SKIPPED".equals(saved.state())) {
@@ -79,7 +142,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         }
         if (!"ATTEMPT".equals(saved.state())) throw paused();
         LlmCallDetail result;
-        try { result = Objects.requireNonNull(operation.get()); }
+        try { admission.run(); result = Objects.requireNonNull(operation.get()); }
         catch (DeferredException deferred) {
             var ready = new LlmCallDetail(); ready.setProvider(provider); ready.setScores(Map.of());
             ready.setError(deferred.getMessage()); current.store.finish(question, "READY", ready);

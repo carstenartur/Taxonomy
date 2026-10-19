@@ -220,7 +220,7 @@ public final class RelationSearchUseCaseContract {
                 }
             }
             return json.writeValueAsString(Map.of("selections", selections));
-        }, scores, catalogue);
+        }, scores, catalogue, true);
     }
     static Fixture fixture(Boolean enabled, int calls, boolean invalid) throws Exception {
         return fixture(enabled, calls, invalid, LlmProvider.CUSTOM_OPENAI);
@@ -242,6 +242,11 @@ public final class RelationSearchUseCaseContract {
     private static Fixture fixture(Boolean enabled, int calls, LlmProvider provider,
                                    java.util.function.Function<String, String> complete, Map<String, Double> scores,
                                    TaxonomyService catalogue) throws Exception {
+        return fixture(enabled, calls, provider, complete, scores, catalogue, false);
+    }
+    private static Fixture fixture(Boolean enabled, int calls, LlmProvider provider,
+                                   java.util.function.Function<String, String> complete, Map<String, Double> scores,
+                                   TaxonomyService catalogue, boolean continueSources) throws Exception {
         AtomicInteger raw = new AtomicInteger(), legacy = new AtomicInteger(), views = new AtomicInteger();
         LlmService llm = new LlmService(null, null, JsonMapper.builder().build(), null, null, null, null) {
             @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(scores); r.setStatus("SUCCESS"); return r; }
@@ -257,6 +262,11 @@ public final class RelationSearchUseCaseContract {
         var service = new RequirementRelationSearchService(catalogue, new RelationCompatibilityMatrix(), llm, policy);
         if (enabled != null) field(service, "enabled", enabled);
         field(service, "maxCalls", calls);
+        // These contracts deliberately retain their small total allowance and
+        // original cohort boundary while production defaults are configurable.
+        field(service, "maxTotalCalls", calls);
+        field(service, "maxSources", 32);
+        field(service, "autoContinue", continueSources);
         var generator = new AnalysisRelationGenerator(new RelationCompatibilityMatrix(), id -> Optional.empty()) {
             @Override public List<RelationHypothesisDto> generate(Map<String,Double> scores) { legacy.incrementAndGet(); return List.of(); }
         };

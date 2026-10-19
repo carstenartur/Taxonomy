@@ -99,7 +99,9 @@ test('reading a restored partial operation offers only server-authorized explici
     assert.equal(f.buttons()[1].disabled, true);
     assert.match(f.buttons()[0].textContent, /Fortsetzen.*Prüfdurchlauf 1/);
     assert.ok(f.nodes.get('copilotContinuationActions').children.some(child =>
-        child.textContent.includes('offene fachliche Fragen bleiben offen')));
+        /offene fachliche Fragen bleiben offen/i.test(child.textContent)
+        && /verbleibende Gesamtbudget/.test(child.textContent)
+        && /im selben Vorgang/.test(child.textContent)));
     assert.deepEqual(f.requests.map(r => r.method), ['GET', 'GET']);
     assert.equal(f.redirects.length, 0);
     assert.match(f.nodes.get('copilotOpenResult').href, /snapshot=snapshot-old-1/);
