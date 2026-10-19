@@ -260,7 +260,9 @@ public class PortfolioAnalysisPersistenceService {
                 jsonCodec.write(gaps),
                 jsonCodec.write(patterns),
                 jsonCodec.write(recommendation));
-        snapshotRepository.save(snapshot);
+        // Assigned snapshot IDs make save merge the entity. Mapping inserts must reference
+        // the managed return, avoiding a transient FK check that rereads all four CLOBs.
+        snapshot = snapshotRepository.save(snapshot);
         persistElementMappings(snapshot, analysis);
         persistRelationMappings(snapshot, analysis);
         linkHypotheses(

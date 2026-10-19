@@ -2,9 +2,6 @@ package com.taxonomy.analysis.recovery;
 
 import com.taxonomy.analysis.service.AnalysisStoppedException;
 import com.taxonomy.dto.LlmCallDetail;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.Supplier;
 
@@ -188,15 +185,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         return new AnalysisStoppedException(AnalysisStoppedException.Reason.AWAITING_DECISION);
     }
     public static String digest(String... values) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            for (String value : values) {
-                byte[] bytes = Objects.toString(value, "").getBytes(StandardCharsets.UTF_8);
-                digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
-                digest.update(bytes);
-            }
-            return HexFormat.of().formatHex(digest.digest());
-        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        return AnalysisEvidenceFingerprint.digest(values);
     }
     public static LlmCallDetail copy(LlmCallDetail value) {
         var copy = new LlmCallDetail();

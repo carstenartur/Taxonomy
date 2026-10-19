@@ -94,7 +94,7 @@ public class AnalysisContinuationService {
             java.util.List<TaxonomyNodeDto> tree) {
         return new Authority(provider, binding, llm.recoveryPolicyFingerprint(provider),
                 AnalysisCheckpointSession.digest(relations == null ? "" : relations.recoveryPolicyFingerprint()),
-                AnalysisCheckpointSession.digest(mapper.writeValueAsString(tree)));
+                AnalysisEvidenceFingerprint.digestJson(mapper, tree));
     }
     private void validateAuthority(Authority saved, java.util.List<TaxonomyNodeDto> tree) {
         if (!saved.equals(authority(saved.provider(), saved.binding(), tree)))
@@ -206,9 +206,9 @@ public class AnalysisContinuationService {
     }
     private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree) {
         try (var reasons = AnalysisReasonContext.open(request.getAnalysisReasonLength())) {
-        String legacy = AnalysisCheckpointSession.digest("resumable-scoring-v1", request.getBusinessText(),
+        String legacy = AnalysisEvidenceFingerprint.digestJson(mapper, new String[]{"resumable-scoring-v1", request.getBusinessText(),
                 Boolean.toString(request.isIncludeArchitectureView()), String.valueOf(request.getMaxArchitectureNodes()),
-                llm.recoveryPolicyFingerprint(request.getProvider()), mapper.writeValueAsString(tree),
+                llm.recoveryPolicyFingerprint(request.getProvider())}, tree,
                 relations == null ? "" : relations.recoveryPolicyFingerprint());
         // Preserve existing durable identities while freezing additional semantic inputs.
         if (!request.getAnalysisScope().legacyFull()) legacy = AnalysisCheckpointSession.digest(legacy, "analysis-scope-v1",

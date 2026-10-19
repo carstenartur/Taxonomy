@@ -125,6 +125,22 @@ before returning, so a late JDBC read failure cannot publish a partial read.
 Every acquired locator is released even if an earlier payload fails to open,
 parse or close. The database JSON format and all response fields remain unchanged.
 
+Snapshot persistence passes the managed instance returned by the repository to
+both mapping inserts. Because snapshots have assigned IDs, `save` merges the
+new entity; continuing with the original instance makes Hibernate reread all four
+CLOBs to check whether the mapping's parent is transient. The real database
+regression permits the initial lookup of the new ID, rejects this second payload
+read, and verifies every payload field and the tenant-bound element and relation
+mappings after commit.
+
+Catalogue authority and continuation signatures retain their existing SHA-256
+identities, including each field's four-byte UTF-8 length prefix. Catalogue JSON
+is serialized through the same configured character mapper into bounded counting
+and hashing streams, avoiding a full JSON String and UTF-8 byte array. Large
+String fields use a bounded encoder with the same unmatched-surrogate replacement
+as `String.getBytes`; ordinary provider prompts keep the small-array path. No
+catalogue, signature or completed-result cache is introduced.
+
 Selecting a Copilot result reads only the analysis payload and mapping counts for each pass.
 The payload is consumed through an explicit JDBC CLOB locator inside the existing
 read-only transaction, without first building a complete intermediate String.

@@ -43,6 +43,70 @@ import static org.mockito.Mockito.*;
 
 /** Exercises the real read and finalization paths with composite foreign keys and large, valid payloads. */
 class PortfolioSnapshotPayloadReadTest {
+    @Test
+    void savingMappingsKeepsTheManagedSnapshotWithoutReadingItsFourPayloadsAgain() {
+        try (var f = new Fixture()) {
+            var source = f.persistence.getSnapshot(f.projectId, f.snapshotIds.getFirst(), "owner", f.scope);
+            var architecture = new RequirementArchitectureView();
+            architecture.setIncludedElements(java.util.stream.IntStream.range(0, 12).mapToObj(index -> {
+                var element = new RequirementElementView();
+                element.setNodeCode("BP-" + index); element.setTitle("Capability " + index);
+                element.setTaxonomySheet("BP"); element.setDirectLlmScore(80);
+                element.setRelevance(.8); element.setOrigin(NodeOrigin.DIRECT_SCORED);
+                element.setPresenceReason("Published requirement evidence " + index);
+                return element;
+            }).toList());
+            architecture.setIncludedRelationships(java.util.stream.IntStream.range(0, 7).mapToObj(index -> {
+                var relation = new RequirementRelationshipView();
+                relation.setSourceCode("BP-" + index); relation.setTargetCode("CP-" + index);
+                relation.setRelationType("USES"); relation.setRelationCategory("STRUCTURAL");
+                relation.setPropagatedRelevance(.8); relation.setConfidence(.9);
+                relation.setPresenceReason("Published relation evidence " + index);
+                return relation;
+            }).toList());
+            var analysis = source.analysis();
+            analysis.setStatus("PARTIAL");
+            analysis.setArchitectureView(architecture);
+            String snapshotId = UUID.randomUUID().toString();
+            Long itemId = new TransactionTemplate(f.transactions).execute(status -> f.shared.createQuery(
+                    "select item.id from RequirementAnalysisJobItem item where item.jobId = :job", Long.class)
+                    .setParameter("job", f.jobIds.getFirst()).getSingleResult());
+
+            f.resetReads();
+            var summary = f.persistence.persistSnapshot(itemId, f.jobIds.getFirst(), f.projectId,
+                    PortfolioScope.key("owner", f.scope), snapshotId, "saved-session", analysis,
+                    source.gapAnalysis(), source.patternDetection(), source.recommendation(),
+                    "CUSTOM_OPENAI", "model", "p".repeat(64), "t".repeat(64), "owner", f.scope, 123);
+
+            // Assigned IDs require one initial merge lookup of the new, absent ID. The mappings
+            // must use its managed return, rather than load all four CLOBs in a transient FK check.
+            assertThat(f.payloadSelects().stream().filter(sql -> sql.startsWith("select")).toList())
+                    .as("Only the initial lookup of the new snapshot ID")
+                    .hasSize(1);
+            assertThat(summary.id()).isEqualTo(snapshotId);
+            var saved = f.persistence.getSnapshot(f.projectId, snapshotId, "owner", f.scope);
+            assertThat(saved.elementMappings()).hasSize(12).allSatisfy(mapping ->
+                    assertThat(mapping.snapshotId()).isEqualTo(snapshotId));
+            assertThat(saved.relationMappings()).hasSize(7).allSatisfy(mapping ->
+                    assertThat(mapping.snapshotId()).isEqualTo(snapshotId));
+            var json = JsonMapper.builder().build();
+            var expected = List.of(analysis, source.gapAnalysis(), source.patternDetection(), source.recommendation());
+            var actual = List.of(saved.analysis(), saved.gapAnalysis(), saved.patternDetection(), saved.recommendation());
+            for (int payload = 0; payload < expected.size(); payload++) {
+                tools.jackson.databind.JsonNode expectedJson = json.valueToTree(expected.get(payload));
+                tools.jackson.databind.JsonNode actualJson = json.valueToTree(actual.get(payload));
+                assertThat(actualJson).as("Complete immutable payload %s", payload).isEqualTo(expectedJson);
+            }
+            new TransactionTemplate(f.transactions).executeWithoutResult(status -> {
+                for (String entity : List.of("RequirementElementMapping", "RequirementRelationMapping"))
+                    assertThat(f.shared.createQuery("select count(mapping) from " + entity
+                                    + " mapping where mapping.snapshotId = :snapshot and mapping.scopeKey = :scope", Long.class)
+                            .setParameter("snapshot", snapshotId).setParameter("scope", PortfolioScope.key("owner", f.scope))
+                            .getSingleResult()).isEqualTo(entity.equals("RequirementElementMapping") ? 12L : 7L);
+            });
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {0, 1})
     void completeSnapshotReadsEachPayloadOnceAndKeepsHistoricalIdentityAndMappingDecisions(int pass) {
