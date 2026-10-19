@@ -1510,9 +1510,19 @@
     function renderRelationSearchReport(report) {
         if (!report) return '';
         var result = report.result || {};
+        var budget = report.budget;
+        var hasBudget = budget && [budget.callsPerSlice, budget.maxTotalCalls, budget.newCalls, budget.spentCalls]
+            .every(function (value) { return Number.isSafeInteger(value) && value >= 0; })
+            && typeof budget.automatic === 'boolean';
         var html = '<details class="relation-search-report border rounded p-2 mb-2"><summary>'
             + escapeHtml(t('relation.search.title')) + ' · '
-            + escapeHtml(t('relation.search.budget', report.totalCalls, report.maxCalls)) + '</summary>';
+            + escapeHtml(hasBudget ? t('relation.search.budget.total', budget.spentCalls, budget.maxTotalCalls)
+                : t('relation.search.budget', report.totalCalls, report.maxCalls)) + '</summary>';
+        if (hasBudget) {
+            html += '<p class="small mt-2">' + escapeHtml(t('relation.search.budget.new', budget.newCalls)) + ' · '
+                + escapeHtml(t('relation.search.budget.initial', budget.callsPerSlice)) + '<br>'
+                + escapeHtml(t('relation.search.budget.automatic.' + (budget.automatic ? 'enabled' : 'disabled'))) + '</p>';
+        }
         html += '<p class="small mt-2">' + escapeHtml(t(report.searchExhausted
             ? 'relation.search.exhausted' : 'relation.search.partial')) + '</p>';
         if (report.progress) {

@@ -61,8 +61,8 @@ public record AnalysisTaskId(String value) {
 
     /** Version-two relation unit: one deterministic, bounded item of a persisted source plan. */
     public static AnalysisTaskId relationWork(String operationId, TaxonomyShardRoot target, int ordinal) {
-        if (target == null || !target.defaultCatalogueRoot() || ordinal < 0 || ordinal >= 512)
-            throw new IllegalArgumentException("Relation work requires a catalogue root and ordinal 0..511");
+        if (target == null || !target.defaultCatalogueRoot() || ordinal < 0 || ordinal >= 100_000)
+            throw new IllegalArgumentException("Relation work requires a catalogue root and ordinal 0..99999");
         return new AnalysisTaskId(requireOperationId(operationId) + ":" + AnalysisTaskType.RELATION_ANALYSIS.token()
                 + ":" + target.code() + ".w" + String.format(java.util.Locale.ROOT, "%06d", ordinal));
     }
@@ -72,7 +72,7 @@ public record AnalysisTaskId(String value) {
         String suffix = value.substring(value.lastIndexOf(':') + 1);
         if (!suffix.matches("[A-Z]{2}\\.w[0-9]{6}")) return java.util.OptionalInt.empty();
         int ordinal = Integer.parseInt(suffix.substring(4));
-        return ordinal < 512 ? java.util.OptionalInt.of(ordinal) : java.util.OptionalInt.empty();
+        return ordinal < 100_000 ? java.util.OptionalInt.of(ordinal) : java.util.OptionalInt.empty();
     }
 
     public boolean matchesRelation(String operationId, java.util.List<TaxonomyShardRoot> roots, int schemaVersion) {

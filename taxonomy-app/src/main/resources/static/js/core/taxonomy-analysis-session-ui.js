@@ -131,7 +131,11 @@
         var preservedText = input ? input.value : '';
 
         runtime.invalidating = true;
-        runtime.draftGeneration = (runtime.draftGeneration || 0) + 1;
+        // Reanalysis replaces results inside the same draft. Its pending saves
+        // still own their acknowledgements; resets and replacements do not.
+        if (options.keepDraftLifecycle !== true) {
+            runtime.draftGeneration = (runtime.draftGeneration || 0) + 1;
+        }
         runtime.restoredPayload = null;
         runtime.restorationPending = false;
         S.currentScores = null;

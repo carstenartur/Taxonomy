@@ -791,8 +791,15 @@
                     });
                     work.append(targets);
                 }
-                work.append(node('div', text('Aufrufbudget dieses Durchlaufs: ', 'Call budget for this execution: ')
-                    + r.calls + ' / ' + r.maxCalls, 'small'));
+                var b = r.budget;
+                var hasBudget = b && [b.callsPerSlice, b.maxTotalCalls, b.newCalls, b.spentCalls]
+                    .every(function (value) { return Number.isSafeInteger(value) && value >= 0; });
+                work.append(node('div', hasBudget
+                    ? text('Gesamtbudget der Relationssuche (letzter gespeicherter Stand): ',
+                        'Total budget for relationship search (last saved state): ') + b.spentCalls + ' / ' + b.maxTotalCalls
+                        + ' · ' + text('Neue Prüfungen dieses Durchlaufs: ', 'New evaluations in this execution: ') + b.newCalls
+                        + ' · ' + text('Startbudget: ', 'Initial budget: ') + b.callsPerSlice
+                    : text('Aufrufbudget dieses Durchlaufs: ', 'Call budget for this execution: ') + r.calls + ' / ' + r.maxCalls, 'small'));
                 if (r.step === 'PAUSED') work.append(node('div', text(
                     'Relationssuche unvollständig. Offene Aufträge und Abbruchgründe bleiben im Bericht erhalten.',
                     'Relationship search incomplete. Open tasks and stop reasons remain recorded in the report.'), 'fw-bold'));
@@ -951,8 +958,12 @@
                 var stopMessages = {
                     CALL_BUDGET: ['Aufrufbudget erreicht. Erledigte Arbeit bleibt erhalten; die Relationssuche ist noch unvollständig.',
                         'Call budget reached. Completed work is retained; relationship search is incomplete.'],
-                    WORK_LIMIT: ['Arbeitsgrenze dieses Durchlaufs erreicht. Erledigte Arbeit bleibt erhalten; weitere Prüfungen sind noch offen.',
-                        'Work limit for this execution reached. Completed work is retained; further assessments remain open.'],
+                    TOTAL_CALL_BUDGET: ['Gesamtbudget der Relationssuche erreicht. Gespeicherte Antworten bleiben erhalten; weitere Sucharbeit ist offen. Für neue Prüfungen muss das Gesamtbudget erhöht werden.',
+                        'Total relationship search budget reached. Saved answers are retained; further search work remains open. Increase the total budget before new evaluations can proceed.'],
+                    SOURCE_LIMIT: ['Quellengrenze dieses Abschnitts erreicht. Erledigte Arbeit bleibt erhalten; weitere Quellen sind noch offen.',
+                        'Source limit for this section reached. Completed work is retained; further sources remain open.'],
+                    WORK_LIMIT: ['Arbeitsgrenze dieses Abschnitts erreicht. Erledigte Arbeit bleibt erhalten; weitere Prüfungen sind noch offen.',
+                        'Work limit for this section reached. Completed work is retained; further assessments remain open.'],
                     TIME_LIMIT: ['Zeitlimit erreicht. Erledigte Arbeit bleibt erhalten; offene Prüfungen sind noch nicht abgeschlossen.',
                         'Time limit reached. Completed work is retained; open assessments have not completed.'],
                     MEMORY_PRESSURE: ['Zum Schutz vor Speichermangel angehalten. Erledigte Arbeit bleibt erhalten.',

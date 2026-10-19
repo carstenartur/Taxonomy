@@ -65,8 +65,13 @@ class RelationsExtensionClusterTest {
                 check.assertThat(cancelled.progress().relations().verifiedRelations()).isEqualTo(1);
                 check.assertThat(cancelled.result().getRawScores()).containsExactlyEntriesOf(retry.retainedAnalysis().getRawScores());
                 for (var progress : List.of(live.progress().relations(), cancelled.progress().relations(), canonical.getRelationSearchReport().progress())) {
-                    check.assertThat(progress.completedSearches()).isZero();
-                    check.assertThat(progress.pendingSearches()).isEqualTo(2);
+                    // The accepted IP search remains complete while new scheduler
+                    // grants await replay; only the failed CR search remains open.
+                    check.assertThat(progress.completedSearches()).isEqualTo(1);
+                    check.assertThat(progress.pendingSearches()).isEqualTo(1);
+                    check.assertThat(progress.taxonomies()).contains(
+                            new RelationSearchProgress.Taxonomy("IP", 1, 1, 0, 0),
+                            new RelationSearchProgress.Taxonomy("CR", 1, 0, 0, 1));
                     check.assertThat(progress.calls()).isEqualTo(1);
                 }
                 check.assertThat(canonical.getRelationSearchReport().result().calls()).isZero();

@@ -24,6 +24,21 @@ import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class AnalysisRecordsExportIT {
+    @Test void continuationArchiveIncludesItsDurableRelationLedgerRatherThanQuestionAttempts() throws Exception {
+        try (var fixture = new Fixture()) {
+            String id = run(fixture, "repo-a", "private-a", "draft", "alice", 10, "CURRENT");
+            fixture.jdbc.update("update analysis_continuation set relation_calls_spent=17,relation_source_cohort_size=32 where id=?", id);
+            question(fixture, id, "accepted question");
+            fixture.jdbc.update("update analysis_question_checkpoint set attempts=99 where run_id=?", id);
+            var output = new Contents();
+            new AnalysisBackupContributor(fixture.database, "alice").write(scoped(BackupProfile.REPOSITORY_HISTORY), output);
+            assertThat(records(output, "continuations")).singleElement().satisfies(record -> {
+                assertThat(record.path("relationCallsSpent").asInt()).isEqualTo(17);
+                assertThat(record.path("relationSourceCohortSize").asInt()).isEqualTo(32);
+            });
+        }
+    }
+
     @ParameterizedTest @ValueSource(ints = {0, 1, 2, 3})
     void compactAndLegacyQuestionsKeepTheOriginalCleartextArchiveContract(int detailMode) throws Exception {
         var json = new tools.jackson.databind.ObjectMapper();

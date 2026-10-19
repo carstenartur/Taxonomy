@@ -17,6 +17,9 @@ const uiSource = await readFile(new URL(
 const transportSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-transport.js',
   import.meta.url), 'utf8');
+const copilotUiSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-session-ui.js',
+  import.meta.url), 'utf8');
 
 function deferred() {
   let resolve;
@@ -46,12 +49,13 @@ function fakeControl(id) {
   };
 }
 
-function createHarness({ inputText = '', payload, request, withUi = false, withTransport = false }) {
+function createHarness({ inputText = '', payload, request, withUi = false, withTransport = false,
+  withCopilot = false }) {
   const scheduled = [];
   const cleared = [];
   const alerts = [];
   const clickListeners = [];
-  const editListeners = new Map();
+  const eventListeners = new Map();
   let decisionFocusCount = 0;
   const input = {
     value: inputText,
@@ -133,7 +137,9 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
     }
   };
   const document = {
-    dispatchEvent() {},
+    dispatchEvent(event) {
+      for (const listener of eventListeners.get(event.type) || []) listener(event);
+    },
     getElementById(id) {
       return controls[id] || null;
     },
@@ -152,11 +158,9 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
     },
     addEventListener(type, listener) {
       if (type === 'click') clickListeners.push(listener);
-      if (type === 'input' || type === 'change') {
-        const listeners = editListeners.get(type) || [];
-        listeners.push(listener);
-        editListeners.set(type, listeners);
-      }
+      const listeners = eventListeners.get(type) || [];
+      listeners.push(listener);
+      eventListeners.set(type, listeners);
     }
   };
 
@@ -192,6 +196,8 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
   if (withUi) vm.runInNewContext(uiSource, sandbox,
     { filename: 'taxonomy-analysis-session-ui.js' });
   vm.runInNewContext(source, sandbox, { filename: 'taxonomy-analysis-session-draft.js' });
+  if (withCopilot) vm.runInNewContext(copilotUiSource, sandbox,
+    { filename: 'taxonomy-copilot-session-ui.js' });
 
   return {
     context,
@@ -207,9 +213,7 @@ function createHarness({ inputText = '', payload, request, withUi = false, withT
     editInput(value, type = 'input') {
       input.value = value;
       payload.current = { ...payload.current, businessText: value };
-      for (const listener of editListeners.get(type) || []) {
-        listener({ type, target: input });
-      }
+      document.dispatchEvent({ type, target: input });
     },
     decisionFocusCount: () => decisionFocusCount
   };
@@ -443,6 +447,110 @@ test('serializes overlapping autosaves and uses the latest optimistic version', 
   );
 });
 
+test('Copilot reanalysis retains an in-flight autosave revision without restoring the old results', async () => {
+  const first = deferred(), requests = [];
+  const payload = { current: { businessText: 'Previous requirement', scores: { OLD: 100 } } };
+  let remote = { version: 7, payload: payload.current };
+  const h = createHarness({
+    inputText: payload.current.businessText, payload,
+    withUi: true, withTransport: true, withCopilot: true,
+    request: async (url, options) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      requests.push({ method: options.method, body });
+      if (options.method === 'GET') return remote;
+      if (body.expectedVersion !== remote.version) {
+        throw Object.assign(new Error('Analysis draft version conflict'), { status: 409 });
+      }
+      remote = { version: remote.version + 1, payload: body.payload };
+      return requests.length === 1 ? first.promise : remote;
+    }
+  });
+  h.runtime.version = 7;
+  h.state.currentScores = payload.current.scores;
+  h.state.lastAnalyzedText = h.input.value;
+  h.context.isStale = () => h.input.value !== h.state.lastAnalyzedText;
+
+  const saving = h.context.saveDraft();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.length, 1);
+  const savedBeforeReanalysis = remote;
+  h.editInput('Updated requirement');
+  assert.equal(h.context.discardStaleCopilotResults(), true);
+  assert.equal(h.state.currentScores, null);
+  assert.equal(h.runtime.analysisGeneration, 1, 'Old analysis responses must still be invalidated');
+  const updatedScores = { NEW: 42 };
+  h.state.currentScores = updatedScores;
+  payload.current = { businessText: h.input.value, scores: updatedScores };
+  const queued = h.context.saveDraft();
+
+  first.resolve(savedBeforeReanalysis);
+  await Promise.all([saving, queued]);
+
+  assert.equal(requests[1].body.expectedVersion, 8,
+    'The next save must use the revision committed before the reanalysis');
+  assert.deepEqual(requests.map(request => request.method), ['PUT', 'PUT']);
+  assert.equal(h.runtime.version, 9);
+  assert.equal(h.runtime.conflict, false);
+  assert.notEqual(h.runtime.draftDecisionPending, true);
+  assert.equal(h.input.value, 'Updated requirement');
+  assert.equal(h.state.currentScores, updatedScores);
+  assert.deepEqual(remote.payload.scores, updatedScores);
+  assert.equal(h.runtime.lastSavedComparable, JSON.stringify(payload.current));
+  assert.equal((await h.window.fetch('/api/gap/analyze', { method: 'POST' })).ok, true);
+});
+
+test('Copilot reanalysis still rejects a late full draft read', async () => {
+  const response = deferred();
+  const payload = { current: { businessText: 'Updated requirement' } };
+  const h = createHarness({ inputText: payload.current.businessText, payload,
+    withUi: true, withTransport: true, withCopilot: true, request: () => response.promise });
+  h.runtime.version = 7;
+  h.state.currentScores = { OLD: 100 };
+  h.context.isStale = () => true;
+  const reading = h.context.jsonRequest('/api/analysis-drafts/ws-1', { method: 'GET' });
+  const outcome = Promise.allSettled([reading]);
+  await new Promise(resolve => setImmediate(resolve));
+
+  h.context.discardStaleCopilotResults();
+  response.resolve({ version: 8, payload: { businessText: 'Obsolete response', scores: { OLD: 100 } } });
+  const [result] = await outcome;
+
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason.code, 'STALE_DRAFT_CONTEXT');
+  assert.equal(h.runtime.version, 7);
+  assert.equal(h.input.value, 'Updated requirement');
+  assert.equal(h.state.currentScores, null);
+});
+
+test('Copilot reanalysis preserves a genuine cross-tab draft conflict', async () => {
+  const requests = [], payload = { current: { businessText: 'Updated requirement' } };
+  const h = createHarness({ inputText: payload.current.businessText, payload,
+    withUi: true, withTransport: true, withCopilot: true,
+    request: async (url, options) => {
+      requests.push(options.method);
+      if (options.method === 'PUT') {
+        throw Object.assign(new Error('Analysis draft version conflict'), { status: 409 });
+      }
+      return { version: 8, payload: { businessText: 'Another tab saved this' } };
+    }
+  });
+  h.runtime.version = 7;
+  h.state.currentScores = { OLD: 100 };
+  h.context.isStale = () => true;
+  h.context.discardStaleCopilotResults();
+
+  assert.equal(await h.context.saveDraft(), false);
+
+  assert.deepEqual(requests, ['PUT', 'GET']);
+  assert.equal(h.runtime.version, 7);
+  assert.equal(h.runtime.conflict, true);
+  assert.equal(h.runtime.draftDecisionPending, true);
+  assert.equal(h.input.value, 'Updated requirement');
+  assert.equal(h.alerts.at(-1).marker, 'conflict');
+  await assert.rejects(h.window.fetch('/api/gap/analyze', { method: 'POST' }),
+    error => error.code === 'ANALYSIS_SESSION_NOT_READY');
+});
+
 test('persists an empty tombstone instead of deleting an existing draft row', async () => {
   const requests = [];
   const payload = {
@@ -493,6 +601,40 @@ test('explicit reset remains repeatable and uses the server reset command', asyn
   assert.equal(requests[1].body.analysisOptions.provider, 'OPENAI');
   assert.equal(harness.runtime.version, 2);
   assert.equal(harness.runtime.resetting, false);
+});
+
+test('a new analysis reset waits for autosave before replacing the draft lifecycle', async () => {
+  const first = deferred(), requests = [];
+  const payload = { current: { businessText: 'Previous requirement', scores: { OLD: 100 } } };
+  const empty = { version: 9, payload: { draftState: 'EMPTY', businessText: '' } };
+  const h = createHarness({ inputText: payload.current.businessText, payload,
+    withUi: true, withTransport: true,
+    request: async (url, options) => {
+      requests.push({ url, method: options.method });
+      return requests.length === 1 ? first.promise : empty;
+    }
+  });
+  h.runtime.version = 7;
+  h.state.currentScores = payload.current.scores;
+  const saving = h.context.saveDraft();
+  await new Promise(resolve => setImmediate(resolve));
+  const resetting = h.context.resetDraft();
+  assert.deepEqual(requests.map(request => request.method), ['PUT']);
+
+  first.resolve({ version: 8, payload: payload.current });
+  await saving;
+  const view = await resetting;
+  h.context.invalidate({ keepText: false, silent: true, skipSave: true, reason: 'new-analysis' });
+
+  assert.equal(view, empty);
+  assert.deepEqual(requests, [
+    { url: '/api/analysis-drafts/ws-1', method: 'PUT' },
+    { url: '/api/analysis-drafts/ws-1/reset', method: 'POST' }
+  ]);
+  assert.equal(h.runtime.version, 9);
+  assert.equal(h.runtime.draftGeneration, 1);
+  assert.equal(h.input.value, '');
+  assert.equal(h.state.currentScores, null);
 });
 
 test('ACTIVE restore retains analysis provider and terminal authority', () => {

@@ -14,12 +14,66 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class PreferencesExportIT {
     private static final String PATH = "data/application/preferences.json";
+
+    @Test void relationBudgetsRemainTypedThroughPortableExportAndDeserialization() throws Exception {
+        for (boolean automatic : List.of(true, false)) {
+            try (var repository = new PreferencesGitRepository()) {
+                int maxCalls = automatic ? 73 : 0;
+                int maxTotalCalls = automatic ? 1_537 : 0;
+                String selected = PortableRows.json().writeValueAsString(Map.of(
+                        "analysis.relations.max-calls", maxCalls,
+                        "analysis.relations.max-total-calls", maxTotalCalls,
+                        "analysis.relations.auto-continue", automatic,
+                        "analysis.relations.max-sources", 81,
+                        "analysis.relations.max-work-items", 8_193));
+                repository.commit(selected, "operator", "Configured relation budgets");
+                var output = new Contents();
+                new PreferencesBackupContributor(repository).write(
+                        snapshot(BackupProfile.INSTALLATION_CURRENT, new BackupScope.Installation()), output);
+
+                var document = PortableRows.json().readTree(output.entries.get(PATH));
+                var restored = PortableRows.json().treeToValue(document.path("settings"), PreferencesBackupContributor.Settings.class);
+                var typed = PortableRows.json().valueToTree(restored);
+                assertThat(typed.path("analysisRelationMaxCalls").isIntegralNumber()).isTrue();
+                assertThat(typed.path("analysisRelationMaxCalls").intValue()).isEqualTo(maxCalls);
+                assertThat(typed.path("analysisRelationMaxTotalCalls").intValue()).isEqualTo(maxTotalCalls);
+                assertThat(typed.path("analysisRelationAutoContinue").isBoolean()).isTrue();
+                assertThat(typed.path("analysisRelationAutoContinue").booleanValue()).isEqualTo(automatic);
+                assertThat(typed.path("analysisRelationMaxSources").intValue()).isEqualTo(81);
+                assertThat(typed.path("analysisRelationMaxWorkItems").intValue()).isEqualTo(8_193);
+                assertThat(document.path("restorePolicy").asText()).isEqualTo("MANUAL_REVIEW_REQUIRED");
+                assertThat(repository.readHead()).isEqualTo(selected);
+                assertThat(repository.getHistory()).hasSize(1);
+            }
+        }
+    }
+
+    @Test void olderPreferenceBackupsLeaveRelationBudgetsUnspecifiedForTargetReview() throws Exception {
+        var restored = PortableRows.json().readValue("{\"llmRequestsPerMinute\":7}", PreferencesBackupContributor.Settings.class);
+        var constructed = new PreferencesBackupContributor.Settings(7, null, null, null, null, null,
+                null, null, null, null, null, null);
+        try (var repository = new PreferencesGitRepository()) {
+            repository.commit("{\"llm.rpm\":7}", "legacy", "Legacy settings");
+            var output = new Contents();
+            new PreferencesBackupContributor(repository).write(
+                    snapshot(BackupProfile.INSTALLATION_CURRENT, new BackupScope.Installation()), output);
+            var exported = PortableRows.json().readTree(output.entries.get(PATH)).path("settings");
+            for (var typed : List.of(PortableRows.json().valueToTree(restored),
+                    PortableRows.json().valueToTree(constructed), exported)) {
+                for (String field : List.of("analysisRelationMaxCalls", "analysisRelationMaxTotalCalls",
+                        "analysisRelationAutoContinue", "analysisRelationMaxSources", "analysisRelationMaxWorkItems")) {
+                    assertThat(typed.path(field).isNull()).as(field).isTrue();
+                }
+            }
+        }
+    }
 
     @Test void reasonLengthRemainsTypedThroughPortableExportAndDeserialization() throws Exception {
         for (var length : AnalysisReasonLength.values()) {
@@ -140,7 +194,9 @@ class PreferencesExportIT {
                 "{\"llm.rpm\":2147483648}", "{\"dsl.project-name\":{\"hidden\":\"MUST-NOT-LEAK\"}}",
                 "{\"dsl.remote.push-on-commit\":\"invalid\"}", "{\"dsl.remote.token\":{\"hidden\":\"MUST-NOT-LEAK\"}}",
                 "{\"analysis.reason-length\":\"MUST-NOT-LEAK\"}", "{\"analysis.reason-length\":17}",
-                "{\"analysis.reason-length\":\"\"}")) {
+                "{\"analysis.reason-length\":\"\"}", "{\"analysis.relations.max-calls\":1.5}",
+                "{\"analysis.relations.max-total-calls\":2147483648}", "{\"analysis.relations.auto-continue\":\"MUST-NOT-LEAK\"}",
+                "{\"analysis.relations.max-sources\":\"MUST-NOT-LEAK\"}", "{\"analysis.relations.max-work-items\":{\"hidden\":\"MUST-NOT-LEAK\"}}")) {
             try (var repository = new PreferencesGitRepository()) {
                 repository.commit(json, "alice", "input");
                 var output = new Contents();

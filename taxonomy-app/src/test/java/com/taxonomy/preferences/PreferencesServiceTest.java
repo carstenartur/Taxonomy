@@ -38,7 +38,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
     "taxonomy.llm.rpm=7",
     "taxonomy.llm.timeout-seconds=45",
     "taxonomy.rate-limit.per-minute=12",
-    "taxonomy.limits.max-business-text=9000"
+    "taxonomy.limits.max-business-text=9000",
+    "taxonomy.analysis.relations.hierarchical.max-calls=320",
+    "taxonomy.analysis.relations.hierarchical.max-total-calls=2400",
+    "taxonomy.analysis.relations.hierarchical.auto-continue=false",
+    "taxonomy.analysis.relations.hierarchical.max-sources=96",
+    "taxonomy.analysis.relations.hierarchical.max-work-items=8192"
 })
 @WithMockUser(roles = "ADMIN")
 class PreferencesServiceTest {
@@ -93,6 +98,28 @@ class PreferencesServiceTest {
         assertThat(preferencesService.getInt("rate-limit.per-minute", 0)).isEqualTo(12);
         assertThat(preferencesService.getInt("limits.max-business-text", 0)).isEqualTo(9000);
         assertThat(preferencesService.getString("analysis.reason-length", "missing")).isEqualTo("standard");
+        assertThat(preferencesService.getAll()).containsAllEntriesOf(Map.of(
+                "analysis.relations.max-calls", 320,
+                "analysis.relations.max-total-calls", 2400,
+                "analysis.relations.auto-continue", false,
+                "analysis.relations.max-sources", 96,
+                "analysis.relations.max-work-items", 8192));
+    }
+
+    @Test
+    void legacyPreferencesKeepOverridesAndExposeOtherDeploymentBudgetsWithoutACommit() throws IOException {
+        preferencesRepository.commit("{\"analysis.relations.max-calls\":77}", "legacy", "Older settings");
+        int historyBefore = preferencesRepository.getHistory().size();
+        preferencesService.init();
+
+        assertThat(preferencesService.getAll()).containsAllEntriesOf(Map.of(
+                "analysis.relations.max-calls", 77,
+                "analysis.relations.max-total-calls", 2400,
+                "analysis.relations.auto-continue", false,
+                "analysis.relations.max-sources", 96,
+                "analysis.relations.max-work-items", 8192));
+        assertThat(preferencesRepository.getHistory()).hasSize(historyBefore);
+        assertThat(preferencesRepository.readHead()).isEqualTo("{\"analysis.relations.max-calls\":77}");
     }
 
     @Test
@@ -135,6 +162,24 @@ class PreferencesServiceTest {
 
         assertThat(preferencesService.getInt("limits.max-architecture-nodes", 0))
                 .isEqualTo(before);
+        assertThat(preferencesService.getHistory()).hasSize(historyBefore);
+    }
+
+    @Test
+    void failedBudgetCommitDoesNotChangeAnyEffectivePreference() throws IOException {
+        var before = preferencesService.getAll();
+        int historyBefore = preferencesService.getHistory().size();
+        preferencesRepository.failNextCommit();
+
+        assertThatThrownBy(() -> preferencesService.update(Map.of(
+                "analysis.relations.max-calls", 1024,
+                "analysis.relations.max-total-calls", 8192,
+                "analysis.relations.auto-continue", true,
+                "analysis.relations.max-sources", 256,
+                "analysis.relations.max-work-items", 100_000), "tester"))
+                .isInstanceOf(IOException.class);
+
+        assertThat(preferencesService.getAll()).isEqualTo(before);
         assertThat(preferencesService.getHistory()).hasSize(historyBefore);
     }
 

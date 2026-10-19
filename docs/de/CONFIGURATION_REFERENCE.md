@@ -144,24 +144,37 @@ bestehende Executor-Warteschlangen und die Grenze einer ausführenden Instanz.
 
 Diese Phase ist standardmäßig aktiv und nutzt den ausgewählten generativen
 Provider. Nur ein ausdrücklicher `false`-Override verwendet die bisherige
-Score-Ableitung; Fehler lösen keinen automatischen Rückfall aus. Die Werte sind Server-Startparameter, keine im Repository
-gespeicherten Preferences-Felder. Die Grenzen betreffen logische Prüfversuche
+Score-Ableitung; Fehler lösen keinen automatischen Rückfall aus. Administratoren
+ändern die fünf Budgeteinstellungen unter **Einstellungen (⚙) → Servereinstellungen →
+Relationssuche** ohne Neustart. Die Umgebung liefert die Standardwerte;
+gespeicherte Preferences-Werte haben Vorrang. Ältere Preferences ohne diese
+Schlüssel erhalten die Deployment-Standards, ohne allein durch das Lesen einen
+Commit zu erzeugen. Aktivierung, Tiefe, Batch- und Promptgrenzen bleiben
+Startparameter. Die Budgets betreffen logische Prüfversuche
 dieser Phase (Beitragsextraktion, Navigation und Verifikation), nicht die vorherige
 Kategoriebewertung, physische HTTP-Wiederholungen oder kumulierte Rechnungstokens.
 Erreichte Grenzen erhalten fertige Belege und kennzeichnen unerledigte Arbeit;
 sie sind kein Nachweis, dass keine Beziehung existiert.
+Gespeicherte Antworten werden ohne erneuten Budgetverbrauch wiederverwendet.
+Neue Durchläufe verwenden die aktuellen Laufzeitgrenzen, auch nach einer
+Budgeterhöhung für gespeicherte Arbeit. Das verbleibende Gesamtbudget dieser
+Suche begrenzt das Startbudget. Automatisches Fortsetzen kann es im selben Vorgang
+erweitern und weitere Quellen-/Arbeitsabschnitte bis zur kumulativen Grenze aufnehmen.
+Dafür ist keine weitere Browseranfrage je Abschnitt erforderlich.
 
 | Variable | Spring-Eigenschaft / Geltungsbereich | Standard | Bedeutung |
 |---|---|---|---|
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `true` | Aktiviert anforderungsbezogene Beziehungssuche statt reiner Score-Ableitung. Originalanforderung und aktive Architektur werden nicht automatisch übernommen oder überschrieben. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximale neue Modellprüfungen je Durchlauf, 0–10000. Gespeicherte erfolgreiche Antworten verbrauchen kein Budget. Null ist zulässig und lässt Quellen ausdrücklich unbewertet. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls`; Laufzeitschlüssel `analysis.relations.max-calls` | `256` | Startbudget für neue Modellprüfversuche, 0–10000. Automatisches Fortsetzen kann es bis zum verbleibenden Gesamtbudget erweitern. Gespeicherte Antworten verbrauchen es nicht. Null erlaubt keine neuen Prüfungen und lässt Arbeit ausdrücklich unbewertet. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_TOTAL_CALLS` | `taxonomy.analysis.relations.hierarchical.max-total-calls`; Laufzeitschlüssel `analysis.relations.max-total-calls` | `4096` | Kumulative Obergrenze neuer Relationsprüfversuche einer gespeicherten Suche über automatisches und manuelles Fortsetzen hinweg, 0–10000. Jeder Durchlauf wird durch das verbleibende Gesamtbudget begrenzt. Nach einer Erhöhung kann gespeicherte Arbeit ohne Wiederholung erfolgreicher Antworten fortgesetzt werden. Null erlaubt keine neuen Prüfungen. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_AUTO_CONTINUE` | `taxonomy.analysis.relations.hierarchical.auto-continue`; Laufzeitschlüssel `analysis.relations.auto-continue` | `true` | Erweitert das Startbudget und nimmt weitere Quellen-/Arbeitsabschnitte im selben Vorgang auf, solange Gesamtbudget bleibt. Offene fachliche Fragen behalten ihren ausdrücklichen Entscheidungsweg. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_DEPTH` | `taxonomy.analysis.relations.hierarchical.max-depth` | `8` | Maximale Navigationstiefe, 0–100. Ein dadurch begrenzter Zweig bleibt unerledigt statt als irrelevant zu gelten. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_BATCH_SIZE` | `taxonomy.analysis.relations.hierarchical.batch-size` | automatisch: Custom `3`, sonst `10` | Maximale Kandidatenzahl je zusammengehöriger Gruppe, 1–100. Die Promptgröße kann die Gruppe weiter verkleinern. Kein Aufrufbudget für den gesamten Lauf. |
 | `TAXONOMY_RELATION_BATCH_SIZE` | Ersatz für `taxonomy.analysis.relations.hierarchical.batch-size` | automatisch | Kurzer Alias, wenn die hierarchische Batchgröße nicht gesetzt ist; dieselben Grenzen und Anbieterstandards gelten. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_PROMPT_CHARACTERS` | `taxonomy.analysis.relations.hierarchical.max-prompt-characters` | automatisch: Custom `16000`, sonst `120000` | Packungsgrenze für Prompt und Schema, 1–120000 Zeichen. Die niedrigere Eingangsgrenze des gewählten Modells gilt zusätzlich. Beschreibungen bleiben vollständig; übergroße Kandidaten bleiben unbewertet. |
 | `TAXONOMY_RELATION_MAX_PROMPT_CHARACTERS` | Ersatz für `taxonomy.analysis.relations.hierarchical.max-prompt-characters` | automatisch | Kurzer Alias, wenn die hierarchische Promptgrenze nicht gesetzt ist; dieselben Grenzen und Anbieterstandards gelten. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items` | `512` | Maximale neue Navigations-/Verifikationsaufgaben je Durchlauf, 1–100000. Gespeicherte erfolgreiche Antworten verbrauchen dieses Limit nicht; offene Arbeit kann fortgesetzt werden. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources` | `32` | Maximale neu extrahierte positive konkrete Quellen je Durchlauf, 1–256. Alle geeigneten Quellen bleiben im Prüfplan; ausdrückliches Fortsetzen verwendet gespeicherte Antworten erneut und bearbeitet offene Quellen. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items`; Laufzeitschlüssel `analysis.relations.max-work-items` | `4096` | Maximale neue Navigations-/Verifikationsaufgaben je Abschnitt, 1–100000. Automatisches Fortsetzen kann weitere Abschnitte aufnehmen. Gespeicherte Antworten verbrauchen dieses Limit nicht; offene Arbeit kann fortgesetzt werden. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources`; Laufzeitschlüssel `analysis.relations.max-sources` | `128` | Maximale neue Quellbeiträge je Abschnitt, 1–256. Automatisches Fortsetzen kann weitere Abschnitte aufnehmen. Alle geeigneten Quellen bleiben im Prüfplan; Fortsetzen verwendet gespeicherte Antworten erneut und bearbeitet offene Quellen. |
 
 ## LLM Record/Replay
 

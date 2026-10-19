@@ -61,7 +61,8 @@
     function discardStaleResults() {
         if (typeof C.isStale !== 'function' || !C.isStale()) return true;
         if (typeof C.invalidate !== 'function') return false;
-        C.invalidate({ keepText: true, silent: true, reason: 'copilot-reanalysis' });
+        C.invalidate({ keepText: true, keepDraftLifecycle: true,
+            silent: true, reason: 'copilot-reanalysis' });
         return !scoresPresent();
     }
 

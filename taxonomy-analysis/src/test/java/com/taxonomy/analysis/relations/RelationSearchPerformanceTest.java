@@ -105,8 +105,9 @@ class RelationSearchPerformanceTest {
                 }
             }, new RelationCompatibilityMatrix(), prompt -> {
                 referencePrompts.add(prompt); return answer(prompt);
-            }, () -> {}, "TEST").search(ORIGINAL, Map.of(SOURCE.id(), 1d),
-                    new RequirementRelationSearch.Options(new Limits(24, 8, 10, 512), 32));
+            }, () -> {}, "TEST").searchWithSourceContinuation(ORIGINAL, Map.of(SOURCE.id(), 1d),
+                    new RequirementRelationSearch.Options(new Limits(4096, 8, 3, 4096), 128, 16_000,
+                            new RequirementRelationSearch.BudgetPolicy(256, 4096, 0, true, 128, 4096, 128)));
             assertEquals(referencePrompts, prompts, "prompts and evaluation order");
             assertEquals(normalize(reference), normalize(actual), "all evidence except elapsed time");
             assertEquals(expectedCalls, actual.totalCalls());

@@ -9,8 +9,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +42,20 @@ public class PreferencesController {
         this.preferencesService = preferencesService;
     }
 
+    /** Keep the submitted numeric value exact until the preference validators run. */
+    @JsonDeserialize(contentUsing = ExactPreferenceValueDeserializer.class)
+    public static final class PreferenceChanges extends LinkedHashMap<String, Object> {
+        private static final long serialVersionUID = 1L;
+    }
+
+    public static final class ExactPreferenceValueDeserializer extends ValueDeserializer<Object> {
+        @Override
+        public Object deserialize(JsonParser parser, DeserializationContext context) {
+            return parser.hasToken(JsonToken.VALUE_NUMBER_FLOAT)
+                    ? parser.getDecimalValue() : context.readValue(parser, Object.class);
+        }
+    }
+
     /**
      * Returns all current preferences. The {@code dsl.remote.token} value is masked.
      */
@@ -57,7 +77,7 @@ public class PreferencesController {
     @Operation(summary = "Update preferences (creates a new Git commit)",
             description = "Applies a partial map of preference changes and commits the complete resulting configuration to JGit for audit. Returns effective preferences; it does not silently treat a persistence failure as a successful update.")
     public ResponseEntity<Map<String, Object>> update(
-            @RequestBody Map<String, Object> changes,
+            @RequestBody PreferenceChanges changes,
             Authentication authentication) {
         try {
             String author = authentication != null ? authentication.getName() : "unknown";

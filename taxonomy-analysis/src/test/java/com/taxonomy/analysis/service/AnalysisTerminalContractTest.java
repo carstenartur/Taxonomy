@@ -1,17 +1,35 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.MockedStatic;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.web.server.ResponseStatusException;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mockStatic;
 
 class AnalysisTerminalContractTest {
     private final AnalysisProgressRegistry registry = new AnalysisProgressRegistry(new StandardEnvironment());
     private final WorkspaceContext scope = WorkspaceContext.SHARED;
+    private MockedStatic<AnalysisMemoryGuard> memory;
+
+    @BeforeEach
+    void controlHeapSample() {
+        // Terminal-state contracts supply their own stops; unrelated heap pressure must not preempt them.
+        memory = mockStatic(AnalysisMemoryGuard.class);
+        memory.when(AnalysisMemoryGuard::heapSample)
+                .thenReturn(new AnalysisMemoryGuard.Sample(64L * 1024 * 1024, 512L * 1024 * 1024));
+    }
+
+    @AfterEach
+    void releaseHeapSample() {
+        memory.close();
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"SUCCESS", "ERROR", "PARTIAL"})

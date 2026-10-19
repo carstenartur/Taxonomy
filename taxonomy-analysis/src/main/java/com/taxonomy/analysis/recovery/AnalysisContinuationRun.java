@@ -25,6 +25,9 @@ public class AnalysisContinuationRun {
     @Column(name = "claim_until", nullable = false) long claimUntil;
     @Column(name = "updated_at", nullable = false) long updatedAt;
     @Column(name = "payload_characters", nullable = false) long payloadCharacters;
+    // Null identifies a pre-ledger journal whose saved relation report supplies its first baseline.
+    @Column(name = "relation_calls_spent") Integer relationCallsSpent;
+    @Column(name = "relation_source_cohort_size") Integer relationSourceCohortSize;
     @Column(name = "current_node", length = 320) String currentNode;
     @Column(name = "cluster_operation_id", length = 160) String clusterOperationId;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = "cluster_source_json") String clusterSourceJson;

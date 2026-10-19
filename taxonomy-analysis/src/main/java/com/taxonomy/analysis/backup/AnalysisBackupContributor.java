@@ -19,7 +19,7 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 
 /** Captures persisted analysis work; worker ownership is never portable. */
 public final class AnalysisBackupContributor implements BackupDataContributor {
-    private static final String RUN_COLUMNS = "r.id as run_id,r.username,r.workspace_id,r.branch_name,r.repository_id,r.input_hash as run_input_hash,r.updated_at,r.row_version,r.state as run_state,r.current_node";
+    private static final String RUN_COLUMNS = "r.id as run_id,r.username,r.workspace_id,r.branch_name,r.repository_id,r.input_hash as run_input_hash,r.updated_at,r.row_version,r.state as run_state,r.current_node,r.relation_calls_spent,r.relation_source_cohort_size";
     private final PortableRows rows;
     private final String principalScope;
     private final tools.jackson.databind.ObjectMapper checkpointJson = new tools.jackson.databind.ObjectMapper();
@@ -88,7 +88,8 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
             }
             includedRuns.put(run.id(),run);
             return new ContinuationRecord(new SourceRecordId("analysis.continuation",run.id()),key.owner(),key.repository(),key.workspace(),key.branch(),run.inputHash(),request,text(r,"result_json"),
-                    run.state(),ResumePolicy.REVIEW_REQUIRED,run.updatedAt(),run.currentNode());
+                    run.state(),ResumePolicy.REVIEW_REQUIRED,run.updatedAt(),run.currentNode(),r.getObject("relation_calls_spent",Integer.class),
+                    r.getObject("relation_source_cohort_size",Integer.class));
         });
         if (!pending.isEmpty()) throw new IOException("Analysis continuation disappeared during capture");
         rows.writeBatches(sink,"analysis","questions",profile,batches("select "+RUN_COLUMNS+",q.id,q.run_id as question_run_id,q.question_key,q.input_hash,q.provider,q.node_codes,q.detail_json,q.prompt_text,q.state,q.attempts,q.started_at,q.error_text from analysis_question_checkpoint q join analysis_continuation r on r.id=q.run_id where r.id in (", " order by q.id",includedRuns.keySet()),r -> {
@@ -173,7 +174,19 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
                                JsonNode architectureView,JsonNode provisionalRelations,JsonNode evaluatedNodes) { }
     public record DraftRecord(SourceRecordId sourceId,String tenant,String workspaceId,String principalScope,DraftPayload payload,String historicalPayload,String createdAt,String updatedAt) { }
     public record ContinuationRecord(SourceRecordId sourceId,String principalScope,String repositoryId,String workspaceId,String branch,String inputHash,
-                                     String requestJson,String resultJson,String sourceState,ResumePolicy resumePolicy,long updatedAtEpochMillis,String currentNode) { }
+                                     String requestJson,String resultJson,String sourceState,ResumePolicy resumePolicy,long updatedAtEpochMillis,String currentNode,
+                                     Integer relationCallsSpent,Integer relationSourceCohortSize) {
+        /** A legacy archive initializes cumulative spending from its retained report only when claimed. */
+        public ContinuationRecord(SourceRecordId sourceId,String principalScope,String repositoryId,String workspaceId,String branch,String inputHash,
+                                  String requestJson,String resultJson,String sourceState,ResumePolicy resumePolicy,long updatedAtEpochMillis,String currentNode) {
+            this(sourceId,principalScope,repositoryId,workspaceId,branch,inputHash,requestJson,resultJson,sourceState,resumePolicy,updatedAtEpochMillis,currentNode,null,null);
+        }
+        public ContinuationRecord(SourceRecordId sourceId,String principalScope,String repositoryId,String workspaceId,String branch,String inputHash,
+                                  String requestJson,String resultJson,String sourceState,ResumePolicy resumePolicy,long updatedAtEpochMillis,String currentNode,
+                                  Integer relationCallsSpent) {
+            this(sourceId,principalScope,repositoryId,workspaceId,branch,inputHash,requestJson,resultJson,sourceState,resumePolicy,updatedAtEpochMillis,currentNode,relationCallsSpent,null);
+        }
+    }
     public record QuestionRecord(SourceRecordId sourceId,SourceRecordId run,String questionKey,String inputHash,String provider,String nodeCodesJson,
                                  String detailJson,String prompt,String sourceState,int attempts,long startedAtEpochMillis,String error) {
         public QuestionRecord(SourceRecordId sourceId,SourceRecordId run,String questionKey,String inputHash,String provider,String nodeCodesJson,

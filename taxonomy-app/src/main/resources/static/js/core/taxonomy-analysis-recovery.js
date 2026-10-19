@@ -157,6 +157,40 @@
         }
         return response.json();
     }
+    function relationBudget() {
+        var b = S.currentRelationSearchReport?.budget;
+        return b && [b.callsPerSlice, b.maxTotalCalls, b.newCalls, b.spentCalls]
+            .every(function (value) { return Number.isSafeInteger(value) && value >= 0; }) ? b : null;
+    }
+    function relationBudgetTotal(b) {
+        return text('Gesamtbudget der Relationssuche: ', 'Total budget for relationship search: ')
+            + b.spentCalls + ' / ' + b.maxTotalCalls;
+    }
+    function budgetStop(context) {
+        return /^(CALL_BUDGET|TOTAL_CALL_BUDGET|SOURCE_LIMIT|WORK_LIMIT)(:|$)/m.exec(context?.pauseReason || '')?.[1];
+    }
+    function budgetStopGuidance(context) {
+        var code = budgetStop(context);
+        if (!code) return '';
+        var reason = code === 'TOTAL_CALL_BUDGET' ? text('Das Gesamtbudget der Relationssuche ist erreicht. ',
+            'The total relationship search budget has been reached. ')
+            : code === 'CALL_BUDGET' ? text('Das Startbudget für neue Relationsprüfungen ist erreicht. ',
+                'The initial budget for new relationship evaluations has been reached. ')
+                : code === 'SOURCE_LIMIT' ? text('Die Quellengrenze dieses Abschnitts ist erreicht. ',
+                    'The source limit for this section has been reached. ')
+                    : text('Die Suchschrittgrenze dieses Abschnitts ist erreicht. ',
+                        'The search-step limit for this section has been reached. ');
+        return reason + text('Weitere Sucharbeit ist offen; gespeicherte Antworten bleiben erhalten. ',
+            'Further search work remains open; saved answers are retained. ')
+            + (code === 'TOTAL_CALL_BUDGET' ? text('Für neue Prüfungen muss das Gesamtbudget erhöht werden.',
+                'The total budget must be increased before new evaluations can proceed.')
+                : text('Fortsetzen nutzt das verbleibende Gesamtbudget. Die Grenzen stehen in den Servereinstellungen.',
+                    'Continue uses the remaining total budget. Limits are available in Server settings.'));
+    }
+    function canOpenBudgetSettings(context) {
+        return Boolean(budgetStop(context) && window.TaxonomyRoleSurface?.isAdministrator?.()
+            && typeof window.navigateToPage === 'function' && document.getElementById('pref-relations-section'));
+    }
     function message() {
         var r = S.analysisRecovery;
         if (!r) return '';
@@ -184,6 +218,8 @@
         var detail = (openCount ? ' · ' + openCount + text(' Prüfungen offen', ' assessments open') : '')
             + (Number.isFinite(relations) ? ' · ' + relations + text(' Beziehungen bestätigt', ' relations verified') : '');
         if (busy && liveWork && statusKnown()) return liveWork + detail;
+        var budget = relationBudget();
+        if (budget && r.state !== 'RUNNING') detail += ' · ' + relationBudgetTotal(budget);
         return label + ' · ' + (r.completedCalls || 0) + (c?.syncState
             ? text(' Abfragen zuletzt bestätigt', ' requests last confirmed') : text(' Abfragen abgeschlossen', ' requests complete')) + detail
             + (r.currentNode && r.state === 'RUNNING' && statusKnown() ? ' · ' + r.currentNode : '');
@@ -201,7 +237,7 @@
             ? result.relationSearchReport : result.architectureView?.relationSearchReport;
         // Budget exhaustion can be recorded only in the relation report, while
         // errorMessage contains a partial-result summary or is absent entirely.
-        var budget = /^(CALL_BUDGET|SOURCE_LIMIT|WORK_LIMIT)(:|$)/;
+        var budget = /^(CALL_BUDGET|TOTAL_CALL_BUDGET|SOURCE_LIMIT|WORK_LIMIT)(:|$)/;
         var summary = result.errorMessage?.startsWith('RELATION_SEARCH_PARTIAL:');
         var reasons = [report?.stopReason, summary ? null : result.errorMessage]
             .concat((report?.warnings || []).filter(function (warning) { return budget.test(warning); }))
@@ -516,6 +552,17 @@
         } else if (!busy && statusKnown() && r.state === 'COMPLETED' && !stopped()) {
             options.push({ id: 'analysisRecoveryRetryStage', label: text('Copilot fortsetzen', 'Continue Copilot'), handler: followups });
         }
+        if (ready && canOpenBudgetSettings(c)) {
+            options.push({ id: 'analysisRecoveryBudgetSettings', label: text('Budgeteinstellungen', 'Budget settings'),
+                handler: function () {
+                    if (!inScope(c) || !decisionsAvailable() || !canOpenBudgetSettings(c)) return;
+                    ui.close();
+                    window.navigateToPage('preferences');
+                    var section = document.getElementById('pref-relations-section');
+                    section.scrollIntoView({ block: 'start' });
+                    section.focus({ preventScroll: true });
+                } });
+        }
         if (ready && !stopped() && selected) {
             options.push({ id: 'analysisRecoveryRetry', shortLabel: text('Neu bewerten', 'Reassess'), label: text('Neue KI-Bewertung anfordern', 'Request a new AI assessment'),
                 handler: function () { if (selectedKeys.size) return decide('RETRY', Array.from(selectedKeys)); } });
@@ -529,6 +576,8 @@
             var guidance = recoveryGuidance(c);
             if (guidance) { var statusNote = el('p', guidance); statusNote.id = 'analysisRecoveryGuidance'; statusNote.setAttribute('role', 'status'); body.append(statusNote); }
             if (statusKnown() && ['PAUSED', 'STOPPED'].includes(r.state)) {
+                var budgetGuidance = budgetStopGuidance(c);
+                if (budgetGuidance) body.append(el('p', budgetGuidance));
                 // A semantic question is independent of why execution stopped.
                 // Always retain the actual stop diagnostics above the selection.
                 var reason = el('p', text('Grund der Unterbrechung: ', 'Reason for interruption: ')
@@ -537,6 +586,14 @@
                 reason.id = 'analysisRecoveryStopReason';
                 reason.style.whiteSpace = 'pre-wrap';
                 body.append(reason);
+            }
+            var budget = relationBudget();
+            if (budget && r.state !== 'RUNNING') {
+                var budgetNote = el('p', relationBudgetTotal(budget) + ' · '
+                    + text('Neue Prüfungen dieses Durchlaufs: ', 'New evaluations in this execution: ') + budget.newCalls
+                    + ' · ' + text('Startbudget: ', 'Initial budget: ') + budget.callsPerSlice);
+                budgetNote.id = 'analysisRecoveryRelationBudget';
+                body.append(budgetNote);
             }
             var note = el('p', explanation(selected));
             body.append(note);

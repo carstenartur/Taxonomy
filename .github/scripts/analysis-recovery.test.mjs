@@ -431,7 +431,8 @@ for (const language of ['de', 'en']) {
    {stopReason:'MEMORY_PRESSURE: completed evidence retained'},
    {warnings:['SOURCE_UNRESOLVED CP-1122: Catalogue scope?', 'SOURCE_LIMIT: 9 sources remain unassessed.']},
    {result:{unfinished:[{reason:'CALL_BUDGET',question:''}]}},
-   {warnings:['WORK_LIMIT: remaining searches retained']}
+   {warnings:['WORK_LIMIT: remaining searches retained']},
+   {warnings:['TOTAL_CALL_BUDGET: cumulative budget exhausted']}
   ]) {
    const h=harness(language); h.recovery.startCopilot();
    const result=h.complete('STOPPED'); result.relationSearchReport=report;
@@ -444,6 +445,44 @@ for (const language of ['de', 'en']) {
    assert(renderedText(h.ui.body).includes(reason),'refresh: '+reason);
    assert.equal(h.analyses.length,1,'reading diagnostics cannot authorize another provider call');
   }
+ });
+ test(`${language} budget-stop navigation closes the dialog, focuses server settings and never starts work`, async () => {
+  for (const code of ['CALL_BUDGET', 'TOTAL_CALL_BUDGET', 'SOURCE_LIMIT', 'WORK_LIMIT']) {
+   const h=harness(language), actions=[]; let administrator=true;
+   h.window.TaxonomyRoleSurface={isAdministrator:()=>administrator};
+   h.window.navigateToPage=page=>{assert.equal(h.ui.opened,false);actions.push(page);};
+   h.fields['pref-relations-section']=Object.assign(node(),{
+    scrollIntoView(){actions.push('scroll');},focus(){actions.push('focus');}
+   });
+   h.recovery.startCopilot();const result=h.complete('STOPPED');
+   result.relationSearchReport={stopReason:code};await settle();
+   assert(h.options().some(option=>option.id==='analysisRecoveryBudgetSettings'),code);
+   h.act('analysisRecoveryBudgetSettings');
+   assert.deepEqual(actions,['preferences','scroll','focus']);
+   assert.equal(h.analyses.length,1);assert.equal(h.requests.length,0);
+   h.recovery.open();administrator=false;
+   h.act('analysisRecoveryBudgetSettings');assert.equal(actions.length,3,'role is checked again at activation');
+   h.recovery.open();assert(!h.options().some(option=>option.id==='analysisRecoveryBudgetSettings'));
+  }
+ });
+ test(`${language} recovery separates the saved cumulative budget from new assessments and incomplete work`, async () => {
+  const h=harness(language);
+  h.window.TaxonomyScoring.acceptRelationSearchReport=result=>{h.S.currentRelationSearchReport=result.relationSearchReport;};
+  h.recovery.startCopilot();const result=h.complete('STOPPED');
+  result.relationSearchReport={stopReason:'TOTAL_CALL_BUDGET',budget:{callsPerSlice:256,
+   maxTotalCalls:4096,newCalls:512,spentCalls:4096,automatic:true},
+   progress:{completedSearches:28,totalSearches:80,unresolvedSearches:4,pendingSearches:48,verifiedRelations:12}};
+  await settle();
+  // The fixture stubs scoring's normal response hydration. A real read exercises
+  // the recovery module's hydration of the same saved relation report.
+  await h.recovery.refresh();h.recovery.open();
+  const body=renderedText(h.ui.body);
+  assert.match(body,language==='de' ? /Gesamtbudget.*4096.*4096/ : /Total budget.*4096.*4096/);
+  assert.match(body,language==='de' ? /Neue Prüfungen.*512/ : /New evaluations.*512/);
+  assert.match(body,language==='de' ? /Startbudget.*256/ : /Initial budget.*256/);
+  assert.match(body,language==='de' ? /Sucharbeit.*offen/ : /search work.*open/i);
+  assert(!h.options().some(option=>option.id==='analysisRecoveryBudgetSettings'),'ordinary users do not receive an admin action');
+  assert.equal(h.analyses.length,1);assert.equal(h.followups(),0);
  });
  test(`${language} missing stop evidence is explicit and never inferred from a semantic question`, async () => {
   const h=harness(language); h.recovery.startCopilot();

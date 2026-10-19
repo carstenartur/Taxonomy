@@ -81,9 +81,10 @@
         <java.version>21</java.version>
         <pf4j.version>3.16.0</pf4j.version>
         <taxonomy.maven.user-settings>${user.home}/.m2/settings.xml</taxonomy.maven.user-settings>
-        <!-- Keep the complete Boot-managed Tomcat family on the released fixes
-             for CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525 (#989). -->
-        <tomcat.version>11.0.25</tomcat.version>
+        <!-- Keep the complete Boot-managed Tomcat family on the released fixes for
+             CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525 (#989), plus the
+             chunked-response buffer reset fix (#1275). -->
+        <tomcat.version>11.0.27</tomcat.version>
         <djl.version>0.38.0</djl.version>
         <skipITs>true</skipITs>
         <excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle</excludedGroups>
@@ -322,9 +323,10 @@
                                         <exclude>tools.jackson.core:jackson-databind:(,3.1.7):jar:runtime</exclude>
                                         <exclude>tools.jackson.core:jackson-databind:[3.2.0,3.2.3):jar:compile</exclude>
                                         <exclude>tools.jackson.core:jackson-databind:[3.2.0,3.2.3):jar:runtime</exclude>
-                                        <!-- Fixed floor is independent of overrides to tomcat.version. -->
-                                        <exclude>org.apache.tomcat.embed:*:(,11.0.25):jar:compile</exclude>
-                                        <exclude>org.apache.tomcat.embed:*:(,11.0.25):jar:runtime</exclude>
+                                        <!-- Security and response-framing floor stays independent
+                                             of overrides to tomcat.version. -->
+                                        <exclude>org.apache.tomcat.embed:*:(,11.0.27):jar:compile</exclude>
+                                        <exclude>org.apache.tomcat.embed:*:(,11.0.27):jar:runtime</exclude>
                                         <exclude>org.apache.pdfbox:*:(,3.0.0):jar:compile</exclude>
                                         <exclude>org.apache.pdfbox:*:(,3.0.0):jar:runtime</exclude>
                                         <exclude>org.apache.pdfbox:xmpbox:*:jar:compile</exclude>

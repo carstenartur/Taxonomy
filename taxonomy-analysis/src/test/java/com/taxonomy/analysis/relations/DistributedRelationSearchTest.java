@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.relations;
 
 import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.dto.RelationSearchProgress;
 import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -180,6 +181,43 @@ class DistributedRelationSearchTest {
     }
 
     @Test
+    void successfulReplayCompletesPreviouslyUnresolvedTask() {
+        var engine = search(catalogue(), RequirementRelationSearchContract::answer);
+        var plan = engine.prepare("resolve-unresolved", READ, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
+        var replay = execute(engine, plan, READ);
+        var initial = RelationSearchDistribution.combine(plan, replay);
+        var item = plan.items().getFirst();
+        var previous = withUnresolved(initial, plan, List.of(item));
+
+        var continued = RelationSearchDistribution.combine(plan, replay, previous);
+
+        assertThat(continued.tasks()).contains(new RelationSearchProgress.Task(itemSource(plan, item),
+                item.targetRoot().code(), RelationSearchProgress.State.COMPLETED));
+        assertThat(continued.isSearchExhausted()).isTrue();
+    }
+
+    @Test
+    void replayingOneIntentDoesNotClearAnotherFailureInTheSameTask() {
+        var engine = search(catalogue(), RequirementRelationSearchContract::answer);
+        var plan = engine.prepare("retain-sibling-failure", READ, Map.of("process", 90d), List.of("root-result"), OPTIONS, true);
+        var item = plan.items().getFirst();
+        var sibling = plan.items().stream().filter(candidate -> candidate.ordinal() != item.ordinal()
+                && candidate.sourceIndex() == item.sourceIndex()
+                && candidate.targetRoot().equals(item.targetRoot())).findFirst().orElseThrow();
+        var initial = RelationSearchDistribution.combine(plan, execute(engine, plan, READ));
+        var previous = withUnresolved(initial, plan, List.of(item, sibling));
+        var work = RelationSearchDistribution.ready(plan, List.of()).stream()
+                .filter(candidate -> candidate.ordinal() == item.ordinal()).findFirst().orElseThrow();
+        var replay = engine.evaluate(READ, plan, work);
+
+        var continued = RelationSearchDistribution.combine(plan, List.of(replay), previous);
+
+        assertThat(continued.tasks()).contains(new RelationSearchProgress.Task(itemSource(plan, item),
+                item.targetRoot().code(), RelationSearchProgress.State.UNRESOLVED));
+        assertThat(continued.isSearchExhausted()).isFalse();
+    }
+
+    @Test
     void noRelationsUsesNoCatalogueOrProviderAndSelectedTargetsStayWithinSubset() {
         var absent = new RequirementRelationSearch.InputCatalogue() {
             public Node find(String id) { throw new AssertionError("no source read"); }
@@ -276,6 +314,28 @@ class DistributedRelationSearchTest {
         assertThat(actual.totalCalls()).isEqualTo(expected.totalCalls());
         assertThat(actual.tasks()).isEqualTo(expected.tasks());
         assertThat(actual.isSearchExhausted()).isEqualTo(expected.isSearchExhausted());
+    }
+    private static RelationSearchReport withUnresolved(RelationSearchReport report,
+            RelationSearchDistribution.Plan plan, List<RelationSearchDistribution.Item> failures) {
+        var first = failures.getFirst();
+        String source = itemSource(plan, first), root = first.targetRoot().code();
+        var tasks = report.tasks().stream().map(task -> task.sourceId().equals(source) && task.targetRoot().equals(root)
+                ? new RelationSearchProgress.Task(source, root, RelationSearchProgress.State.UNRESOLVED) : task).toList();
+        var unfinished = new ArrayList<>(report.result().unfinished());
+        for (var item : failures) {
+            var intent = RelationSearchDistribution.intent(plan, item);
+            unfinished.add(new Unfinished(source, item.type(), item.direction(), List.of(root), "UNRESOLVED",
+                    "Which evidence supports this relation?",
+                    RelationSearchEngine.contributionKey(intent.contribution(), item.type(), item.direction()), root));
+        }
+        var result = new Result(report.result().edges(), unfinished, report.result().trace(),
+                report.result().calls(), report.result().visitedBatches(), report.result().durationMillis());
+        return new RelationSearchReport(report.schemaVersion(), report.originalSha256(), report.policy(), report.sources(),
+                result, report.totalCalls(), report.maxCalls(), report.durationMillis(), report.warnings(),
+                report.stopReason(), report.progress(), tasks, report.budget());
+    }
+    private static String itemSource(RelationSearchDistribution.Plan plan, RelationSearchDistribution.Item item) {
+        return plan.sources().get(item.sourceIndex()).node().id();
     }
     private static Function<String, String> record(List<String> prompts) {
         return prompt -> { prompts.add(prompt); return answer(prompt); };

@@ -141,24 +141,35 @@ presentation, existing executor queues, and the single-executing-instance bounda
 ## Requirement-scoped relationship search
 
 This phase is enabled by default and uses the selected generative provider. An explicit
-`false` override retains legacy score-based analysis; errors never select it automatically. These
-are server startup properties, not repository-backed Preferences fields. Limits
+`false` override retains legacy score-based analysis; errors never select it automatically.
+Administrators can change the five budget settings under **Settings (⚙) → Server settings →
+Relationship Search** without restarting. The environment supplies their defaults;
+saved Preferences values take precedence. Older Preferences without these keys receive
+the deployment defaults without creating a commit merely by reading them. Enabled,
+depth, batch and prompt limits remain startup settings. The budgets
 bound this phase's logical evaluation attempts (contribution extraction,
 navigation and verification), not earlier category scoring, physical HTTP retries
 or cumulative billed tokens. Exhausted limits preserve completed evidence and
 explicitly report unfinished work; they do not certify that no relationship exists.
+Saved answers are reused without consuming another call. New executions use the
+current runtime limits, including after a budget increase for saved work. The
+initial allowance is capped by the remaining total budget for that search. Automatic
+continuation can extend it and admit more source/work sections in the same operation,
+up to the cumulative limit; it does not require another browser request per section.
 
 | Variable | Spring property / scope | Default | Meaning |
 |---|---|---|---|
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `true` | Enables requirement-scoped relationship discovery instead of score-only inference. Original requirements and active architecture are not automatically adopted or overwritten. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximum new model evaluations per execution, 0–10000. Saved successful responses do not consume the budget. Zero is supported and leaves sources explicitly unassessed. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls`; runtime key `analysis.relations.max-calls` | `256` | Initial allowance for new model evaluation attempts, 0–10000. Automatic continuation may extend it up to the remaining total. Saved answers do not consume it. Zero allows no new evaluations and leaves work explicitly unassessed. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_TOTAL_CALLS` | `taxonomy.analysis.relations.hierarchical.max-total-calls`; runtime key `analysis.relations.max-total-calls` | `4096` | Cumulative maximum new relation-evaluation attempts for one saved search across automatic and manual continuation, 0–10000. Each execution is capped by the remaining total. Raising this limit allows saved work to continue without repeating successful answers. Zero allows no new evaluations. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_AUTO_CONTINUE` | `taxonomy.analysis.relations.hierarchical.auto-continue`; runtime key `analysis.relations.auto-continue` | `true` | Extends the initial allowance and admits further source/work sections in the same operation while total budget remains. Open domain questions retain their explicit decision path. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_DEPTH` | `taxonomy.analysis.relations.hierarchical.max-depth` | `8` | Navigation depth limit, 0–100. A depth-limited branch remains unfinished rather than becoming a negative finding. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_BATCH_SIZE` | `taxonomy.analysis.relations.hierarchical.batch-size` | automatic: custom `3`, other `10` | Maximum offered candidates per coherent group, 1–100. Prompt size can reduce the group further. It is not a total-run call budget. |
 | `TAXONOMY_RELATION_BATCH_SIZE` | fallback for `taxonomy.analysis.relations.hierarchical.batch-size` | automatic | Short alias used when the hierarchical batch-size property is unset; the same limits and provider defaults apply. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_PROMPT_CHARACTERS` | `taxonomy.analysis.relations.hierarchical.max-prompt-characters` | automatic: custom `16000`, other `120000` | Prompt and schema packing limit, 1–120000 characters. The selected model's lower input allowance also applies. Whole descriptions are preserved; oversized candidates remain unassessed. |
 | `TAXONOMY_RELATION_MAX_PROMPT_CHARACTERS` | fallback for `taxonomy.analysis.relations.hierarchical.max-prompt-characters` | automatic | Short alias used when the hierarchical prompt-limit property is unset; the same limits and provider defaults apply. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items` | `512` | Maximum new navigation/verification work items per execution, 1–100000. Saved successful responses do not consume this limit; deferred work can be continued. |
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources` | `32` | Maximum newly extracted positive concrete sources per execution, 1–256. All eligible sources remain in the plan; explicit continuation reuses saved answers and advances to pending sources. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items`; runtime key `analysis.relations.max-work-items` | `4096` | Maximum new navigation/verification work items per section, 1–100000. Automatic continuation can admit further sections. Saved answers do not consume this limit; deferred work can be continued. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources`; runtime key `analysis.relations.max-sources` | `128` | Maximum new source contributions admitted per section, 1–256. Automatic continuation can admit further sections. All eligible sources remain in the plan; continuation reuses saved answers and advances to pending sources. |
 
 ## LLM record/replay tooling
 
