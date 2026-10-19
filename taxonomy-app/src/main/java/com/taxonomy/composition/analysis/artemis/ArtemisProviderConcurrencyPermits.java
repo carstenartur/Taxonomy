@@ -17,13 +17,16 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
- * An uncommitted durable token delivery is one cluster-wide HTTP slot. Returning
- * the token and acknowledging its delivery share one local JMS transaction.
- * Closing a lost holder's connection rolls back its delivery at the broker.
- * Runtime code never initializes or replenishes a queue.
+ * Available slots are transactionally converted to durable IN_FLIGHT receipts
+ * before HTTP. A lost holder redelivers only that unavailable receipt, never an
+ * available slot. Known-complete responses return one exact receipt atomically;
+ * uncertain outcomes require explicit operator reconciliation. No automatic refill.
  */
 public final class ArtemisProviderConcurrencyPermits implements ProviderConcurrencyPermits {
     private static final long RECEIVE_SLICE_MILLIS = 100;
+    static final String AVAILABLE_SELECTOR = "permitState IS NULL";
+    static final String IN_FLIGHT = "IN_FLIGHT";
+    private static final long RECEIPT_WAIT_MILLIS = 5000;
     private final ArtemisAnalysisConnection connection;
     private final ArtemisProviderPermitSettings settings;
 
@@ -48,7 +51,7 @@ public final class ArtemisProviderConcurrencyPermits implements ProviderConcurre
                 throw unavailable("Cluster provider permit queue is not provisioned and durable", null);
             }
             Destination destination = session.createQueue(queue + "::" + queue);
-            var consumer = session.createConsumer(destination);
+            var consumer = session.createConsumer(destination, AVAILABLE_SELECTOR);
             long started = System.nanoTime();
             while (true) {
                 checkpoint.run();
@@ -59,7 +62,8 @@ public final class ArtemisProviderConcurrencyPermits implements ProviderConcurre
                 checkpoint.run();
                 if (token == null) continue;
                 String id = validate(token, group);
-                var permit = new TransactionalPermit(session, destination, group, id);
+                var permit = new TransactionalPermit(session, destination, group, id,
+                        () -> connection.createSession(true), checkpoint, settings.maximumWaitMillis(), consumer);
                 handedOff = true;
                 return permit;
             }
@@ -77,7 +81,11 @@ public final class ArtemisProviderConcurrencyPermits implements ProviderConcurre
     }
 
     private static String validate(Message token, String group) throws JMSException {
-        if (token.getIntProperty("schemaVersion") != 1
+        return validate(token, group, 1);
+    }
+
+    private static String validate(Message token, String group, int version) throws JMSException {
+        if (token.getIntProperty("schemaVersion") != version
                 || !group.equals(token.getStringProperty("quotaGroup"))
                 || token.getJMSDeliveryMode() != DeliveryMode.PERSISTENT
                 || token.getJMSExpiration() != 0
@@ -87,11 +95,10 @@ public final class ArtemisProviderConcurrencyPermits implements ProviderConcurre
             throw unavailable("Invalid cluster provider permit token", null);
         }
         String id = token.getStringProperty("permitId");
-        try { UUID.fromString(id); }
+        try { return canonicalId(id); }
         catch (IllegalArgumentException | NullPointerException invalid) {
             throw unavailable("Invalid cluster provider permit identity", null);
         }
-        return id;
     }
 
     static Message token(Session session, String group, String id) throws JMSException {
@@ -102,34 +109,138 @@ public final class ArtemisProviderConcurrencyPermits implements ProviderConcurre
         return token;
     }
 
-    private static final class TransactionalPermit implements Permit {
+    static String canonicalId(String value) {
+        if (!UUID.fromString(value).toString().equals(value)) {
+            throw new IllegalArgumentException("Expected canonical UUID");
+        }
+        return value;
+    }
+
+    static String receiptSelector(String id, String attempt) {
+        return "permitState = '" + IN_FLIGHT + "' AND permitId = '" + canonicalId(id)
+                + "' AND attemptId = '" + canonicalId(attempt) + "'";
+    }
+
+    static void validateReceipt(Message receipt, String group, String id, String attempt) throws JMSException {
+        if (receipt == null || !id.equals(validate(receipt, group, 2))
+                || !IN_FLIGHT.equals(receipt.getStringProperty("permitState"))
+                || !attempt.equals(receipt.getStringProperty("attemptId"))
+                || receipt.getLongProperty("startedAt") <= 0) {
+            throw unavailable("Exact in-flight provider receipt is unavailable", null);
+        }
+    }
+
+    /** Must consume the privately identified receipt before producing any available capacity. */
+    static void returnReceipt(Session session, Destination destination, String group, String id,
+                              String attempt, long maximumWait) throws JMSException {
+        try (var consumer = session.createConsumer(destination, receiptSelector(id, attempt))) {
+            Message receipt = consumer.receive(Math.max(1, Math.min(maximumWait, RECEIPT_WAIT_MILLIS)));
+            validateReceipt(receipt, group, id, attempt);
+            try (var producer = session.createProducer(destination)) {
+                producer.send(token(session, group, id), DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, 0);
+                session.commit();
+            }
+        }
+    }
+
+    /** Package-visible for deterministic transaction-fault unit tests; broker acceptance is separate. */
+    static final class TransactionalPermit implements Permit {
+        private enum State { UNUSED, UNCERTAIN, IN_FLIGHT, COMPLETE, CLOSED }
         private final Session session;
         private final Destination destination;
         private final String group;
         private final String id;
-        private boolean closed;
+        private final String attempt = UUID.randomUUID().toString();
+        private final java.util.function.Supplier<Session> sessions;
+        private final Runnable checkpoint;
+        private final long maximumWait;
+        private final jakarta.jms.MessageConsumer availableConsumer;
+        private State state = State.UNUSED;
 
-        private TransactionalPermit(Session session, Destination destination, String group, String id) {
-            this.session = session;
-            this.destination = destination;
-            this.group = group;
-            this.id = id;
+        TransactionalPermit(Session session, Destination destination, String group, String id,
+                            java.util.function.Supplier<Session> sessions, Runnable checkpoint,
+                            long maximumWait, jakarta.jms.MessageConsumer availableConsumer) {
+            this.session = session; this.destination = destination; this.group = group; this.id = id;
+            this.sessions = sessions; this.checkpoint = checkpoint; this.maximumWait = maximumWait;
+            this.availableConsumer = availableConsumer;
+        }
+
+        @Override
+        public synchronized void beforeTransport() {
+            if (state != State.UNUSED) throw unavailable("Provider permit has already been used", null);
+            checkpoint.run();
+            // Mark uncertainty BEFORE sending: an exception can follow a committed write.
+            state = State.UNCERTAIN;
+            try {
+                Message receipt = token(session, group, id);
+                receipt.setIntProperty("schemaVersion", 2);
+                receipt.setStringProperty("permitState", IN_FLIGHT);
+                receipt.setStringProperty("attemptId", attempt);
+                receipt.setLongProperty("startedAt", System.currentTimeMillis());
+                try (var producer = session.createProducer(destination)) {
+                    producer.send(receipt, DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, 0);
+                    session.commit();
+                }
+                availableConsumer.close();
+                var holder = session.createConsumer(destination, receiptSelector(id, attempt));
+                long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(
+                        Math.max(1, Math.min(maximumWait, RECEIPT_WAIT_MILLIS)));
+                Message held;
+                do {
+                    checkpoint.run();
+                    held = holder.receive(RECEIVE_SLICE_MILLIS);
+                } while (held == null && System.nanoTime() < deadline);
+                validateReceipt(held, group, id, attempt);
+                checkpoint.run();
+                // Receipt delivery is deliberately uncommitted during HTTP. Redelivery
+                // after worker/connection/broker loss still excludes it from available slots.
+                state = State.IN_FLIGHT;
+            } catch (JMSException failure) {
+                restoreInterrupt(failure);
+                throw unavailable("Durable provider capacity start was not confirmed", failure);
+            }
+        }
+
+        @Override
+        public synchronized void responseReceived(int statusCode) {
+            if (state != State.IN_FLIGHT) throw unavailable("Provider response has no active capacity owner", null);
+            // Only synchronous success and explicit client rejection prove completion.
+            // In particular 202, 408 and proxy/server errors are NOT proof of termination.
+            state = switch (statusCode) {
+                case 200, 400, 401, 403, 404, 413, 415, 422, 429 -> State.COMPLETE;
+                default -> State.UNCERTAIN;
+            };
         }
 
         @Override
         public synchronized void close() {
-            if (closed) return;
-            closed = true;
-            try (MessageProducer producer = session.createProducer(destination)) {
-                producer.send(token(session, group, id), DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, 0);
-                session.commit();
-            } catch (JMSException failure) {
+            State previous = state;
+            if (previous == State.CLOSED) return;
+            state = State.CLOSED;
+            if (previous == State.UNUSED) {
+                try (MessageProducer producer = session.createProducer(destination)) {
+                    producer.send(token(session, group, id), DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, 0);
+                    session.commit();
+                } catch (JMSException failure) {
+                    restoreInterrupt(failure);
+                    throw unavailable("Cluster provider permit return was not confirmed", failure);
+                } finally { closeSession(session); }
+                return;
+            }
+            // End the old delivery first. A late owner cannot send on a recovered,
+            // rollback-only session or create capacity already reconciled elsewhere.
+            closeSession(session);
+            if (previous != State.COMPLETE) return; // retain durable receipt; never auto-expire it
+            try (Session returning = sessions.get()) {
+                returnReceipt(returning, destination, group, id, attempt, maximumWait);
+            } catch (Exception failure) {
                 restoreInterrupt(failure);
-                // Never compensate by sending another token: commit may have reached the broker.
-                throw unavailable("Cluster provider permit return was not confirmed", failure);
-            } finally {
-                // An uncommitted return rolls back both consumption and replacement together.
-                closeSession(session);
+                // The complete HTTP answer remains valid even if capacity cleanup fails.
+                // Do not cause a second paid request by masking it with a cleanup error.
+                // A lost commit acknowledgement may mean available OR quarantined, never
+                // permission for an unpaired compensating send.
+                org.slf4j.LoggerFactory.getLogger(ArtemisProviderConcurrencyPermits.class)
+                        .warn("Provider capacity cleanup was not confirmed; inspect retained receipts before reconciliation");
             }
         }
     }
@@ -144,7 +255,7 @@ public final class ArtemisProviderConcurrencyPermits implements ProviderConcurre
         try { session.close(); }
         catch (JMSException failure) {
             restoreInterrupt(failure);
-            // Broker recovery returns unacknowledged tokens.
+            // Broker recovery returns the exact unacknowledged available token or unavailable receipt.
         } finally {
             if (interrupted) Thread.currentThread().interrupt();
         }

@@ -94,8 +94,12 @@ final class LlmRequestAdmission {
                     if (!permit.refreshRateAdmission(rpm)) continue;
                     var decision = quotas.tryReserve(provider, java.util.UUID.randomUUID().toString(), tokenBudget, checkpoint);
                     if (decision.granted()) {
-                        requestStarted = true;
-                        try (var quotaScope = LlmTransportMeter.openQuota(decision.reservation())) {
+                        try (var quotaScope = LlmTransportMeter.openQuota(decision.reservation());
+                             var capacityScope = LlmTransportMeter.openCapacity(clusterPermit)) {
+                            // No supplier/HTTP execution after an uncertain capacity commit.
+                            // Even an uninstrumented supplier cannot return uncertain capacity.
+                            clusterPermit.beforeTransport();
+                            requestStarted = true;
                             return request.get();
                         }
                     }
