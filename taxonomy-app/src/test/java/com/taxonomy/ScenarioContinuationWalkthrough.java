@@ -34,6 +34,7 @@ final class ScenarioContinuationWalkthrough {
         // Each independently assessed pass has its own bounded driver. This does
         // not change the provider's per-cycle resource policy or add a pass.
         for (int cycle = 0; cycle <= MAX_CONTINUATIONS_PER_PASS * originalPasses.size(); cycle++) {
+            if (browser != null) browser.observeOperation(operation.path("operationId").asText());
             assertThat(passIdentities(operation)).as("Continuation retains the original passes and their admission")
                     .isEqualTo(originalPasses);
             app.save("operation.json", operation);
@@ -123,7 +124,8 @@ final class ScenarioContinuationWalkthrough {
                     || progressAfter.path("assessedSources").asInt() > progressBefore.path("assessedSources").asInt()
                     || progressAfter.path("completedSearches").asInt() > progressBefore.path("completedSearches").asInt()
                     || !after.at("/analysis/recovery/state").equals(before.at("/analysis/recovery/state"));
-            assertThat(advances).as("Each explicit cycle must advance the saved work instead of restarting it").isTrue();
+            assertThat(advances).as("Each explicit cycle must advance the saved work instead of restarting it; stop reason: %s",
+                    after.at("/analysis/relationSearchReport/stopReason").asText()).isTrue();
             assertThat(after.at("/analysis/relationSearchReport/maxCalls").asInt()).isEqualTo(24);
             assertThat(after.at("/analysis/relationSearchReport/totalCalls").asInt()).isBetween(0, 24);
             assertThat(newCalls).as("Continuing reuses classification and reports each new relation call")

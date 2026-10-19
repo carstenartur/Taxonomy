@@ -92,7 +92,7 @@ public final class ScenarioAcceptanceProcess {
 
     static tools.jackson.databind.JsonNode runIdentity(tools.jackson.databind.JsonNode fixture, String runId) {
         return EVIDENCE_JSON.createObjectNode().put("runId", runId).put("scenario", fixture.path("id").asText())
-                .put("fixtureSha256", com.taxonomy.acceptance.ScenarioLlmPlayback.sha256(fixture.toString()))
+                .put("fixtureSha256", com.taxonomy.acceptance.ScenarioJsonFingerprint.sha256(fixture))
                 .put("sourceRevision", System.getenv().getOrDefault("GITHUB_SHA", "local-working-tree"))
                 .put("ciRun", System.getenv().getOrDefault("GITHUB_RUN_ID", "local"));
     }
@@ -106,7 +106,7 @@ public final class ScenarioAcceptanceProcess {
         String snapshotId = snapshot.at("/summary/id").asText();
         if (saved.path("schemaVersion").asInt() != 1 || !snapshot.isObject() || !run.isObject() || snapshotId.isBlank()
                 || !snapshotId.equals(run.path("snapshotId").asText())
-                || !com.taxonomy.acceptance.ScenarioLlmPlayback.sha256(snapshot.toString()).equals(saved.path("snapshotSha256").asText())
+                || !com.taxonomy.acceptance.ScenarioJsonFingerprint.sha256(snapshot).equals(saved.path("snapshotSha256").asText())
                 || !run.path("fixtureSha256").asText().matches("[0-9a-f]{64}")
                 || run.path("sourceRevision").asText().isBlank()
                 || !run.path("projectId").isIntegralNumber() || !run.path("requirementId").isIntegralNumber()

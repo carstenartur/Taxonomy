@@ -253,7 +253,7 @@ class ScenarioArchitectureAcceptanceTest {
         assertThat(snapshotId).as("Checkpoint identifies its actual immutable snapshot").isNotBlank();
         JsonNode run = runManifest(projectId, requirementId, snapshotId);
         var checkpoint = json.createObjectNode().put("schemaVersion", 1)
-                .put("snapshotSha256", ScenarioLlmPlayback.sha256(snapshot.toString()));
+                .put("snapshotSha256", com.taxonomy.acceptance.ScenarioJsonFingerprint.sha256(snapshot));
         checkpoint.set("run", run); checkpoint.set("snapshot", snapshot);
         // This single atomic replacement is the recovery authority. Conventional
         // files are mirrors, never guessed or rebound from an unrelated snapshot.

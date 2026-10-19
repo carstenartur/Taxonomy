@@ -100,6 +100,11 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         return new ScenarioArchitectureAcceptanceTest.Run(projectId, requirementId, operation);
     }
 
+    /** Observe the same operation during HTTP-only cycles and keep the remote session active. */
+    void observeOperation(String operationId) {
+        wait.until(ExpectedConditions.attributeToBe(By.id("copilotOperation"), "data-operation-id", operationId));
+    }
+
     /** One real click authorizes one further cycle; status polling never submits another POST. */
     void continuePass(String jobId, long itemId) throws Exception {
         // Reload the persisted operation, including cycles performed before this page was read.

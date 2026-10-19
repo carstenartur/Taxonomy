@@ -275,7 +275,7 @@ public final class ScenarioPromptEvidenceQuality {
         JsonNode report = snapshot.at("/analysis/relationSearchReport");
         assertThat(report.path("maxCalls").isIntegralNumber()).as("Explicit normal 24-call budget for %s", id).isTrue();
         assertThat(report.path("totalCalls").isIntegralNumber()).as("Actual call count for %s", id).isTrue();
-        return new Cycle(id, report.path("maxCalls").asInt(), report.path("totalCalls").asInt(), ScenarioLlmPlayback.sha256(snapshot.toString()));
+        return new Cycle(id, report.path("maxCalls").asInt(), report.path("totalCalls").asInt(), ScenarioJsonFingerprint.sha256(snapshot));
     }
 
     private static String string(JsonNode object, String key) {
