@@ -34,7 +34,7 @@ import java.util.UUID;
  */
 @Service
 public class ProjectAnalysisContinuationService {
-    private static final Set<String> BUDGETS = Set.of("CALL_BUDGET", "SOURCE_LIMIT", "WORK_LIMIT");
+    private static final Set<String> BUDGETS = Set.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "SOURCE_LIMIT", "WORK_LIMIT");
 
     private final AnalysisContinuationService continuations;
     private final WorkspaceManager workspaces;

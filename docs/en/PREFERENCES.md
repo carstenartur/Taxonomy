@@ -11,6 +11,7 @@ The Preferences system provides **runtime-configurable settings** for the Taxono
 - [Available Settings](#available-settings)
 - [LLM Configuration](#llm-configuration)
 - [Analysis reason length](#analysis-reason-length)
+- [Relationship search budgets](#relationship-search-budgets)
 - [Repository and legacy keys](#repository-and-legacy-keys)
 - [Size Limits](#size-limits)
 - [Diagram Configuration](#diagram-configuration)
@@ -45,6 +46,7 @@ The following table clarifies the scope for each setting category:
 | Category | Scope | Who Can Change | Affects |
 |---|---|---|---|
 | **LLM Configuration** | ☁️ System | Admin only | All analysis requests for all users |
+| **Relationship Search** | ☁️ System | Admin only | New relation-search executions, including continuation of saved work |
 | **Size Limits** | ☁️ System | Admin only | Ad-hoc analysis request defaults and limits |
 | **Diagram Configuration** | ☁️ System | Admin only | Architecture diagram rendering for all users |
 
@@ -79,20 +81,21 @@ curl -u admin:password -X PUT \
 
 ## Using the Web UI
 
-The **Preferences** tab in the navigation bar provides a graphical interface for the supported runtime settings. This tab is visible only to users with admin privileges.
+The **Settings (⚙) → Server settings** entry opens the Preferences page for the supported runtime settings. The entry is visible only to users with admin privileges.
 
 ### Opening Preferences
 
-1. Click **⚙️ Preferences** in the main navigation bar (visible only when logged in as admin).
-2. The Preferences page opens, showing all settings grouped into three sections.
+1. Open **Settings (⚙)** in the main navigation bar and select **Server settings** (visible only when logged in as admin).
+2. The Preferences page opens, showing all settings grouped into four sections.
 
 ### Editing Settings
 
-The Preferences page has three cards:
+The Preferences page has four cards:
 
 1. **🤖 LLM Configuration** — Request rate, timeout, incoming LLM quota, and analysis reason length.
-2. **📈 Size Limits** — Maximum ad-hoc business-text length and default architecture-node count.
-3. **Diagram Configuration** — Selection policy for architecture diagrams.
+2. **Relationship Search** — Initial and total call budgets, automatic continuation, source and search-step limits.
+3. **📈 Size Limits** — Maximum ad-hoc business-text length and default architecture-node count.
+4. **Diagram Configuration** — Selection policy for architecture diagrams.
 
 Repository branches, remotes and credentials are managed in their repository context; historical `dsl.*` and minimum-relevance keys may remain in stored snapshots but are not active UI controls.
 
@@ -133,7 +136,7 @@ The incoming `rate-limit.per-minute` quota is evaluated only after authenticatio
 
 ### Analysis reason length
 
-Under **Preferences → LLM Configuration → Explanation Length**, choose how much explanation the model should provide for its assessments, then select **Save**. The setting applies system-wide to newly admitted analysis runs.
+Under **Settings (⚙) → Server settings → LLM Configuration → Explanation Length**, choose how much explanation the model should provide for its assessments, then select **Save**. The setting applies system-wide to newly admitted analysis runs.
 
 | Choice | Target length per decision | Content |
 |---|---|---|
@@ -152,6 +155,72 @@ The runtime preference is also available through `PUT /api/preferences`:
 ```
 
 Only the three listed string values are accepted. Invalid values return HTTP `400` before changes are saved. `TAXONOMY_ANALYSIS_REASON_LENGTH`, or `taxonomy.analysis.reason-length`, supplies the deployment default; otherwise it is `standard`. An older preferences file without this key receives the effective default without creating a history entry merely by being read.
+
+### Relationship search budgets
+
+Open **Settings (⚙) → Server settings → Relationship Search** to see and change the
+effective runtime limits. The standard **initial budget is 256 new evaluations**,
+with a **4096-evaluation total budget** for one saved relationship search.
+Automatic continuation is enabled by default: the server can extend the initial
+allowance and process further sections within the same operation.
+
+| Key | Type | Default | Allowed values | Meaning |
+|---|---|---|---|---|
+| `analysis.relations.max-calls` | int | `256` | `0`–`10000` | Initial allowance for new relationship-evaluation attempts; automatic continuation may extend it |
+| `analysis.relations.max-total-calls` | int | `4096` | `0`–`10000` | Maximum new attempts for the same saved search across automatic and manual continuation |
+| `analysis.relations.auto-continue` | boolean | `true` | `true`, `false` | Extend the initial allowance and admit further sections in the same operation while total budget remains |
+| `analysis.relations.max-sources` | int | `128` | `1`–`256` | Maximum new source contributions admitted per section |
+| `analysis.relations.max-work-items` | int | `4096` | `1`–`100000` | Maximum new navigation and verification work items per section |
+
+The total budget is cumulative. With automatic continuation off, an operation
+receives at most the smaller of the initial allowance and the remaining total.
+With it on, eligible work can continue beyond the initial allowance up to the
+remaining total. The browser does not issue another analysis request for each
+section. Either call budget can be zero, which allows no new evaluations.
+A total budget lower than the initial budget is valid. Source and work limits
+bound admission per section; automatic continuation can advance further sections
+without removing pending work from the search plan.
+
+Successful saved answers are reused without another provider request or another
+charge to either call budget. Call consumption measures new attempts; completed
+source/target search tasks are a separate progress measure. A cumulative budget
+stop leaves an explicit partial result. Open domain questions retain their review,
+reassess or leave-open decisions. In a budget-stop dialog, administrators can select
+**Budget settings** to jump directly to this settings card. Increasing the budget
+and then choosing **Continue saved progress** resumes the same saved search.
+
+Select **Save** to apply all changed settings together. New executions use the
+updated limits; an execution already in progress retains the limits it received.
+Increasing a budget lets the same saved search continue using its retained
+answers. Saving settings does not start a new analysis or replace the current
+draft, requirement text or evidence. Reports, live progress and saved portfolio
+results show new evaluations separately from the cumulative budget and completed
+search tasks. During distributed work, the live total is labelled as the last
+saved state; the final report contains the recorded total for the completed operation.
+
+The same settings are available through `PUT /api/preferences`, for example:
+
+```json
+{
+  "analysis.relations.max-calls": 256,
+  "analysis.relations.max-total-calls": 4096,
+  "analysis.relations.auto-continue": true,
+  "analysis.relations.max-sources": 128,
+  "analysis.relations.max-work-items": 4096
+}
+```
+
+Use JSON integers and a JSON boolean. Invalid values reject the complete update
+with HTTP `400`. The matching `taxonomy.analysis.relations.hierarchical.*`
+properties and long `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_*` environment
+variables supply deployment defaults. Previously saved valid preferences take
+precedence; missing keys in older preference snapshots use the deployment defaults
+without a read-time commit. Reset restores those configured defaults.
+
+Depth, provider batch size, prompt/context limits and the enabled switch remain
+deployment settings. Outgoing RPM, incoming quota and HTTP timeout are independent
+of these search budgets. See the [configuration reference](CONFIGURATION_REFERENCE.md#requirement-scoped-relationship-search)
+for their exact names and scopes.
 
 ### Repository and legacy keys
 

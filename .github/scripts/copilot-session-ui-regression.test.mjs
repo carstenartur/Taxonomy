@@ -183,6 +183,7 @@ test('stale scores are invalidated before the coordinator can reuse them', () =>
   assert.equal(harness.architecture.checked, true);
   assert.deepEqual(JSON.parse(JSON.stringify(harness.invalidations)), [{
     keepText: true,
+    keepDraftLifecycle: true,
     silent: true,
     reason: 'copilot-reanalysis'
   }]);

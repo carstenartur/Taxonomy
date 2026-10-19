@@ -17,7 +17,7 @@ import java.util.*;
  * No dispatcher, broker, provider, active claim or distributed grant is available to this owner.
  */
 public final class AnalysisContinuationBackupRestorer {
-    private static final int MAX_CALLS=4096, MAX_QUESTION_CHARACTERS=2_000_000;
+    private static final int MAX_CALLS=4096, MAX_QUESTIONS=16_384, MAX_QUESTION_CHARACTERS=2_000_000;
     private static final long MAX_RUN_CHARACTERS=24_000_000;
     private final EntityManager em;
     private final TransactionTemplate transactions;
@@ -31,7 +31,9 @@ public final class AnalysisContinuationBackupRestorer {
         Objects.requireNonNull(source);Objects.requireNonNull(questions);Objects.requireNonNull(target);
         requireUuid(targetId);requireKind(source.sourceId(),"analysis.continuation");
         text(target.username(),160);text(target.workspaceId(),320);text(target.repositoryId(),320);text(target.currentBranch(),512);
-        if(source.resumePolicy()!=ResumePolicy.REVIEW_REQUIRED || source.updatedAtEpochMillis()<0 || questions.size()>MAX_CALLS)
+        if(source.resumePolicy()!=ResumePolicy.REVIEW_REQUIRED || source.updatedAtEpochMillis()<0 || questions.size()>MAX_QUESTIONS
+                || source.relationCallsSpent()!=null && source.relationCallsSpent()<0
+                || source.relationSourceCohortSize()!=null && (source.relationSourceCohortSize()<1 || source.relationSourceCohortSize()>256))
             throw invalid();
         hash(source.inputHash()); optionalText(source.currentNode(),320);
         if(!Set.of("NEW","RUNNING","STOPPED","PAUSED","CANCELLED","COMPLETED","COMPLETED_WITH_GAPS").contains(source.sourceState()))throw invalid();
@@ -89,7 +91,8 @@ public final class AnalysisContinuationBackupRestorer {
             if(em.find(AnalysisContinuationRun.class,targetId)!=null)throw new IllegalStateException("Continuation restore target already exists");
             var run=new AnalysisContinuationRun();run.id=targetId;run.username=target.username();run.workspaceId=target.workspaceId();
             run.repositoryId=target.repositoryId();run.branchName=target.currentBranch();run.inputHash=source.inputHash();run.requestJson=requestJson;run.resultJson=resultJson;
-            run.state=state;run.updatedAt=System.currentTimeMillis();run.payloadCharacters=retained;run.currentNode=source.currentNode();em.persist(run);
+            run.state=state;run.updatedAt=System.currentTimeMillis();run.payloadCharacters=retained;run.currentNode=source.currentNode();
+            run.relationCallsSpent=source.relationCallsSpent();run.relationSourceCohortSize=source.relationSourceCohortSize();em.persist(run);
             for(var prepared:preparedQuestions) {
                 var sourceQuestion=prepared.source();
                 var question=new AnalysisQuestionCheckpoint();question.id=targetId+":"+sourceQuestion.questionKey();question.run=run;

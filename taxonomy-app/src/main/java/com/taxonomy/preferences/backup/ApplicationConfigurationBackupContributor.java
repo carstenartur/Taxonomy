@@ -61,7 +61,12 @@ public final class ApplicationConfigurationBackupContributor implements BackupDa
                     read.text("taxonomy.dsl.default-branch"), read.text("taxonomy.dsl.project-name"),
                     read.integer("taxonomy.dsl.auto-save-interval"), read.integer("taxonomy.limits.max-business-text"),
                     read.integer("taxonomy.limits.max-architecture-nodes"), read.integer("taxonomy.limits.max-export-nodes"),
-                    read.text("taxonomy.diagram.policy"));
+                    read.text("taxonomy.diagram.policy"),
+                    read.integer("taxonomy.analysis.relations.hierarchical.max-calls"),
+                    read.integer("taxonomy.analysis.relations.hierarchical.max-total-calls"),
+                    read.flag("taxonomy.analysis.relations.hierarchical.auto-continue"),
+                    read.integer("taxonomy.analysis.relations.hierarchical.max-sources"),
+                    read.integer("taxonomy.analysis.relations.hierarchical.max-work-items"));
             var products = new ProductAnalysis(read.integer("taxonomy.analysis.product.batch-size"),
                     read.integer("taxonomy.analysis.product.min-score"));
             var portfolio = new Portfolio(read.integer("taxonomy.portfolio.max-import-requirements"),

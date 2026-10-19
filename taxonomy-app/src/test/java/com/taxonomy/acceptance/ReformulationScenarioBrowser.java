@@ -22,7 +22,7 @@ final class ReformulationScenarioBrowser implements AutoCloseable {
     ReformulationScenarioBrowser(int port, Path output) throws Exception {
         this.output = Files.createDirectories(output.resolve("browser"));
         downloads = Files.createDirectories(this.output.resolve("downloads")).toAbsolutePath();
-        session = BrowserSession.open(port, downloads);
+        session = BrowserSession.openWithNetworkLogging(port, downloads);
         driver = session.driver();
         origin = session.origin();
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
@@ -130,7 +130,27 @@ final class ReformulationScenarioBrowser implements AutoCloseable {
     private void shot(String name) throws Exception { Files.write(output.resolve(name), driver.getScreenshotAs(OutputType.BYTES)); }
     @Override public void close() throws Exception {
         try { if (!completed) {
+            ReformulationBrowserDiagnostics.capture(driver, output);
             shot("failure.png"); Files.writeString(output.resolve("failure-page.html"), driver.getPageSource());
+            Files.writeString(output.resolve("failure-resources.json"), String.valueOf(driver.executeScript("""
+                    return JSON.stringify({url:location.href,readyState:document.readyState,
+                      status:document.getElementById('reformulationStatus')?.textContent,
+                      timeOrigin:performance.timeOrigin,now:performance.now(),
+                      resources:performance.getEntriesByType('resource').map(r=>({
+                        name:r.name,initiatorType:r.initiatorType,startTime:r.startTime,duration:r.duration,
+                        fetchStart:r.fetchStart,requestStart:r.requestStart,responseStart:r.responseStart,
+                        responseEnd:r.responseEnd,transferSize:r.transferSize,
+                        encodedBodySize:r.encodedBodySize,decodedBodySize:r.decodedBodySize}))});
+                    """)));
+            Object console;
+            try {
+                console = driver.manage().logs().get("browser").getAll().stream()
+                        .map(entry -> Map.of("level", entry.getLevel().getName(),
+                                "timestamp", entry.getTimestamp())).toList();
+            } catch (WebDriverException unavailable) {
+                console = Map.of("unavailable", unavailable.getClass().getName());
+            }
+            Files.writeString(output.resolve("failure-console.json"), new tools.jackson.databind.ObjectMapper().writeValueAsString(console));
             Files.writeString(output.resolve("failure-geometry.json"), String.valueOf(driver.executeScript("""
                     return JSON.stringify({lastClick:window.__reformulationLastClickGeometry,
                       current:window.__reformulationClickGeometry,focus:document.activeElement?.outerHTML.slice(0,500),
@@ -138,7 +158,14 @@ final class ReformulationScenarioBrowser implements AutoCloseable {
                       viewport:{width:innerWidth,height:innerHeight,scale:visualViewport?.scale,
                         left:visualViewport?.offsetLeft,top:visualViewport?.offsetTop}});
                     """)));
-        } }
-        finally { session.close(); }
+        } } catch (Exception diagnosticFailure) {
+            ReformulationBrowserDiagnostics.unavailable(output, "browser-artifacts", diagnosticFailure);
+        } finally {
+            if (completed) session.close();
+            else try { session.close(); }
+            catch (RuntimeException cleanupFailure) {
+                ReformulationBrowserDiagnostics.unavailable(output, "browser-close", cleanupFailure);
+            }
+        }
     }
 }

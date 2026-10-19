@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.*;
 
 /**
@@ -34,6 +35,11 @@ public class PreferencesService {
 
     private static final String TOKEN_MASK_PREFIX = "****";
     private static final String ANALYSIS_REASON_LENGTH = "analysis.reason-length";
+    private static final String RELATION_MAX_CALLS = "analysis.relations.max-calls";
+    private static final String RELATION_MAX_TOTAL_CALLS = "analysis.relations.max-total-calls";
+    private static final String RELATION_AUTO_CONTINUE = "analysis.relations.auto-continue";
+    private static final String RELATION_MAX_SOURCES = "analysis.relations.max-sources";
+    private static final String RELATION_MAX_WORK_ITEMS = "analysis.relations.max-work-items";
 
     private final PreferencesGitRepository gitRepository;
     private final ObjectMapper objectMapper;
@@ -60,6 +66,21 @@ public class PreferencesService {
 
     @Value("${taxonomy.analysis.reason-length:standard}")
     private String defaultAnalysisReasonLength = "standard";
+
+    @Value("${taxonomy.analysis.relations.hierarchical.max-calls:256}")
+    private int defaultRelationMaxCalls = 256;
+
+    @Value("${taxonomy.analysis.relations.hierarchical.max-total-calls:4096}")
+    private int defaultRelationMaxTotalCalls = 4096;
+
+    @Value("${taxonomy.analysis.relations.hierarchical.auto-continue:true}")
+    private boolean defaultRelationAutoContinue = true;
+
+    @Value("${taxonomy.analysis.relations.hierarchical.max-sources:128}")
+    private int defaultRelationMaxSources = 128;
+
+    @Value("${taxonomy.analysis.relations.hierarchical.max-work-items:4096}")
+    private int defaultRelationMaxWorkItems = 4096;
 
     @Value("${taxonomy.dsl.default-branch:draft}")
     private String defaultDslDefaultBranch;
@@ -106,9 +127,10 @@ public class PreferencesService {
             if (json != null) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> loaded = objectMapper.readValue(json, Map.class);
-                // An older preferences commit has no reason-length setting. Expose
-                // the deployment default immediately without creating a read-time commit.
+                // Older commits omit newer analysis preferences. Expose deployment
+                // defaults immediately without creating a read-time commit.
                 loaded.putIfAbsent(ANALYSIS_REASON_LENGTH, configuredReasonLength());
+                configuredRelationBudgets().forEach(loaded::putIfAbsent);
                 cache = immutableSnapshot(loaded);
                 log.info("Preferences loaded from JGit repository ({} entries)", cache.size());
             } else {
@@ -185,17 +207,19 @@ public class PreferencesService {
      * @throws IOException if the JGit commit fails
      */
     public synchronized void update(Map<String, Object> changes, String author) throws IOException {
-        validateReasonLength(changes);
+        Map<String, Object> validated = new LinkedHashMap<>(changes);
+        validateReasonLength(validated);
+        validateRelationBudgets(validated);
         Map<String, Object> updated = new LinkedHashMap<>(cache);
-        updated.putAll(changes);
+        updated.putAll(validated);
         String json = objectMapper.writeValueAsString(updated);
-        String commitMsg = "Preferences updated: " + String.join(", ", changes.keySet());
+        String commitMsg = "Preferences updated: " + String.join(", ", validated.keySet());
 
         // The repository is the durable authority. Do not publish a new runtime
         // snapshot until its commit has succeeded.
         gitRepository.commit(json, author, commitMsg);
         cache = immutableSnapshot(updated);
-        log.info("Preferences updated by '{}': {}", author, changes.keySet());
+        log.info("Preferences updated by '{}': {}", author, validated.keySet());
     }
 
     /**
@@ -243,6 +267,47 @@ public class PreferencesService {
         return AnalysisReasonLength.fromValue(defaultAnalysisReasonLength).value();
     }
 
+    private static void validateRelationBudgets(Map<String, Object> changes) {
+        validateIntegerBudget(changes, RELATION_MAX_CALLS, 0, 10_000);
+        validateIntegerBudget(changes, RELATION_MAX_TOTAL_CALLS, 0, 10_000);
+        validateIntegerBudget(changes, RELATION_MAX_SOURCES, 1, 256);
+        validateIntegerBudget(changes, RELATION_MAX_WORK_ITEMS, 1, 100_000);
+        if (changes.containsKey(RELATION_AUTO_CONTINUE)
+                && !(changes.get(RELATION_AUTO_CONTINUE) instanceof Boolean)) {
+            throw new IllegalArgumentException(RELATION_AUTO_CONTINUE + " must be true or false");
+        }
+    }
+
+    private static void validateIntegerBudget(Map<String, Object> changes, String key, int min, int max) {
+        if (!changes.containsKey(key)) return;
+        Object value = changes.get(key);
+        if (value instanceof Number number) {
+            try {
+                // intValue() silently truncates fractions and wraps overflowing
+                // longs. Persist one exact integer representation after validation.
+                int integer = new BigDecimal(number.toString()).intValueExact();
+                if (integer >= min && integer <= max) {
+                    changes.put(key, integer);
+                    return;
+                }
+            } catch (ArithmeticException | NumberFormatException ignored) {
+                // Return the same bounded message for every invalid representation.
+            }
+        }
+        throw new IllegalArgumentException(key + " must be an integer between " + min + " and " + max);
+    }
+
+    private Map<String, Object> configuredRelationBudgets() {
+        Map<String, Object> defaults = new LinkedHashMap<>();
+        defaults.put(RELATION_MAX_CALLS, defaultRelationMaxCalls);
+        defaults.put(RELATION_MAX_TOTAL_CALLS, defaultRelationMaxTotalCalls);
+        defaults.put(RELATION_AUTO_CONTINUE, defaultRelationAutoContinue);
+        defaults.put(RELATION_MAX_SOURCES, defaultRelationMaxSources);
+        defaults.put(RELATION_MAX_WORK_ITEMS, defaultRelationMaxWorkItems);
+        validateRelationBudgets(defaults);
+        return defaults;
+    }
+
     private static Map<String, Object> immutableSnapshot(Map<String, Object> source) {
         return Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
@@ -255,6 +320,7 @@ public class PreferencesService {
         defaults.put("rate-limit.per-minute", defaultRateLimitPerMinute);
         defaults.put("analysis.min-relevance-score", defaultAnalysisMinScore);
         defaults.put(ANALYSIS_REASON_LENGTH, configuredReasonLength());
+        defaults.putAll(configuredRelationBudgets());
         // JGit / DSL Configuration
         defaults.put("dsl.default-branch", defaultDslDefaultBranch);
         defaults.put("dsl.project-name", defaultDslProjectName);

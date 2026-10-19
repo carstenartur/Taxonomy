@@ -31,13 +31,31 @@ class AnalysisRecordsExportIT {
         try (var fixture = new Fixture()) {
             String id = run(fixture, "repo-a", "private-a", "draft", "alice", 10, "CURRENT");
             String stored = storedPacked ? com.taxonomy.exchange.backup.PortableJsonPayloads.pack(original,24_000_000) : original;
-            fixture.jdbc.update("update analysis_continuation set result_json=? where id=?", stored, id);
+            fixture.jdbc.update("update analysis_continuation set result_json=?,relation_calls_spent=17,relation_source_cohort_size=32 where id=?", stored, id);
             var output = new Contents();
             new AnalysisBackupContributor(fixture.database,"alice").write(scoped(BackupProfile.REPOSITORY_HISTORY),output);
-            String exported = records(output,"continuations").getFirst().path("resultJson").asText();
+            var record = records(output,"continuations").getFirst();
+            assertThat(record.path("relationCallsSpent").asInt()).isEqualTo(17);
+            assertThat(record.path("relationSourceCohortSize").asInt()).isEqualTo(32);
+            String exported = record.path("resultJson").asText();
             assertThat(com.taxonomy.exchange.backup.PortableJsonPayloads.unpack(exported,24_000_000)).isEqualTo(original);
             assertThat(output.entries.get("data/analysis/continuations.ndjson").length).isLessThan(PortableRows.MAX_RECORD_BYTES);
             assertThat(fixture.jdbc.queryForObject("select result_json from analysis_continuation where id=?",String.class,id)).isEqualTo(stored);
+        }
+    }
+
+    @Test void continuationArchiveIncludesItsDurableRelationLedgerRatherThanQuestionAttempts() throws Exception {
+        try (var fixture = new Fixture()) {
+            String id = run(fixture, "repo-a", "private-a", "draft", "alice", 10, "CURRENT");
+            fixture.jdbc.update("update analysis_continuation set relation_calls_spent=17,relation_source_cohort_size=32 where id=?", id);
+            question(fixture, id, "accepted question");
+            fixture.jdbc.update("update analysis_question_checkpoint set attempts=99 where run_id=?", id);
+            var output = new Contents();
+            new AnalysisBackupContributor(fixture.database, "alice").write(scoped(BackupProfile.REPOSITORY_HISTORY), output);
+            assertThat(records(output, "continuations")).singleElement().satisfies(record -> {
+                assertThat(record.path("relationCallsSpent").asInt()).isEqualTo(17);
+                assertThat(record.path("relationSourceCohortSize").asInt()).isEqualTo(32);
+            });
         }
     }
 

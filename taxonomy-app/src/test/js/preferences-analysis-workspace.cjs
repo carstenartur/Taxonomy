@@ -30,7 +30,8 @@ function completedPayload() {
         provisionalRelations: [{source: 'CP-1023', target: 'CR-1047', status: 'proposed'}],
         evaluatedNodes: ['CR-1047'], currentView: 'list'};
 }
-function fixture({deferDraftRead = false, checkboxPreference = false, reasonLengthPreference = false} = {}) {
+function fixture({deferDraftRead = false, checkboxPreference = false, reasonLengthPreference = false,
+        relationPreferences = false} = {}) {
     const listeners = new Map(), requests = [], timers = new Map(), controls = [];
     const preferenceGates = new Map();
     let timerId = 0, preferenceFailure = false, pendingDraftSave = null;
@@ -76,6 +77,38 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
         checkbox.setAttribute('data-pref-key', 'fixture.checkbox');
         controls.push(checkbox);
         preferences['fixture.checkbox'] = false;
+    }
+    const relationControls = new Map();
+    const relationDefaults = {
+        'analysis.relations.max-calls': 256,
+        'analysis.relations.max-total-calls': 4096,
+        'analysis.relations.auto-continue': true,
+        'analysis.relations.max-sources': 128,
+        'analysis.relations.max-work-items': 4096
+    };
+    if (relationPreferences) {
+        for (const [key, value] of Object.entries(relationDefaults)) {
+            const tag = [...template.matchAll(/<input\b[^>]*>/g)]
+                .map(match => match[0]).find(input => input.includes('data-pref-key="' + key + '"'));
+            assert.ok(tag, 'the live preferences form exposes ' + key);
+            const attribute = name => tag.match(new RegExp('\\b' + name + '="([^"]*)"'))?.[1];
+            const control = element(attribute('id'), {type: attribute('type'),
+                value: attribute('value') || '', checked: /\bchecked\b/.test(tag)});
+            control.setAttribute('data-pref-key', key);
+            control.checkValidity = () => {
+                if (control.type !== 'number') return true;
+                if (control.value === '') return !/\brequired\b/.test(tag);
+                const numeric = Number(control.value);
+                const minimum = attribute('min') === undefined ? -Infinity : Number(attribute('min'));
+                const maximum = attribute('max') === undefined ? Infinity : Number(attribute('max'));
+                const step = Number(attribute('step') || 1);
+                return Number.isFinite(numeric) && numeric >= minimum && numeric <= maximum
+                    && (numeric - (Number.isFinite(minimum) ? minimum : 0)) % step === 0;
+            };
+            controls.push(control);
+            relationControls.set(key, control);
+            preferences[key] = value;
+        }
     }
     const state = {taxonomyData: [{code: 'CR-1047'}], currentScores: null,
         currentRawScores: {}, currentReasons: {}, currentArchView: null, evaluatedNodes: new Set()};
@@ -139,6 +172,7 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
             preferences['limits.max-architecture-nodes'] = 50;
             if (checkbox) preferences['fixture.checkbox'] = false;
             if (reasonLength) preferences['analysis.reason-length'] = 'standard';
+            if (relationPreferences) Object.assign(preferences, relationDefaults);
         }
         const snapshot = copy(preferences);
         const response = {ok: true, json: async () => copy(snapshot)};
@@ -155,7 +189,8 @@ function fixture({deferDraftRead = false, checkboxPreference = false, reasonLeng
     vm.runInNewContext(draftScript, context, {filename: 'taxonomy-analysis-session-draft.js'});
     vm.runInNewContext(preferencesScript, context, {filename: 'index.html Preferences script'});
     document.dispatchEvent({type: 'DOMContentLoaded'});
-    return {C, state, runtime, nodes, maxNodes, checkbox, reasonLength, requests, storedDraft, preferences,
+    return {C, state, runtime, nodes, maxNodes, checkbox, reasonLength, relationControls,
+        requests, storedDraft, preferences,
         draftRead, activate(page) {
             if (page === 'preferences') nodes.get('tab-preferences').classList.remove('d-none');
             else nodes.get('tab-preferences').classList.add('d-none');
@@ -217,6 +252,90 @@ test('reason-length choice loads, saves only its changed value and resets withou
     assertWorkPreserved(f, expected);
     assert.equal(f.requests.filter(request => request.url.includes('/api/analyze')).length, 0);
     assert.equal(f.requests.filter(request => request.url === '/api/analysis-drafts/ws-1' && request.method !== 'GET').length, 0);
+});
+
+test('relationship budgets load effective values, save one change set and reset while keeping analysis evidence', async () => {
+    const f = fixture({relationPreferences: true}), expected = completedPayload();
+    await f.C.loadDraft();
+    f.preferences['analysis.relations.max-calls'] = 512;
+    f.preferences['analysis.relations.max-total-calls'] = 2048;
+    f.preferences['analysis.relations.auto-continue'] = false;
+    f.activate('preferences');
+    await settled();
+    assert.equal(f.relationControls.get('analysis.relations.max-calls').value, '512');
+    assert.equal(f.relationControls.get('analysis.relations.max-total-calls').value, '2048');
+    assert.equal(f.relationControls.get('analysis.relations.auto-continue').checked, false);
+    assert.equal(f.nodes.get('prefSaveBtn').disabled, true);
+
+    const changes = {'analysis.relations.max-calls': 1024, 'analysis.relations.max-total-calls': 512,
+        'analysis.relations.auto-continue': true, 'analysis.relations.max-sources': 256,
+        'analysis.relations.max-work-items': 8192};
+    for (const [key, value] of Object.entries(changes)) {
+        const control = f.relationControls.get(key);
+        if (control.type === 'checkbox') control.checked = value;
+        else control.value = String(value);
+        control.fire('change');
+    }
+    assert.equal(f.nodes.get('prefSaveBtn').disabled, false,
+        'A smaller total budget is valid; the execution is bounded by the remaining total');
+    f.nodes.get('prefSaveBtn').click();
+    await settled();
+    const writes = f.requests.filter(request => request.url === '/api/preferences' && request.method === 'PUT');
+    assert.equal(writes.length, 1);
+    assert.deepEqual(JSON.parse(writes[0].body), changes);
+    assert.equal(f.nodes.get('prefSaveBtn').disabled, true);
+    assertWorkPreserved(f, expected);
+
+    f.nodes.get('prefResetBtn').click();
+    await settled();
+    assert.equal(f.relationControls.get('analysis.relations.max-calls').value, '256');
+    assert.equal(f.relationControls.get('analysis.relations.max-total-calls').value, '4096');
+    assert.equal(f.relationControls.get('analysis.relations.auto-continue').checked, true);
+    assert.equal(f.relationControls.get('analysis.relations.max-sources').value, '128');
+    assert.equal(f.relationControls.get('analysis.relations.max-work-items').value, '4096');
+    assertWorkPreserved(f, expected);
+    assert.equal(f.requests.filter(request => request.url.includes('/api/analyze')).length, 0);
+    assert.equal(f.requests.filter(request => request.url.includes('/api/analysis-drafts') && request.method !== 'GET').length, 0);
+});
+
+test('invalid relationship budget values block the complete preference update and supported boundaries save as integers', async () => {
+    const f = fixture({relationPreferences: true});
+    f.activate('preferences');
+    await settled();
+    const cases = [
+        ['analysis.relations.max-calls', 0, 10000],
+        ['analysis.relations.max-total-calls', 0, 10000],
+        ['analysis.relations.max-sources', 1, 256],
+        ['analysis.relations.max-work-items', 1, 100000]
+    ];
+    const writes = () => f.requests.filter(request => request.url === '/api/preferences' && request.method === 'PUT');
+    for (const [key, minimum, maximum] of cases) {
+        const control = f.relationControls.get(key), original = control.value;
+        f.maxNodes.value = '75';
+        f.maxNodes.fire('input');
+        for (const value of ['', String(minimum - 1), String(maximum + 1), String(minimum + 0.5)]) {
+            const before = writes().length;
+            control.value = value;
+            control.fire('input');
+            assert.equal(f.nodes.get('prefSaveBtn').disabled, true, key + ' rejects ' + JSON.stringify(value));
+            f.nodes.get('prefSaveBtn').click();
+            await settled();
+            assert.equal(writes().length, before, 'No partial update is sent for an invalid field');
+            assert.equal(f.preferences['limits.max-architecture-nodes'], 50);
+        }
+        f.maxNodes.value = '50';
+        f.maxNodes.fire('input');
+        control.value = original;
+        control.fire('input');
+        for (const value of [minimum, maximum]) {
+            control.value = String(value);
+            control.fire('input');
+            assert.equal(f.nodes.get('prefSaveBtn').disabled, false);
+            f.nodes.get('prefSaveBtn').click();
+            await settled();
+            assert.deepEqual(JSON.parse(writes().at(-1).body), {[key]: value});
+        }
+    }
 });
 
 test('Preferences 50 to 150 leaves completed draft, analysis and manual evidence intact through return and reload', async () => {

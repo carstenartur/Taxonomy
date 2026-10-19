@@ -415,7 +415,6 @@ public final class RelationSearchProtocol {
             ids.forEach(id -> failures.put(id, rejected.getError() == null ? reason : rejected.getError()));
             return new Batch<>(Map.of(), failures, true);
         }
-        admission.accept(step, ids);
         var decoded = new java.util.concurrent.atomic.AtomicReference<Batch<T>>();
         LlmCallDetail detail = AnalysisCheckpointSession.evaluateEvidence(step.name(), provider, ids, prompt, () -> {
             var answer = new LlmCallDetail(); answer.setProvider(provider); answer.setPrompt(prompt); answer.setScores(Map.of());
@@ -448,7 +447,7 @@ public final class RelationSearchProtocol {
                 answer.setError((decompose ? "RELATION_DECOMPOSED: " : "INVALID_RELATION_RESPONSE: ") + batch.failures());
             }
             return answer;
-        });
+        }, () -> admission.accept(step, ids));
         if (decoded.get() != null) return decoded.get();
         if (detail.getError() != null && (detail.getError().startsWith("RELATION_DECOMPOSED: LLM_INCOMPLETE_RESPONSE:")
                 || detail.getError().startsWith("INVALID_RELATION_RESPONSE: LLM_INCOMPLETE_RESPONSE:"))) {
@@ -492,7 +491,6 @@ public final class RelationSearchProtocol {
 
     private <T> T exchange(Step step, List<String> nodes, String prompt, Function<String, T> decode,
                            Function<T, String> clarification) {
-        admission.accept(step, nodes);
         class Decoded {
             T value;
             boolean available;
@@ -513,7 +511,7 @@ public final class RelationSearchProtocol {
                 answer.setError("INVALID_RELATION_RESPONSE: " + invalid.getMessage());
             }
             return answer;
-        });
+        }, () -> admission.accept(step, nodes));
         if (decoded.error != null) throw decoded.error;
         if (decoded.available) return decoded.value;
         // A durable replay bypasses the operation above and still requires decoding

@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public final class ReformulationScenarioApplication {
     private static final String PASSWORD = "Reformulation-Scenario-Test-2026!";
     // These lifecycle scenarios need a complete analysed baseline, like ScenarioArchitectureAcceptanceTest.
-    // Production's 24-call limit and its partial/continuation contracts are unchanged.
+    // Pin both relation budget limits so automatic execution has this scenario's ceiling.
     private static final int RELATION_CALL_BUDGET = 256;
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -40,6 +40,7 @@ public final class ReformulationScenarioApplication {
                 "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--taxonomy.init.async=false", "--scenario.reformulation=true", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
                 "--taxonomy.analysis.relations.hierarchical.max-calls=" + RELATION_CALL_BUDGET,
+                "--taxonomy.analysis.relations.hierarchical.max-total-calls=" + RELATION_CALL_BUDGET,
                 "--taxonomy.analysis.relations.hierarchical.batch-size=10",
                 "--taxonomy.analysis.relations.hierarchical.max-prompt-characters=120000",
                 "--scenario.reformulation-case=" + (args[1].startsWith("authored-") ? args[1].substring(9) : "flood"),

@@ -21,6 +21,24 @@ class ClusterAnalysisDiagnosticsTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP");
 
+    @Test void fundedRelationshipWorkRetainsDiagnosticsBeyond2048LogicalCalls() {
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var context = ClusterAnalysisStoreTest.context("diagnostic-relation-budget"); db.admit(context);
+            var task = db.task(CP); db.store.start(task); var session = db.store.diagnostics(task);
+            long call = 0;
+            for (int number = 1; number <= 2049; number++) {
+                call = session.started("Mock", "CP");
+                assertThat(call).isEqualTo(number);
+            }
+            session.prepared(call, "funded relationship question");
+            var detail = new LlmCallDetail(); detail.setRawResponse("accepted answer");
+            session.completed(call, detail, 1);
+            assertThat(db.store.callDiagnostics().detail(context, call).response()).isEqualTo("accepted answer");
+            assertThat(db.store.callDiagnostics().summaries(context).calls()).hasSize(32);
+            assertThat(db.store.callDiagnostics().summaries(context).omitted()).isEqualTo(2017);
+        }
+    }
+
     @Test void independentDurableStartsPrecedeEveryHttpRetryAndSafeSummariesOmitDetail() {
         try (var db = new ClusterAnalysisStoreTest.Database()) {
             var context = ClusterAnalysisStoreTest.context("diagnostic-retries"); db.admit(context);

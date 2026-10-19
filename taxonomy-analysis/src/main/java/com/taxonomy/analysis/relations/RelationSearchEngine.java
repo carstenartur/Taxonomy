@@ -290,7 +290,7 @@ public final class RelationSearchEngine {
     private static String unfinishedReason(String question) {
         if ("RELATION_LEFT_OPEN".equals(question)) return "LEFT_OPEN";
         if (!question.startsWith("TECHNICAL_ASSESSMENT_FAILURE:")) return "UNRESOLVED";
-        for (String reason : List.of("CALL_BUDGET", "WORK_LIMIT", "SOURCE_LIMIT"))
+        for (String reason : List.of("CALL_BUDGET", "TOTAL_CALL_BUDGET", "WORK_LIMIT", "SOURCE_LIMIT"))
             if (question.startsWith("TECHNICAL_ASSESSMENT_FAILURE: " + reason + ":")) return reason;
         return "INVALID_RESPONSE";
     }

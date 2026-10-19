@@ -40,7 +40,16 @@ class ScenarioArchitectureAcceptanceTest {
             "embedding.enabled=false", "embedding.allow-download=false", "llm.mock=false",
             "llm.provider=CUSTOM_OPENAI", "custom.llm.url=" + ScenarioLlmConfiguration.URL,
             "custom.llm.model=scenario-fixture", "taxonomy.admin-password=Scenario-Acceptance-2026!",
-            "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2"
+            "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2",
+            // Keep the original acceptance envelope despite higher configurable production defaults.
+            "taxonomy.analysis.relations.hierarchical.max-calls=24",
+            "taxonomy.analysis.relations.hierarchical.max-total-calls=3096",
+            "taxonomy.analysis.relations.hierarchical.auto-continue=false",
+            "taxonomy.analysis.relations.hierarchical.batch-size=3",
+            "taxonomy.analysis.relations.hierarchical.max-prompt-characters=16000",
+            "taxonomy.analysis.relations.hierarchical.max-sources=32",
+            "taxonomy.analysis.relations.hierarchical.max-work-items=512",
+            "taxonomy.analysis.relations.hierarchical.max-depth=8"
     })
     @Import({ScenarioLlmConfiguration.class, com.taxonomy.interop.publication.PublicationScenarioConfiguration.class})
     @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -53,6 +62,7 @@ class ScenarioArchitectureAcceptanceTest {
     @Autowired ExportFormatExtensionRegistry exportFormats;
     @Autowired com.taxonomy.portfolio.report.SnapshotWordReportService snapshotWords;
     @Autowired com.taxonomy.preferences.PreferencesService preferences;
+    @Autowired com.taxonomy.analysis.relations.RelationSearchBudgetSettings relationBudgetSettings;
     @Autowired com.taxonomy.catalog.repository.TaxonomyNodeRepository catalogueRepository;
     @Autowired com.taxonomy.catalog.service.TaxonomyService catalogueService;
     @Autowired com.taxonomy.catalog.service.CatalogueOverlayService catalogueOverlay;
@@ -67,6 +77,7 @@ class ScenarioArchitectureAcceptanceTest {
     final ScenarioHttpSession httpSession = new ScenarioHttpSession(http, sessionCookies, json, "admin", PASSWORD);
     final Path output = Path.of(System.getProperty("scenario.output", "target/scenario-acceptance"));
     final Map<String, com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.Cycle> observedAnalysisCycles = new LinkedHashMap<>();
+    private final Map<String, Integer> observedRelationSpending = new LinkedHashMap<>();
     private boolean initialCheckpointPublished;
     private JsonNode evidenceIdentity;
 
@@ -75,6 +86,8 @@ class ScenarioArchitectureAcceptanceTest {
     }
 
     void verifyScenario() throws Exception {
+        assertThat(relationBudgetSettings.snapshot()).as("Resolved original scenario resource envelope")
+                .isEqualTo(new com.taxonomy.analysis.relations.RelationSearchBudgetSettings.Snapshot(24, 3096, false, 32, 512));
         Files.createDirectories(output);
         playback.recordCallsTo(output.resolve("llm-calls.jsonl"));
         JsonNode fixture = playback.fixture();
@@ -123,6 +136,7 @@ class ScenarioArchitectureAcceptanceTest {
             // The independent relation gate below checks the exact permitted F5
             // identity warnings; all other warnings remain acceptance failures.
             verifyIndependentPasses(projectId, operation, analysis);
+            assertThat(observedRelationSpending).as("Two independent passes retain separate cumulative call ledgers").hasSize(2);
             JsonNode continuationHistory = json.readTree(Files.readString(output.resolve("continuation-history.json")));
             assertThat(continuationHistory.isArray()).isTrue();
             assertThat(observedAnalysisCycles).as("Both initial snapshots and every explicit continuation were budget-checked")
@@ -363,6 +377,22 @@ class ScenarioArchitectureAcceptanceTest {
             var checked = com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.verifyCycle(value);
             var previous = observedAnalysisCycles.putIfAbsent(checked.snapshotId(), checked);
             if (previous != null) assertThat(checked).as("Repeated snapshot reads preserve the checked immutable source").isEqualTo(previous);
+            if (previous == null) {
+                JsonNode budget = value.at("/analysis/relationSearchReport/budget");
+                assertThat(budget.isObject()).as("Resolved durable relation budget").isTrue();
+                for (var expected : Map.of("callsPerSlice", 24, "maxTotalCalls", 3096,
+                        "sourcesPerSlice", 32, "workItemsPerSlice", 512, "sourceCohortSize", 32).entrySet())
+                    assertThat(budget.path(expected.getKey()).asInt()).as(expected.getKey()).isEqualTo(expected.getValue());
+                assertThat(budget.path("automatic").asBoolean()).isFalse();
+                String journal = value.at("/analysis/recovery/id").asText();
+                assertThat(journal).isNotBlank();
+                int before = observedRelationSpending.getOrDefault(journal, 0);
+                int spent = budget.path("spentCalls").asInt(), fresh = budget.path("newCalls").asInt();
+                assertThat(fresh).isBetween(0, 24);
+                assertThat(spent).isBetween(before, 3096);
+                assertThat(spent - before).as("Only actual new provider calls charge each durable journal").isEqualTo(fresh);
+                observedRelationSpending.put(journal, spent);
+            }
         }
         return value;
     }

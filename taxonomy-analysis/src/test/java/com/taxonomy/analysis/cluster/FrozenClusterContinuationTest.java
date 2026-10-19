@@ -2,6 +2,8 @@ package com.taxonomy.analysis.cluster;
 
 import com.taxonomy.analysis.dag.*;
 import com.taxonomy.analysis.recovery.*;
+import com.taxonomy.analysis.relations.RelationSearchDistribution;
+import com.taxonomy.analysis.relations.RequirementRelationSearch;
 import com.taxonomy.analysis.service.*;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
@@ -10,12 +12,15 @@ import com.taxonomy.catalog.service.*;
 import com.taxonomy.catalog.snapshot.*;
 import com.taxonomy.dto.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.test.web.client.MockRestServiceServer;
 import tools.jackson.databind.ObjectMapper;
@@ -29,6 +34,253 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 /** Real frozen worker and durable continuation authority; provider exchanges are deterministic fixtures. */
 class FrozenClusterContinuationTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void liveAndTerminalRelationSnapshotsUseTheBoundCallLedgerInsteadOfSchedulerCharges(boolean budgetStop) {
+        var mapper = new ObjectMapper(); var context = ClusterAnalysisStoreTest.context("claimed-relation-progress");
+        var original = ClusterAnalysisStoreTest.command("requirement"); var request = relationRequest();
+        var cp = TaxonomyShardRoot.of("CP"); var ip = TaxonomyShardRoot.of("IP");
+        var tree = relationTree();
+        String signature = AnalysisCheckpointSession.digest("claimed-relation-progress");
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var saved = continuation(db, mapper); var claim = saved.begin(request, original.workspaceContext(), signature, tree);
+            for (int call = 0; call < 4; call++) saved.beforeRelationCall(claim, 20);
+            saved.freezeRelationSourceCohort(claim, 32);
+            var policy = new RequirementRelationSearch.BudgetPolicy(2, 20, 4, true, 128, 4096, 32);
+            var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, saved);
+            var targets = relationTargets(context, mapper);
+            store.admit(context, relationCommand(request, claim, signature, policy), null,
+                    Map.of(cp, targets.get(cp), ip, targets.get(ip)), targets);
+            for (var root : List.of(cp, ip)) store.accept(db.complete(db.task(root), ClusterAnalysisStoreTest.result(root.code(), 75)));
+            var preparation = (RelationAnalysisTask) db.sent.getLast(); store.start(preparation);
+            var base = ClusterRelationCoordinatorTest.plan(context, preparation);
+            var plan = new RelationSearchDistribution.Plan(base.schemaVersion(), base.preparationId(), base.originalSha256(),
+                    base.sourceResultIds(), new RequirementRelationSearch.Options(base.options().limits(), 128, 16000, policy),
+                    base.sourceNodes(), base.targetRoots(), base.sources(), base.items(), base.sourceCalls(), base.durationMillis(),
+                    base.warnings(), base.stopReason(), base.included());
+            var prepared = ClusterRelationCoordinatorTest.completion(context, preparation);
+            db.completions.commit(new PreparedAnalysisCompletion<>(prepared, () -> store.persistRelationPlan(preparation, plan)));
+            store.accept(prepared);
+            var targetsToRun = db.sent.stream().filter(task -> task instanceof RelationAnalysisTask relation
+                    && relation.taskId().relationWorkOrdinal().isPresent()).map(RelationAnalysisTask.class::cast).toList();
+            assertThat(targetsToRun).hasSize(2);
+            for (int ordinal = 0; ordinal < targetsToRun.size(); ordinal++) {
+                var target = targetsToRun.get(ordinal); var input = store.start(target);
+                // A later task may replay an accepted response while retaining its original scheduler debit.
+                if (ordinal == 0) try (var checkpoint = store.checkpointSession(input, target, signature, signature)) {
+                    AnalysisCheckpointSession.beforeRelationCall(20);
+                }
+                var work = mapper.readValue(input.taskInput(), RelationSearchDistribution.Work.class);
+                var effect = budgetStop && ordinal == targetsToRun.size() - 1
+                        ? RelationSearchDistribution.failed(plan, work, "CALL_BUDGET")
+                        : new RelationSearchDistribution.WorkResult(work,
+                                new RelationSearchModel.Result(List.of(), List.of(), List.of(), 1, 1, 1), 1, "");
+                var completed = ClusterRelationCoordinatorTest.completion(context, target);
+                db.completions.commit(new PreparedAnalysisCompletion<>(completed, () -> store.persistRelationResult(target, effect)));
+                store.accept(completed);
+                if (ordinal == 0) {
+                    var live = store.snapshot(context); assertThat(live.state().terminal()).isFalse();
+                    assertThat(live.progress().relations().calls()).isEqualTo(2);
+                    assertThat(live.progress().relations().budget().spentCalls()).isEqualTo(5);
+                    assertThat(live.progress().relations().budget().newCalls()).isEqualTo(1);
+                }
+            }
+            var terminal = store.snapshot(context);
+            assertThat(terminal.state()).isEqualTo(budgetStop ? ClusterAnalysisState.PARTIAL : ClusterAnalysisState.COMPLETED);
+            assertThat(terminal.result().getRelationSearchReport().totalCalls()).isEqualTo(3);
+            assertThat(terminal.progress().relations().budget().spentCalls()).isEqualTo(5);
+            assertThat(terminal.progress().relations().budget().newCalls()).isEqualTo(1);
+            assertThat(terminal.result().getRelationSearchReport().budget().spentCalls()).isEqualTo(5);
+            assertThat(terminal.result().getRelationSearchReport().budget().newCalls()).isEqualTo(1);
+            assertThat(saved.read(claim.id(), original.workspaceContext()).result().getRelationSearchReport().budget())
+                    .isEqualTo(terminal.result().getRelationSearchReport().budget());
+            if (budgetStop) {
+                var stopped = saved.read(claim.id(), original.workspaceContext());
+                assertThat(stopped.recovery().state()).isEqualTo("STOPPED");
+                request.setContinuationAction("CONTINUE"); request.setContinuationVersion(stopped.recovery().version());
+                var next = saved.begin(request, original.workspaceContext(), signature, tree);
+                assertThat(next.token()).isNotEqualTo(claim.token());
+                saved.beforeRelationCall(next, 20);
+                assertThat(saved.relationCallsSpent(next)).isEqualTo(6);
+                var historical = store.snapshot(context);
+                assertThat(historical.progress().relations()).as("A later claim cannot change committed operation progress")
+                        .isEqualTo(terminal.progress().relations());
+                assertThat(historical.result().getRelationSearchReport()).isEqualTo(terminal.result().getRelationSearchReport());
+            }
+        }
+    }
+
+    @Test void cancellationBeforePreparationRetainsPriorRelationEvidenceAndTheNewAdmittedBudget() {
+        var mapper = new ObjectMapper(); var context = ClusterAnalysisStoreTest.context("retained-relation-progress");
+        var original = ClusterAnalysisStoreTest.command("requirement"); var request = relationRequest();
+        var tree = relationTree();
+        var source = new RelationSearchModel.Node("source", "CP", "Source", "", false);
+        var oldBudget = new RelationSearchBudget(4, 4, 4, 4, false, 1, 16, 32, 16);
+        var progress = new RelationSearchProgress(1, 1, 1, 0, 1, 0, 4, 4, 0,
+                RelationSearchProgress.Step.PAUSED, null, List.of(new RelationSearchProgress.Taxonomy("IP", 1, 0, 1, 0)),
+                List.of(new RelationSearchProgress.SourceTaxonomy("CP", 1, 0, 1)), oldBudget);
+        var previous = new RelationSearchReport(2, context.requirement().textSha256(), "policy",
+                List.of(new RelationSearchModel.SourceAssessment(source, List.of(), "The dependency is unclear", "Which dependency is required?")),
+                new RelationSearchModel.Result(List.of(), List.of(), List.of(), 0, 0, 0), 4, 4, 0,
+                List.of("CALL_BUDGET"), "CALL_BUDGET", progress,
+                List.of(new RelationSearchProgress.Task(source.id(), "IP", RelationSearchProgress.State.UNRESOLVED)), oldBudget);
+        String signature = AnalysisCheckpointSession.digest("retained-relation-progress");
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var saved = continuation(db, mapper); var first = saved.begin(request, original.workspaceContext(), signature, tree);
+            for (int call = 0; call < 4; call++) saved.beforeRelationCall(first, 4);
+            saved.freezeRelationSourceCohort(first, 16);
+            var priorResult = new AnalysisResult(Map.of("CP", 75, "IP", 65), tree);
+            priorResult.setStatus("PARTIAL"); priorResult.setRelationSearchReport(previous);
+            saved.complete(first, priorResult, tree);
+            var stopped = saved.read(first.id(), original.workspaceContext());
+            assertThat(stopped.recovery().state()).isEqualTo("STOPPED");
+            request.setContinuationAction("CONTINUE"); request.setContinuationVersion(stopped.recovery().version());
+            var claim = saved.begin(request, original.workspaceContext(), signature, tree);
+            var policy = new RequirementRelationSearch.BudgetPolicy(8, 20, 4, true, 64, 4096, 16);
+            var admitted = new RelationSearchBudget(8, 20, 0, 4, true, 0, 64, 4096, 16);
+            var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, saved);
+            var targets = relationTargets(context, mapper); var cp = TaxonomyShardRoot.of("CP"); var ip = TaxonomyShardRoot.of("IP");
+            store.admit(context, relationCommand(request, claim, signature, policy), null,
+                    Map.of(cp, targets.get(cp), ip, targets.get(ip)), targets);
+            assertThat(db.sent).noneMatch(task -> task instanceof RelationAnalysisTask);
+            var beforePreparation = store.snapshot(context).progress().relations();
+            assertThat(beforePreparation).as("Saved relation evidence must be visible before preparation telemetry exists").isNotNull();
+            assertThat(beforePreparation.assessedSources()).isEqualTo(1);
+            assertThat(beforePreparation.unresolvedSearches()).isEqualTo(1);
+            assertThat(beforePreparation.budget()).isEqualTo(admitted);
+            assertThat(store.cancel(context)).isTrue();
+            var cancelled = store.snapshot(context); assertThat(cancelled.state()).isEqualTo(ClusterAnalysisState.CANCELLED);
+            var retained = cancelled.result().getRelationSearchReport();
+            assertThat(retained.sources()).isEqualTo(previous.sources());
+            assertThat(retained.tasks()).isEqualTo(previous.tasks());
+            assertThat(retained.result()).isEqualTo(previous.result());
+            assertThat(retained.budget()).isEqualTo(admitted);
+            assertThat(cancelled.progress().relations().assessedSources()).isEqualTo(1);
+            assertThat(cancelled.progress().relations().unresolvedSearches()).isEqualTo(1);
+            assertThat(cancelled.progress().relations().budget()).isEqualTo(admitted);
+            assertThat(saved.read(claim.id(), original.workspaceContext()).result().getRelationSearchReport()).isEqualTo(retained);
+            // Cancellation cannot be continued. Remove only the matching live authority to exercise historical-read fencing.
+            new TransactionTemplate(db.transactions).executeWithoutResult(status -> assertThat(db.em.createQuery(
+                            "update AnalysisContinuationRun r set r.claimToken=:replacement where r.id=:id and r.claimToken=:token")
+                    .setParameter("replacement", UUID.randomUUID().toString()).setParameter("id", claim.id())
+                    .setParameter("token", claim.token()).executeUpdate()).isEqualTo(1));
+            var historical = store.snapshot(context);
+            assertThat(historical.progress().relations()).as("Pre-plan terminal evidence is independent of a live claim")
+                    .isNotNull().isEqualTo(cancelled.progress().relations());
+            assertThat(historical.result().getRelationSearchReport()).isEqualTo(retained);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void anExplicitRetryBeforeCoordinatorSettlementRetainsTheOldOperationBudgetAndEvidence(boolean preparedPlan) {
+        var mapper = new ObjectMapper(); var context = ClusterAnalysisStoreTest.context("unsettled-relation-attempt");
+        var original = ClusterAnalysisStoreTest.command("requirement"); var request = relationRequest();
+        var tree = relationTree(); var source = new RelationSearchModel.Node("retained-source", "CP", "Source", "", false);
+        var oldBudget = new RelationSearchBudget(4, 4, 4, 4, false, 1, 16, 32, 16);
+        var progress = new RelationSearchProgress(1, 1, 1, 0, 1, 0, 4, 4, 0,
+                RelationSearchProgress.Step.PAUSED, null, List.of(new RelationSearchProgress.Taxonomy("IP", 1, 0, 1, 0)),
+                List.of(new RelationSearchProgress.SourceTaxonomy("CP", 1, 0, 1)), oldBudget);
+        var previous = new RelationSearchReport(2, context.requirement().textSha256(), "policy",
+                List.of(new RelationSearchModel.SourceAssessment(source, List.of(), "An earlier dependency remains open", "Which dependency?")),
+                new RelationSearchModel.Result(List.of(), List.of(), List.of(), 0, 0, 0), 4, 4, 0,
+                List.of("CALL_BUDGET"), "CALL_BUDGET", progress,
+                List.of(new RelationSearchProgress.Task(source.id(), "IP", RelationSearchProgress.State.UNRESOLVED)), oldBudget);
+        String signature = AnalysisCheckpointSession.digest("unsettled-relation-attempt");
+        try (var db = new ClusterAnalysisStoreTest.Database()) {
+            var saved = continuation(db, mapper); var first = saved.begin(request, original.workspaceContext(), signature, tree);
+            for (int call = 0; call < 4; call++) saved.beforeRelationCall(first, 4);
+            saved.freezeRelationSourceCohort(first, 16);
+            var priorResult = new AnalysisResult(Map.of("CP", 75, "IP", 65), tree);
+            priorResult.setStatus("PARTIAL"); priorResult.setRelationSearchReport(previous); saved.complete(first, priorResult, tree);
+            var stopped = saved.read(first.id(), original.workspaceContext());
+            request.setContinuationAction("CONTINUE"); request.setContinuationVersion(stopped.recovery().version());
+            var claim = saved.begin(request, original.workspaceContext(), signature, tree);
+            var oldPolicy = new RequirementRelationSearch.BudgetPolicy(8, 20, 4, true, 64, 4096, 16);
+            var store = new ClusterAnalysisStore(db.em, db.transactions, mapper, db.dispatch, saved);
+            var targets = relationTargets(context, mapper); var cp = TaxonomyShardRoot.of("CP"); var ip = TaxonomyShardRoot.of("IP");
+            var shards = Map.of(cp, targets.get(cp), ip, targets.get(ip));
+            store.admit(context, relationCommand(request, claim, signature, oldPolicy), null, shards, targets);
+            for (var root : List.of(cp, ip)) store.accept(db.complete(db.task(root), ClusterAnalysisStoreTest.result(root.code(), 75)));
+            var task = (RelationAnalysisTask) db.sent.getLast(); var input = store.start(task);
+            if (preparedPlan) {
+                saved.beforeRelationCall(claim, 20);
+                var base = ClusterRelationCoordinatorTest.plan(context, task);
+                var sourceNodes = new ArrayList<>(base.sourceNodes()); sourceNodes.add(source);
+                var plan = new RelationSearchDistribution.Plan(base.schemaVersion(), base.preparationId(), base.originalSha256(),
+                        base.sourceResultIds(), new RequirementRelationSearch.Options(base.options().limits(), 64, 16000, oldPolicy),
+                        sourceNodes, base.targetRoots(), base.sources(), base.items(), base.sourceCalls(), base.durationMillis(),
+                        base.warnings(), base.stopReason(), base.included());
+                var prepared = ClusterRelationCoordinatorTest.completion(context, task); var preparationTask = task;
+                db.completions.commit(new PreparedAnalysisCompletion<>(prepared, () -> store.persistRelationPlan(preparationTask, plan)));
+                store.accept(prepared);
+                task = db.sent.stream().filter(message -> message instanceof RelationAnalysisTask relation
+                                && relation.taskId().relationWorkOrdinal().isPresent())
+                        .map(RelationAnalysisTask.class::cast).findFirst().orElseThrow();
+                input = store.start(task);
+            }
+            String namespace = task.taskType().name() + ":" + (task.routingRoot() == null ? "all" : task.routingRoot().code());
+            var question = new AnalysisCheckpointSession.Question("R" + "a".repeat(63), signature, "MOCK", List.of("source"), "uncertain relation question");
+            var owner = new AnalysisContinuationStore.QuestionOwner(context.operationId(), task.taskId().value(),
+                    input.deliveryAttempt(), UUID.randomUUID().toString(), namespace);
+            assertThat(saved.prepareDistributed(claim, question, owner).state()).isEqualTo("ATTEMPT");
+            saved.beforeRelationCall(claim, 20);
+            // A worker dies after admission. Redelivery exposes the uncertain question before the coordinator settles.
+            var redelivery = store.start(task);
+            var retryOwner = new AnalysisContinuationStore.QuestionOwner(context.operationId(), task.taskId().value(),
+                    redelivery.deliveryAttempt(), UUID.randomUUID().toString(), namespace);
+            assertThat(saved.prepareDistributed(claim, question, retryOwner).state()).isEqualTo("FAILED");
+            var paused = saved.read(claim.id(), original.workspaceContext());
+            assertThat(paused.recovery().state()).isEqualTo("PAUSED");
+            assertThat(store.snapshot(context).state().terminal()).isFalse();
+            request.setContinuationAction("RETRY"); request.setContinuationVersion(paused.recovery().version());
+            request.setContinuationQuestion(paused.recovery().openQuestions().getFirst().key());
+            var next = saved.begin(request, original.workspaceContext(), signature, tree);
+            int spent = preparedPlan ? 6 : 5;
+            var nextPolicy = new RequirementRelationSearch.BudgetPolicy(16, 40, spent, true, 128, 8192, 16);
+            var nextContext = ClusterAnalysisStoreTest.context("superseding-relation-attempt");
+            store.admit(nextContext, relationCommand(request, next, signature, nextPolicy), null, shards, targets);
+            var superseded = store.snapshot(context);
+            assertThat(superseded.state()).isEqualTo(ClusterAnalysisState.PARTIAL);
+            var report = superseded.result().getRelationSearchReport();
+            assertThat(report).as("Supersession must retain relation evidence before a new plan exists").isNotNull();
+            assertThat(report.sources()).contains(previous.sources().getFirst());
+            assertThat(report.budget().spentCalls()).isEqualTo(spent);
+            assertThat(report.budget().newCalls()).isEqualTo(spent - oldPolicy.callsBeforeExecution());
+            assertThat(report.budget().callsPerSlice()).isEqualTo(oldPolicy.callsPerSlice());
+            assertThat(report.budget().maxTotalCalls()).isEqualTo(oldPolicy.maxTotalCalls());
+            assertThat(report.budget().sourcesPerSlice()).isEqualTo(oldPolicy.sourcesPerSlice());
+            assertThat(report.budget().workItemsPerSlice()).isEqualTo(oldPolicy.workItemsPerSlice());
+            saved.beforeRelationCall(next, 40);
+            assertThat(store.snapshot(context).result().getRelationSearchReport()).isEqualTo(report);
+        }
+    }
+
+    private static AnalysisRequest relationRequest() {
+        var request = new AnalysisRequest(); request.setBusinessText("requirement"); request.setProvider("MOCK");
+        request.setMaxArchitectureNodes(20); request.setAnalysisScope(new AnalysisScope(Set.of("CP", "IP"), AnalysisMode.FULL));
+        request.setResumable(true); request.setContinuationId(UUID.randomUUID().toString()); return request;
+    }
+    private static AnalyzeRequirementCommand relationCommand(AnalysisRequest request, AnalysisContinuationStore.Claim claim,
+            String signature, RequirementRelationSearch.BudgetPolicy budget) {
+        return new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice",
+                ClusterAnalysisStoreTest.command("requirement").workspaceContext(), null, request.getAnalysisScope())
+                .withContinuationBinding(new AnalysisContinuationBinding(claim.id(), claim.token(), signature, signature, signature,
+                        budget.sourceCohortSize(), budget));
+    }
+    private static List<TaxonomyNodeDto> relationTree() {
+        return TaxonomyShardRoot.DEFAULT_ROOTS.stream().map(TaxonomyShardRoot::code).map(root -> {
+            var node = new TaxonomyNodeDto(); node.setCode(root); node.setTaxonomyRoot(root);
+            node.setNameEn("Frozen " + root); node.setClassificationConfidence(1d); return node;
+        }).toList();
+    }
+    private static Map<TaxonomyShardRoot, String> relationTargets(AnalysisOperationContext context, ObjectMapper mapper) {
+        var targets = new LinkedHashMap<TaxonomyShardRoot, String>();
+        TaxonomyShardRoot.DEFAULT_ROOTS.forEach(root -> targets.put(root, mapper.writeValueAsString(
+                DurableClusterAnalysisExecutionTest.root(DurableClusterAnalysisExecutionTest.source(context), root.code()))));
+        return targets;
+    }
+
     @Test void aSavedResponsesAnswerRestartsWithoutEitherEndpointAndRejectsChangedTokenBounds() throws Exception {
         String database = "jdbc:hsqldb:mem:responses-continuation-" + UUID.randomUUID() + ";hsqldb.tx=mvcc";
         var mapper = new ObjectMapper(); var context = ClusterAnalysisStoreTest.context("responses-worker");

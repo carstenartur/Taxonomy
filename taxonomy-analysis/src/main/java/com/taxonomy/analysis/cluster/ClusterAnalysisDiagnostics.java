@@ -15,7 +15,10 @@ import java.util.*;
 
 /** Analysis-owned diagnostics. Every admission commits independently before transport is allowed to run. */
 public final class ClusterAnalysisDiagnostics {
-    public static final int MAX_CALLS = 2048, MAX_ATTEMPTS = 8192, MAX_ATTEMPTS_PER_CALL = 32, MAX_TEXT = 8192;
+    // One operation can spend up to 10,000 relation evaluations plus its node
+    // assessments. Diagnostics must accommodate that funded execution while
+    // retaining independent record, per-call retry and text bounds.
+    public static final int MAX_CALLS = 16_384, MAX_ATTEMPTS = 65_536, MAX_ATTEMPTS_PER_CALL = 32, MAX_TEXT = 8192;
     private static final LlmTransportMeter.Usage UNKNOWN = new LlmTransportMeter.Usage(null, null, null, null, null, false);
     private final EntityManager em;
     private final TransactionTemplate tx;

@@ -128,8 +128,9 @@ final class ScenarioContinuationWalkthrough {
                     after.at("/analysis/relationSearchReport/stopReason").asText()).isTrue();
             assertThat(after.at("/analysis/relationSearchReport/maxCalls").asInt()).isEqualTo(24);
             assertThat(after.at("/analysis/relationSearchReport/totalCalls").asInt()).isBetween(0, 24);
-            assertThat(newCalls).as("Continuing reuses classification and reports each new relation call")
-                    .isEqualTo(after.at("/analysis/relationSearchReport/totalCalls").asInt());
+            assertThat(newCalls).as("Each continuation stays within the original actual-provider-call envelope").isBetween(0, 24);
+            assertThat(newCalls).as("The durable budget reports actual new relation calls, separately from scheduler grants")
+                    .isEqualTo(after.at("/analysis/relationSearchReport/budget/newCalls").asInt());
             var entry = new LinkedHashMap<String, Object>();
             entry.put("cycle", cycle + 1); entry.put("jobId", selectedJob.path("id").asText());
             entry.put("itemId", selectedItem.path("id").asLong()); entry.put("continuationId", journal);

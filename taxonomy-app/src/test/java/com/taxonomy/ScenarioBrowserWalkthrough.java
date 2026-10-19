@@ -100,7 +100,20 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         return new ScenarioArchitectureAcceptanceTest.Run(projectId, requirementId, operation);
     }
 
-    /** Observe the same operation during HTTP-only cycles and keep the remote session active. */
+    static void refreshAuthenticatedOperation(WebDriver browser, WebDriverWait wait, String operationUrl) {
+        browser.navigate().refresh();
+        if (!"/login".equals(java.net.URI.create(browser.getCurrentUrl()).getPath())) return;
+        // HTTP-only analysis can outlive this browser's separate servlet session.
+        // Sign in through the real form, then restore the operation being reviewed.
+        var form = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("loginForm")));
+        form.findElement(By.name("username")).sendKeys("admin");
+        form.findElement(By.name("password")).sendKeys(ScenarioArchitectureAcceptanceTest.PASSWORD);
+        form.findElement(By.cssSelector("button[type='submit']")).click();
+        wait.until(current -> !"/login".equals(java.net.URI.create(current.getCurrentUrl()).getPath()));
+        browser.get(operationUrl);
+    }
+
+    /** Observe the same operation during HTTP-only cycles and keep the remote WebDriver session active. */
     void observeOperation(String operationId) {
         wait.until(ExpectedConditions.attributeToBe(By.id("copilotOperation"), "data-operation-id", operationId));
     }
@@ -123,7 +136,8 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
                  Map<String, byte[]> artifacts, ScenarioArchitectureAcceptanceTest app) throws Exception {
         // A partial analysis stays on its operation surface so its questions and
         // continuation actions remain reviewable. Open the selected result explicitly.
-        driver.navigate().refresh();
+        refreshAuthenticatedOperation(driver, wait,
+                origin + "/projects/" + projectId + "/requirements/" + requirementId + "?lang=en");
         wait.until(ExpectedConditions.attributeContains(By.id("copilotOpenResult"), "href", "snapshot=" + snapshotId));
         click(By.id("copilotOpenResult"));
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot=" + snapshotId));

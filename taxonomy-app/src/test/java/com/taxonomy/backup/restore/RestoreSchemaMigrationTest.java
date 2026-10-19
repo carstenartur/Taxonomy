@@ -28,8 +28,9 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "analysis_cluster_call", "analysis_cluster_attempt"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(10);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(11);
         assertReasonLengthColumn(target);
+        assertRelationLedgerColumns(target);
         assertThat(source.queryForObject("select id from active_marker", Integer.class)).isEqualTo(42);
         assertThat(tableNames(active)).containsExactly("ACTIVE_MARKER");
         rows.execute("alter table source_artifact drop column canonical_identifier");
@@ -80,6 +81,37 @@ class RestoreSchemaMigrationTest {
             assertThat(rows.queryForObject("select analysis_reason_length from req_analysis_job where id = 'legacy-job'", String.class))
                     .isNull();
         }
+    }
+    @Test void relationLedgerMigrationPreservesLegacyEvidenceAndUnknownAccounting() throws Exception {
+        var target = database();
+        migrateBusinessSchema(target, "1");
+        PrincipalSchemaMigration.migrate(target);
+        migrateBusinessSchema(target, "10");
+        var rows = new JdbcTemplate(target);
+        rows.execute("""
+                insert into analysis_continuation (id, username, workspace_id, branch_name, repository_id,
+                    input_hash, request_json, result_json, state, claim_until, updated_at, payload_characters, row_version)
+                values ('legacy-continuation', 'owner', 'workspace', 'main', 'repository',
+                    'original-signature', '{"businessText":"retained requirement"}', '{"accepted":true}',
+                    'STOPPED', 0, 42, 64, 7)
+                """);
+        var legacy = rows.queryForMap("select * from analysis_continuation where id='legacy-continuation'");
+        assertThat(legacy).doesNotContainKeys("RELATION_CALLS_SPENT", "RELATION_SOURCE_COHORT_SIZE");
+
+        migrateBusinessSchema(target, "11");
+
+        assertRelationLedgerColumns(target);
+        var migrated = rows.queryForMap("select * from analysis_continuation where id='legacy-continuation'");
+        assertThat(migrated).containsEntry("RELATION_CALLS_SPENT", null).containsEntry("RELATION_SOURCE_COHORT_SIZE", null);
+        migrated.remove("RELATION_CALLS_SPENT"); migrated.remove("RELATION_SOURCE_COHORT_SIZE");
+        assertThat(migrated).isEqualTo(legacy);
+        rows.update("update analysis_continuation set relation_calls_spent=256, relation_source_cohort_size=32 where id='legacy-continuation'");
+        migrateBusinessSchema(target, "11");
+        assertThat(rows.queryForObject("select relation_calls_spent from analysis_continuation where id='legacy-continuation'", Integer.class))
+                .isEqualTo(256);
+        assertThat(rows.queryForObject("select relation_source_cohort_size from analysis_continuation where id='legacy-continuation'", Integer.class))
+                .isEqualTo(32);
+        assertThat(rows.queryForObject("select row_version from analysis_continuation where id='legacy-continuation'", Long.class)).isEqualTo(7);
     }
     @Test void aliasedOrPartlyPopulatedTargetIsRejectedBeforeAnyDdl() throws Exception {
         var active = database();
@@ -144,6 +176,19 @@ class RestoreSchemaMigrationTest {
             assertThat(columns.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNullable);
             assertThat(columns.getString("COLUMN_DEF")).isNull();
             assertThat(columns.next()).isFalse();
+        }
+    }
+    private static void assertRelationLedgerColumns(javax.sql.DataSource database) throws Exception {
+        for (String name : List.of("RELATION_CALLS_SPENT", "RELATION_SOURCE_COHORT_SIZE")) {
+            try (var connection = database.getConnection();
+                 var columns = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(),
+                         "ANALYSIS_CONTINUATION", name)) {
+                assertThat(columns.next()).as("restored continuation column %s", name).isTrue();
+                assertThat(columns.getInt("DATA_TYPE")).isEqualTo(java.sql.Types.INTEGER);
+                assertThat(columns.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNullable);
+                assertThat(columns.getString("COLUMN_DEF")).isNull();
+                assertThat(columns.next()).isFalse();
+            }
         }
     }
     private static void migrateBusinessSchema(javax.sql.DataSource database, String target) {

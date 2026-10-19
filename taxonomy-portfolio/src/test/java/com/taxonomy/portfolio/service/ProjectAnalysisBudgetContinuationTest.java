@@ -5,6 +5,7 @@ import com.taxonomy.analysis.recovery.AnalysisContinuationRun;
 import com.taxonomy.analysis.recovery.AnalysisContinuationService;
 import com.taxonomy.analysis.recovery.AnalysisContinuationStore;
 import com.taxonomy.analysis.recovery.AnalysisQuestionCheckpoint;
+import com.taxonomy.analysis.relations.RelationSearchBudgetSettings;
 import com.taxonomy.analysis.relations.RequirementRelationSearchService;
 import com.taxonomy.analysis.service.*;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
@@ -694,7 +695,12 @@ class ProjectAnalysisBudgetContinuationTest {
             var recovery = proxied(new PortfolioAnalysisRecoveryService(jobs, items, projectService));
             var budget = mock(AiPromptBudgetPolicy.class);
             var relations = new RequirementRelationSearchService(catalogue, new RelationCompatibilityMatrix(), llm, budget);
-            // Production defaults intentionally stay 24 calls, 32 sources, batch 3 and 16k characters.
+            // Exercise explicit manual continuation with fixed source and prompt packing.
+            var relationBudgets = mock(RelationSearchBudgetSettings.class);
+            when(relationBudgets.snapshot()).thenReturn(new RelationSearchBudgetSettings.Snapshot(24, 4096, false, 32, 512));
+            ReflectionTestUtils.setField(relations, "budgetSettings", relationBudgets);
+            ReflectionTestUtils.setField(relations, "batchSize", 3);
+            ReflectionTestUtils.setField(relations, "maxPromptCharacters", 16_000);
             var workspace = new UserWorkspace(); workspace.setUsername("owner"); workspace.setWorkspaceId(scope.workspaceId());
             var workspaces = mock(WorkspaceManager.class);
             when(workspaces.getWorkspaceById(scope.workspaceId())).thenReturn(workspace);

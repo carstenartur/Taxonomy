@@ -18,6 +18,7 @@ import org.springframework.mock.env.MockEnvironment;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.util.List;
 
 import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
@@ -25,6 +26,30 @@ import static org.assertj.core.api.Assertions.*;
 class ApplicationConfigurationExportIT {
     private static final String PATH = "configuration/application.json";
     private static final JsonMapper JSON = new JsonMapper();
+
+    @ParameterizedTest
+    @CsvSource({"73,1537,true,81,8193", "0,0,false,1,1"})
+    void relationBudgetDeploymentValuesRemainTypedThroughExportAndDeserialization(
+            int maxCalls, int maxTotalCalls, boolean automatic, int maxSources, int maxWorkItems) throws Exception {
+        var environment = new MockEnvironment()
+                .withProperty("taxonomy.analysis.relations.hierarchical.max-calls", Integer.toString(maxCalls))
+                .withProperty("taxonomy.analysis.relations.hierarchical.max-total-calls", Integer.toString(maxTotalCalls))
+                .withProperty("taxonomy.analysis.relations.hierarchical.auto-continue", Boolean.toString(automatic))
+                .withProperty("taxonomy.analysis.relations.hierarchical.max-sources", Integer.toString(maxSources))
+                .withProperty("taxonomy.analysis.relations.hierarchical.max-work-items", Integer.toString(maxWorkItems));
+        var document = JSON.readTree(export(environment, BackupProfile.INSTALLATION_CURRENT).entries.get(PATH));
+        var restored = JSON.treeToValue(document, ApplicationConfigurationBackupContributor.Inventory.class);
+        var defaults = JSON.valueToTree(restored.settings().preferenceDefaults());
+        assertThat(defaults.path("analysisRelationMaxCalls").isIntegralNumber()).isTrue();
+        assertThat(defaults.path("analysisRelationMaxCalls").intValue()).isEqualTo(maxCalls);
+        assertThat(defaults.path("analysisRelationMaxTotalCalls").intValue()).isEqualTo(maxTotalCalls);
+        assertThat(defaults.path("analysisRelationAutoContinue").isBoolean()).isTrue();
+        assertThat(defaults.path("analysisRelationAutoContinue").booleanValue()).isEqualTo(automatic);
+        assertThat(defaults.path("analysisRelationMaxSources").intValue()).isEqualTo(maxSources);
+        assertThat(defaults.path("analysisRelationMaxWorkItems").intValue()).isEqualTo(maxWorkItems);
+        assertThat(restored.restorePolicy()).isEqualTo(ApplicationConfigurationBackupContributor.RestorePolicy.MANUAL_TARGET_REVIEW);
+        assertThat(restored.automaticExecution()).isEqualTo(ApplicationConfigurationBackupContributor.AutomaticExecution.DISABLED_UNTIL_APPROVED);
+    }
 
     @ParameterizedTest
     @EnumSource(value = BackupProfile.class, names = {"INSTALLATION_CURRENT", "INSTALLATION_FULL"})
@@ -91,6 +116,10 @@ class ApplicationConfigurationExportIT {
         JsonNode settings = document.path("settings");
         assertThat(settings.path("preferenceDefaults").path("llmRequestsPerMinute").isNull()).isTrue();
         assertThat(settings.path("preferenceDefaults").path("analysisReasonLength").isNull()).isTrue();
+        for (String field : List.of("analysisRelationMaxCalls", "analysisRelationMaxTotalCalls",
+                "analysisRelationAutoContinue", "analysisRelationMaxSources", "analysisRelationMaxWorkItems")) {
+            assertThat(settings.path("preferenceDefaults").path(field).isNull()).as(field).isTrue();
+        }
         assertThat(settings.path("documents").path("maximumUploadBytes").isNull()).isTrue();
         assertThat(settings.path("documents").path("minimumDocxInflateRatio").isNull()).isTrue();
         assertThat(settings.path("features").path("multiRepositoryApi").isNull()).isTrue();
@@ -102,6 +131,11 @@ class ApplicationConfigurationExportIT {
     @CsvSource({
             "taxonomy.llm.rpm,INTERNAL-SECRET", "taxonomy.llm.rpm,2147483648",
             "taxonomy.analysis.reason-length,INTERNAL-SECRET", "taxonomy.analysis.reason-length,' '",
+            "taxonomy.analysis.relations.hierarchical.max-calls,1.5",
+            "taxonomy.analysis.relations.hierarchical.max-total-calls,2147483648",
+            "taxonomy.analysis.relations.hierarchical.auto-continue,INTERNAL-SECRET",
+            "taxonomy.analysis.relations.hierarchical.max-sources,INTERNAL-SECRET",
+            "taxonomy.analysis.relations.hierarchical.max-work-items,INTERNAL-SECRET",
             "taxonomy.limits.document.max-upload-bytes,9223372036854775808",
             "taxonomy.features.multi-repository-api.enabled,INTERNAL-SECRET",
             "taxonomy.features.multi-repository-api.enabled,' '",

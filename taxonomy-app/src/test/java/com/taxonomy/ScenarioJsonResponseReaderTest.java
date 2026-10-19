@@ -50,7 +50,7 @@ class ScenarioJsonResponseReaderTest {
 
     @Test void scenarioJsonReadsAvoidTheLegacyWholeResponseArrayAcrossAllThreads() throws Exception {
         var snapshot = JSON.valueToTree(Map.of("summary", Map.of("id", "immutable-source"), "analysis", Map.of(
-                "relationSearchReport", Map.of("maxCalls", 24, "totalCalls", 7),
+                "recovery", Map.of("id", "immutable-journal"), "relationSearchReport", snapshotRelationReport(),
                 "source", "Complete original source — 水位 🌊; quoted evidence.\n".repeat(160_000))));
         byte[] wire = JSON.writeValueAsBytes(snapshot);
         var expectedCycle = ScenarioPromptEvidenceQuality.verifyCycle(snapshot);
@@ -99,7 +99,7 @@ class ScenarioJsonResponseReaderTest {
 
     @Test void repeatedSnapshotReadsStillRejectAnyMutationOfTheCheckedSource() throws Exception {
         var source = JSON.valueToTree(Map.of("summary", Map.of("id", "immutable-source"), "analysis", Map.of(
-                "relationSearchReport", Map.of("maxCalls", 24, "totalCalls", 7), "evidence", "original")));
+                "recovery", Map.of("id", "immutable-journal"), "relationSearchReport", snapshotRelationReport(), "evidence", "original")));
         try (var client = new WireClient(JSON.writeValueAsBytes(source))) {
             var driver = driver(client, Duration.ofSeconds(30));
             driver.get("/api/projects/1/snapshots/immutable-source");
@@ -213,6 +213,13 @@ class ScenarioJsonResponseReaderTest {
             assertThat(client.feeds.getFirst().finished.await(3, TimeUnit.SECONDS)).isTrue();
             assertReaderStopped(client);
         }
+    }
+
+    private static Map<String, Object> snapshotRelationReport() {
+        return Map.of("maxCalls", 24, "totalCalls", 7, "budget", Map.of(
+                "callsPerSlice", 24, "maxTotalCalls", 3096, "newCalls", 7, "spentCalls", 7,
+                "automatic", false, "slices", 1, "sourcesPerSlice", 32,
+                "workItemsPerSlice", 512, "sourceCohortSize", 32));
     }
 
     private void assertReaderStopped(WireClient client) throws InterruptedException {

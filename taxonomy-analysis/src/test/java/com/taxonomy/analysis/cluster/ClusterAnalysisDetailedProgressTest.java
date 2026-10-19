@@ -16,6 +16,40 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClusterAnalysisDetailedProgressTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
 
+    @Test void liveRelationProgressPreservesTheAdmittedCumulativeBudget() {
+        var plan = budgetPlan(10);
+        var view = ClusterAnalysisProgress.combine(context("budget-progress"), ClusterAnalysisState.RUNNING,
+                List.of(), Map.of(), new ObjectMapper().writeValueAsString(plan), null, new ObjectMapper());
+        assertNotNull(view.relations().budget(), "Polling must retain the cumulative budget carried by the plan");
+        assertEquals(4, view.relations().budget().spentCalls());
+        assertEquals(256, view.relations().budget().callsPerSlice());
+        assertEquals(4096, view.relations().budget().maxTotalCalls());
+    }
+
+    @Test void anUnstartedContinuationPreservesAssessedSourcesAndUnresolvedSearches() {
+        var plan = budgetPlan(0);
+        var source = plan.sourceNodes().getFirst();
+        var previous = new RelationSearchReport(2, "digest", "policy",
+                List.of(new RelationSearchModel.SourceAssessment(source, List.of(), "The dependency is unclear", "Which dependency is required?")),
+                new RelationSearchModel.Result(List.of(), List.of(), List.of(), 0, 0, 0),
+                1, 10, 0, List.of("SOURCE_UNRESOLVED"), "", null,
+                List.of(new RelationSearchProgress.Task(source.id(), "IP", RelationSearchProgress.State.UNRESOLVED)));
+        var view = ClusterAnalysisProgress.combine(context("retained-progress"), ClusterAnalysisState.RUNNING,
+                List.of(), Map.of(), new ObjectMapper().writeValueAsString(plan), previous, new ObjectMapper());
+        assertEquals(1, view.relations().assessedSources(), "A new grant must preserve saved source evidence before replay");
+        assertEquals(1, view.relations().unresolvedSearches(), "An unresolved question cannot revert to an unassessed search");
+        assertEquals(RelationSearchProgress.Step.PAUSED, view.relations().step());
+    }
+
+    private static RelationSearchDistribution.Plan budgetPlan(int calls) {
+        var source = new RelationSearchModel.Node("source", "CP", "Source", "", false);
+        return new RelationSearchDistribution.Plan(1, "budget-plan", "digest", List.of("source-result"),
+                new com.taxonomy.analysis.relations.RequirementRelationSearch.Options(new RelationSearchModel.Limits(calls, 8, 10, 4096),
+                        128, 16000, new com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy(256, 4096, 4, true, 128, 4096, 128)),
+                List.of(source), List.of(new RelationSearchModel.Node("IP", "IP", "Products", "", true)),
+                List.of(), List.of(), 0, 0, List.of(), "", true);
+    }
+
     private static SubtaxonomyAnalysisTask releaseIpAfterUnassessedCp(Database db) {
         var failed = new AnalysisResult(Map.of(), List.of()); failed.setStatus("ERROR");
         db.store.accept(db.complete(db.task(CP), failed));

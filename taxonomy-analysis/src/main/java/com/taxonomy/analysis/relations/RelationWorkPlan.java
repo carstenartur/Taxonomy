@@ -33,6 +33,7 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
     private int calls, completed, unresolved;
     private Step step = Step.SOURCES;
     private Current current;
+    private java.util.function.Supplier<com.taxonomy.dto.RelationSearchBudget> budget;
 
     RelationWorkPlan(List<Node> sources, List<Node> roots, RelationCompatibilityMatrix rules, int maximum) {
         this(sources, roots, rules, maximum, true);
@@ -74,6 +75,27 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
             if (value != null) state(value, State.UNRESOLVED);
         }
     }
+    void replayUnresolved(List<Task> previous, List<Unfinished> previousFailures, List<Intent> replayed) {
+        for (Task task : previous) {
+            if (task.state() != State.UNRESOLVED) continue;
+            Work value = work.get(new Pair(task.sourceId(), task.targetRoot()));
+            if (value == null) continue;
+            List<Unfinished> failures = previousFailures.stream()
+                    .filter(failure -> failure.sourceId().equals(task.sourceId())
+                            && task.targetRoot().equals(failure.targetRoot()))
+                    .toList();
+            if (!failures.isEmpty() && failures.stream().allMatch(failure -> replayed.stream()
+                    .anyMatch(intent -> matches(failure, task, intent)))) state(value, State.PENDING);
+        }
+    }
+    private static boolean matches(Unfinished failure, Task task, Intent intent) {
+        return failure.contributionKey() != null && failure.targetRoot().equals(task.targetRoot())
+                && failure.sourceId().equals(intent.contribution().source().id())
+                && failure.type().equals(intent.type()) && failure.direction() == intent.direction()
+                && failure.contributionKey().equals(RelationSearchEngine.contributionKey(
+                        intent.contribution(), intent.type(), intent.direction()))
+                && intent.roots().stream().anyMatch(root -> root.root().equals(task.targetRoot()));
+    }
     void sourceBatch(List<String> ids) {
         step = Step.SOURCES;
         current = new Current(String.join(", ", ids), "", "", null, 0, ids);
@@ -97,6 +119,7 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
         }
     }
     void calls(int count) { calls = count; publish(); }
+    void budget(java.util.function.Supplier<com.taxonomy.dto.RelationSearchBudget> value) { budget = value; publish(); }
     @Override public void started(Query query, int depth) {
         step = query.phase() == Phase.VERIFY ? Step.VERIFY : Step.NAVIGATE;
         current = new Current(query.contribution().source().id(), query.candidates().getFirst().root(),
@@ -142,7 +165,8 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
         var sourceTaxonomies = sourceCounts.entrySet().stream().map(entry -> new SourceTaxonomy(entry.getKey(),
                 entry.getValue()[0], entry.getValue()[1], entry.getValue()[2])).toList();
         return new RelationSearchProgress(sources, assessedSources.size(), work.size(), completed, unresolved,
-                work.size() - completed - unresolved, calls, maximum, verified.size(), step, current, taxonomies, sourceTaxonomies);
+                work.size() - completed - unresolved, calls, maximum, verified.size(), step, current, taxonomies, sourceTaxonomies,
+                budget == null ? null : budget.get());
     }
     private void state(Work value, State next) {
         if (value.state == next) return;

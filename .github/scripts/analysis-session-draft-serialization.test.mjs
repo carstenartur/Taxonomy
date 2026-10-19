@@ -417,20 +417,26 @@ for (const change of ['workspace', 'analysis', 'draft lifecycle']) {
   });
 }
 
-test('a queued write for an abandoned scope is never submitted with the next scope revision', async () => {
-  const response = deferred(), methods = [];
-  const h = createHarness(async (url, options) => { methods.push(options.method); return response.promise; });
-  const reading = h.C.jsonRequest('/api/analysis-drafts/workspace-1', { method: 'GET' });
-  const writing = h.C.jsonRequest('/api/analysis-drafts/workspace-1', put({ businessText: 'abandoned' }));
-  const outcomes = Promise.allSettled([reading, writing]);
-  await flush();
-  h.runtime.workspaceId = 'workspace-2';
-  h.runtime.version = 4;
-  response.resolve({ version: 8, payload: { businessText: 'old' } });
-  await outcomes;
-  assert.deepEqual(methods, ['GET']);
-  assert.equal(h.runtime.version, 4);
-});
+for (const change of ['workspace', 'draft lifecycle']) {
+  test(`a queued write for an abandoned ${change} is never submitted with the next scope revision`, async () => {
+    const response = deferred(), methods = [];
+    const h = createHarness(async (url, options) => { methods.push(options.method); return response.promise; });
+    const reading = h.C.jsonRequest('/api/analysis-drafts/workspace-1', { method: 'GET' });
+    const writing = h.C.jsonRequest('/api/analysis-drafts/workspace-1', put({ businessText: 'abandoned' }));
+    const outcomes = Promise.allSettled([reading, writing]);
+    await flush();
+    if (change === 'workspace') h.runtime.workspaceId = 'workspace-2';
+    else h.runtime.draftGeneration++;
+    h.runtime.version = 4;
+    response.resolve({ version: 8, payload: { businessText: 'old' } });
+    for (const result of await outcomes) {
+      assert.equal(result.status, 'rejected');
+      assert.equal(result.reason.code, 'STALE_DRAFT_CONTEXT');
+    }
+    assert.deepEqual(methods, ['GET']);
+    assert.equal(h.runtime.version, 4);
+  });
+}
 
 
 test('a delayed provider restore cannot replace options selected after its draft was discarded', () => {
