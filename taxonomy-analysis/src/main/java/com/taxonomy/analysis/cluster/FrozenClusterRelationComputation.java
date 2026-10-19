@@ -91,10 +91,15 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
                 if (!"SUCCESS".equals(sources.getStatus()) || !sources.getWarnings().isEmpty()) {
                     var warnings = new ArrayList<>(prepared.warnings());
                     warnings.add("SOURCE_RESULTS_PARTIAL: one or more source shards remain unassessed; no negative finding.");
+                    var inline = prepared.inlineReport();
+                    if (inline != null) inline = new com.taxonomy.dto.RelationSearchReport(inline.schemaVersion(),
+                            inline.originalSha256(), inline.policy(), inline.sources(), inline.result(), inline.totalCalls(),
+                            inline.maxCalls(), inline.durationMillis(), warnings, inline.stopReason(), inline.progress(),
+                            inline.tasks(), inline.budget());
                     prepared = new RelationSearchDistribution.Plan(prepared.schemaVersion(), prepared.preparationId(),
                             prepared.originalSha256(), prepared.sourceResultIds(), prepared.options(), prepared.sourceNodes(),
                             prepared.targetRoots(), prepared.sources(), prepared.items(), prepared.sourceCalls(),
-                            prepared.durationMillis(), warnings, prepared.stopReason(), prepared.included());
+                            prepared.durationMillis(), warnings, prepared.stopReason(), prepared.included(), inline);
                 }
                 return new Preparation(prepared);
             }

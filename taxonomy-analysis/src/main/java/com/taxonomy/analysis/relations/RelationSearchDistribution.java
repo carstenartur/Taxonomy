@@ -233,6 +233,9 @@ public final class RelationSearchDistribution {
         progress.restore(previous);
         plan.sources().forEach(progress::assessed);
         progress.expect(plan.items().stream().map(i -> intent(plan, i)).toList());
+        if (previous != null) progress.replayUnresolved(previous.tasks(), previous.result().unfinished(),
+                schedule.results().values().stream()
+                        .map(result -> intent(plan, plan.items().get(result.work().ordinal()))).toList());
         Set<List<String>> previouslyCompleted = new HashSet<>();
         if (previous != null) previous.tasks().stream()
                 .filter(task -> task.state() == com.taxonomy.dto.RelationSearchProgress.State.COMPLETED)

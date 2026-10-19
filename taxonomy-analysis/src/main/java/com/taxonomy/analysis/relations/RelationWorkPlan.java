@@ -75,6 +75,27 @@ final class RelationWorkPlan implements RelationSearchEngine.Observer {
             if (value != null) state(value, State.UNRESOLVED);
         }
     }
+    void replayUnresolved(List<Task> previous, List<Unfinished> previousFailures, List<Intent> replayed) {
+        for (Task task : previous) {
+            if (task.state() != State.UNRESOLVED) continue;
+            Work value = work.get(new Pair(task.sourceId(), task.targetRoot()));
+            if (value == null) continue;
+            List<Unfinished> failures = previousFailures.stream()
+                    .filter(failure -> failure.sourceId().equals(task.sourceId())
+                            && task.targetRoot().equals(failure.targetRoot()))
+                    .toList();
+            if (!failures.isEmpty() && failures.stream().allMatch(failure -> replayed.stream()
+                    .anyMatch(intent -> matches(failure, task, intent)))) state(value, State.PENDING);
+        }
+    }
+    private static boolean matches(Unfinished failure, Task task, Intent intent) {
+        return failure.contributionKey() != null && failure.targetRoot().equals(task.targetRoot())
+                && failure.sourceId().equals(intent.contribution().source().id())
+                && failure.type().equals(intent.type()) && failure.direction() == intent.direction()
+                && failure.contributionKey().equals(RelationSearchEngine.contributionKey(
+                        intent.contribution(), intent.type(), intent.direction()))
+                && intent.roots().stream().anyMatch(root -> root.root().equals(task.targetRoot()));
+    }
     void sourceBatch(List<String> ids) {
         step = Step.SOURCES;
         current = new Current(String.join(", ", ids), "", "", null, 0, ids);

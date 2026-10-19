@@ -119,6 +119,52 @@ class FrozenClusterRelationComputationTest {
         assertThat(RelationSearchDistribution.combine(prepared.plan(), List.of()).isSearchExhausted()).isFalse();
     }
 
+    @Test void partialSourceWarningPreservesInlineRelationsAndOpenQuestions() {
+        var fixture = new Fixture(); fixture.store.roots.setStatus("PARTIAL");
+        fixture.store.roots.setWarnings(new ArrayList<>(List.of("IP: unexecuted root; no negative finding")));
+        ReflectionTestUtils.setField(fixture.relations, "autoContinue", true);
+        var task = ClusterRelationServiceTest.task(fixture.store.context, null);
+        var initial = ((ClusterRelationComputation.Preparation) fixture.computation("all", "BP,BR,CP,CI,CO,CR,IP,UA")
+                .compute(fixture.store.start(task), task, () -> false)).plan();
+        var contribution = initial.sources().getFirst().contributions().getFirst();
+        var target = new Node("evidence", "IP", "Evidence record", "Frozen evidence", false);
+        var verified = new Decision(target.id(), Outcome.VERIFIED, contribution.text(), contribution.quote(),
+                Necessity.REQUIRED, "", "", "Verified evidence relation", "");
+        var unfinished = new Unfinished(contribution.source().id(), "CONSUMES", Direction.OUTGOING,
+                List.of("another-evidence-record"), "UNRESOLVED", "Which evidence record?",
+                null, "IP");
+        String warning = "SOURCE_RESULTS_PARTIAL: one or more source shards remain unassessed; no negative finding.";
+        var warnings = initial.warnings();
+        var options = initial.options();
+        var budget = options.budget();
+        int totalCalls = initial.sourceCalls() + 1;
+        var usage = new RelationSearchBudget(budget.callsPerSlice(), budget.maxTotalCalls(), totalCalls,
+                budget.callsBeforeExecution() + totalCalls, budget.automatic(), 1,
+                budget.sourcesPerSlice(), budget.workItemsPerSlice(), budget.sourceCohortSize());
+        var inline = new RelationSearchReport(2, initial.originalSha256(), "inline-test", initial.sources(),
+                new Result(List.of(new Edge(contribution, target, "CONSUMES", Direction.OUTGOING, verified)),
+                        List.of(unfinished), List.of(), 1, 1, 0),
+                totalCalls, options.limits().maxCalls(), 0, warnings, initial.stopReason(), null,
+                List.of(new RelationSearchProgress.Task(contribution.source().id(), "IP", RelationSearchProgress.State.UNRESOLVED)),
+                usage);
+        var inlinePlan = new RelationSearchDistribution.Plan(initial.schemaVersion(), initial.preparationId(),
+                initial.originalSha256(), initial.sourceResultIds(), options, initial.sourceNodes(), initial.targetRoots(),
+                initial.sources(), List.of(), initial.sourceCalls(), initial.durationMillis(), warnings,
+                initial.stopReason(), true, inline);
+        var relations = spy(fixture.relations);
+        doReturn(inlinePlan).when(relations).prepare(anyString(), anyString(), anyMap(), anyList(), any(), eq(true));
+        var prepared = (ClusterRelationComputation.Preparation) fixture.computation("all", "BP,BR,CP,CI,CO,CR,IP,UA", relations)
+                .compute(fixture.store.start(task), task, () -> false);
+
+        var expectedWarnings = new ArrayList<>(initial.warnings()); expectedWarnings.add(warning);
+        assertThat(prepared.plan().inlineReport()).isNotNull();
+        assertThat(prepared.plan().warnings()).containsExactlyElementsOf(expectedWarnings);
+        assertThat(prepared.plan().inlineReport().warnings()).isEqualTo(prepared.plan().warnings());
+        var report = RelationSearchDistribution.combine(prepared.plan(), List.of());
+        assertThat(report.result().edges()).containsExactlyElementsOf(inline.result().edges());
+        assertThat(report.result().unfinished()).containsExactly(unfinished);
+    }
+
     @Test void foreignOrMissingFrozenCatalogueFailsBeforeProviderAndRestoresEveryScope() {
         var fixture = new Fixture();
         var task = ClusterRelationServiceTest.task(fixture.store.context, null);
@@ -335,12 +381,19 @@ class FrozenClusterRelationComputationTest {
         FrozenClusterRelationComputation computation(String role, String roots) {
             return computation(store, role, roots);
         }
+        FrozenClusterRelationComputation computation(String role, String roots, RequirementRelationSearchService relationService) {
+            return computation(store, role, roots, relationService);
+        }
         FrozenClusterRelationComputation computation(ClusterRelationService.Store durableStore, String role, String roots) {
+            return computation(durableStore, role, roots, relations);
+        }
+        FrozenClusterRelationComputation computation(ClusterRelationService.Store durableStore, String role, String roots,
+                RequirementRelationSearchService relationService) {
             var snapshots = new CatalogueSnapshotService(repository, overlay, new CatalogueRuntimePolicy(role, roots), mock(CatalogueSourceJournal.class));
             Supplier<AnalysisMemoryGuard> guards = () -> new AnalysisMemoryGuard(
                     new AnalysisMemoryGuard.Policy(80, 90, 1024 * 1024, 1000, 60000),
                     () -> new AnalysisMemoryGuard.Sample(1024, 100 * 1024 * 1024), System::currentTimeMillis);
-            return new FrozenClusterRelationComputation(durableStore, snapshots, taxonomy, relations, providers, JSON, guards);
+            return new FrozenClusterRelationComputation(durableStore, snapshots, taxonomy, relationService, providers, JSON, guards);
         }
         private static RootCatalogueSnapshot.Node node(String code, String root, String parent) {
             var node = new TaxonomyNode(); node.setCode(code); node.setTaxonomyRoot(root); node.setParentCode(parent);
