@@ -115,7 +115,7 @@ public class RequirementAnalysisJobItem {
             @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
                     insertable = false, updatable = false)
     })
-    private RequirementAnalysisSnapshot snapshot;
+    private SnapshotReference snapshot;
 
     @Column(nullable = false)
     private int attempt = 1;
@@ -277,7 +277,7 @@ public class RequirementAnalysisJobItem {
     public ProjectRequirementVersion getRequirementVersion() { return requirementVersion; }
     public AnalysisStatus getStatus() { return status; }
     public String getSnapshotId() { return snapshotId; }
-    public RequirementAnalysisSnapshot getSnapshot() { return snapshot; }
+    public SnapshotReference getSnapshot() { return snapshot; }
     public int getAttempt() { return attempt; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getCompletedAt() { return completedAt; }

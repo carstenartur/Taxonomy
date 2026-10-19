@@ -429,7 +429,8 @@ class PortfolioSnapshotPayloadReadTest {
             Configuration configuration = new Configuration();
             for (Class<?> entity : List.of(ArchitectureProject.class, ProjectRequirement.class,
                     ProjectRequirementVersion.class, RequirementAnalysisJob.class, RequirementAnalysisJobItem.class,
-                    RequirementAnalysisSnapshot.class, RequirementElementMapping.class, RequirementRelationMapping.class))
+                    RequirementAnalysisSnapshot.class, SnapshotReference.class,
+                    RequirementElementMapping.class, RequirementRelationMapping.class))
                 configuration.addAnnotatedClass(entity);
             configuration.getProperties().put("hibernate.session_factory.statement_inspector", (StatementInspector) statement -> {
                 sql.add(statement); return statement;

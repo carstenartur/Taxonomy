@@ -866,7 +866,8 @@ public class AnalysisContinuationStore {
         result.setRecovery(recovery); return result;
     }
     private AnalysisResult resultPayload(String stored) {
-        try { return mapper.readValue(PortableJsonPayloads.unpack(stored, MAX_RESULT_CHARACTERS), AnalysisResult.class); }
+        try { return PortableJsonPayloads.read(stored, MAX_RESULT_CHARACTERS,
+                reader -> mapper.readValue(reader, AnalysisResult.class)); }
         catch (java.io.IOException failure) { throw new IllegalStateException("Invalid durable analysis result payload", failure); }
     }
     private AnalysisResult withRecovery(AnalysisResult result, AnalysisContinuationRun run) {

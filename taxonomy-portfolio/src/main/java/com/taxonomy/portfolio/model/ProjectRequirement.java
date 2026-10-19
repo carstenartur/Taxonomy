@@ -124,7 +124,7 @@ public class ProjectRequirement {
             @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
                     insertable = false, updatable = false)
     })
-    private RequirementAnalysisSnapshot currentAnalysisSnapshot;
+    private SnapshotReference currentAnalysisSnapshot;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -243,7 +243,7 @@ public class ProjectRequirement {
     public Long getCurrentVersionId() { return currentVersionId; }
     public ProjectRequirementVersion getCurrentVersion() { return currentVersion; }
     public String getCurrentAnalysisSnapshotId() { return currentAnalysisSnapshotId; }
-    public RequirementAnalysisSnapshot getCurrentAnalysisSnapshot() {
+    public SnapshotReference getCurrentAnalysisSnapshot() {
         return currentAnalysisSnapshot;
     }
     public Instant getCreatedAt() { return createdAt; }

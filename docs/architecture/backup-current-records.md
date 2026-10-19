@@ -73,8 +73,12 @@ These two portable string fields accept either the original JSON text or
 GZIP member over the original big-endian UTF-16 code units; its character count
 and SHA-256 cover the full original text, including whitespace. Writers frame
 documents of at least 65,536 characters only when the frame is smaller than the
-original. Readers use `PortableJsonPayloads.unpack` before parsing the typed JSON
-or discovering catalogue/hypothesis references. They bound both stored and
+original. Durable typed readers use `PortableJsonPayloads.read` to parse through
+fixed buffers without building an expanded document String. The complete frame
+is validated before returning the parsed value, even when its parser closes or
+stops reading the borrowed input; integrity failures remain failed on every retry.
+`PortableJsonPayloads.unpack` retains the explicit full-text API used by portable
+restore and catalogue/hypothesis reference discovery. Both readers bound stored and
 expanded characters, verify the checksum, GZIP CRC and size, and reject unknown
 versions, noncanonical Base64, truncation, concatenated members and trailing
 bytes. Null and existing unframed fields remain compatible. The field frame is

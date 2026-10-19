@@ -19,6 +19,24 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Exercises the actual CLOB, restart, previous-relations reader and portable owner restore. */
 class ContinuationResultStorageTest {
+    @Test void theActualJsonParserRetainsEveryFieldAndCannotReturnAnUnverifiedFrame() throws Exception {
+        var original = new AnalysisResult(Map.of("CP", 75), List.of());
+        original.setReasons(Map.of("CP", "Original complete evidence 水位 🌊\n".repeat(4_000)));
+        original.setRelationSearchReport(report()); original.setStatus("PARTIAL");
+        original.setWarnings(List.of("Retained warning with full context"));
+        String packed = PortableJsonPayloads.pack(JSON.writeValueAsString(original), 24_000_000);
+        var parsed = PortableJsonPayloads.read(packed, 24_000_000,
+                reader -> JSON.readValue(reader, AnalysisResult.class));
+        tools.jackson.databind.JsonNode actual = JSON.valueToTree(parsed);
+        tools.jackson.databind.JsonNode expected = JSON.valueToTree(original);
+        assertThat(actual).isEqualTo(expected);
+        String[] fields = packed.split(":", 5);
+        assertThat(fields).hasSize(5);
+        String broken = String.join(":", fields[0], fields[1], fields[2], "0".repeat(64), fields[4]);
+        assertThatThrownBy(() -> PortableJsonPayloads.read(broken, 24_000_000,
+                reader -> JSON.readValue(reader, AnalysisResult.class))).isInstanceOf(java.io.IOException.class);
+    }
+
     @Test void fullResultBeyondTheOldCleartextCeilingSurvivesCompletionRestartAndCancellation() throws Exception {
         String reason = "Original complete evidence 水位.\n".repeat(440_000);
         var report = report();

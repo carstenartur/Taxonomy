@@ -1,11 +1,15 @@
 package com.taxonomy.exchange.backup;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FilterReader;
 import java.io.IOException;
+import java.io.Reader;
+import java.io.StringReader;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.Objects;
 import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
 import java.util.zip.GZIPOutputStream;
@@ -38,6 +42,49 @@ public final class PortableJsonPayloads {
     public static String unpack(String stored, int maxCharacters) throws IOException {
         bounded(stored, maxCharacters);
         if (stored == null || !stored.startsWith(FAMILY)) return stored;
+        var frame = frame(stored, maxCharacters);
+        char[] result = new char[frame.characters()];
+        try (var reader = new PackedReader(frame)) {
+            int offset = 0;
+            while (offset < result.length) {
+                int count = reader.read(result, offset, result.length - offset);
+                if (count < 0) throw invalid();
+                offset += count;
+            }
+            if (reader.read() != -1) throw invalid();
+        }
+        return new String(result);
+    }
+
+    @FunctionalInterface public interface PayloadReader<T> { T read(Reader reader) throws IOException; }
+
+    /**
+     * Parse retained evidence without allocating its expanded text. The returned value is released
+     * only after the entire frame passes the same count, hash and GZIP checks as {@link #unpack}.
+     * A parser may close or stop reading its supplied input; this method still validates the tail.
+     */
+    public static <T> T read(String stored, int maxCharacters, PayloadReader<T> parser) throws IOException {
+        bounded(stored, maxCharacters);
+        Objects.requireNonNull(parser);
+        if (stored == null) return null;
+        try (Reader input = stored.startsWith(FAMILY)
+                ? new PackedReader(frame(stored, maxCharacters)) : new StringReader(stored)) {
+            var borrowed = new FilterReader(input) { @Override public void close() { } };
+            T result;
+            try { result = parser.read(borrowed); }
+            catch (RuntimeException failure) {
+                // JSON libraries may wrap a Reader's IOException in their own runtime exception.
+                if (input instanceof PackedReader packed && packed.failure != null) throw packed.failure;
+                throw failure;
+            }
+            char[] tail = new char[8192];
+            while (input.read(tail) != -1) { /* Validate all evidence before returning the parsed value. */ }
+            return result;
+        }
+    }
+
+    private record Frame(byte[] compressed, int characters, String hash) { }
+    private static Frame frame(String stored, int maxCharacters) throws IOException {
         if (!stored.startsWith(PREFIX)) throw invalid();
         String[] fields = stored.split(":", 5);
         if (fields.length != 5 || !fields[3].matches("[a-f0-9]{64}")) throw invalid();
@@ -49,38 +96,76 @@ public final class PortableJsonPayloads {
         try { compressed = Base64.getDecoder().decode(fields[4]); }
         catch (IllegalArgumentException malformed) { throw invalid(); }
         if (!Base64.getEncoder().encodeToString(compressed).equals(fields[4])) throw invalid();
-        String json = inflate(compressed, characters);
-        if (!hash(json).equals(fields[3])) throw invalid();
-        return json;
+        return new Frame(compressed, characters, fields[3]);
     }
 
-    private static String inflate(byte[] compressed, int characters) throws IOException {
+    private static final class PackedReader extends Reader {
         // One ordinary GZIP member, without optional headers. Inflater gives us the exact
         // consumed byte count, so concatenated members and trailing bytes cannot be ignored.
-        if (compressed.length < 20 || (compressed[0] & 255) != 31 || (compressed[1] & 255) != 139
-                || compressed[2] != 8 || compressed[3] != 0) throw invalid();
-        int footer = compressed.length - 8;
-        if (littleEndian(compressed, footer + 4) != (long) characters * 2) throw invalid();
-        char[] result = new char[characters]; byte[] buffer = new byte[8192];
-        var crc = new CRC32(); var inflater = new Inflater(true);
-        long total = 0; int index = 0, high = -1;
-        try {
+        private final Inflater inflater;
+        private final CRC32 crc = new CRC32();
+        private final MessageDigest digest = sha256();
+        private final byte[] buffer = new byte[8192];
+        private final long expectedBytes, expectedCrc;
+        private final String expectedHash;
+        private long total;
+        private int index, available;
+        private boolean finished, closed;
+        private IOException failure;
+
+        PackedReader(Frame frame) throws IOException {
+            byte[] compressed = frame.compressed();
+            if (compressed.length < 20 || (compressed[0] & 255) != 31 || (compressed[1] & 255) != 139
+                    || compressed[2] != 8 || compressed[3] != 0) throw invalid();
+            int footer = compressed.length - 8;
+            expectedBytes = (long) frame.characters() * 2;
+            if (littleEndian(compressed, footer + 4) != expectedBytes) throw invalid();
+            expectedCrc = littleEndian(compressed, footer);
+            expectedHash = frame.hash();
+            inflater = new Inflater(true);
             inflater.setInput(compressed, 10, footer - 10);
-            while (!inflater.finished()) {
-                int read = inflater.inflate(buffer);
-                if (total + read > (long) characters * 2) throw invalid();
-                total += read; crc.update(buffer, 0, read);
-                for (int i = 0; i < read; i++) {
-                    if (high < 0) high = buffer[i] & 255;
-                    else { result[index++] = (char) ((high << 8) | (buffer[i] & 255)); high = -1; }
-                }
-                if (read == 0 && !inflater.finished()) throw invalid();
+        }
+
+        @Override public int read(char[] target, int offset, int length) throws IOException {
+            Objects.checkFromIndexSize(offset, length, target.length);
+            if (closed) throw new IOException("Packed JSON reader is closed");
+            if (length == 0) return 0;
+            int count = 0;
+            while (count < length) {
+                int high = nextByte();
+                if (high < 0) break;
+                int low = nextByte();
+                if (low < 0) { failure = invalid(); throw failure; }
+                target[offset + count++] = (char) ((high << 8) | low);
             }
-            if (inflater.getRemaining() != 0 || total != (long) characters * 2 || high != -1
-                    || crc.getValue() != littleEndian(compressed, footer)) throw invalid();
-            return new String(result);
-        } catch (DataFormatException malformed) { throw invalid(); }
-        finally { inflater.end(); }
+            return count == 0 ? -1 : count;
+        }
+
+        private int nextByte() throws IOException {
+            if (failure != null) throw failure;
+            if (index < available) return buffer[index++] & 255;
+            if (finished) return -1;
+            try {
+                int read = inflater.inflate(buffer);
+                if (total + read > expectedBytes) throw invalid();
+                total += read; crc.update(buffer, 0, read); digest.update(buffer, 0, read);
+                if (inflater.finished()) {
+                    if (inflater.getRemaining() != 0 || total != expectedBytes || crc.getValue() != expectedCrc
+                            || !HexFormat.of().formatHex(digest.digest()).equals(expectedHash)) throw invalid();
+                    finished = true;
+                } else if (read == 0) throw invalid();
+                index = 0; available = read;
+                return read == 0 ? -1 : buffer[index++] & 255;
+            } catch (DataFormatException malformed) { failure = invalid(); throw failure; }
+            catch (IOException invalid) { failure = invalid; throw invalid; }
+        }
+
+        @Override public void close() {
+            if (!closed) {
+                inflater.end();
+                closed = true;
+            }
+        }
     }
 
     @FunctionalInterface private interface Bytes { void accept(byte[] bytes, int offset, int length) throws IOException; }
@@ -93,9 +178,12 @@ public final class PortableJsonPayloads {
         if (used != 0) destination.accept(buffer, 0, used);
     }
     private static String hash(String value) throws IOException {
+        var digest = sha256(); units(value, digest::update);
+        return HexFormat.of().formatHex(digest.digest());
+    }
+    private static MessageDigest sha256() {
         try {
-            var digest = MessageDigest.getInstance("SHA-256"); units(value, digest::update);
-            return HexFormat.of().formatHex(digest.digest());
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
     private static void bounded(String value, int maxCharacters) throws IOException {

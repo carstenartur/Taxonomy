@@ -640,7 +640,8 @@ class ProjectAnalysisBudgetContinuationTest {
                     });
             for (Class<?> entity : List.of(ArchitectureProject.class, ProjectRequirement.class,
                     ProjectRequirementVersion.class, RequirementAnalysisJob.class, RequirementAnalysisJobItem.class,
-                    RequirementAnalysisSnapshot.class, RequirementElementMapping.class, RequirementRelationMapping.class,
+                    RequirementAnalysisSnapshot.class, SnapshotReference.class,
+                    RequirementElementMapping.class, RequirementRelationMapping.class,
                     AnalysisContinuationRun.class, AnalysisQuestionCheckpoint.class)) configuration.addAnnotatedClass(entity);
             factory = configuration.setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
                     .setProperty("hibernate.connection.url", url).setProperty("hibernate.hbm2ddl.auto", create ? "create" : "validate")

@@ -37,6 +37,131 @@ import static org.mockito.Mockito.*;
 /** Status polling must not materialize immutable result payloads through lazy composite-key associations. */
 class PortfolioStatusPayloadReadTest {
     @ParameterizedTest
+    @ValueSource(strings = {"requirement", "job-item"})
+    void entityMetadataLoadsDoNotReadSelectedSnapshotClobs(String entity) {
+        try (var f = new Fixture()) {
+            f.transaction(em -> {
+                if (entity.equals("requirement")) {
+                    var requirement = em.find(ProjectRequirement.class, f.requirementId);
+                    assertThat(requirement.getCurrentAnalysisSnapshotId()).isEqualTo(f.oldSnapshotId);
+                    assertThat(requirement.getCurrentAnalysisSnapshot().getId()).isEqualTo(f.oldSnapshotId);
+                    assertThat(requirement.getCurrentAnalysisSnapshot().getRequirementId()).isEqualTo(f.requirementId);
+                    assertThat(requirement.getCurrentAnalysisSnapshot().getProjectId()).isEqualTo(f.projectId);
+                    assertThat(requirement.getCurrentAnalysisSnapshot().getScopeKey()).isEqualTo(PortfolioScope.key("owner", f.scope));
+                } else {
+                    var item = em.createQuery("select i from RequirementAnalysisJobItem i where i.jobId = :job",
+                                    RequirementAnalysisJobItem.class).setParameter("job", f.jobId).getSingleResult();
+                    assertThat(item.getSnapshotId()).isEqualTo(f.oldSnapshotId);
+                    assertThat(item.getSnapshot().getId()).isEqualTo(f.oldSnapshotId);
+                    assertThat(item.getSnapshot().getJobId()).isEqualTo(f.jobId);
+                    assertThat(item.getSnapshot().getRequirementId()).isEqualTo(f.requirementId);
+                    assertThat(item.getSnapshot().getRequirementVersionId()).isEqualTo(f.oldVersionId);
+                    assertThat(item.getSnapshot().getProjectId()).isEqualTo(f.projectId);
+                    assertThat(item.getSnapshot().getScopeKey()).isEqualTo(PortfolioScope.key("owner", f.scope));
+                    assertThat(item.getRequirementVersionId()).isEqualTo(f.oldVersionId);
+                }
+            });
+            f.assertNoSnapshotPayloadRead();
+        }
+    }
+
+    @Test
+    void snapshotIdentityViewsPreserveExactPhysicalCompositeForeignKeysAndUniqueKeys() {
+        try (var f = new Fixture()) {
+            f.transaction(em -> em.unwrap(org.hibernate.Session.class).doWork(connection -> {
+                var metadata = connection.getMetaData();
+                var requirement = new java.util.LinkedHashMap<String, String>();
+                requirement.put("CURRENT_SNAPSHOT_ID", "ID");
+                requirement.put("ID", "REQUIREMENT_ID");
+                requirement.put("PROJECT_ID", "PROJECT_ID");
+                requirement.put("SCOPE_KEY", "SCOPE_KEY");
+                var item = new java.util.LinkedHashMap<String, String>();
+                item.put("SNAPSHOT_ID", "ID");
+                item.put("JOB_ID", "JOB_ID");
+                item.put("REQUIREMENT_ID", "REQUIREMENT_ID");
+                item.put("REQUIREMENT_VERSION_ID", "REQUIREMENT_VERSION_ID");
+                item.put("PROJECT_ID", "PROJECT_ID");
+                item.put("SCOPE_KEY", "SCOPE_KEY");
+                for (var expected : java.util.Map.of("PROJECT_REQUIREMENT", requirement,
+                        "REQ_ANALYSIS_ITEM", item).entrySet()) {
+                    var keys = new java.util.HashMap<String, java.util.Map<String, String>>();
+                    try (var rows = metadata.getImportedKeys(null, "PUBLIC", expected.getKey())) {
+                        while (rows.next()) {
+                            if (rows.getString("PKTABLE_NAME").equals("REQ_ANALYSIS_SNAPSHOT"))
+                                keys.computeIfAbsent(rows.getString("FK_NAME"), key -> new java.util.HashMap<>())
+                                        .put(rows.getString("FKCOLUMN_NAME"), rows.getString("PKCOLUMN_NAME"));
+                        }
+                    }
+                    assertThat(keys.values()).as(expected.getKey() + " snapshot FK").containsExactly(expected.getValue());
+                }
+                var uniqueKeys = new java.util.HashMap<String, java.util.Set<String>>();
+                try (var rows = metadata.getIndexInfo(null, "PUBLIC", "REQ_ANALYSIS_SNAPSHOT", true, false)) {
+                    while (rows.next()) {
+                        if (rows.getString("COLUMN_NAME") != null)
+                            uniqueKeys.computeIfAbsent(rows.getString("INDEX_NAME"), key -> new java.util.HashSet<>())
+                                    .add(rows.getString("COLUMN_NAME"));
+                    }
+                }
+                assertThat(uniqueKeys.values()).containsExactlyInAnyOrder(
+                        java.util.Set.of("ID"),
+                        java.util.Set.of("ID", "SCOPE_KEY"),
+                        java.util.Set.of("ID", "REQUIREMENT_VERSION_ID", "REQUIREMENT_ID", "PROJECT_ID", "SCOPE_KEY"),
+                        java.util.Set.of("ID", "REQUIREMENT_ID", "PROJECT_ID", "SCOPE_KEY"),
+                        java.util.Set.of("ID", "JOB_ID", "REQUIREMENT_ID", "REQUIREMENT_VERSION_ID", "PROJECT_ID", "SCOPE_KEY"));
+            }));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"sibling-requirement", "other-project", "other-tenant", "wrong-version", "wrong-job"})
+    void databaseRejectsSnapshotIdentityBindingsOutsideExactSource(String binding) {
+        try (var f = new Fixture()) {
+            if (binding.startsWith("wrong-")) {
+                String otherJob = UUID.randomUUID().toString();
+                if (binding.equals("wrong-job")) f.transaction(em -> em.persist(new RequirementAnalysisJob(otherJob,
+                        em.find(ArchitectureProject.class, f.projectId), "other-job", "CUSTOM_OPENAI", 50, "owner",
+                        f.scope.workspaceId(), 1, Fixture.TIME)));
+                assertThatThrownBy(() -> f.transaction(em -> em.createNativeQuery(binding.equals("wrong-version")
+                                ? "update req_analysis_item set requirement_version_id = :replacement where job_id = :job"
+                                : "update req_analysis_item set job_id = :replacement where job_id = :job")
+                        .setParameter("replacement", binding.equals("wrong-version") ? f.currentVersionId : otherJob)
+                        .setParameter("job", f.jobId).executeUpdate()))
+                        .isInstanceOfSatisfying(org.hibernate.exception.ConstraintViolationException.class,
+                                failure -> assertThat(failure.getSQLState()).isEqualTo("23503"));
+            } else {
+                Long[] target = new Long[1];
+                f.transaction(em -> {
+                    Long projectId = binding.equals("other-project") ? f.otherProjectId : f.projectId;
+                    if (binding.equals("other-tenant")) {
+                        var foreignScope = new WorkspaceContext("owner", "other-workspace", "draft", "repository");
+                        var project = new ArchitectureProject(PortfolioScope.key("owner", foreignScope), "other-workspace", "owner", "FOREIGN",
+                                "Foreign project", "", ProjectStatus.PLANNING, Fixture.TIME);
+                        em.persist(project); em.flush(); projectId = project.getId();
+                    }
+                    f.addRequirement(em, projectId, "REQ-FOREIGN", RequirementStatus.APPROVED);
+                    target[0] = em.createQuery("select r.id from ProjectRequirement r where r.requirementKey = 'REQ-FOREIGN'",
+                            Long.class).getSingleResult();
+                });
+                assertThatThrownBy(() -> f.transaction(em -> em.createNativeQuery(
+                                "update project_requirement set current_snapshot_id = :snapshot where id = :requirement")
+                        .setParameter("snapshot", f.oldSnapshotId).setParameter("requirement", target[0]).executeUpdate()))
+                        .isInstanceOfSatisfying(org.hibernate.exception.ConstraintViolationException.class,
+                                failure -> assertThat(failure.getSQLState()).isEqualTo("23503"));
+            }
+            f.resetReads();
+            f.transaction(em -> {
+                assertThat(em.find(ProjectRequirement.class, f.requirementId).getCurrentAnalysisSnapshotId())
+                        .isEqualTo(f.oldSnapshotId);
+                var item = em.createQuery("from RequirementAnalysisJobItem where jobId = :job", RequirementAnalysisJobItem.class)
+                        .setParameter("job", f.jobId).getSingleResult();
+                assertThat(item.getRequirementVersionId()).isEqualTo(f.oldVersionId);
+                assertThat(item.getSnapshotId()).isEqualTo(f.oldSnapshotId);
+            });
+            f.assertNoSnapshotPayloadRead();
+        }
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"job", "jobs"})
     void jobStatusRetainsExactItemVersionWithoutReadingSnapshotPayloads(String read) {
         try (var f = new Fixture()) {
@@ -380,7 +505,8 @@ class PortfolioStatusPayloadReadTest {
             Configuration configuration = new Configuration();
             for (Class<?> entity : List.of(ArchitectureProject.class, ProjectRequirement.class,
                     ProjectRequirementVersion.class, RequirementAnalysisJob.class, RequirementAnalysisJobItem.class,
-                    RequirementAnalysisSnapshot.class, RequirementElementMapping.class, RequirementRelationMapping.class))
+                    RequirementAnalysisSnapshot.class, SnapshotReference.class,
+                    RequirementElementMapping.class, RequirementRelationMapping.class))
                 configuration.addAnnotatedClass(entity);
             configuration.getProperties().put("hibernate.session_factory.statement_inspector", (StatementInspector) statement -> {
                 sqlHook.accept(statement); sql.add(statement); return statement;

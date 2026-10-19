@@ -13,6 +13,8 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.util.*;
 import java.util.concurrent.*;
@@ -475,6 +477,7 @@ class ClusterAnalysisStoreTest {
     }
 
     static final class Database implements AutoCloseable {
+        private final String ownedDatabaseUrl;
         final LocalContainerEntityManagerFactoryBean bean = new LocalContainerEntityManagerFactoryBean();
         final jakarta.persistence.EntityManager em;
         final JpaTransactionManager transactions;
@@ -486,9 +489,14 @@ class ClusterAnalysisStoreTest {
             this(sql -> sql);
         }
         Database(org.hibernate.resource.jdbc.spi.StatementInspector inspector) {
-            this("jdbc:hsqldb:mem:cluster-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "create-drop", inspector);
+            this("jdbc:hsqldb:mem:cluster-" + UUID.randomUUID() + ";hsqldb.tx=mvcc", "create-drop", inspector, true);
         }
         Database(String url, String schema, org.hibernate.resource.jdbc.spi.StatementInspector inspector) {
+            this(url, schema, inspector, false);
+        }
+        private Database(String url, String schema, org.hibernate.resource.jdbc.spi.StatementInspector inspector,
+                         boolean ownsDatabase) {
+            ownedDatabaseUrl = ownsDatabase ? url : null;
             bean.setDataSource(new DriverManagerDataSource(url, "sa", ""));
             bean.setManagedTypes(PersistenceManagedTypes.of(ClusterAnalysisRun.class.getName(), ClusterAnalysisWork.class.getName(),
                     ClusterAnalysisInput.class.getName(), ClusterAnalysisEvent.class.getName(), ClusterAnalysisCall.class.getName(), ClusterAnalysisAttempt.class.getName(),
@@ -549,6 +557,21 @@ class ClusterAnalysisStoreTest {
             var completion = factory.completed(task, outcome, result.getRawScores().get(task.root().code()), result.getRawScores().size(), null);
             return completions.commit(new PreparedAnalysisCompletion<>(completion, () -> store.persistResult(task, result)));
         }
-        @Override public void close() { bean.destroy(); }
+        @Override public void close() {
+            try {
+                bean.destroy();
+            } finally {
+                // Closing the EMF leaves HSQL memory databases registered. Caller-supplied
+                // URLs belong to restart tests; only release this fixture's private UUID DB.
+                if (ownedDatabaseUrl != null) {
+                    try (var connection = DriverManager.getConnection(ownedDatabaseUrl, "sa", "");
+                         var statement = connection.createStatement()) {
+                        statement.execute("SHUTDOWN");
+                    } catch (SQLException failure) {
+                        throw new AssertionError("Could not release the owned test database", failure);
+                    }
+                }
+            }
+        }
     }
 }
