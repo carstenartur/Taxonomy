@@ -20,6 +20,24 @@ final class ArtemisPermitTransactionCases {
         checks.add(new Check("unused close returns one slot", () -> {
             var model = new Model(); var held = model.hold(); held.close(); held.close(); model.count(1,0);
         }));
+        for (boolean applied : new boolean[]{false, true}) {
+            checks.add(new Check("unused failed return preserves HA contract; applied=" + applied, () -> {
+                var model = new Model(); model.failCommit = 1; model.failAfterApply = applied;
+                var held = model.hold();
+                try {
+                    held.close();
+                    throw new AssertionError("Unconfirmed unused return must fail visibly");
+                } catch (ProviderConcurrencyPermits.UnavailableException expected) {
+                    if (!"Cluster provider permit return was not confirmed".equals(expected.getMessage()))
+                        throw new AssertionError("HA return failure message changed: " + expected.getMessage());
+                    if (!(expected.getCause() instanceof JMSException))
+                        throw new AssertionError("The original JMS failure must remain the cause");
+                }
+                held.close();
+                model.count(1, 0);
+                if (model.commits != 1) throw new AssertionError("Failed return must not retry or compensate");
+            }));
+        }
         checks.add(new Check("unknown outcome keeps durable receipt", () -> {
             var model = new Model(); var held = model.hold(); held.beforeTransport(); held.close(); model.count(0,1);
         }));

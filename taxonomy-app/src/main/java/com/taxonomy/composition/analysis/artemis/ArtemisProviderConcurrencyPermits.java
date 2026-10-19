@@ -223,7 +223,7 @@ public final class ArtemisProviderConcurrencyPermits implements ProviderConcurre
                     session.commit();
                 } catch (JMSException failure) {
                     restoreInterrupt(failure);
-                    throw unavailable("Unused provider permit return was not confirmed", failure);
+                    throw unavailable("Cluster provider permit return was not confirmed", failure);
                 } finally { closeSession(session); }
                 return;
             }
