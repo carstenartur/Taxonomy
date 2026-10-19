@@ -54,9 +54,24 @@ public final class ArchitectureDslCommands {
     }
 
     public Change apply(String source, ArchitectureCommand command) {
+        String next = transformDsl(source, command);
+        return new Change(next, ArchitectureSemanticPatch.between(source, next));
+    }
+
+    /** Applies commands in order with their normal validation and one complete before/after patch. */
+    public Change applyAll(String source, List<ArchitectureCommand> commands) {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(commands, "commands");
+        if (commands.isEmpty()) return new Change(source, List.of());
+        String next = source;
+        for (ArchitectureCommand command : commands) next = transformDsl(next, command);
+        return new Change(next, ArchitectureSemanticPatch.between(source, next));
+    }
+
+    private String transformDsl(String source, ArchitectureCommand command) {
         Objects.requireNonNull(source, "source");
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(source);
-        String next = switch (command) {
+        return switch (command) {
             case SetRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), false);
             case ImportRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), true);
             case DeleteRequirementPlanning p -> planning.remove(source, p.requirementId(), p.entryId());
@@ -79,7 +94,6 @@ public final class ArchitectureDslCommands {
             case DeleteArchitectureView view -> ArchitectureSemanticPatch.replace(source, require(blocks, "view:" + view.id()), null);
             case StoreExchangeEvidence evidence -> exchangeEvidence(source, blocks, evidence);
         };
-        return new Change(next, ArchitectureSemanticPatch.between(source, next));
     }
 
     /** Rechecks inverse preconditions and the resulting model, never restores a whole document. */

@@ -166,7 +166,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
                 String before = session.state().dsl(), next = before;
                 if (portfolioContribution != null) next = portfolioContribution.apply(next);
-                for (var command : commands) next = transformer.apply(next, command).dsl();
+                next = transformer.applyAll(next, commands).dsl();
                 if (!next.equals(before)) session.append(metadata, context.username(), "VERSION_IMPORT", null, fingerprint, next,
                         new ArrayList<>(affected(ArchitectureSemanticPatch.between(before, next))));
                 Context result = Context.of(context, session.state().checkpointCommit(), session.state().revision());
