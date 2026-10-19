@@ -12,6 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -116,6 +117,62 @@ class RecoveryCheckpointCompressionTest {
         detail.setScores(Map.of("BP", .125)); detail.setReasons(Map.of("BP", "Original assessment with fractional relevance"));
         detail.setRawResponse("Original raw reply: \"quoted\" \\ line\nÄöü 😀\uD800 end");
         return detail;
+    }
+
+    @Test void completePersistsFullEvidenceWithoutMaterializingTheSerializedDocument(org.junit.jupiter.api.TestReporter report) throws Exception {
+        var bean = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
+        assertTrue(bean.isThreadAllocatedMemorySupported());
+        boolean enabled = bean.isThreadAllocatedMemoryEnabled();
+        if (!enabled) bean.setThreadAllocatedMemoryEnabled(true);
+        try (var db = new Database()) {
+            var warmup = new AnalysisResult(Map.of(), List.of()); warmup.setStatus("SUCCESS");
+            db.transaction(em -> db.store(em).complete(db.claim(), warmup, List.of()));
+            String evidence = "Original complete evidence 水位 🌊\n".repeat(200_000);
+            var result = new AnalysisResult(Map.of(), List.of()); result.setStatus("SUCCESS");
+            result.setReasons(Map.of("BP", evidence));
+            long before = bean.getThreadAllocatedBytes(Thread.currentThread().threadId());
+            db.transaction(em -> db.store(em).complete(db.claim(), result, List.of()));
+            long allocated = bean.getThreadAllocatedBytes(Thread.currentThread().threadId()) - before;
+            report.publishEntry("completionAllocatedBytes", Long.toString(allocated));
+            System.out.println("Full-evidence completion allocated bytes: " + allocated);
+            assertTrue(allocated < 20_000_000, "Completing a compressible result allocated " + allocated
+                    + " bytes; the full serialized UTF-16 document must not be materialized");
+            String stored = db.transaction(em -> em.find(AnalysisContinuationRun.class, db.id).resultJson);
+            String expected = db.mapper.writeValueAsString(result);
+            var persisted = db.mapper.readValue(com.taxonomy.exchange.backup.PortableJsonPayloads.unpack(stored, 24_000_000),
+                    AnalysisResult.class);
+            // Flushing the result increments the optimistic version; the response then refreshes
+            // only its recovery view. Compare the exact frame at its actual persisted revision.
+            var expectedAtWrite = db.mapper.readValue(expected, AnalysisResult.class);
+            expectedAtWrite.setRecovery(persisted.getRecovery());
+            assertEquals(com.taxonomy.exchange.backup.PortableJsonPayloads.pack(
+                    db.mapper.writeValueAsString(expectedAtWrite), 24_000_000), stored);
+            var restored = db.transaction(em -> db.store(em).read(db.id, SCOPE)).result();
+            assertEquals(evidence, restored.getReasons().get("BP"));
+            assertEquals(expected, db.mapper.writeValueAsString(restored));
+        } finally {
+            if (!enabled) bean.setThreadAllocatedMemoryEnabled(false);
+        }
+    }
+
+    @Test void serializerQuotaFailureRemains422AndRollsBackTheOriginalDurableResult() {
+        try (var db = new Database()) {
+            String original = db.transaction(em -> em.find(AnalysisContinuationRun.class, db.id).resultJson);
+            var oversized = new AnalysisResult(Map.of(), List.of()); oversized.setStatus("SUCCESS");
+            oversized.setReasons(Map.of("BP", "x".repeat(24_000_000)));
+            var failure = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> db.transaction(em -> db.store(em).complete(db.claim(), oversized, List.of())));
+            assertEquals(422, failure.getStatusCode().value());
+            assertInstanceOf(java.io.IOException.class, failure.getCause());
+            db.transaction(em -> {
+                var retained = em.find(AnalysisContinuationRun.class, db.id);
+                assertEquals(original, retained.resultJson);
+                assertEquals("RUNNING", retained.state);
+                assertEquals(db.token, retained.claimToken);
+                assertTrue(retained.claimUntil > 0);
+                return null;
+            });
+        }
     }
 
     @Test void compressedEvidenceRestartsWithTheExactPromptReplyAndFractionalAssessment() {

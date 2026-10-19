@@ -5,6 +5,7 @@ import java.io.FilterReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
+import java.io.Writer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
@@ -37,6 +38,131 @@ public final class PortableJsonPayloads {
         if (((long) compressed.size() + 2) / 3 * 4 + 128 >= json.length()) return json;
         return PREFIX + json.length() + ":" + hash(json) + ":"
                 + Base64.getEncoder().encodeToString(compressed.toByteArray());
+    }
+
+    @FunctionalInterface public interface PayloadWriter { void write(Writer writer) throws IOException; }
+
+    /**
+     * Serialize complete evidence directly into the existing frame, without retaining expanded
+     * JSON on the compressible path. Small or incompressible values recover their literal text
+     * from the just-written frame, using the same strict code-unit and integrity validation.
+     */
+    public static String packSerialized(PayloadWriter serializer, int maxCharacters) throws IOException {
+        bounded(null, maxCharacters);
+        Objects.requireNonNull(serializer);
+        var compressed = new ByteArrayOutputStream();
+        var output = new UnitWriter(compressed, maxCharacters);
+        try (output) {
+            try { serializer.write(output); }
+            catch (RuntimeException failure) {
+                // JSON libraries can wrap the quota IOException in a runtime exception.
+                if (output.failure != null) throw output.failure;
+                throw failure;
+            }
+        }
+        // A serializer cannot accept partial evidence by swallowing a failed write.
+        if (output.failure != null) throw output.failure;
+        var frame = new Frame(compressed.toByteArray(), output.characters,
+                HexFormat.of().formatHex(output.digest.digest()));
+        if (frame.characters() < MIN_PACK_CHARACTERS
+                || ((long) frame.compressed().length + 2) / 3 * 4 + 128 >= frame.characters()) {
+            char[] result = new char[frame.characters()];
+            try (var reader = new PackedReader(frame)) {
+                int offset = 0;
+                while (offset < result.length) {
+                    int count = reader.read(result, offset, result.length - offset);
+                    if (count < 0) throw invalid();
+                    offset += count;
+                }
+                if (reader.read() != -1) throw invalid();
+            }
+            return new String(result);
+        }
+        return PREFIX + frame.characters() + ":" + frame.hash() + ":"
+                + Base64.getEncoder().encodeToString(frame.compressed());
+    }
+
+    /** UTF-16 code units, not a charset encoder: unmatched surrogates are retained unchanged. */
+    private static final class UnitWriter extends Writer {
+        private final MessageDigest digest = sha256();
+        private final byte[] buffer = new byte[8192];
+        private final GZIPOutputStream gzip;
+        private final int maximum;
+        private int used, characters;
+        private boolean closed;
+        private IOException failure;
+
+        UnitWriter(ByteArrayOutputStream destination, int maximum) throws IOException {
+            this.maximum = maximum;
+            gzip = new GZIPOutputStream(destination);
+        }
+
+        private void accept(int count) throws IOException {
+            if (failure != null) throw failure;
+            if (closed || (long) characters + count > maximum) {
+                failure = invalid(); throw failure;
+            }
+            characters += count;
+        }
+
+        private void emit() throws IOException {
+            if (used != 0) {
+                digest.update(buffer, 0, used);
+                gzip.write(buffer, 0, used);
+                used = 0;
+            }
+        }
+
+        @Override public void write(char[] source, int offset, int length) throws IOException {
+            Objects.checkFromIndexSize(offset, length, source.length);
+            accept(length);
+            int remaining = length;
+            while (remaining != 0) {
+                int count = Math.min(remaining, (buffer.length - used) / 2);
+                int end = offset + count, cursor = used;
+                while (offset < end) {
+                    char value = source[offset++];
+                    buffer[cursor++] = (byte) (value >>> 8); buffer[cursor++] = (byte) value;
+                }
+                used = cursor; remaining -= count;
+                if (used == buffer.length) emit();
+            }
+        }
+
+        @Override public void write(String source, int offset, int length) throws IOException {
+            Objects.checkFromIndexSize(offset, length, source.length());
+            accept(length);
+            int remaining = length;
+            while (remaining != 0) {
+                int count = Math.min(remaining, (buffer.length - used) / 2);
+                int end = offset + count, cursor = used;
+                while (offset < end) {
+                    char value = source.charAt(offset++);
+                    buffer[cursor++] = (byte) (value >>> 8); buffer[cursor++] = (byte) value;
+                }
+                used = cursor; remaining -= count;
+                if (used == buffer.length) emit();
+            }
+        }
+
+        @Override public void write(int value) throws IOException {
+            accept(1);
+            buffer[used++] = (byte) (value >>> 8); buffer[used++] = (byte) value;
+            if (used == buffer.length) emit();
+        }
+
+        @Override public void flush() throws IOException {
+            if (failure != null) throw failure;
+            emit(); gzip.flush();
+        }
+
+        @Override public void close() throws IOException {
+            if (!closed) {
+                // Do not rethrow a latched body failure: try-with-resources would self-suppress it.
+                try { emit(); }
+                finally { closed = true; gzip.close(); }
+            }
+        }
     }
 
     public static String unpack(String stored, int maxCharacters) throws IOException {

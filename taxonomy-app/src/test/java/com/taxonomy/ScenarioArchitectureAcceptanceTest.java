@@ -358,7 +358,7 @@ class ScenarioArchitectureAcceptanceTest {
     record Run(long projectId, long requirementId, String operationId) { }
 
     JsonNode get(String path) throws Exception {
-        JsonNode value = json.readTree(request("GET", path, null, 200).body());
+        JsonNode value = requestJson("GET", path, null, 200);
         if (path.matches("/api/projects/[0-9]+/snapshots/[^/?]+")) {
             var checked = com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.verifyCycle(value);
             var previous = observedAnalysisCycles.putIfAbsent(checked.snapshotId(), checked);
@@ -367,7 +367,14 @@ class ScenarioArchitectureAcceptanceTest {
         return value;
     }
     JsonNode post(String path, Object body, int status) throws Exception {
-        return json.readTree(request("POST", path, body, status).body());
+        return requestJson("POST", path, body, status);
+    }
+    private JsonNode requestJson(String method, String path, Object body, int status) throws Exception {
+        var builder = authenticatedRequest(method, path)
+                .header("Content-Type", "application/json");
+        var request = builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
+        return ScenarioJsonResponseReader.read(http, request, json, status);
     }
     HttpResponse<byte[]> request(String method, String path, Object body, int status) throws Exception {
         var builder = authenticatedRequest(method, path)

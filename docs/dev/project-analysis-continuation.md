@@ -133,6 +133,15 @@ regression permits the initial lookup of the new ID, rejects this second payload
 read, and verifies every payload field and the tenant-bound element and relation
 mappings after commit.
 
+Durable result serialization writes every field directly into the existing
+lossless UTF-16 frame through a bounded character writer. The common compressible
+path does not first construct an expanded JSON String. Small or incompressible
+values retain their exact plain JSON representation; the same decoded and stored
+limits still apply, and failed serialization cannot replace accepted evidence.
+The scenario HTTP client likewise parses complete JSON responses from the body
+stream, retaining its original request deadline, status checks and immutable
+snapshot comparisons. Binary export responses retain their complete byte checks.
+
 Catalogue authority and continuation signatures retain their existing SHA-256
 identities, including each field's four-byte UTF-8 length prefix. Catalogue JSON
 is serialized through the same configured character mapper into bounded counting

@@ -852,7 +852,7 @@ public class AnalysisContinuationStore {
     }
     private void writeResult(AnalysisContinuationRun run, AnalysisResult result) {
         String json;
-        try { json = PortableJsonPayloads.pack(mapper.writeValueAsString(result), MAX_RESULT_CHARACTERS); }
+        try { json = PortableJsonPayloads.packSerialized(writer -> mapper.writeValue(writer, result), MAX_RESULT_CHARACTERS); }
         catch (java.io.IOException failure) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Analysis result exceeds or cannot satisfy the bounded durable result format; individual answers remain stored", failure);
