@@ -195,6 +195,20 @@ allows both settings only before LOBs exist. The supported LOB block scales are
 1, 2, 4, 8, 16 and 32 KiB; the engine's default is 32 KiB. The explicit URL
 override is preserved even when it specifies a different block scale.
 
+The default MEM URL also sets `hsqldb.log_size=1` to enable automatic database
+checkpoints. HSQL memory databases otherwise keep obsolete LOB generations until
+a checkpoint, including old versions of an overwritten continuation result. The
+engine can then reuse those blocks while preserving every still-referenced
+immutable snapshot. The log-size setting triggers database storage maintenance;
+it does not increase the JVM heap or change analysis admission, provider budgets
+or evidence retention. Explicit database URLs and the file profile keep their
+configured settings.
+
+An actual HSQL 2.7.3 regression repeatedly commits large CLOB/BLOB replacements
+alongside checkpoint journal updates, checks bounded allocated LOB storage, and
+reopens all current and immutable historical payloads exactly. The regression
+does not issue a manual database checkpoint or force JVM garbage collection.
+
 A controlled Hibernate/HSQL comparison inserted 40 snapshots containing the same
 four actual scenario payloads, committed and cleared each session, and measured
 heap after collection. The additional retained heap was approximately 640.4 MiB
