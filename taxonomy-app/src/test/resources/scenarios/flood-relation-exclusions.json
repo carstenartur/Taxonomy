@@ -5987,8 +5987,7 @@
       ],
       "rationale": "This selected process view retrieves/presents already prepared public information through the assembled environmental-view product. The direct original published-warning input is represented at the public application and subscriber-dispatch contributions; this process view adds no second direct warning-feed binding. The view still includes every published warning, area and observation with source/time. This is a local representation boundary, not a claim that public information generally excludes or never reads warnings.",
       "reviewFamily": "authored-role-decomposition"
-    }
-    ,
+    },
     {
       "id": "ROLE-CR1006-account-authentication-BP-defence-enterprise-SUPPORTS-OUTGOING",
       "sourceIds": [
@@ -6916,6 +6915,402 @@
       ],
       "rationale": "The selected Information Protection capability view represents verification of the entitled identity before protected F4 account actions under A1. This separate stored-information access facet retains its selected storage/CIS-security viewpoints and adds no second Information Protection representation. The boundary separates local functional viewpoints, not the general relevance of authentication to information protection.",
       "reviewFamily": "authored-role-decomposition"
+    }
+    ,
+    {
+      "id": "MEASURED-WARNING-INPUT-no-additional-COI-support",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CI"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1",
+        "F5"
+      ],
+      "rationale": "This selected F1 facet reuses already published warning/affected-area inputs. It does not select a separate COI functional provider or assign a military/environmental operational workflow to acquire those published warnings. The optional hydrographic read provider supports the distinct F5 latest-observation facet; it is not the provider of this warning-input share.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-ACCOUNT-IT-not-business-support-REALIZES",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CR-1011"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This capability facet maintains subscriber identity/contact information and deprovisions a deleted account. Enterprise collaboration and general information-management building blocks do not perform that identity-lifecycle function merely by enabling applications. The selected identity service supplies this bounded function; no collaboration/business-support suite is chosen for it.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-EMAIL-IT-not-infrastructure-REALIZES",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CR-1047"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This IT capability facet represents email notification, not computing/storage/network hosting or an IaaS implementation. Infrastructure can host an email service, but hosting is not the selected email-notification function. F3 does not require a data-centre/cloud platform or an additional infrastructure capability view.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-ACCOUNT-AUTH-no-second-CIS-view-REALIZES",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "account-authentication"
+      ],
+      "type": "REALIZES",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CP-1023"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This facet verifies the entitled user for existing F4 account requests. Its selected capability view is the bounded Information Protection share; the CIS-security view is separately attached to A1 stored-information access. This request facet adds no second CIS-capability realization or systems/network/hardware programme. The boundary is local to these chosen views, not a denial of authentication's general security relevance.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-STORED-AUTH-no-second-IM-view-REALIZES",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "REALIZES",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CP-1059"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This A1 facet authenticates entitled access to stored subscriber information, represented through the selected CIS-security view. The Information Protection realization is attached to the distinct F4 account-request facet. No second IM-capability realization, situational-awareness/knowledge product or command decision-support function is selected for this stored-access viewpoint.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-STORED-AUTH-not-request-phase-CIS-support",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "BP-1147"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This facet supplies identity assurance for access to stored subscriber details, with its selected support at stored-information protection. CIS component-management programmes are not requested. The prevention/entity-change/deletion-request support views use the separate F4 account-authentication facet; this stored-access view adds no parallel request-phase CIS Support binding.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-ACCOUNT-IT-not-business-support-FULFILLS",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CR-1011"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This capability facet maintains subscriber identity/contact information and deprovisions a deleted account. Enterprise collaboration and general information-management building blocks do not perform that identity-lifecycle function merely by enabling applications. The selected identity service supplies this bounded function; no collaboration/business-support suite is chosen for it.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-EMAIL-IT-not-infrastructure-FULFILLS",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CR-1047"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This IT capability facet represents email notification, not computing/storage/network hosting or an IaaS implementation. Infrastructure can host an email service, but hosting is not the selected email-notification function. F3 does not require a data-centre/cloud platform or an additional infrastructure capability view.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-WARNING-INPUT-not-recognized-picture",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1102"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1",
+        "F5"
+      ],
+      "rationale": "This facet acquires the already published warning/affected-area input, not a fused geospatial situation stream assembled from sensor feeds or managed as an operational recognized picture. The distinct F5 observation-batch identity remains explicitly unresolved at latest-observation; rejecting a picture input for this warning facet does not resolve that other datatype question.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-OBSERVATION-INPUT-not-mapping-basis",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "sourceContributionIds": [
+        "latest-observation"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1069"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "F5 requests intake of an existing observation batch, not operational/procedural mapping facts or imagery used as a reference model for projecting further information. Neither a separate map-basis product nor its production/analysis workflow is selected as that observation input. The explicitly open environmental-picture identity question remains unresolved.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-SUBSCRIBER-DISPATCH-not-HUMINT-geodata",
+      "sourceIds": [
+        "BP-1535"
+      ],
+      "sourceContributionIds": [
+        "subscriber-delivery"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1680"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1",
+        "F3"
+      ],
+      "rationale": "Subscriber dispatch reads published flood-warning content and applies subscribed areas/channels. HUMINT geodata describes intelligence-source living, working, listening, observation and pick-up locations for a HUMINT operational picture; those are different data and duties, not residents' flood subscriptions. This judgment uses the product's own description, not the overlay parent assignment.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-PUBLIC-VIEW-no-separate-mapping-basis",
+      "sourceIds": [
+        "BP-1535"
+      ],
+      "sourceContributionIds": [
+        "public-information"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1069"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1",
+        "F3"
+      ],
+      "rationale": "This selected process view reads an already assembled public environmental view containing the required warnings, areas and observations. It does not select a separate mapping-reference basis, operational/procedural overlay or map-production input. Direct original warning consumption remains represented at the application and subscriber dispatch; the public process still presents all required warning/area/source/time information.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-STORED-AUTH-not-request-phase-CIS-client",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "BP-1147"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This facet supplies actor assurance for protected access to stored subscriber information. The selected prevention/contact-change/deletion-request clients authenticate the F4 user request through the separate account-authentication facet. A coherent CIS component-management programme or a second direct request-phase client of this stored-access facet is not established by A1 protection.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-WARNING-INPUT-no-additional-COI-client",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CI"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1",
+        "F5"
+      ],
+      "rationale": "This selected F1 facet reuses already published warning/affected-area inputs. It does not choose an additional direct COI-service interface, military/environmental operational workflow or downstream picture-preparation provider as the warning feed. The optional hydrographic read client belongs to F5 latest-observation intake, not this published-warning share.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-STORED-DELETION-no-additional-core-client",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CR"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This F4 facet removes active stored subscriber account/contact information. Identity deprovisioning is represented by the selected service-to-lifecycle SUPPORTS view; that support does not by itself choose a second process-client API or delegation to a Core service. Stored-data removal selects no messaging, hosting, mediation or repeated-authentication interface.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-ACCOUNT-AUTH-no-second-CIS-view-FULFILLS",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "account-authentication"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CP-1023"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This facet verifies the entitled user for existing F4 account requests. Its selected capability view is the bounded Information Protection share; the CIS-security view is separately attached to A1 stored-information access. This request facet adds no second CIS-capability realization or systems/network/hardware programme. The boundary is local to these chosen views, not a denial of authentication's general security relevance.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    },
+    {
+      "id": "MEASURED-STORED-AUTH-no-second-IM-view-FULFILLS",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CP-1059"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This A1 facet authenticates entitled access to stored subscriber information, represented through the selected CIS-security view. The Information Protection realization is attached to the distinct F4 account-request facet. No second IM-capability realization, situational-awareness/knowledge product or command decision-support function is selected for this stored-access viewpoint.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    }
+    ,
+    {
+      "id": "MEASURED-SUBSCRIBER-DISPATCH-not-paper-map-input",
+      "sourceIds": [
+        "BP-1535"
+      ],
+      "sourceContributionIds": [
+        "subscriber-delivery"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1811"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1",
+        "F3"
+      ],
+      "rationale": "The selected area/channel dispatch reads published-warning content and prepared notification work. Printed or scanned paper maps are a distinct map artifact, not that notification input. F3 does not select a paper/scanned-map attachment or map-product delivery workflow; the required affected-area and warning content remains retained. This judgment uses the candidate's own printed/scanned-map description, not overlay ancestry or an assumption that scanned maps are non-digital.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
+    }
+    ,
+    {
+      "id": "MEASURED-SUBSCRIBER-DISPATCH-not-simulation-terrain-input",
+      "sourceIds": [
+        "BP-1535"
+      ],
+      "sourceContributionIds": [
+        "subscriber-delivery"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1304"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1",
+        "F3"
+      ],
+      "rationale": "F3 dispatch applies subscribed areas and user-selected notification channels to existing published-warning content and prepared notification work. Simulation Terrain Databases describe natural/man-made terrain for simulation applications; this dispatch function does not run a simulation or select a simulation-terrain input. Required affected-area information remains retained, without adding a simulation workflow. This judgment uses the product's own purpose, not its overlay parent assignment.",
+      "reviewFamily": "measured-full-catalogue-facet-boundary"
     }
   ],
   "openScopes": [

@@ -5,6 +5,8 @@ import com.taxonomy.architecture.pipeline.ArchitectureViewContext;
 import com.taxonomy.architecture.pipeline.EvidenceRelationProjection;
 import com.taxonomy.dto.RelationSearchReport;
 import com.taxonomy.dto.RelationSearchModel.*;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import tools.jackson.databind.JsonNode;
@@ -20,6 +22,30 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Actual authored raw replies must satisfy endpoint binding before the expensive browser scenario. */
 class ScenarioPlaybackEvidenceTest {
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    @Test void everyScopedContributionHasAnExplicitAnswerAtEveryCompatibleNavigationRoot() throws Exception {
+        var corpus = capture(); var playback = new ScenarioLlmPlayback(corpus.fixture());
+        var protocol = protocol(playback); var rules = new RelationCompatibilityMatrix();
+        String original = corpus.fixture().at("/requirement/text").asText();
+        var checks = new ArrayList<Executable>();
+        for (var source : corpus.sources().values()) for (var contribution : source.contributions()) {
+            for (var type : RelationType.values()) for (String root : List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")) {
+                for (Direction direction : Direction.values()) {
+                    boolean compatible = direction == Direction.OUTGOING
+                            ? rules.allowedTargetRoots(source.node().root(), type).contains(root)
+                            : rules.allowedTargetRoots(root, type).contains(source.node().root());
+                    if (!compatible) continue;
+                    var query = new Query(original, contribution, type.name(), direction, Phase.NAVIGATE,
+                            List.of(new Node(root, root, root, "", true)), null);
+                    checks.add(() -> assertTrue(List.of(Outcome.REJECT, Outcome.DESCEND)
+                                    .contains(protocol.evaluate(query).getFirst().outcome()),
+                            "A navigation category cannot become a concrete relationship endpoint"));
+                }
+            }
+        }
+        assertFalse(checks.isEmpty()); assertAll(checks);
+        assertTrue(playback.failures().isEmpty());
+    }
 
     @Test void everyClaimPreservesItsSelectedCounterpartTextAndQuoteInBothDirections() throws Exception {
         var corpus = capture();
@@ -38,6 +64,44 @@ class ScenarioPlaybackEvidenceTest {
             }
         }
         assertAll(checks);
+    }
+
+    @Test void splitRoleBranchesHaveAuthoredAnswersForTheFullCatalogueFailures() throws Exception {
+        var corpus = capture(); var playback = new ScenarioLlmPlayback(corpus.fixture());
+        var protocol = protocol(playback); String original = corpus.fixture().at("/requirement/text").asText();
+        var checks = new ArrayList<Executable>();
+        for (String scope : List.of(
+                "BP-1017 default SUPPORTS INCOMING CI",
+                "CP-1122 account-lifecycle REALIZES OUTGOING CR-1011",
+                "CP-1122 default REALIZES OUTGOING CR-1047",
+                "CR-1006 account-authentication REALIZES INCOMING CP-1023",
+                "CR-1006 default REALIZES INCOMING CP-1059",
+                "CR-1006 default SUPPORTS OUTGOING BP-1147",
+                "CP-1122 account-lifecycle FULFILLS INCOMING CR-1011",
+                "CP-1122 default FULFILLS INCOMING CR-1047",
+                "BP-1017 default CONSUMES OUTGOING IP-1102",
+                "BP-1017 latest-observation CONSUMES OUTGOING IP-1069",
+                "BP-1535 subscriber-delivery CONSUMES OUTGOING IP-1680",
+                "BP-1535 subscriber-delivery CONSUMES OUTGOING IP-1811",
+                "BP-1535 subscriber-delivery CONSUMES OUTGOING IP-1304",
+                "BP-1535 public-information CONSUMES OUTGOING IP-1069",
+                "CR-1006 default USES INCOMING BP-1147",
+                "BP-1017 default USES OUTGOING CI",
+                "BP-1536 deletion-lifecycle USES OUTGOING CR",
+                "CR-1006 account-authentication FULFILLS OUTGOING CP-1023",
+                "CR-1006 default FULFILLS OUTGOING CP-1059")) {
+            String[] fields = scope.split(" ");
+            var authored = corpus.fixture().at("/relationPlayback/sourceContributions").valueStream().filter(value ->
+                    value.path("nodeId").asText().equals(fields[0]) && value.path("contributionId").asText("default").equals(fields[1])).findFirst().orElseThrow();
+            var part = corpus.sources().get(fields[0]).contributions().stream().filter(value ->
+                    value.text().equals(authored.path("text").asText()) && value.quote().equals(authored.path("quote").asText())).findFirst().orElseThrow();
+            String root = fields[4].split("-")[0];
+            var candidate = new Node(fields[4], root, fields[4], "", root.equals(fields[4]));
+            var query = new Query(original, part, fields[2], Direction.valueOf(fields[3]), Phase.NAVIGATE, List.of(candidate), null);
+            checks.add(() -> assertTrue(List.of(Outcome.REJECT, Outcome.DESCEND).contains(protocol.evaluate(query).getFirst().outcome()), scope));
+        }
+        assertEquals(19, checks.size()); assertAll(checks);
+        assertTrue(playback.failures().isEmpty());
     }
 
     @Test void everySelectedAuthoredRelationPassesTheOriginalIndependentEndpointGate() throws Exception {
