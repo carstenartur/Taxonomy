@@ -288,7 +288,7 @@ public final class RequirementRelationSearch {
                         throw new AnalysisCheckpointSession.DeferredException("SOURCE_LIMIT");
                     admittedSources.clear();
                 }
-                charged[0]++; admittedSources.addAll(ids); charged[1] += additional; progress.calls(charged[0]);
+                charged[0]++; admittedSources.addAll(ids); charged[1] = Math.toIntExact(charged[1] + additional); progress.calls(charged[0]);
             }, options.maxPromptCharacters());
             assessSources(original, nodes, options, protocol, progress, sources, warnings);
             List<Intent> intents = intents(sources, roots, warnings);
