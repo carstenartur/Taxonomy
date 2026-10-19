@@ -20,12 +20,25 @@ public final class ScenarioLlmPlayback {
     private final ScenarioRelationPlayback relationPlayback;
     private final ScenarioReformulationPlayback reformulationPlayback;
     private final Map<String, JsonNode> rules = new LinkedHashMap<>();
-    private final List<Call> calls = new ArrayList<>();
+    private final List<CallEvidence> calls = new ArrayList<>();
     private final List<String> failures = new ArrayList<>();
-    private final List<String> prompts = new ArrayList<>();
+    private final List<PromptEvidence> prompts = new ArrayList<>();
     private final List<ScenarioLlmPlayback> adoptedSources = new ArrayList<>();
     private ResponsePause nextReformulationPause;
     private ScenarioCallJournal.Writer callJournal;
+
+    private interface PromptEvidence { String prompt(); }
+    private record LiteralPrompt(String prompt) implements PromptEvidence { }
+    private record CallEvidence(Call retained, ScenarioCallJournal.Reference reference) implements PromptEvidence {
+        String ruleId() { return retained == null ? reference.ruleId() : retained.ruleId(); }
+        String promptSha256() { return retained == null ? reference.promptSha256() : retained.promptSha256(); }
+        Call full() {
+            if (retained != null) return retained;
+            try { return reference.read(); }
+            catch (java.io.IOException failure) { throw new java.io.UncheckedIOException("Cannot read accepted provider exchange", failure); }
+        }
+        @Override public String prompt() { return full().prompt(); }
+    }
 
     /** Hold one validated remote response while the real HTTP client changes the proposal. */
     public synchronized ResponsePause pauseNextReformulation() {
@@ -95,20 +108,23 @@ public final class ScenarioLlmPlayback {
     public JsonNode fixture() { return fixture.deepCopy(); }
 
     public synchronized void recordCallsTo(java.nio.file.Path journal) throws java.io.IOException {
-        require(callJournal == null && calls().isEmpty(), "Call journal must be registered before any exchange");
+        require(callJournal == null && callCount() == 0, "Call journal must be registered before any exchange");
         if (journal.getParent() != null) java.nio.file.Files.createDirectories(journal.getParent());
         java.nio.file.Files.createFile(journal);
         callJournal = new ScenarioCallJournal.Writer(journal);
     }
 
-    private void accepted(Call call) {
+    private void accepted(Call call, int promptIndex) {
+        CallEvidence evidence;
         if (callJournal != null) {
-            try { callJournal.accept(call); }
+            try { evidence = new CallEvidence(null, callJournal.accept(call)); }
             catch (java.io.IOException failure) {
                 throw new java.io.UncheckedIOException("Cannot journal accepted provider exchange", failure);
             }
-        }
-        calls.add(call);
+        } else evidence = new CallEvidence(call, null);
+        calls.add(evidence);
+        // Promote the same arrival slot only after the complete response is durable.
+        prompts.set(promptIndex, evidence);
     }
 
     /** Test driver registers only text read back after its explicit authenticated adoption command. */
@@ -125,12 +141,17 @@ public final class ScenarioLlmPlayback {
     }
 
     public synchronized String respond(String prompt) {
-        prompts.add(prompt);
+        int promptIndex = prompts.size();
+        prompts.add(new LiteralPrompt(prompt));
         try {
             if (!adoptedSources.isEmpty()) {
                 String source = requestSource(prompt);
-                for (var next : adoptedSources) if (normalize(source).equals(normalize(next.fixture.at("/requirement/text").asText())))
-                    return next.respond(prompt);
+                for (var next : adoptedSources) if (normalize(source).equals(normalize(next.fixture.at("/requirement/text").asText()))) {
+                    String body = next.respond(prompt);
+                    // Parent and adopted source share evidence, not a closure retaining the prompt.
+                    prompts.set(promptIndex, next.prompts.getLast());
+                    return body;
+                }
             }
             if (ScenarioReformulationPlayback.accepts(prompt)) {
                 var reply = reformulationPlayback.respond(prompt);
@@ -138,14 +159,14 @@ public final class ScenarioLlmPlayback {
                 if (pause != null) pause.hold();
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
-                accepted(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body));
+                accepted(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body), promptIndex);
                 return body;
             }
             if (prompt.startsWith(ScenarioRelationPlayback.PREFIX)) {
                 var reply = relationPlayback.respond(prompt);
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
-                accepted(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body));
+                accepted(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body), promptIndex);
                 return body;
             }
             String requirement = unique(REQUIREMENT, prompt, "requirement");
@@ -171,7 +192,7 @@ public final class ScenarioLlmPlayback {
             }
             String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                     Map.of("role", "assistant", "content", json.writeValueAsString(answer))))));
-            accepted(new Call(rule.path("id").asText(), sha256(prompt), sha256(body), prompt, body));
+            accepted(new Call(rule.path("id").asText(), sha256(prompt), sha256(body), prompt, body), promptIndex);
             return body;
         } catch (RuntimeException failure) {
             failures.add(failure.getMessage());
@@ -180,8 +201,10 @@ public final class ScenarioLlmPlayback {
         }
     }
 
-    public synchronized List<Call> calls() { var all = new ArrayList<>(calls); adoptedSources.forEach(p -> all.addAll(p.calls())); return List.copyOf(all); }
-    public synchronized List<String> prompts() { return List.copyOf(prompts); }
+    public synchronized List<Call> calls() { var all = new ArrayList<Call>(); calls.forEach(call -> all.add(call.full())); adoptedSources.forEach(p -> all.addAll(p.calls())); return List.copyOf(all); }
+    public synchronized int callCount() { return calls.size() + adoptedSources.stream().mapToInt(ScenarioLlmPlayback::callCount).sum(); }
+    public synchronized int promptCount() { return prompts.size(); }
+    public synchronized List<String> prompts() { return List.copyOf(prompts.stream().map(PromptEvidence::prompt).toList()); }
     public synchronized List<String> failures() { return List.copyOf(failures); }
     private String requestSource(String prompt) {
         for (String marker : List.of("\nINPUT_DATA_JSON\n", "\nRECONCILIATION_DATA_JSON\n")) {
@@ -209,7 +232,7 @@ public final class ScenarioLlmPlayback {
         if (!failures.isEmpty()) throw new AssertionError("Unmatched LLM calls: " + failures);
         relationPlayback.verifyCoverage(repetitions);
         Map<String, Long> frequencies = calls.stream().filter(call -> call.ruleId().startsWith("relation:"))
-                .collect(java.util.stream.Collectors.groupingBy(Call::promptSha256, java.util.stream.Collectors.counting()));
+                .collect(java.util.stream.Collectors.groupingBy(CallEvidence::promptSha256, java.util.stream.Collectors.counting()));
         for (var entry : frequencies.entrySet()) {
             if (entry.getValue() != repetitions) {
                 throw new AssertionError("Unstable repeated relation query " + entry.getKey() + ": " + entry.getValue());

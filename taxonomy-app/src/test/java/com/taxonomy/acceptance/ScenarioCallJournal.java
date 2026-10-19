@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import tools.jackson.databind.ObjectMapper;
 
 /** Recoverable evidence captured at the remote-response acceptance boundary. */
@@ -24,10 +25,38 @@ public final class ScenarioCallJournal {
         private final Path path;
         private boolean failed;
         Writer(Path path) { this.path = path; }
-        synchronized void accept(ScenarioLlmPlayback.Call call) throws IOException {
+        synchronized Reference accept(ScenarioLlmPlayback.Call call) throws IOException {
             if (failed) throw new IOException("Call journal failed; no later exchange can be accepted");
-            try { append(path, call); }
+            try {
+                long start = Files.size(path);
+                append(path, call);
+                long length = Files.size(path) - start;
+                if (length < 1 || length > MAX_RECORD_BYTES + 1L)
+                    throw new IOException("Invalid accepted call journal record length");
+                return new Reference(path, start, (int) length, call.ruleId(), call.promptSha256(), call.responseSha256());
+            }
             catch (IOException failure) { failed = true; throw failure; }
+        }
+    }
+
+    /** No payload or open descriptor survives acceptance. File bytes remain the sole full evidence. */
+    record Reference(Path path, long offset, int length, String ruleId, String promptSha256, String responseSha256) {
+        ScenarioLlmPlayback.Call read() throws IOException {
+            if (offset < 0 || length < 1 || length > MAX_RECORD_BYTES + 1)
+                throw new IOException("Invalid call journal reference bounds");
+            var bytes = ByteBuffer.allocate(length);
+            try (var channel = FileChannel.open(path, StandardOpenOption.READ)) {
+                channel.position(offset);
+                while (bytes.hasRemaining()) {
+                    if (channel.read(bytes) < 0) throw new IOException("Incomplete referenced call journal record");
+                }
+            }
+            if (bytes.array()[length - 1] != '\n') throw new IOException("Incomplete referenced call journal record");
+            var call = decode(java.util.Arrays.copyOf(bytes.array(), length - 1));
+            if (!ruleId.equals(call.ruleId()) || !promptSha256.equals(call.promptSha256())
+                    || !responseSha256.equals(call.responseSha256()))
+                throw new IllegalArgumentException("Referenced call journal identity mismatch");
+            return call;
         }
     }
 
@@ -44,6 +73,22 @@ public final class ScenarioCallJournal {
 
     public static List<ScenarioLlmPlayback.Call> read(Path journal) throws IOException {
         var calls = new ArrayList<ScenarioLlmPlayback.Call>();
+        scan(journal, calls::add);
+        return List.copyOf(calls);
+    }
+
+    private static ScenarioLlmPlayback.Call decode(byte[] record) {
+        var call = JSON.readerFor(ScenarioLlmPlayback.Call.class)
+                .with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .<ScenarioLlmPlayback.Call>readValue(record);
+        if (call == null || call.ruleId() == null || call.ruleId().isBlank() || call.prompt() == null || call.response() == null
+                || !ScenarioLlmPlayback.sha256(call.prompt()).equals(call.promptSha256())
+                || !ScenarioLlmPlayback.sha256(call.response()).equals(call.responseSha256()))
+            throw new IllegalArgumentException("Call journal fingerprint or identity mismatch");
+        return call;
+    }
+
+    private static void scan(Path journal, Consumer<ScenarioLlmPlayback.Call> accepted) throws IOException {
         try (var input = new BufferedInputStream(Files.newInputStream(journal))) {
             var record = new ByteArrayOutputStream();
             for (int value; (value = input.read()) != -1;) {
@@ -52,24 +97,22 @@ public final class ScenarioCallJournal {
                     record.write(value);
                     continue;
                 }
-                var call = JSON.readValue(record.toByteArray(), ScenarioLlmPlayback.Call.class);
-                if (call.ruleId() == null || call.ruleId().isBlank() || call.prompt() == null || call.response() == null
-                        || !ScenarioLlmPlayback.sha256(call.prompt()).equals(call.promptSha256())
-                        || !ScenarioLlmPlayback.sha256(call.response()).equals(call.responseSha256()))
-                    throw new IllegalArgumentException("Call journal fingerprint or identity mismatch");
-                calls.add(call);
+                accepted.accept(decode(record.toByteArray()));
                 record.reset();
             }
             // A killed writer can leave a final unterminated record. No response
             // was returned for it; all earlier accepted exchanges remain intact.
         }
-        return List.copyOf(calls);
     }
     public static void assemble(Path journal, Path artifact) throws IOException {
-        var calls = read(journal);
         Path temporary = Files.createTempFile(artifact.getParent(), ".scenario-calls-", ".json");
         try {
-            JSON.writerWithDefaultPrettyPrinter().writeValue(temporary.toFile(), calls);
+            try (var output = Files.newOutputStream(temporary);
+                 var generator = JSON.writerWithDefaultPrettyPrinter().createGenerator(output)) {
+                generator.writeStartArray();
+                scan(journal, call -> JSON.writeValue(generator, call));
+                generator.writeEndArray();
+            }
             Files.move(temporary, artifact, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } finally { Files.deleteIfExists(temporary); }

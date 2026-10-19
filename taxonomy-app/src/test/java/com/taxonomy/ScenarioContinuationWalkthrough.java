@@ -1,6 +1,7 @@
 package com.taxonomy;
 
 import tools.jackson.databind.JsonNode;
+import com.taxonomy.acceptance.ScenarioJsonFingerprint;
 import java.time.Duration;
 import java.util.*;
 
@@ -11,7 +12,6 @@ final class ScenarioContinuationWalkthrough {
     private static final Set<String> TERMINAL = Set.of("SUCCESS", "PARTIAL", "FAILED", "CANCELLED");
     static final int MAX_CONTINUATIONS_PER_PASS = 128;
     private record PassIdentity(long requirementId, long versionId, String provider, String reasonLength) { }
-    private record ObservedSnapshot(String id, JsonNode value) { }
 
     static JsonNode finishIndependentBudgetWork(ScenarioArchitectureAcceptanceTest app, long projectId,
                                                String operationPath, ScenarioBrowserWalkthrough browser) throws Exception {
@@ -21,13 +21,13 @@ final class ScenarioContinuationWalkthrough {
         Map<String, PassIdentity> originalPasses = passIdentities(operation);
         var itemCycles = new HashMap<String, Integer>();
         var browserPasses = new HashSet<String>();
-        var originalSnapshots = new HashMap<String, ObservedSnapshot>();
+        var originalSnapshots = new HashMap<String, ScenarioSnapshotObservation>();
         // Bind the very first saved evidence to its fixture/revision before a
         // continuation can fail or the parent can terminate this application.
         for (JsonNode job : operation.path("jobs")) for (JsonNode item : job.path("items")) {
             String id = item.path("snapshotId").asText();
             JsonNode initial = app.get("/api/projects/" + projectId + "/snapshots/" + id);
-            originalSnapshots.put(job.path("id").asText() + ":" + item.path("id").asText(), new ObservedSnapshot(id, initial));
+            originalSnapshots.put(job.path("id").asText() + ":" + item.path("id").asText(), ScenarioSnapshotObservation.observe(id, initial));
             if (id.equals(operation.path("selectedSnapshotId").asText()))
                 app.checkpointSnapshot(projectId, item.path("requirementId").asLong(), initial);
         }
@@ -73,13 +73,13 @@ final class ScenarioContinuationWalkthrough {
             String oldSnapshotId = selectedItem.path("snapshotId").asText();
             assertThat(permission.path("snapshotId").asText()).isEqualTo(oldSnapshotId);
             String oldPath = "/api/projects/" + projectId + "/snapshots/" + oldSnapshotId;
-            // Retain at most the latest observation for each original pass. Comparing
-            // against that first read also catches a mutation between continuations;
-            // another pre-action GET would silently replace the original evidence.
+            // Retain the complete first-read fingerprint and scalar progress for each
+            // original pass. The full snapshot is already durably checkpointed; another
+            // pre-action GET would silently replace the original observed evidence.
             var observed = originalSnapshots.get(itemKey);
             if (observed != null) assertThat(observed.id()).isEqualTo(oldSnapshotId);
-            JsonNode before = observed == null ? app.get(oldPath) : observed.value();
-            int callsBefore = app.playback.calls().size();
+            var before = observed == null ? ScenarioSnapshotObservation.observe(oldSnapshotId, app.get(oldPath)) : observed;
+            int callsBefore = app.playback.callCount();
             String path = itemPath(projectId, selectedJob, selectedItem);
             String jobId = selectedJob.path("id").asText();
             long itemId = selectedItem.path("id").asLong();
@@ -110,20 +110,20 @@ final class ScenarioContinuationWalkthrough {
             assertThat(nextId).isNotBlank().isNotEqualTo(oldSnapshotId);
             JsonNode after = app.get("/api/projects/" + projectId + "/snapshots/" + nextId);
             app.checkpointSnapshot(projectId, selectedItem.path("requirementId").asLong(), after);
-            assertThat(app.get(oldPath)).as("Continuation must preserve its immutable input snapshot").isEqualTo(before);
+            assertThat(ScenarioJsonFingerprint.sha256(app.get(oldPath)))
+                    .as("Continuation must preserve its immutable input snapshot").isEqualTo(before.sha256());
             assertThat(after.at("/analysis/recovery/state").asText())
                     .as("Continuation stopped outside an execution budget: %s", after.at("/analysis/warnings"))
                     .isIn("STOPPED", "COMPLETED", "COMPLETED_WITH_GAPS");
             assertThat(after.at("/analysis/recovery/id").asText()).isEqualTo(journal);
             assertThat(after.at("/analysis/recovery/version").asLong())
                     .isGreaterThan(permission.path("continuationVersion").asLong());
-            JsonNode progressBefore = before.at("/analysis/relationSearchReport/progress");
             JsonNode progressAfter = after.at("/analysis/relationSearchReport/progress");
-            int newCalls = app.playback.calls().size() - callsBefore;
+            int newCalls = app.playback.callCount() - callsBefore;
             boolean advances = newCalls > 0
-                    || progressAfter.path("assessedSources").asInt() > progressBefore.path("assessedSources").asInt()
-                    || progressAfter.path("completedSearches").asInt() > progressBefore.path("completedSearches").asInt()
-                    || !after.at("/analysis/recovery/state").equals(before.at("/analysis/recovery/state"));
+                    || progressAfter.path("assessedSources").asInt() > before.assessedSources()
+                    || progressAfter.path("completedSearches").asInt() > before.completedSearches()
+                    || !after.at("/analysis/recovery/state").equals(before.recoveryState());
             assertThat(advances).as("Each explicit cycle must advance the saved work instead of restarting it; stop reason: %s",
                     after.at("/analysis/relationSearchReport/stopReason").asText()).isTrue();
             assertThat(after.at("/analysis/relationSearchReport/maxCalls").asInt()).isEqualTo(24);
@@ -141,7 +141,7 @@ final class ScenarioContinuationWalkthrough {
             entry.put("newProviderCalls", newCalls); entry.put("progress", progressAfter);
             entry.put("recoveryState", after.at("/analysis/recovery/state").asText());
             history.add(entry);
-            originalSnapshots.put(itemKey, new ObservedSnapshot(nextId, after));
+            originalSnapshots.put(itemKey, ScenarioSnapshotObservation.observe(nextId, after));
         }
         app.save("continuation-history.json", app.json.valueToTree(history));
         throw new AssertionError("The declared scenario did not finish its independent budget work within the bounded driver");

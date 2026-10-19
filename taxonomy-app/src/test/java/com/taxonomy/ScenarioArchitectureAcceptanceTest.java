@@ -274,7 +274,7 @@ class ScenarioArchitectureAcceptanceTest {
                 playback.fixture(), System.getProperty("scenario.runId", "direct-test"));
         var run = (tools.jackson.databind.node.ObjectNode) evidenceIdentity.deepCopy();
         return run.put("projectId", projectId).put("requirementId", requirementId).put("snapshotId", snapshotId)
-                .put("llmCalls", playback.calls().size()).put("mockBoundary", "remote LLM HTTP response only");
+                .put("llmCalls", playback.callCount()).put("mockBoundary", "remote LLM HTTP response only");
     }
 
     private static JsonNode semanticArchitecture(JsonNode architecture) {
@@ -300,7 +300,7 @@ class ScenarioArchitectureAcceptanceTest {
         proposal.setRepositoryId(context.repositoryId());proposal.setWorkspaceId(context.workspaceId());proposal.setOwnerUsername("admin");
         proposal.setSourceNode(node);proposal.setTargetNode(target);proposal.setRelationType(com.taxonomy.model.RelationType.DEPENDS_ON);
         proposal.setConfidence(.99);proposal.setRationale("Live proposal added after frozen analysis");
-        int callsBefore=playback.calls().size();
+        int callsBefore=playback.callCount();
         var originalPolicy = diagramProjection.getPolicy();
         org.mockito.Mockito.clearInvocations(liveReports);
         try {
@@ -328,7 +328,7 @@ class ScenarioArchitectureAcceptanceTest {
             assertThat(after.architecture().elements()).isEqualTo(before.architecture().elements());
             assertThat(after.architecture().relations()).isEqualTo(before.architecture().relations());
             org.mockito.Mockito.verifyNoInteractions(liveReports);
-            assertThat(playback.calls()).hasSize(callsBefore);
+            assertThat(playback.callCount()).isEqualTo(callsBefore);
             save("frozen-word-mutation.json",json.valueToTree(Map.of("snapshotId",snapshotId,"graphSha256",after.architecture().evidence().graphSha256(),"catalogueChanged",true,"selectionPolicyChanged",true,"pendingProposalAdded",true,"frozenSourceUnchanged",true,"additionalLlmCalls",0)));
         } finally {
             node.setNameEn(oldName);node.setDescriptionEn(oldDescription);catalogueRepository.saveAndFlush(node);
