@@ -3,6 +3,7 @@ package com.taxonomy.analysis.recovery;
 import com.taxonomy.analysis.backup.AnalysisBackupContributor.*;
 import com.taxonomy.backup.SourceRecordId;
 import com.taxonomy.dto.*;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -39,7 +40,7 @@ public final class AnalysisContinuationBackupRestorer {
         request.setContinuationId(targetId);request.setContinuationAction(null);request.setContinuationVersion(null);request.setContinuationQuestion(null);request.setContinuationQuestions(null);
         AnalysisResult result;
         if(source.resultJson()==null)result=new AnalysisResult(Map.of(),List.of());
-        else { bounded(source.resultJson(),MAX_RUN_CHARACTERS);result=json.readValue(source.resultJson(),AnalysisResult.class); }
+        else { result=json.readValue(unpackResult(source.resultJson()),AnalysisResult.class); }
         var keys=new HashSet<String>();var ids=new HashSet<SourceRecordId>();long payload=0;
         var preparedQuestions=new ArrayList<PreparedQuestion>();
         var scores=new LinkedHashMap<String,Double>(result.getRawScores());var reasons=new LinkedHashMap<String,String>(result.getReasons());
@@ -82,7 +83,7 @@ public final class AnalysisContinuationBackupRestorer {
         result.setWarnings(warnings);
         if(Set.of("STOPPED","PAUSED").contains(state))result.setStatus("PARTIAL");
         result.setRecovery(null); // Public reads derive a new target-bound recovery revision/count from restored rows.
-        String requestJson=json.writeValueAsString(request),resultJson=json.writeValueAsString(result);bounded(resultJson,MAX_RUN_CHARACTERS);
+        String requestJson=json.writeValueAsString(request),resultJson=packResult(json.writeValueAsString(result));
         long retained=payload;
         transactions.executeWithoutResult(status -> {
             if(em.find(AnalysisContinuationRun.class,targetId)!=null)throw new IllegalStateException("Continuation restore target already exists");
@@ -105,6 +106,14 @@ public final class AnalysisContinuationBackupRestorer {
         });
     }
     private record PreparedQuestion(QuestionRecord source,String nodeCodes,String prompt,String detail,String detailError) { }
+    private static String unpackResult(String value) {
+        try { return PortableJsonPayloads.unpack(value,(int)MAX_RUN_CHARACTERS); }
+        catch(java.io.IOException failure) {throw invalid();}
+    }
+    private static String packResult(String value) {
+        try { return PortableJsonPayloads.pack(value,(int)MAX_RUN_CHARACTERS); }
+        catch(java.io.IOException failure) {throw invalid();}
+    }
     private static void optionalError(AnalysisQuestionCheckpoint q,String value) {q.error=value==null?null:value.substring(0,Math.min(2048,value.length()));}
     private static long addStored(long total,String value) {if(value==null)return total;if(value.length()>MAX_RUN_CHARACTERS-total)throw invalid();return total+value.length();}
     private static void requireKind(SourceRecordId id,String kind) {if(id==null || !kind.equals(id.kind()))throw invalid();}

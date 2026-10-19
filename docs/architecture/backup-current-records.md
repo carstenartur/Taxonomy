@@ -55,11 +55,42 @@ continues to preserve an empty editor document even on Oracle.
 in `taxonomy-export`. It reads a bounded row at a time on the capture thread,
 keeps JDBC resources open while the sink consumes them, checks interruption,
 and closes the read transaction on success or failure. Limits are 16 MiB per
-encoded record, 8 Mi characters per text value and one million scanned rows per
+encoded record, 8 Mi characters per ordinary text value and one million scanned rows per
 dataset. Repository predicates accept at most 200 selected logical repositories;
 larger installation captures use installation scope. Component/capture/archive
 limits apply in addition. A limit failure discards the capture, never a truncated
 successful dataset.
+
+Large analysis documents have an explicit lossless field representation, shared
+by continuation storage and portable records. Only continuation `resultJson` and
+portfolio snapshot `analysisPayload` opt into a bounded 24,000,000-character
+document read before packing. The default text reader and the 16 MiB encoded
+record limit remain unchanged. Portfolio database payloads, public analysis DTOs,
+question prompts and question details retain their existing representations.
+
+These two portable string fields accept either the original JSON text or
+`taxonomy-json-payload:v1:<characters>:<sha256>:<base64>`. The frame contains one
+GZIP member over the original big-endian UTF-16 code units; its character count
+and SHA-256 cover the full original text, including whitespace. Writers frame
+documents of at least 65,536 characters only when the frame is smaller than the
+original. Readers use `PortableJsonPayloads.unpack` before parsing the typed JSON
+or discovering catalogue/hypothesis references. They bound both stored and
+expanded characters, verify the checksum, GZIP CRC and size, and reject unknown
+versions, noncanonical Base64, truncation, concatenated members and trailing
+bytes. Null and existing unframed fields remain compatible. The field frame is
+explicitly versioned within the version-1 typed record schema.
+The bounded transformation does not consume or reject a worker's interrupt flag:
+an interrupted provider must still be able to checkpoint accepted partial
+evidence. Portable capture retains its interruption checks at JDBC, stream and
+sink boundaries.
+
+Ordinary continuation writes still enforce the 12,000,000-character stored
+result ceiling after packing, with a separate 24,000,000-character expansion
+ceiling. Continuation owner restore preserves its preexisting 24,000,000-character
+result allowance, accepts both field forms and stores a smaller frame when
+available. Neither limit permits truncating evidence or bypassing the independent
+question, run, archive or capture budgets. Restored evidence still requires the
+existing target-context review and grants no execution authority.
 
 Workspace owns exact repository/workspace and encoded-tenant predicates.
 Selecting a central repository does not select any private workspace. Analysis

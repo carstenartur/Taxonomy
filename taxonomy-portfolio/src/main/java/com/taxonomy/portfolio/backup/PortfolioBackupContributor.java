@@ -208,7 +208,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     r.getLong("duration_ms"),
                     r.getInt("warning_count"),
-                    text(r,"analysis_payload"),
+                    com.taxonomy.exchange.backup.PortableJsonPayloads.pack(text(r,"analysis_payload",24_000_000),24_000_000),
                     text(r,"gap_payload"),
                     text(r,"pattern_payload"),
                     text(r,"recommendation_payload"));

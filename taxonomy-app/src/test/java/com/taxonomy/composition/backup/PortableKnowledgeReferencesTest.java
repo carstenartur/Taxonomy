@@ -7,6 +7,19 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Authored identifiers isolate the reference protocol from any particular shipped catalogue. */
 class PortableKnowledgeReferencesTest {
+    @Test void packedFieldsRetainTheSameCatalogueAndHypothesisClosure() throws Exception {
+        String document = "{\"tree\":[{\"code\":\"FIXTURE-A\",\"description\":\"" + "retained source ".repeat(10_000)
+                + "\"}],\"scores\":{\"FIXTURE-B\":70},\"provisionalRelations\":[{\"hypothesisId\":17,\"targetCode\":\"FIXTURE-C\"}]}";
+        var record = PortableRows.json().createObjectNode();
+        record.put("analysisPayload",com.taxonomy.exchange.backup.PortableJsonPayloads.pack(document,24_000_000));
+        var refs = new PortableKnowledgeReferences(); refs.encoded(record,"analysisPayload");
+        assertThat(refs.codes).containsExactly("FIXTURE-A","FIXTURE-B","FIXTURE-C");
+        assertThat(refs.hypotheses).containsExactly(new SourceRecordId("knowledge.hypothesis","17"));
+        record.put("analysisPayload",record.path("analysisPayload").asText().replace(":v1:",":v2:"));
+        assertThatThrownBy(() -> new PortableKnowledgeReferences().encoded(record,"analysisPayload"))
+                .isInstanceOf(java.io.IOException.class);
+    }
+
     @Test void closesTypedCurrentDraftEvidenceAndIgnoresDiagnosticDisplayLabels()throws Exception {
         var refs=new PortableKnowledgeReferences();
         refs.payload(PortableRows.json().readTree("""

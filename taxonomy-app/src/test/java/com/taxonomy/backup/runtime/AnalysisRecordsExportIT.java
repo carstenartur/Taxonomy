@@ -24,6 +24,23 @@ import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
 import static org.assertj.core.api.Assertions.*;
 
 class AnalysisRecordsExportIT {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void largePlainAndStoredPackedResultsExportAsLosslessBoundedFields(boolean storedPacked) throws Exception {
+        String original = "{\"reasons\":{\"CP\":\"" + "Complete source evidence. ".repeat(540_000) + "\"}}";
+        assertThat(original.length()).isGreaterThan(12_000_000);
+        try (var fixture = new Fixture()) {
+            String id = run(fixture, "repo-a", "private-a", "draft", "alice", 10, "CURRENT");
+            String stored = storedPacked ? com.taxonomy.exchange.backup.PortableJsonPayloads.pack(original,24_000_000) : original;
+            fixture.jdbc.update("update analysis_continuation set result_json=? where id=?", stored, id);
+            var output = new Contents();
+            new AnalysisBackupContributor(fixture.database,"alice").write(scoped(BackupProfile.REPOSITORY_HISTORY),output);
+            String exported = records(output,"continuations").getFirst().path("resultJson").asText();
+            assertThat(com.taxonomy.exchange.backup.PortableJsonPayloads.unpack(exported,24_000_000)).isEqualTo(original);
+            assertThat(output.entries.get("data/analysis/continuations.ndjson").length).isLessThan(PortableRows.MAX_RECORD_BYTES);
+            assertThat(fixture.jdbc.queryForObject("select result_json from analysis_continuation where id=?",String.class,id)).isEqualTo(stored);
+        }
+    }
+
     @ParameterizedTest @ValueSource(ints = {0, 1, 2, 3})
     void compactAndLegacyQuestionsKeepTheOriginalCleartextArchiveContract(int detailMode) throws Exception {
         var json = new tools.jackson.databind.ObjectMapper();
