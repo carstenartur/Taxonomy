@@ -402,9 +402,13 @@ public class AnalysisContinuationStore {
         if (owner != null && !Objects.equals(run.operationId(), owner.operationId()))
             throw conflict("Question operation binding was superseded");
         Set<String> candidates = singletonCodes == null ? null : Set.copyOf(singletonCodes);
+        // These terminal states cannot match the positive list. Excluding them first
+        // avoids HSQL's allocating, space-padded IN-table lookup for every retained
+        // successful answer on every replay, without dropping any stored evidence.
         var pending = em.createQuery("select q.questionKey, q.inputHash, q.provider, q.nodeCodes, q.state "
                         + "from AnalysisQuestionCheckpoint q where q.run.id=:id and q.provider=:provider "
-                        + "and q.prompt is not null and q.state in ('READY','UNASSESSED','CLARIFICATION','FAILED','SKIPPED')", Object[].class)
+                        + "and q.prompt is not null and q.state<>'SUCCESS' and q.state<>'SUPERSEDED' "
+                        + "and q.state in ('READY','UNASSESSED','CLARIFICATION','FAILED','SKIPPED')", Object[].class)
                 .setParameter("id", run.id()).setParameter("provider", provider).getResultList().stream()
                 .map(row -> new QuestionInput((String) row[0], (String) row[1], (String) row[2],
                         (String) row[3], (String) row[4])).toList();

@@ -111,6 +111,81 @@ class PortfolioSnapshotPayloadReadTest {
     }
 
     @Test
+    void completeSnapshotAvoidsFullClobStringsWithoutLosingAnyPayloadFields() {
+        try (var f = new Fixture()) {
+            var allocation = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+            assertThat(allocation.isThreadAllocatedMemorySupported()).isTrue();
+            allocation.setThreadAllocatedMemoryEnabled(true);
+            String snapshotId = f.snapshotIds.getFirst();
+            Supplier<List<Object>> materialized = () -> new TransactionTemplate(f.transactions).execute(status -> {
+                Object[] row = f.shared.createQuery("""
+                        select snapshot.analysisPayload, snapshot.gapAnalysisPayload,
+                               snapshot.patternDetectionPayload, snapshot.recommendationPayload
+                          from RequirementAnalysisSnapshot snapshot
+                         where snapshot.id = :id and snapshot.projectId = :project and snapshot.scopeKey = :scope
+                        """, Object[].class).setParameter("id", snapshotId).setParameter("project", f.projectId)
+                        .setParameter("scope", PortfolioScope.key("owner", f.scope)).getSingleResult();
+                return List.of(f.codec.read((String) row[0], AnalysisResult.class),
+                        f.codec.read((String) row[1], GapAnalysisView.class),
+                        f.codec.read((String) row[2], PatternDetectionView.class),
+                        f.codec.read((String) row[3], ArchitectureRecommendation.class));
+            });
+            Supplier<SnapshotDetail> complete = () -> f.persistence.getSnapshot(f.projectId, snapshotId, "owner", f.scope);
+            for (int warm = 0; warm < 3; warm++) { materialized.get(); complete.get(); }
+            long materializedBytes = 0, completeBytes = 0;
+            for (int repetition = 0; repetition < 3; repetition++) {
+                long before = allocation.getCurrentThreadAllocatedBytes();
+                var original = materialized.get();
+                materializedBytes += allocation.getCurrentThreadAllocatedBytes() - before;
+                before = allocation.getCurrentThreadAllocatedBytes();
+                var detail = complete.get();
+                completeBytes += allocation.getCurrentThreadAllocatedBytes() - before;
+                var actual = List.of(detail.analysis(), detail.gapAnalysis(), detail.patternDetection(), detail.recommendation());
+                var json = JsonMapper.builder().build();
+                for (int payload = 0; payload < original.size(); payload++) {
+                    tools.jackson.databind.JsonNode actualFields = json.valueToTree(actual.get(payload));
+                    tools.jackson.databind.JsonNode originalFields = json.valueToTree(original.get(payload));
+                    assertThat(actualFields).isEqualTo(originalFields);
+                }
+            }
+            assertThat(completeBytes).as("Full evidence must avoid CLOB String materialization: %s vs baseline %s allocated bytes",
+                            completeBytes, materializedBytes)
+                    .isLessThan((long) (materializedBytes * .80));
+        }
+    }
+
+    @Test
+    void fullEvidenceAndContinuationAnalysisRejectEveryForeignOwnershipColumn() {
+        try (var f = new Fixture()) {
+            record Identity(Long projectId, String snapshotId, String scopeKey, String jobId,
+                            Long requirementId, Long requirementVersionId) { }
+            String snapshotId = f.snapshotIds.getFirst(), tenant = PortfolioScope.key("owner", f.scope);
+            var foreign = List.of(
+                    new Identity(f.otherProjectId, snapshotId, tenant, f.jobIds.getFirst(), f.requirementId, f.versionId),
+                    new Identity(f.projectId, UUID.randomUUID().toString(), tenant, f.jobIds.getFirst(), f.requirementId, f.versionId),
+                    new Identity(f.projectId, snapshotId, "foreign-scope", f.jobIds.getFirst(), f.requirementId, f.versionId),
+                    new Identity(f.projectId, snapshotId, tenant, f.jobIds.getLast(), f.requirementId, f.versionId),
+                    new Identity(f.projectId, snapshotId, tenant, f.jobIds.getFirst(), f.requirementId + 100, f.versionId),
+                    new Identity(f.projectId, snapshotId, tenant, f.jobIds.getFirst(), f.requirementId, f.versionId + 100));
+            f.transaction(em -> {
+                var reader = new PortfolioSnapshotEvidenceReader(em, f.codec);
+                var full = reader.read(f.projectId, snapshotId, tenant).orElseThrow();
+                var analysis = reader.readAnalysis(f.projectId, snapshotId, tenant, f.jobIds.getFirst(), f.requirementId,
+                        f.versionId).orElseThrow().analysis();
+                assertThat(analysis.getReasons()).isEqualTo(full.analysis().getReasons());
+                assertThat(analysis.getTree().getFirst().getDescriptionEn()).isEqualTo(Fixture.LARGE_EVIDENCE);
+                for (int i = 0; i < foreign.size(); i++) {
+                    var identity = foreign.get(i);
+                    assertThat(reader.readAnalysis(identity.projectId(), identity.snapshotId(), identity.scopeKey(), identity.jobId(),
+                            identity.requirementId(), identity.requirementVersionId())).isEmpty();
+                    if (i < 3) assertThat(reader.read(identity.projectId(), identity.snapshotId(), identity.scopeKey())).isEmpty();
+                }
+            });
+            f.assertNoResultEntityLoads();
+        }
+    }
+
+    @Test
     void selectionAvoidsFullClobStringAllocationWhileReadingTheSameScoresAndWarnings() {
         try (var f = new Fixture()) {
             var allocation = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
@@ -456,7 +531,7 @@ class PortfolioSnapshotPayloadReadTest {
             persistence = proxy(new PortfolioAnalysisPersistenceService(projectRepository, requirements, versions, jobs, items,
                     snapshots, repositories.getRepository(RequirementElementMappingRepository.class),
                     repositories.getRepository(RequirementRelationMappingRepository.class), mock(AnalysisHypothesisLinkPort.class),
-                    codec, new PortfolioSnapshotSelectionReader(shared, codec),
+                    codec, new PortfolioSnapshotSelectionReader(shared, codec), new PortfolioSnapshotEvidenceReader(shared, codec),
                     new DefaultListableBeanFactory().getBeanProvider(ProjectProviderBinding.class)));
             selection = proxy(new CopilotResultPersistenceService(requirements, snapshots, items));
             if (realEnrichment) {

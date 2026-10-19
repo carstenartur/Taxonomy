@@ -107,12 +107,13 @@ public final class RecoveryCheckpointPersistenceProbe {
         final String savedResult = "{\"status\":\"IN_PROGRESS\",\"tree\":[],\"errorMessage\":\""
                 + "retained evidence ".repeat(32_000) + "\"}";
 
-        Database() {
+        Database() { this(false); }
+        Database(boolean shutdown) {
             factory = new Configuration()
                     .addAnnotatedClass(AnalysisContinuationRun.class)
                     .addAnnotatedClass(AnalysisQuestionCheckpoint.class)
                     .setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
-                    .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:recovery-" + id)
+                    .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:recovery-" + id + (shutdown ? ";shutdown=true" : ""))
                     .setProperty("hibernate.hbm2ddl.auto", "create-drop")
                     .setProperty("hibernate.search.enabled", "false")
                     .setProperty("hibernate.generate_statistics", "true")
@@ -466,6 +467,60 @@ public final class RecoveryCheckpointPersistenceProbe {
                         "A multi-node batch was treated as a singleton correction");
                 return null;
             });
+        }
+    }
+
+    public static long supersessionTerminalHistoryAllocationIsBounded() {
+        try (var db = new Database(true)) {
+            db.transaction(em -> {
+                for (int i = 0; i < 4_095; i++) {
+                    var question = new AnalysisQuestionCheckpoint();
+                    question.id = db.id + ":Rterminal-" + i;
+                    question.run = em.getReference(AnalysisContinuationRun.class, db.id);
+                    question.questionKey = "Rterminal-" + i;
+                    question.inputHash = "2".repeat(64); question.provider = "MOCK";
+                    question.nodeCodes = "[\"UA-terminal\"]";
+                    question.prompt = "Retained original terminal source context";
+                    question.detailJson = "{\"rawResponse\":\"Retained accepted evidence\"}";
+                    question.state = i % 16 == 0 ? "SUPERSEDED" : "SUCCESS";
+                    em.persist(question);
+                }
+                return null;
+            });
+            var unrelated = saveCorrectiveQuestion(db, "UA-open", "MOCK", null);
+            var bean = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+            check(bean.isThreadAllocatedMemorySupported() && bean.isThreadAllocatedMemoryEnabled(),
+                    "The allocation regression requires the supported JVM allocation counter");
+            Runnable scan = () -> db.transaction(em -> {
+                db.store(em).supersedeEvidence(db.claim(), "SOURCES", "MOCK", java.util.Set.of("UA-covered"), question -> {
+                    throw new AssertionError("Unrelated correction reached the full-prompt predicate");
+                }, null);
+                return null;
+            });
+            for (int i = 0; i < 10; i++) scan.run();
+            db.resetObservations();
+            long before = bean.getThreadAllocatedBytes(Thread.currentThread().threadId());
+            for (int i = 0; i < 20; i++) scan.run();
+            long allocated = bean.getThreadAllocatedBytes(Thread.currentThread().threadId()) - before;
+            check(allocated < 8_000_000,
+                    "Terminal-history supersession allocated " + allocated + " bytes for 20 metadata-only scans");
+            check(promptSelects(db) == 0, "Terminal history caused prompt LOB reads");
+            noQuestionPayloadWrites(db, "Terminal-history supersession");
+            db.transaction(em -> {
+                check(em.createQuery("select count(q) from AnalysisQuestionCheckpoint q where q.run.id=:id", Long.class)
+                                .setParameter("id", db.id).getSingleResult() == 4_096,
+                        "Supersession discarded terminal evidence");
+                var accepted = em.find(AnalysisQuestionCheckpoint.class, db.id + ":Rterminal-1");
+                check("SUCCESS".equals(accepted.state)
+                                && "Retained original terminal source context".equals(accepted.prompt)
+                                && "{\"rawResponse\":\"Retained accepted evidence\"}".equals(accepted.detailJson),
+                        "The allocation bound was achieved by changing retained evidence");
+                check("UNASSESSED".equals(em.find(AnalysisQuestionCheckpoint.class,
+                                db.id + ":" + unrelated.key()).state),
+                        "An unrelated correction was superseded");
+                return null;
+            });
+            return allocated;
         }
     }
 

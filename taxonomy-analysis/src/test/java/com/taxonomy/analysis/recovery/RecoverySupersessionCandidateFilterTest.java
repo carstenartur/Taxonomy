@@ -13,6 +13,11 @@ import static org.mockito.Mockito.*;
 
 /** A node preselection may avoid opaque reads but must never authorize supersession by itself. */
 class RecoverySupersessionCandidateFilterTest {
+    @Test void acceptedHistoryDoesNotAllocateAnInListComparisonForEveryCheckpoint() {
+        // Exercise retained terminal evidence in the real persistent store, rather than a mocked query.
+        RecoveryCheckpointPersistenceProbe.supersessionTerminalHistoryAllocationIsBounded();
+    }
+
     @Test void unrelatedLegacyEncodedAndMultiNodeQuestionsNeedOnlyMetadata() {
         RecoveryCheckpointPersistenceProbe.unrelatedSupersessionUsesMetadataOnly();
     }

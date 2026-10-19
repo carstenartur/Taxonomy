@@ -141,13 +141,30 @@ class ProjectAnalysisBudgetContinuationTest {
                             || sql.contains("recommendation_payload") || sql.contains("requirement_text")
                             || sql.contains("source_fragment_ids") || sql.contains("original_text"));
             assertThat(selects.stream().filter(sql -> sql.contains("analysis_payload")).toList())
-                    .singleElement().satisfies(sql -> assertThat(sql.substring(sql.indexOf(" where ")))
-                            .contains(".id=", ".job_id=", ".project_id=", ".scope_key=",
-                                    ".requirement_id=", ".requirement_version_id="));
+                    .singleElement().satisfies(sql -> {
+                        String normalized = sql.replaceAll("\\s+", " ");
+                        assertThat(normalized).contains(" where ");
+                        assertThat(normalized.substring(normalized.indexOf(" where ")).replaceAll("\\s+", ""))
+                                .contains(".id=", ".job_id=", ".project_id=", ".scope_key=",
+                                        ".requirement_id=", ".requirement_version_id=");
+                    });
             assertThat(selects.stream().filter(sql -> sql.contains("req_analysis_item")).toList())
                     .as("Job, item, current version and snapshot identity come from one scalar statement")
                     .singleElement().satisfies(sql -> assertThat(sql)
                             .contains("req_analysis_job", "project_requirement", "req_analysis_snapshot", "current_version_id"));
+
+            f.sql.clear();
+            var prepared = f.continueWith(job, new ContinueAnalysisRequest(
+                    eligibility.snapshotId(), eligibility.continuationVersion()));
+            assertThat(prepared.status()).isEqualTo(AnalysisStatus.PENDING);
+            assertThat(f.prompts).hasSize(callsBefore);
+            assertThat(f.classifications).hasValue(1);
+            assertThat(f.queue).hasSize(1);
+            assertThat(f.sql.stream().map(sql -> sql.toLowerCase(Locale.ROOT))
+                    .filter(sql -> sql.stripLeading().startsWith("select")).toList())
+                    .as("Preparing a cycle needs its complete analysis, without hydrating unrelated enrichment CLOBs")
+                    .noneMatch(sql -> sql.contains("gap_payload") || sql.contains("pattern_payload")
+                            || sql.contains("recommendation_payload"));
         }
     }
 
@@ -670,7 +687,7 @@ class ProjectAnalysisBudgetContinuationTest {
             var persistence = proxied(new PortfolioAnalysisPersistenceService(projects, requirements, versions, jobs, items,
                     snapshots, repositories.getRepository(RequirementElementMappingRepository.class),
                     repositories.getRepository(RequirementRelationMappingRepository.class), mock(AnalysisHypothesisLinkPort.class),
-                    codec, new PortfolioSnapshotSelectionReader(shared, codec),
+                    codec, new PortfolioSnapshotSelectionReader(shared, codec), new PortfolioSnapshotEvidenceReader(shared, codec),
                     bindings.getBeanProvider(ProjectProviderBinding.class)));
             var claims = proxied(new PortfolioAnalysisClaimPersistenceService(items, persistence, mock(HypothesisService.class)));
             var workQueue = proxied(new PortfolioAnalysisWorkQueue(jobs, items));
@@ -685,7 +702,7 @@ class ProjectAnalysisBudgetContinuationTest {
                     catalogue, llm, workspaces, json);
             ReflectionTestUtils.setField(continuation, "relations", relations);
             var local = proxied(new ProjectAnalysisContinuationService(continuation, workspaces, projectService, persistence, jobs, items,
-                    requirements, snapshots, codec, transport));
+                    requirements, snapshots, new PortfolioSnapshotEvidenceReader(shared, codec), transport));
             var projection = new RequirementArchitectureViewService(new com.taxonomy.architecture.pipeline.ArchitectureViewPipeline(
                     null, new com.taxonomy.architecture.pipeline.ArchitecturePipelineInvariantValidator()));
             var useCase = new AnalyzeRequirementUseCase(llm, budget, projection,

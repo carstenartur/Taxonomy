@@ -10,7 +10,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ContinueAnalysisRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
-import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.model.SnapshotReference;
 import com.taxonomy.portfolio.repository.AnalysisContinuationReadRow;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
@@ -44,14 +44,14 @@ public class ProjectAnalysisContinuationService {
     private final RequirementAnalysisJobItemRepository items;
     private final ProjectRequirementRepository requirements;
     private final RequirementAnalysisSnapshotRepository snapshots;
-    private final PortfolioJsonCodec json;
+    private final PortfolioSnapshotEvidenceReader evidence;
     private final String transport;
 
     public ProjectAnalysisContinuationService(AnalysisContinuationService continuations,
             WorkspaceManager workspaces, ProjectPortfolioService projects, PortfolioAnalysisPersistenceService persistence,
             RequirementAnalysisJobRepository jobs, RequirementAnalysisJobItemRepository items,
             ProjectRequirementRepository requirements, RequirementAnalysisSnapshotRepository snapshots,
-            PortfolioJsonCodec json, @Value("${taxonomy.analysis.transport.mode:local}") String transport) {
+            PortfolioSnapshotEvidenceReader evidence, @Value("${taxonomy.analysis.transport.mode:local}") String transport) {
         this.continuations = continuations;
         this.workspaces = workspaces;
         this.projects = projects;
@@ -60,7 +60,7 @@ public class ProjectAnalysisContinuationService {
         this.items = items;
         this.requirements = requirements;
         this.snapshots = snapshots;
-        this.json = json;
+        this.evidence = evidence;
         this.transport = transport;
     }
 
@@ -137,7 +137,7 @@ public class ProjectAnalysisContinuationService {
                     || !Objects.equals(item.getRequirement().getCurrentVersionId(), work.requirementVersionId())) {
                 throw PortfolioException.conflict("The requirement version or continuation snapshot changed");
             }
-            AnalysisResult saved = json.read(snapshot.getAnalysisPayload(), AnalysisResult.class);
+            AnalysisResult saved = requireAnalysis(item, snapshot.getId());
             String problem = budgetProblem(saved);
             if (problem == null) problem = questionProblem(saved.getRecovery(), username, context);
             if (problem != null) throw PortfolioException.conflict(problem);
@@ -156,7 +156,7 @@ public class ProjectAnalysisContinuationService {
         if (item.snapshotId() == null) {
             problem = problem == null ? "This item has no saved partial snapshot" : problem;
         } else {
-            AnalysisResult saved = json.read(requireAnalysisPayload(item), AnalysisResult.class);
+            AnalysisResult saved = requireAnalysis(item);
             recovery = saved == null ? null : saved.getRecovery();
             if (problem == null) problem = budgetProblem(saved);
             if (problem == null && !Objects.equals(item.currentRequirementVersionId(), item.requirementVersionId()))
@@ -197,7 +197,7 @@ public class ProjectAnalysisContinuationService {
             problem = problem == null ? "This item has no saved partial snapshot" : problem;
         } else {
             var snapshot = requireSnapshot(item, item.getSnapshotId());
-            AnalysisResult saved = json.read(snapshot.getAnalysisPayload(), AnalysisResult.class);
+            AnalysisResult saved = requireAnalysis(item, snapshot.getId());
             recovery = saved == null ? null : saved.getRecovery();
             if (problem == null) problem = budgetProblem(saved);
             if (problem == null && !Objects.equals(item.getRequirement().getCurrentVersionId(), item.getRequirementVersionId()))
@@ -317,8 +317,8 @@ public class ProjectAnalysisContinuationService {
                 .orElseThrow(() -> PortfolioException.notFound("Analysis item not found: " + itemId));
     }
 
-    private RequirementAnalysisSnapshot requireSnapshot(RequirementAnalysisJobItem item, String snapshotId) {
-        var snapshot = snapshots.findByIdAndProjectIdAndScopeKey(snapshotId, item.getProjectId(), item.getScopeKey())
+    private SnapshotReference requireSnapshot(RequirementAnalysisJobItem item, String snapshotId) {
+        var snapshot = snapshots.findReferenceByIdAndProjectIdAndScopeKey(snapshotId, item.getProjectId(), item.getScopeKey())
                 .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found"));
         if (!Objects.equals(snapshot.getJobId(), item.getJobId())
                 || !Objects.equals(snapshot.getRequirementId(), item.getRequirementId())
@@ -339,16 +339,21 @@ public class ProjectAnalysisContinuationService {
                         .map(key -> key.operationId().equals(operation.get().operationId())).orElse(false));
     }
 
-    private String requireAnalysisPayload(AnalysisContinuationReadRow item) {
+    private AnalysisResult requireAnalysis(AnalysisContinuationReadRow item) {
         if (item.matchedSnapshotId() == null) throw PortfolioException.notFound("Analysis snapshot not found");
         if (!Objects.equals(item.snapshotJobId(), item.jobId())
                 || !Objects.equals(item.snapshotRequirementId(), item.requirementId())
                 || !Objects.equals(item.snapshotRequirementVersionId(), item.requirementVersionId()))
             throw PortfolioException.conflict("The snapshot belongs to another analysis item or requirement version");
-        var payloads = snapshots.findAnalysisPayloadForContinuation(item.snapshotId(), item.jobId(),
-                item.requirementId(), item.requirementVersionId(), item.projectId(), item.scopeKey());
-        if (payloads.isEmpty()) throw PortfolioException.notFound("Analysis snapshot not found");
-        return payloads.getFirst();
+        return evidence.readAnalysis(item.projectId(), item.snapshotId(), item.scopeKey(), item.jobId(),
+                        item.requirementId(), item.requirementVersionId())
+                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found")).analysis();
+    }
+
+    private AnalysisResult requireAnalysis(RequirementAnalysisJobItem item, String snapshotId) {
+        return evidence.readAnalysis(item.getProjectId(), snapshotId, item.getScopeKey(), item.getJobId(),
+                        item.getRequirementId(), item.getRequirementVersionId())
+                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found")).analysis();
     }
 
     private void rejectCancelledOperation(RequirementAnalysisJobItem item) {

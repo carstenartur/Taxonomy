@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.repository;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.model.SnapshotReference;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,6 +28,28 @@ public interface RequirementAnalysisSnapshotRepository
              where snapshot.id = :id and snapshot.projectId = :projectId and snapshot.scopeKey = :scopeKey
             """)
     Optional<AnalysisSnapshotReadRow> findReadRowByIdAndProjectIdAndScopeKey(
+            @Param("id") String id, @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
+
+    @Query("""
+            select new com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary(
+                snapshot.id, snapshot.projectId, snapshot.requirementId, requirement.requirementKey,
+                snapshot.requirementVersionId, analyzedVersion.versionNumber, snapshot.jobId,
+                snapshot.status, snapshot.provider, snapshot.modelName, snapshot.taxonomyFingerprint,
+                snapshot.promptFingerprint, snapshot.workspaceId, snapshot.branchName, snapshot.commitSha,
+                snapshot.createdAt, snapshot.durationMs, snapshot.warningCount, snapshot.errorMessage)
+              from RequirementAnalysisSnapshot snapshot
+              join snapshot.requirement requirement
+              join snapshot.requirementVersion analyzedVersion
+             where snapshot.id = :id and snapshot.projectId = :projectId and snapshot.scopeKey = :scopeKey
+            """)
+    Optional<SnapshotSummary> findSummaryByIdAndProjectIdAndScopeKey(
+            @Param("id") String id, @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
+
+    @Query("""
+            select reference from SnapshotReference reference
+             where reference.id = :id and reference.projectId = :projectId and reference.scopeKey = :scopeKey
+            """)
+    Optional<SnapshotReference> findReferenceByIdAndProjectIdAndScopeKey(
             @Param("id") String id, @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
 
     @Query("""

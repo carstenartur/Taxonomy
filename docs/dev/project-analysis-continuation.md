@@ -102,7 +102,10 @@ analysis payload, bound to snapshot, job, requirement, version, project and scop
 The complete `AnalysisResult` parser and budget, warning and clarification checks
 still apply. The durable store still locks, expires and flushes the run before
 checking its revision and question states. Prepare and Begin keep their existing
-entity reads, locks and renewed authorization checks.
+entity locks and renewed authorization checks, while reading snapshot provenance
+through its immutable identity view. All three paths parse the complete analysis
+directly from its scoped JDBC CLOB stream instead of materializing a second full
+payload String or loading the unrelated enrichment payloads.
 
 The actual HSQL regression reduced this GET from eighteen SELECTs, including
 three reads of every snapshot payload, to seven SELECTs with exactly one analysis
@@ -115,8 +118,14 @@ cases and the original byte-identical probe then passed privately. Exact SQL,
 commands and hashes are retained under `target/continuation-view-payload-regression`.
 
 A complete snapshot read selects its four payloads once and projects its element
-and relation mappings directly into the existing response records. Selecting a
-Copilot result reads only the analysis payload and mapping counts for each pass.
+and relation mappings directly into the existing response records. Each CLOB is
+parsed into its complete existing DTO while the transaction owns its locator;
+no intermediate full payload String is constructed. The parser drains the source
+before returning, so a late JDBC read failure cannot publish a partial read.
+Every acquired locator is released even if an earlier payload fails to open,
+parse or close. The database JSON format and all response fields remain unchanged.
+
+Selecting a Copilot result reads only the analysis payload and mapping counts for each pass.
 The payload is consumed through an explicit JDBC CLOB locator inside the existing
 read-only transaction, without first building a complete intermediate String.
 The same scoped SELECT computes both mapping counts from the current rows. Reader
@@ -273,6 +282,12 @@ The existing counter does not include `node_codes`. A write that upgrades a
 legacy question changes both fields, its layout and the counter atomically.
 Accepted replay, status reads and state-only changes do not rewrite historical
 payloads. Existing legacy runs are not silently migrated or given a new budget.
+
+Corrective-question scans exclude terminal `SUCCESS` and `SUPERSEDED` history
+before evaluating the original eligible-state set. These redundant exclusions
+avoid HSQL's allocating temporary `IN`-table comparisons for terminal history;
+the eligible states, complete inputs, ownership checks and state transitions are
+unchanged.
 
 Portable analysis archives retain schema version 1 and contain the complete
 original plaintext prompt, original diagnostic JSON and legacy node array.

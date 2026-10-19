@@ -534,7 +534,7 @@ class PortfolioStatusPayloadReadTest {
             persistence = proxy(new PortfolioAnalysisPersistenceService(projectRepository, requirements, versions, jobs, items,
                     snapshots, repositories.getRepository(RequirementElementMappingRepository.class),
                     repositories.getRepository(RequirementRelationMappingRepository.class), mock(AnalysisHypothesisLinkPort.class),
-                    codec, new PortfolioSnapshotSelectionReader(shared, codec),
+                    codec, new PortfolioSnapshotSelectionReader(shared, codec), new PortfolioSnapshotEvidenceReader(shared, codec),
                     beans.getBeanProvider(ProjectProviderBinding.class)));
             var analysis = new ProjectRequirementAnalysisService(projects, persistence, null, null, null, null,
                     null, null, null, fingerprints, null, null, 100, 100, 900);
