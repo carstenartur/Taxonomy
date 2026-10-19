@@ -66,9 +66,25 @@ public final class BrowserSession implements AutoCloseable {
         return open(port, downloads, System.getProperties());
     }
 
+    /** Opt in when a scenario needs HTTP transport evidence if its browser assertions fail. */
+    public static BrowserSession openWithNetworkLogging(int port, Path downloads) throws IOException {
+        return open(port, downloads, System.getProperties(), true);
+    }
+
     static BrowserSession open(int port, Path downloads, Properties properties) throws IOException {
+        return open(port, downloads, properties, false);
+    }
+
+    private static BrowserSession open(int port, Path downloads, Properties properties, boolean networkLogging) throws IOException {
         Runtime runtime = runtime(properties);
         var options = new ChromeOptions();
+        if (networkLogging) {
+            var logs = new org.openqa.selenium.logging.LoggingPreferences();
+            logs.enable(org.openqa.selenium.logging.LogType.PERFORMANCE, java.util.logging.Level.ALL);
+            logs.enable(org.openqa.selenium.logging.LogType.BROWSER, java.util.logging.Level.ALL);
+            options.setCapability("goog:loggingPrefs", logs);
+            options.setExperimentalOption("perfLoggingPrefs", Map.of("enableNetwork", true, "enablePage", false));
+        }
         options.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage");
         Path directory = downloads.toAbsolutePath().normalize();
         if (runtime == Runtime.LOCAL) {

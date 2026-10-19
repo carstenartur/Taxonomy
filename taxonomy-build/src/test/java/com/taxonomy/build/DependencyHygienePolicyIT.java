@@ -48,7 +48,7 @@ class DependencyHygienePolicyIT {
     }
 
     @Test
-    void resolvedEmbeddedTomcatFamilyMeetsTheSecurityFloor() {
+    void resolvedEmbeddedTomcatFamilyMeetsTheSecurityAndResponseFramingFloor() {
         Path root = findRepositoryRoot();
         // Read the generated aggregate directly: an unrelated fallback SBOM
         // must not satisfy the embedded-server acceptance gate.
@@ -69,9 +69,9 @@ class DependencyHygienePolicyIT {
         String version = versions.getFirst();
         assertThat(version).as("a released Tomcat 11.0.x servlet stack").matches("11\\.0\\.\\d+");
         assertThat(Integer.parseInt(version.substring("11.0.".length())))
-                .as("Tomcat security fixes for CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525")
-                .isGreaterThanOrEqualTo(25);
-        System.out.println("Resolved embedded Tomcat security baseline: " + version);
+                .as("Tomcat security fixes and correct chunked framing after a client disconnect")
+                .isGreaterThanOrEqualTo(27);
+        System.out.println("Resolved embedded Tomcat security and response-framing baseline: " + version);
     }
 
     private static Path findRepositoryRoot() {
