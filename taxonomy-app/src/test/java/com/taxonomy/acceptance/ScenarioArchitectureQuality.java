@@ -36,6 +36,19 @@ public final class ScenarioArchitectureQuality {
     private static final String RESOURCE = "/scenarios/flood-quality-reference.json";
     private ScenarioArchitectureQuality() { }
 
+    /** Checks actual authored protocol replies with the unchanged independent relationship gate. */
+    static void verifyAuthoredRelationshipEvidence(String source, String type, String target,
+                                                   List<Edge> evidence, List<Edge> searchEdges,
+                                                   Map<String, SourceAssessment> sources) {
+        Reference reference = reference();
+        Triple triple = new Triple(source, type, target);
+        JsonNode expected = reference.required().get(triple);
+        boolean required = expected != null;
+        if (expected == null) expected = reference.allowed().get(triple);
+        check(expected != null, "Authored relationship is outside the independent reference: " + triple);
+        verifyRelationship(text(expected, "id"), triple, expected, evidence, searchEdges, sources, reference, required);
+    }
+
     /** Each original pass must satisfy the same search and recovery gate before export acceptance. */
     public static void verifyPassCompletion(JsonNode snapshot) {
         JsonNode summary = object(snapshot, "summary"), analysis = object(snapshot, "analysis");

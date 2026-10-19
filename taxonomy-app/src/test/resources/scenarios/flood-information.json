@@ -1072,29 +1072,45 @@
     "sourceContributions": [
       {
         "nodeId": "BP-1017",
-        "text": "Acquire existing published warnings and the latest water-observation batch, preserving source and observation time. Retain the exact F5 constraint, \"at most every 15 minutes\"; this is not an invented maximum-latency SLA. The observation-batch datatype is unspecified and is not assumed to be an assembled environmental picture.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Acquire already published flood warnings and affected-area information as inputs to the understandable public view, retaining source and observation time. This warning-input role does not issue new official warnings or classify a water-observation batch as a warning.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "F1 needs existing warning inputs and F5 explicitly requests the latest observation batch. Acquiring those inputs is the concrete process contribution. Neither clause establishes that the batch is an environmental picture, and the exact 15-minute wording must not become a stronger delivery SLA."
       },
       {
+        "nodeId": "BP-1017",
+        "contributionId": "latest-observation",
+        "text": "Acquire the latest existing water-observation batch at most every 15 minutes. Retain that exact consumption constraint, not an invented maximum-latency SLA. The batch datatype is unspecified; it is not assumed to be an assembled environmental picture.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": "",
+        "rationale": "F5 expressly requires latest-batch intake with the stated cadence. This is the observation-input part of acquisition, distinct from the published-warning input and downstream picture preparation."
+      },
+      {
         "nodeId": "BP-1140",
-        "text": "Prevent unauthorised access to protected subscriber details and account operations under A1, without choosing a login technology or extending security to unrequested military domains.",
+        "text": "Under the explicit A1 test design assumption, prevent unauthorised access to protected subscriber details and account operations under A1, without choosing a login technology or extending security to unrequested military domains.",
         "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "",
         "rationale": "The A1 assumption requires protected subscriber details. Preventing unauthorised access is the security process directly serving that need; a particular login mechanism, wider military security programme or restriction of the public information view does not follow."
       },
       {
         "nodeId": "BP-1521",
-        "text": "Manage subscriber contact and area-subscription entities: allow contact updates and removal of selected areas. Current area membership and the user-selected text, phone or email choice govern future delivery; removing an area removes that subscription.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Manage the entitled user's subscriber contact and area-subscription entities: allow the user to update contact details and remove selected areas. Removed areas cease to be active delivery subscriptions; no account signup or identity-provider choice is implied.",
+        "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
         "condition": "",
         "rationale": "F3 establishes area subscriptions and F4 explicitly allows contact changes and area removal. Those operations modify subscriber entities and active memberships, so future routing must use the changed state; this does not imply an extra signup or identity-provider choice."
       },
       {
+        "nodeId": "BP-1521",
+        "contributionId": "subscription-choice",
+        "text": "Maintain the user's area-subscription and text, phone or email channel choices for later delivery. This is subscription-choice state, not execution of dispatch or availability of a channel.",
+        "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
+        "condition": "",
+        "rationale": "F3 requests area subscriptions and user-selected channels. Managing those choices is the subscriber-entity share, separate from F4 maintenance/removal and downstream dispatch."
+      },
+      {
         "nodeId": "BP-1529",
         "text": "Collect existing published warnings, affected-area information and water observations for the supplementary service. This is reuse of existing information, not new field measurements or newly issued official warnings. For its public water-observation input, the F5 observation-batch datatype is unspecified and is not assumed to be an assembled environmental picture.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "F1 asks to reuse published warnings and existing area/observation information. Collection is the relevant part of this broader collect/create/generate process. Its creation label cannot justify new measurements, forecasts or issuing official warnings. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
       },
@@ -1107,15 +1123,23 @@
       },
       {
         "nodeId": "BP-1534",
-        "text": "Organise published flood information and current area subscriptions so the correct information can be retrieved for the selected area; retain source and observation-time context without assuming a new geospatial database product. For its public water-observation input, the F5 observation-batch datatype is unspecified and is not assumed to be an assembled environmental picture. This input-identity question does not concern private area-subscription records.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Organise already published flood warnings, affected-area information and water observations for understandable retrieval, retaining source and observation time. This public-input role does not maintain private subscriber records or select a geospatial database. The observation-input datatype remains unspecified, not assumed to be an assembled environmental picture.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "The view in F1 and area selection in F3 require existing information and current subscriptions to be organised for retrieval. This supports the catalogue information-organisation function without requiring a particular data store or new analytical product. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
       },
       {
+        "nodeId": "BP-1534",
+        "contributionId": "subscription-organization",
+        "text": "Organise current area-subscription and user-selected channel choices so subsequent delivery can retrieve the applicable choice. This private subscription-organisation role is distinct from organising public warning and observation content.",
+        "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
+        "condition": "",
+        "rationale": "F3 supplies area subscriptions and selected channels. Organising those choices for retrieval is a bounded information-organisation function, not a new public-data product, provider or account-control mechanism."
+      },
+      {
         "nodeId": "BP-1535",
         "contributionId": "public-information",
-        "text": "Retrieve and present existing published flood warnings, affected-area information and water observations in an understandable public view for residents and authorities. Retain source and observation time. This is a read-only use of the published information, without generating measurements, predicting floods or editing the official warnings.",
+        "text": "Retrieve and present already prepared published flood warnings, affected-area information and water observations in an understandable public view for residents and authorities, retaining source and observation time. This selected process view reads the assembled environmental view; direct original-warning inputs remain represented at the public application and subscriber dispatch. It does not generate measurements. It does not predict floods or edit official warnings.",
         "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "F1 requires public retrieval and presentation. This read-only contribution is separate from subscriber dispatch and from the supplementary A1 delivery assumptions."
@@ -1131,29 +1155,45 @@
       {
         "nodeId": "BP-1535",
         "contributionId": "reliable-delivery",
-        "text": "Under A1, retain subscriber notification work in a durable delivery queue and perform idempotent retries with no repeated effective delivery operation. Protect subscriber details and retain an auditable delivery history tied to notification attempts and outcomes. No broker, retry algorithm, deployment or retention period is prescribed.",
+        "text": "Under the explicit A1 test design assumption, under A1, retain subscriber notification work in a durable delivery queue and perform idempotent retries with no repeated effective delivery operation. Protect subscriber details and retain an auditable delivery history tied to notification attempts and outcomes. No broker, retry algorithm, deployment or retention period is prescribed.",
         "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "A1 is a test design assumption for subscriber notification delivery; its reliability, privacy and audit contracts are additional to F3.",
         "rationale": "A1 explicitly adds durability, idempotent retries, protected subscriber details and delivery-specific audit history. These conditions do not turn ordinary F1 reading or F3 channel availability into optional functions."
       },
       {
         "nodeId": "BP-1536",
-        "text": "Store subscriber details with access protection under A1; these contact details are not public environmental data. Support account deletion without inventing an unlimited retention rule or a concrete encryption product.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Under the explicit A1 test design assumption, store subscriber details with access protection. These private contact details are not public environmental data; no unlimited retention rule or concrete encryption product is selected.",
+        "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "",
         "rationale": "A1 protects subscriber details, which must remain distinct from public warning content. The storage contribution is therefore bounded to protected subscriber information and must coexist with F4 deletion; unlimited retention and a specific encryption product are not established."
       },
       {
+        "nodeId": "BP-1536",
+        "contributionId": "deletion-lifecycle",
+        "text": "Support the user's account deletion by removing the stored subscriber account/contact information from active use. No retention period or precedence over a separate delivery-history policy is invented.",
+        "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
+        "condition": "",
+        "rationale": "F4 explicitly permits user account deletion. This is the stored-information lifecycle share, separate from A1 access protection and from deciding retention of a distinct audit history."
+      },
+      {
         "nodeId": "BP-1866",
-        "text": "Prepare the incoming published information for an understandable view by retaining source, affected-area and observation-time context. Preserve stale and unavailable states instead of presenting missing or old data as current; no new forecast, statistical assessment or stale-age threshold is specified. For its public water-observation input, the F5 observation-batch datatype is unspecified and is not assumed to be an assembled environmental picture.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Prepare incoming published flood warnings, affected-area information and water observations for an understandable view, retaining source and observation time. No new forecast, statistical assessment or measurement is requested. The observation-input datatype remains unspecified, not assumed to be an assembled environmental picture.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "F1 needs an understandable presentation with source and observation time, and F5 needs stale/unavailable states shown. Preparing existing inputs for that use is justified; statistical analysis, a new forecast and a numerical stale threshold are not supplied. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
       },
       {
+        "nodeId": "BP-1866",
+        "contributionId": "availability-state",
+        "text": "Preserve stale and unavailable input states in the prepared information instead of presenting old or missing observations as current. No numerical stale-age threshold or new forecast is specified.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": "",
+        "rationale": "F5 requires both stale and unavailable data to be shown. Preparation must preserve those states for display; it does not thereby acquire the upstream feed or select another service interface."
+      },
+      {
         "nodeId": "BP-2009",
-        "text": "Operate and oversee the supplementary information service, including observation intake and the visibility of stale or unavailable data. Both states must remain distinguishable; F5 supplies no numerical stale-age threshold or new availability SLA.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Operate and oversee observation intake and the visibility of stale and unavailable data in the running information service. Both data states must remain distinguishable; no numerical stale-age threshold, availability SLA, procurement or organisational design programme is invented.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
         "condition": "",
         "rationale": "F2 names administrative oversight of the running service, while F5 makes observation intake and visible data failure states part of its operation. This supports service operation and oversight, without inventing procurement, contractual availability or a stale-age SLA."
       },
@@ -1181,7 +1221,7 @@
       {
         "nodeId": "CI-1096",
         "text": "Support an understandable environmental view assembled from already published warning, area and observation information, retaining source and observation time. This limited functional overlap does not assert a formally deconflicted operational picture, a new forecast, new measurements or authority to issue warnings. For its public water-observation input, the F5 observation-batch datatype is unspecified and is not assumed to be an assembled environmental picture.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "F1 combines existing warning, area and observation information into an understandable view. The catalogue aggregation function supports that bounded view, with attribution retained. Formal operational-picture agreement, data fusion analysis and new warning authority are not requested. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
       },
@@ -1201,7 +1241,7 @@
       },
       {
         "nodeId": "CP-1016",
-        "text": "Provide the information-system security ability needed to protect subscriber details and account operations under A1; do not introduce unrequested military security domains or a particular security product.",
+        "text": "Under the explicit A1 test design assumption, provide the information-system security ability needed to protect subscriber details and account operations under A1; do not introduce unrequested military security domains or a particular security product.",
         "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "",
         "rationale": "A1 subscriber protection supplies a bounded information-system security need, including entitled access to account operations. The capability is relevant for those functions, but its full cyber-defence, encryption and military-domain scope is not thereby required."
@@ -1209,7 +1249,7 @@
       {
         "nodeId": "CP-1020",
         "text": "Provide the ability to acquire existing published warning, area and observation information, without asserting new sensing or a new official warning source. For its public water-observation input, the F5 observation-batch datatype is unspecified and is not assumed to be an assembled environmental picture.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "F1 relies on already published warnings and existing area/observation inputs. Acquiring those sources is the information-collection ability needed here; the military collection platforms named in the catalogue do not imply new sensing or an official warning source. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
       },
@@ -1222,10 +1262,18 @@
       },
       {
         "nodeId": "CP-1097",
-        "text": "Provide the processing ability to organise existing published warnings, affected-area information and water observations with their source and observation-time context for understandable use. Preserve unavailable or stale status without generating new predictions, measurements or official warnings. For its public water-observation input, the F5 observation-batch datatype is unspecified and is not assumed to be an assembled environmental picture.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Provide processing ability to organise existing published warnings, affected areas and water observations with source and observation time for understandable use. Do not generate new predictions, measurements or official warnings. The observation-input datatype is unspecified, not assumed to be an assembled environmental picture.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "F1 requires usable published warning, area and observation information with source/time attribution, and F5 preserves stale/unavailable status. Preparation and integration are the bounded processing functions here; the catalogue intelligence-analysis, prediction and new-product functions remain outside this contribution. The same F5 observation input has an unspecified product identity here; that uncertainty must remain explicit without adding a new intake, measurement or analysis function."
+      },
+      {
+        "nodeId": "CP-1097",
+        "contributionId": "availability-state",
+        "text": "Provide processing ability to preserve stale and unavailable observation states for display. This is state preservation, without a new prediction, numerical stale threshold or additional input-product identity.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": "",
+        "rationale": "F5 explicitly requires stale and unavailable data to be shown. Processing retains those supplied states; this added facet selects no additional platform, provider or semantic input product."
       },
       {
         "nodeId": "CP-1104",
@@ -1236,14 +1284,22 @@
       },
       {
         "nodeId": "CP-1122",
-        "text": "Represent the F3 email-notification function and the F4 subscriber identity/contact maintenance and account-deprovisioning functions at the broader IT-service capability level. This additional coarse view covers those defined digital functions; environmental processing, delivery queueing, access protection and service administration retain their own separately assessed contributions. No hosting product, collaboration suite or additional application portfolio is specified.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Represent the email-notification function at the broader IT-service capability level. This bounded additional IT view covers the required selected email channel, not text delivery, environmental processing, queueing, access protection or service administration; those retain their separately assessed contributions.",
+        "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
         "condition": "",
         "rationale": "The catalogue IT-service capability expressly includes email; F4 also supplies a concrete digital account lifecycle. This contribution records that bounded additional IT view. More specific environmental processing, queue, protection and administrative functions are assessed at their own concepts, without declaring them technically unrelated to IT."
       },
       {
+        "nodeId": "CP-1122",
+        "contributionId": "account-lifecycle",
+        "text": "Represent subscriber identity/contact maintenance and account-deprovisioning functions at the broader IT-service capability level. This is the bounded digital account-lifecycle view, not an access-control, delivery, environmental-processing or hosting capability.",
+        "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
+        "condition": "",
+        "rationale": "F4 supplies contact changes and account deletion. Their additional coarse IT capability view is made real by the existing identity-lifecycle function, without adding an application portfolio or another functional obligation."
+      },
+      {
         "nodeId": "CP-1123",
-        "text": "Protect subscriber information under A1, keeping private contact and account data distinct from public warning and observation content.",
+        "text": "Under the explicit A1 test design assumption, protect subscriber information under A1, keeping private contact and account data distinct from public warning and observation content.",
         "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "",
         "rationale": "A1 specifically requires protected subscriber details. Information Protection is relevant to private contact/account data and entitled access, while F1 warning and observation content remains public. The catalogue examples do not prescribe MFA or a particular security platform."
@@ -1257,15 +1313,23 @@
       },
       {
         "nodeId": "CR-1006",
-        "text": "Authenticate the entitled identity for protected account changes and access under A1, without specifying a login method, identity provider or authentication product.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Under the explicit A1 test design assumption, authenticate the entitled actor for protected access to stored subscriber information. This identifies the actor; authorisation remains the separate permission decision. No login method, identity provider, authentication product or public-information login is selected.",
+        "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "",
         "rationale": "Protecting subscriber details under A1 while allowing F4 account changes requires an entitled identity for those actions. Authentication supplies that identity check, without implying a specific credential method, provider or login requirement for the public view."
       },
       {
+        "nodeId": "CR-1006",
+        "contributionId": "account-authentication",
+        "text": "Authenticate the entitled user submitting contact-detail changes, area removal or account-deletion requests. This establishes who submitted the existing protected account action, not a login for public flood information or repeated authentication during internal deletion work.",
+        "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
+        "condition": "For the existing user's protected F4 account actions; subscriber protection remains the explicit A1 test design assumption, without selecting a login method or identity provider.",
+        "rationale": "F4 gives users contact, area-removal and account-deletion actions. Establishing the entitled requesting identity supports those existing actions under A1 protection, separately from authentication for access to stored subscriber information."
+      },
+      {
         "nodeId": "CR-1007",
-        "text": "Authorise access to protected subscriber details and the permitted contact, subscription and account-deletion operations under A1. The public warning view does not make subscriber information public.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Under the explicit A1 test design assumption, authorise access to protected subscriber details and the permitted contact, subscription and account-deletion operations under A1. The public warning view does not make subscriber information public.",
+        "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "",
         "rationale": "A1 subscriber protection and F4 account operations require deciding which identity may access or change private data. Authorisation/access control supplies that function. Public availability of flood information gives no permission to expose subscriber details."
       },
@@ -1299,15 +1363,23 @@
       },
       {
         "nodeId": "CR-1098",
-        "text": "Route notifications according to current subscribed areas and the user-selected text, phone or email channel. A removed area is no longer a delivery subscription; routing does not choose an unrequested channel for the user.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Route notifications according to current subscribed areas and the user's selected text, phone or email channel. This dispatch function does not maintain account records or choose an unrequested channel for the subscriber.",
+        "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
         "condition": "",
         "rationale": "F3 area and channel choices require routing each notification to its applicable delivery function. F4 area removal changes that routing eligibility. The contribution is therefore current-subscription dispatch, without inventing a message format or underlying network."
       },
       {
+        "nodeId": "CR-1098",
+        "contributionId": "removal-eligibility",
+        "text": "Apply removal of a subscribed area to routing eligibility, so that removed area no longer receives delivery work. This is use of the updated routing state, not maintenance of the account or subscription entity.",
+        "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
+        "condition": "",
+        "rationale": "F4 expressly permits users to remove areas. A router uses that resulting eligibility; it does not own contact/account changes, issue warnings or choose a channel."
+      },
+      {
         "nodeId": "CR-1198",
-        "text": "Under A1 retain an auditable delivery history of delivery work and its outcomes, not merely general platform logging. No retention duration is given; its interaction with account deletion needs an explicit later retention decision, without assuming indefinite storage.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Under the explicit A1 test design assumption, under A1 retain an auditable delivery history of delivery work and its outcomes, not merely general platform logging. No retention duration is given; its interaction with account deletion needs an explicit later retention decision, without assuming indefinite storage.",
+        "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "",
         "rationale": "A1 asks for an auditable delivery history, so the audit function must retain delivery work and outcomes rather than merely generic platform events. Neither a retention duration nor precedence over F4 account deletion is specified."
       },
@@ -1334,10 +1406,34 @@
       },
       {
         "nodeId": "UA-1580",
-        "text": "Present published flood warnings, affected areas and water observations understandably to residents and public authorities, with source and observation time. Show both stale and unavailable data; no stale-age threshold is specified. State that surface-water flooding is outside scope and retain the official warning channels. The service is supplementary, not a safety-critical replacement for official alerts; it neither issues new official warnings nor generates a new flood forecast.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Present already published flood warnings, affected areas and water observations understandably to residents and public authorities, with source and observation time. This is the public-reading/presentation role, not creation of official warnings, new measurements or a new flood forecast.",
+        "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "condition": "",
         "rationale": "F1 explicitly requires a public view of warnings, affected areas and water observations. The catalogue environmental display function is relevant, with F4/F5 scope and failure-state information kept visible. Specialist hydrographic computation and replacement of official alerts are not requested."
+      },
+      {
+        "nodeId": "UA-1580",
+        "contributionId": "surface-water-scope",
+        "text": "State in the public information display that surface-water flooding is outside scope. This is an explicit scope disclosure, not a new flood-analysis or subscriber-account function.",
+        "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
+        "condition": "",
+        "rationale": "F4 expressly requires the surface-water exclusion to be stated. The application displays that boundary; it does not gain new analysis, official-warning or account-management authority."
+      },
+      {
+        "nodeId": "UA-1580",
+        "contributionId": "freshness-and-official-channels",
+        "text": "Show stale and unavailable data in the public view, preserving both distinct states and retaining source and observation time without an invented stale-age threshold. Retain the official warning channels. This display-disclosure role does not execute batch acquisition or subscriber dispatch.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": "",
+        "rationale": "F5 expressly requires visible stale/unavailable data and retention of official channels. These are mandatory presentation disclosures, not a selected direct transport, queue or upstream feed interface."
+      },
+      {
+        "nodeId": "UA-1580",
+        "contributionId": "supplementary-scope",
+        "text": "State that the service is supplementary and is not a safety-critical replacement for official alerts. Displaying published information does not grant new official warning authority.",
+        "quote": "This supplementary information service is not a safety-critical replacement for official alerts.",
+        "condition": "",
+        "rationale": "The unchanged SCOPE sentence explicitly limits the service. This public disclosure preserves that boundary, without adding another operational institution, input product or delivery mechanism."
       },
       {
         "nodeId": "IP-2130",
@@ -1349,8 +1445,8 @@
       },
       {
         "nodeId": "IP-2054",
-        "text": "Represent the A1 auditable delivery history: retained delivery work, attempts and outcomes as functional facts about this information-distribution activity. This is a bounded information-management product view, not a new periodic report, lesson-learned assessment, captured-document report or retention-policy matrix. No retention duration is specified; interaction with F4 account deletion remains an explicit later decision.",
-        "quote": "FLOOD-001 — Flood information and subscriptions. F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time. F2: Support administrative oversight of the service. F3: Support area subscriptions and user-selected text, phone or email notification channels. F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope. F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels. A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history. This supplementary information service is not a safety-critical replacement for official alerts.",
+        "text": "Under the explicit A1 test design assumption, represent the A1 auditable delivery history: retained delivery work, attempts and outcomes as functional facts about this information-distribution activity. This is a bounded information-management product view, not a new periodic report, lesson-learned assessment, captured-document report or retention-policy matrix. No retention duration is specified; interaction with F4 account deletion remains an explicit later decision.",
+        "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "condition": "Under A1, for the auditable history of subscriber-notification delivery only. This product view adds no separate reporting service or user interface and does not prescribe retention duration or precedence over F4 account deletion.",
         "rationale": "A1 explicitly requires an auditable delivery history. Delivery work and outcomes are operational/functional facts about managing and distributing information, matching IP-2054's broad definition. None of its nine specialist products is established, so the assessment stops at this valid non-container category instead of inventing a narrower product."
       }
@@ -1605,7 +1701,7 @@
         "alternativeGroup": "",
         "rationale": "The notification/dissemination process retrieves the existing area-warning content before delivering information for subscribed areas.",
         "verificationRationale": "F1 provides published warning content and F3 requests area subscriptions and notifications. The process reads those alerts; it does not become the warning authority.",
-        "sourceContributionId": "public-information"
+        "sourceContributionId": "subscriber-delivery"
       },
       {
         "sourceId": "BP-1535",
@@ -1649,7 +1745,7 @@
         "type": "SUPPORTS",
         "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
         "necessity": "REQUIRED",
-        "condition": "Support the text capability; use this access for deliveries whose selected channel is text.",
+        "condition": "Only for deliveries whose subscriber-selected channel is text; availability of the text channel remains required.",
         "alternativeGroup": "",
         "rationale": "Short-message access supplies the communication access needed for the requested text notifications, without specifying a radio or network bearer.",
         "verificationRationale": "This is support for text delivery, not an invented link to the presentation application. Text remains a required capability even when a subscriber selects a different channel.",
@@ -1661,7 +1757,7 @@
         "type": "SUPPORTS",
         "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
         "necessity": "REQUIRED",
-        "condition": "Support the phone capability; use this access for deliveries whose selected channel is phone.",
+        "condition": "Only for deliveries whose subscriber-selected channel is phone; availability of the phone channel remains required.",
         "alternativeGroup": "",
         "rationale": "Voice access supplies the requested phone-notification capability to the dissemination process.",
         "verificationRationale": "F3 explicitly includes phone. The supporting-service direction and per-delivery choice are correct; no voice protocol or bearer is chosen.",
@@ -1673,7 +1769,7 @@
         "type": "SUPPORTS",
         "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
         "necessity": "REQUIRED",
-        "condition": "Support the email capability; use it for deliveries whose selected channel is email.",
+        "condition": "Only for deliveries whose subscriber-selected channel is email; availability of the email channel remains required.",
         "alternativeGroup": "",
         "rationale": "The catalogue informal-messaging service provides email delivery for the selectable email-notification channel.",
         "verificationRationale": "F3 explicitly includes email. The service supports dissemination; no email-client application or extra collaborative workflow is inferred.",
@@ -1707,7 +1803,7 @@
         "type": "SUPPORTS",
         "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "necessity": "REQUIRED",
-        "condition": "",
+        "condition": "Within the explicit A1 test design assumption for protection of subscriber details and entitled account access.",
         "alternativeGroup": "",
         "rationale": "Authorisation and access control support prevention of unauthorised use of protected subscriber details.",
         "verificationRationale": "A1 expressly requires protected subscriber details. This service supplies the access-control part of prevention; it is not a claim that all security controls are already implemented."
@@ -1721,7 +1817,8 @@
         "condition": "",
         "alternativeGroup": "",
         "rationale": "Authentication supports the protection of account operations by establishing the entitled identity before those protected functions are used.",
-        "verificationRationale": "F4 account changes and A1 protection support identity checking for those functions. The claim does not assume that the public warning view requires login or choose a login technology."
+        "verificationRationale": "F4 account changes and A1 protection support identity checking for those functions. The claim does not assume that the public warning view requires login or choose a login technology.",
+        "sourceContributionId": "account-authentication"
       },
       {
         "sourceId": "CR-1007",
@@ -1729,7 +1826,7 @@
         "type": "SUPPORTS",
         "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "necessity": "REQUIRED",
-        "condition": "",
+        "condition": "Within the explicit A1 test design assumption for protected storage of subscriber details.",
         "alternativeGroup": "",
         "rationale": "Access control supports protected storage of subscriber details, separating private contact information from public warning data.",
         "verificationRationale": "The supported process is storage and protection and the supporting service is authorisation. A1 establishes the confidentiality scope without implying a particular encryption implementation."
@@ -1766,7 +1863,8 @@
         "condition": "",
         "alternativeGroup": "",
         "rationale": "Service management supports the operating process responsible for oversight and visible intake/availability state.",
-        "verificationRationale": "F2 oversight and F5 stale/unavailable behaviour are operational responsibilities. The service supports operation; no wider organisational service-design programme is inferred."
+        "verificationRationale": "F2 oversight and F5 stale/unavailable behaviour are operational responsibilities. The service supports operation; no wider organisational service-design programme is inferred.",
+        "targetContributionId": "default"
       },
       {
         "sourceId": "CI-1096",
@@ -1774,7 +1872,7 @@
         "type": "SUPPORTS",
         "quote": "F1: Give residents and public authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
         "necessity": "REQUIRED",
-        "condition": "Only functional preparation and presentation of existing published F1 information. No independently deployed picture service, new measurements, forecasts or warning authority is required.",
+        "condition": "Only the F1 existing published-information view-assembly function is selected. This does not assert a formally deconflicted operational picture. It does not generate new measurements, forecasts or official warnings.",
         "alternativeGroup": "",
         "rationale": "The bounded environmental-view service supports understandable retrieval and dissemination of existing published information.",
         "verificationRationale": "The F1 view requires environmental information to be presented together. The scope is existing-source presentation, without formal deconfliction, new forecasting or warning authority.",
@@ -1808,7 +1906,7 @@
         "type": "FULFILLS",
         "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
         "necessity": "REQUIRED",
-        "condition": "",
+        "condition": "Only the existing email-notification share of the dissemination capability is fulfilled here. Email-channel availability remains required; this selected capability view adds no bearer, provider or new function.",
         "alternativeGroup": "",
         "rationale": "Email messaging supplies the email portion of the required information-dissemination capability.",
         "verificationRationale": "The email service has a dissemination function, unlike a hydrographic interpretation service. The capability still needs the other requested channels; this is not a completeness or confidence percentage."
@@ -1819,7 +1917,7 @@
         "type": "FULFILLS",
         "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
         "necessity": "REQUIRED",
-        "condition": "",
+        "condition": "Only the existing text-notification share of the dissemination capability is fulfilled here. Text-channel availability remains required; this selected capability view adds no bearer, provider or new function.",
         "alternativeGroup": "",
         "rationale": "Text communication supplies the text portion of the required information-dissemination capability.",
         "verificationRationale": "F3 requires text notifications and this service performs that function. FULFILLS names its contribution to the capability, not a claim that text alone covers phone and email."
@@ -2023,7 +2121,8 @@
         "condition": "Only if the existing hydrographic read-access provider is selected for the latest water-observation batch; the at-most-15-minute consumption duty remains, with no survey, forecast or new interpretation added.",
         "alternativeGroup": "",
         "rationale": "The acquisition process can use an existing hydrographic read-access provider for the latest observation batch. The quoted duty fixes consumption cadence, while the particular provider remains an architectural choice.",
-        "verificationRationale": "This optional process-to-service binding retains the original observation-batch duty. It neither establishes that provider as mandatory nor identifies the batch as a recognized environmental picture."
+        "verificationRationale": "This optional process-to-service binding retains the original observation-batch duty. It neither establishes that provider as mandatory nor identifies the batch as a recognized environmental picture.",
+        "sourceContributionId": "latest-observation"
       },
       {
         "sourceId": "BP-1535",
@@ -2047,7 +2146,8 @@
         "condition": "Only if the existing hydrographic read-access function is chosen to support observation intake. This is the support view of the same optional BP-1017 USES CI-1052 binding; it adds no survey, forecast, new interpretation or warning authority.",
         "alternativeGroup": "",
         "rationale": "An existing hydrographic read function can support acquiring relevant water observations. F5 requires intake of the latest available batch, but does not require this particular provider or establish the information-product identity of that batch.",
-        "verificationRationale": "The service-to-process SUPPORTS direction is correct for the explicitly conditional read-provider binding. The observation intake and its exact 15-minute wording remain required independently of this optional view; X03 remains open."
+        "verificationRationale": "The service-to-process SUPPORTS direction is correct for the explicitly conditional read-provider binding. The observation intake and its exact 15-minute wording remain required independently of this optional view; X03 remains open.",
+        "targetContributionId": "latest-observation"
       },
       {
         "sourceId": "BP-1529",
@@ -2077,10 +2177,11 @@
         "type": "FULFILLS",
         "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
         "necessity": "REQUIRED",
-        "condition": "Only authentication of an entitled identity for protected subscriber information and account actions under the A1 test design assumption. This neither fulfils the whole protection capability nor selects MFA, an identity provider or a product.",
+        "condition": "Only authentication of an entitled identity for protected subscriber information and account actions under the A1 test design assumption. This does not fulfil the whole protection capability. It does not select MFA, an identity provider or a product.",
         "alternativeGroup": "",
         "rationale": "Authentication verifies the claimed identity before protected account actions. Information Protection expressly includes restricting access to authorised identities, so this service fulfils the authentication share of that bounded A1 capability.",
-        "verificationRationale": "The service-to-capability FULFILLS direction retains the A1 assumption. Authentication is one protection function; the claim does not imply that authentication alone supplies all information protection or any particular login method."
+        "verificationRationale": "The service-to-capability FULFILLS direction retains the A1 assumption. Authentication is one protection function; the claim does not imply that authentication alone supplies all information protection or any particular login method.",
+        "sourceContributionId": "account-authentication"
       },
       {
         "sourceId": "CR-1006",
@@ -2146,7 +2247,8 @@
         "condition": "Only if an additional capability-facing view of authentication for subscriber-information protection under the A1 test design assumption is selected. This is the same function as the reverse FULFILLS relation and adds no independent security obligation.",
         "alternativeGroup": "",
         "rationale": "The repository uses REALIZES to mean that a capability is made real by a service. This optional view represents the already established authentication share of subscriber-information protection, without claiming the service implements the whole capability.",
-        "verificationRationale": "The capability-to-service direction follows the repository definition. The authentication contribution and A1 assumption are unchanged; the additional view selects no product, provider or additional security control."
+        "verificationRationale": "The capability-to-service direction follows the repository definition. The authentication contribution and A1 assumption are unchanged; the additional view selects no product, provider or additional security control.",
+        "targetContributionId": "account-authentication"
       },
       {
         "sourceId": "CP-1016",
@@ -2201,7 +2303,8 @@
         "condition": "Only if an additional coarse IT-service capability view of subscriber identity and contact maintenance and account deprovisioning is selected. The requested function is already represented at its more specific bindings. No identity provider, hosting platform, new registration function or audit-retention period is selected.",
         "alternativeGroup": "",
         "rationale": "The bounded IT-service capability covers the digital account functions implemented by the existing identity lifecycle service. This is an additional capability representation of the same F4 function, not an additional functional obligation.",
-        "verificationRationale": "The service-to-capability direction correctly represents its bounded subscriber identity and contact maintenance and account deprovisioning contribution. Optional describes this extra view; the underlying F4 behavior remains required. No identity provider, hosting platform, new registration function or audit-retention period is selected."
+        "verificationRationale": "The service-to-capability direction correctly represents its bounded subscriber identity and contact maintenance and account deprovisioning contribution. Optional describes this extra view; the underlying F4 behavior remains required. No identity provider, hosting platform, new registration function or audit-retention period is selected.",
+        "targetContributionId": "account-lifecycle"
       },
       {
         "sourceId": "CP-1122",
@@ -2212,7 +2315,8 @@
         "condition": "Only if the additional coarse capability-facing IT-service view of subscriber identity and contact maintenance and account deprovisioning is selected. It denotes the same function as the reverse optional FULFILLS view. No identity provider, hosting platform, new registration function or audit-retention period is selected.",
         "alternativeGroup": "",
         "rationale": "The bounded IT-service capability covers the digital account functions implemented by the existing identity lifecycle service. In the repository passive REALIZES convention the capability is made real by that service. This optional inverse view adds no second implementation or obligation.",
-        "verificationRationale": "The capability-to-service direction is the defined repository direction. Its F4 contribution stays the same as the service-facing view, with no promotion of the additional view to a mandatory function. No identity provider, hosting platform, new registration function or audit-retention period is selected."
+        "verificationRationale": "The capability-to-service direction is the defined repository direction. Its F4 contribution stays the same as the service-facing view, with no promotion of the additional view to a mandatory function. No identity provider, hosting platform, new registration function or audit-retention period is selected.",
+        "sourceContributionId": "account-lifecycle"
       },
       {
         "sourceId": "CR-1060",
@@ -2411,7 +2515,8 @@
         "condition": "Only if this additional service-facing view of authenticating the entitled identity for protected F4 contact/subscription changes is selected under the A1 test design assumption. No login method, identity provider, blanket administrative access, extra account action or public-view authentication is introduced.",
         "alternativeGroup": "",
         "rationale": "The scoped service supports protected F4 contact/subscription changes by authenticating the entitled identity under A1. This is a service-facing view of the existing account-control responsibility, not an additional account feature or a public-reading login.",
-        "verificationRationale": "The service-to-process direction preserves the actual protected account function and the A1 condition. Optional qualifies this additional representation; the required contact/subscription/account behavior and subscriber protection are not waived."
+        "verificationRationale": "The service-to-process direction preserves the actual protected account function and the A1 condition. Optional qualifies this additional representation; the required contact/subscription/account behavior and subscriber protection are not waived.",
+        "sourceContributionId": "account-authentication"
       },
       {
         "sourceId": "CR-1006",
@@ -2422,7 +2527,8 @@
         "condition": "Only if this additional service-facing view of authenticating the entitled identity for protected F4 account deprovisioning and removal is selected under the A1 test design assumption. No login method, identity provider, blanket administrative access, extra account action or public-view authentication is introduced.",
         "alternativeGroup": "",
         "rationale": "The scoped service supports protected F4 account deprovisioning and removal by authenticating the entitled identity under A1. This is a service-facing view of the existing account-control responsibility, not an additional account feature or a public-reading login.",
-        "verificationRationale": "The service-to-process direction preserves the actual protected account function and the A1 condition. Optional qualifies this additional representation; the required contact/subscription/account behavior and subscriber protection are not waived."
+        "verificationRationale": "The service-to-process direction preserves the actual protected account function and the A1 condition. Optional qualifies this additional representation; the required contact/subscription/account behavior and subscriber protection are not waived.",
+        "sourceContributionId": "account-authentication"
       },
       {
         "sourceId": "BP-1535",
@@ -2490,7 +2596,8 @@
         "rationale": "Preventing unauthorised access can use the already scoped authentication function to establish the entitled identity for protected subscriber/account actions. This is a process-facing representation of the same A1 protection duty, not another security feature or public-view login.",
         "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
         "alternativeGroup": "",
-        "verificationRationale": "Preventing unauthorised access can use the already scoped authentication function to establish the entitled identity for protected subscriber/account actions. This is a process-facing representation of the same A1 protection duty, not another security feature or public-view login. This verifies only the stated OPTIONAL view; its selection condition is retained and does not weaken the underlying required function."
+        "verificationRationale": "Preventing unauthorised access can use the already scoped authentication function to establish the entitled identity for protected subscriber/account actions. This is a process-facing representation of the same A1 protection duty, not another security feature or public-view login. This verifies only the stated OPTIONAL view; its selection condition is retained and does not weaken the underlying required function.",
+        "targetContributionId": "account-authentication"
       },
       {
         "sourceId": "BP-1140",
@@ -2693,7 +2800,8 @@
         "rationale": "Protected contact and area-subscription changes use the established entitled identity under the A1 account-protection function. Authentication supplies identity assurance; the existing authorisation function still makes the permission decision. This is the process-facing counterpart of the already bounded F4 support view.",
         "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
         "alternativeGroup": "",
-        "verificationRationale": "Protected contact and area-subscription changes use the established entitled identity under the A1 account-protection function. Authentication supplies identity assurance; the existing authorisation function still makes the permission decision. This is the process-facing counterpart of the already bounded F4 support view. This verifies only the stated OPTIONAL view; its selection condition is retained and does not weaken the underlying required function."
+        "verificationRationale": "Protected contact and area-subscription changes use the established entitled identity under the A1 account-protection function. Authentication supplies identity assurance; the existing authorisation function still makes the permission decision. This is the process-facing counterpart of the already bounded F4 support view. This verifies only the stated OPTIONAL view; its selection condition is retained and does not weaken the underlying required function.",
+        "targetContributionId": "account-authentication"
       },
       {
         "sourceId": "BP-1530",
@@ -2704,7 +2812,8 @@
         "rationale": "The protected account deletion/deprovisioning request can use the established entitled identity. Authentication confirms who submitted that existing F4 request, while authorisation decides whether it is allowed. Internal deletion work does not become a series of new authentication operations.",
         "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
         "alternativeGroup": "",
-        "verificationRationale": "The protected account deletion/deprovisioning request can use the established entitled identity. Authentication confirms who submitted that existing F4 request, while authorisation decides whether it is allowed. Internal deletion work does not become a series of new authentication operations. This verifies only the stated OPTIONAL view; its selection condition is retained and does not weaken the underlying required function."
+        "verificationRationale": "The protected account deletion/deprovisioning request can use the established entitled identity. Authentication confirms who submitted that existing F4 request, while authorisation decides whether it is allowed. Internal deletion work does not become a series of new authentication operations. This verifies only the stated OPTIONAL view; its selection condition is retained and does not weaken the underlying required function.",
+        "targetContributionId": "account-authentication"
       },
       {
         "sourceId": "BP-1536",
@@ -2726,7 +2835,8 @@
         "rationale": "The stored-information contribution explicitly supports account deletion, while the scoped identity service maintains subscriber identity/contact information and deprovisions the deleted account. That existing F4 lifecycle function can support the lifecycle side of protected subscriber information. It is not an assertion that identity maintenance supplies every storage or security mechanism.",
         "quote": "F4: Let users update contact details, remove areas and delete accounts; state that surface-water flooding is outside scope.",
         "alternativeGroup": "",
-        "verificationRationale": "BP-1536 explicitly retains support for account deletion; CR-1022 supplies the already scoped identity/contact lifecycle and deprovisioning function. That is direct support for this lifecycle share, not an inferred identity-to-authentication-to-access-enforcement chain. This OPTIONAL extra view preserves the separate A1 protection functions and does not determine audit retention or storage technology."
+        "verificationRationale": "BP-1536 explicitly retains support for account deletion; CR-1022 supplies the already scoped identity/contact lifecycle and deprovisioning function. That is direct support for this lifecycle share, not an inferred identity-to-authentication-to-access-enforcement chain. This OPTIONAL extra view preserves the separate A1 protection functions and does not determine audit retention or storage technology.",
+        "targetContributionId": "deletion-lifecycle"
       }
     ],
     "specificRejections": [

@@ -19,9 +19,9 @@ class ScenarioExclusionResourceTest {
         try (var input = getClass().getResourceAsStream("/scenarios/flood-relation-exclusions.json")) {
             expanded = ScenarioExclusionResource.expand(JSON.readTree(input));
         }
-        assertEquals(383, expanded.path("rules").size());
+        assertEquals(512, expanded.path("rules").size());
         assertEquals(14, expanded.path("openScopes").size());
-        assertEquals("7afae5cf18c493b963a0d983798647494acd7ea487f6f4fc578ef5c397b05f1c",
+        assertEquals("5e638cb970c5ba413dbf1328aa569d2920fdd266b9fadc64f170c297f85104ff",
                 sha256(sorted(expanded).toString()),
                 "Canonical SHA-256 of all fields, ordered decisions and exact authored explanations");
     }

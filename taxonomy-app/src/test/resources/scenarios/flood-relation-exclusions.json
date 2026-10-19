@@ -3029,9 +3029,9 @@
       "sourceContributionIds": ["subscriber-delivery"],
       "type": "CONSUMES",
       "direction": "OUTGOING",
-      "candidateSubtreeIds": ["IP"],
+      "candidateSubtreeIds": ["IP-1028", "IP-1049", "IP-1078", "IP-1079", "IP-2049", "IP-1010", "IP-1088", "IP-1102", "IP-1067", "IP-1097", "IP-2046", "IP-2065", "IP-2084", "IP-2099", "IP-2131"],
       "quoteIds": ["F1", "F3", "A1"],
-      "rationale": "This contribution dispatches a prepared notification by the selected area/channel. Its prepared payload/work state is distinct from semantic reading of the published environmental picture or warning in the public-information role. A1 does not prescribe using a catalogue audit-history product as a retry/deduplication algorithm or a new management-report input. A forwarded-warning output remains separate from the publisher's input warning.",
+      "rationale": "Subscriber dispatch reads the already published warning content for an area-warning notification; that warning input is distinct from its conditional forwarded-warning output. The scoped dispatch does not perform military/operational control, planning, specialist analysis, picture preparation or organisational report reading. Its area/channel envelope is not a request for those catalogue products, and A1 does not select a management-history product as a retry/deduplication algorithm. Existing warning input does not require a separate recognised-picture or map-overlay input.",
       "reviewFamily": "scoped-functional-boundary"
     },
     {
@@ -3990,11 +3990,2939 @@
       "rationale": "This source prevents unauthorised access under A1. The counterpart's assessed F4 function maintains subscriber identity/contact data and deprovisions an account; it does not evaluate or pass account status for access enforcement in this scoped contribution. Its broader catalogue support for authentication cannot introduce a direct status/revocation integration. The explicit authentication and authorisation functions retain the access-protection duty; the separately supported account-deletion lifecycle remains valid.",
       "reviewFamily": "scoped-functional-boundary"
     }
+    ,
+    {
+      "id": "ROLE-BP-1017-latest-observation-BR-no-assigned-institutional-duty-ASSIGNED_TO-INCOMING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "ASSIGNED_TO",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BR"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "SCOPE"
+      ],
+      "rationaleRef": "BR-no-assigned-institutional-duty",
+      "reviewFamily": "BR-no-assigned-institutional-duty",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-CI-unrequested-military-domains-SUPPORTS-INCOMING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI-1005",
+        "CI-1020",
+        "CI-1022",
+        "CI-1029",
+        "CI-1041",
+        "CI-1047",
+        "CI-1055",
+        "CI-1061",
+        "CI-1062",
+        "CI-1063",
+        "CI-1067",
+        "CI-1070",
+        "CI-1112"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "SCOPE"
+      ],
+      "rationaleRef": "CI-unrequested-military-domains",
+      "reviewFamily": "CI-unrequested-military-domains",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-CI-unrequested-military-domains-USES-OUTGOING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI-1005",
+        "CI-1020",
+        "CI-1022",
+        "CI-1029",
+        "CI-1041",
+        "CI-1047",
+        "CI-1055",
+        "CI-1061",
+        "CI-1062",
+        "CI-1063",
+        "CI-1067",
+        "CI-1070",
+        "CI-1112"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "SCOPE"
+      ],
+      "rationaleRef": "CI-unrequested-military-domains",
+      "reviewFamily": "CI-unrequested-military-domains",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-CI-new-environmental-science-SUPPORTS-INCOMING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI-1073",
+        "CI-1081",
+        "CI-1113"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5",
+        "SCOPE"
+      ],
+      "rationaleRef": "CI-new-environmental-science",
+      "reviewFamily": "CI-new-environmental-science",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-CI-new-environmental-science-USES-OUTGOING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI-1073",
+        "CI-1081",
+        "CI-1113"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5",
+        "SCOPE"
+      ],
+      "rationaleRef": "CI-new-environmental-science",
+      "reviewFamily": "CI-new-environmental-science",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-IP-unrequested-operational-products-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP-1028",
+        "IP-1049",
+        "IP-1078",
+        "IP-1079"
+      ],
+      "quoteIds": [
+        "F1",
+        "F4",
+        "A1",
+        "SCOPE"
+      ],
+      "rationaleRef": "IP-unrequested-operational-products",
+      "reviewFamily": "IP-unrequested-operational-products",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-IP-unrequested-operational-control-products-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP-1010",
+        "IP-1067",
+        "IP-1088",
+        "IP-1097",
+        "IP-2065",
+        "IP-2084",
+        "IP-2099",
+        "IP-2131"
+      ],
+      "quoteIds": [
+        "F1",
+        "F3",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "IP-unrequested-operational-control-products",
+      "reviewFamily": "IP-unrequested-operational-control-products",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-IP-other-recognised-pictures-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP-1103",
+        "IP-1104",
+        "IP-1105",
+        "IP-1106",
+        "IP-1107",
+        "IP-1108",
+        "IP-1109",
+        "IP-1110",
+        "IP-1111",
+        "IP-1112",
+        "IP-1113",
+        "IP-1114",
+        "IP-1115"
+      ],
+      "quoteIds": [
+        "F1",
+        "A1",
+        "SCOPE"
+      ],
+      "rationaleRef": "IP-other-recognised-pictures",
+      "reviewFamily": "IP-other-recognised-pictures",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-IP-specialised-map-products-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP-1304",
+        "IP-1673",
+        "IP-1680",
+        "IP-1811"
+      ],
+      "quoteIds": [
+        "F1",
+        "SCOPE"
+      ],
+      "rationaleRef": "IP-specialised-map-products",
+      "reviewFamily": "IP-specialised-map-products",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-BP-1017-public-input-not-delivery-history",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP-2049"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-24",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-DISC-public-preparation-no-separate-overlay-input",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP-2046"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5"
+      ],
+      "rationale": "The scoped function acquires or prepares existing warning, area and observation information with source/time context. F1 does not prescribe a separately authored operational/procedural overlay or military-symbol product. Affected-area context can remain in the supplied information; it does not select that additional product identity. This leaves the concrete F5 observation-batch identity open instead of substituting an overlay for it.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-DISC-BP-1017-no-separate-product-authorship",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1",
+        "SCOPE"
+      ],
+      "rationale": "This contribution is acquisition, collection, organisation or preparation of existing inputs. It does not author an official warning, new environmental picture, management report or distinct catalogue information product. Its internal state/payload is not such a product merely because data is stored or passed on. The explicitly scoped view-assembly, forwarded-warning and A1 delivery-history writers are different contributions; no new reporting/production function is added here.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-DISC-BP-1017-no-CO-functional-provider",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CO"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-28",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-DISC-BP-1017-no-CR-functional-provider",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-28",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-DISC-BP-1017-no-UA-functional-provider",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "UA"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-28",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-DISC-BP-1017-distinct-COI-provider-duty",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI-1021",
+        "CI-1051",
+        "CI-1096"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F5",
+        "A1"
+      ],
+      "rationale": "The process acquires existing public inputs. CIS functions administer or protect systems; geography supplies affected-area context and the picture service assembles a downstream view. Those responsibilities do not establish the existing warning/observation feed-provider function. A selected existing-water access provider is a distinct bounded contribution; no new upstream picture or geography interface is inferred.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-DISC-public-input-no-core-platform-binding",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5",
+        "A1"
+      ],
+      "rationale": "The process acquires/organises/prepares already supplied public information. No core collaboration, account, queue/audit, mediation or hosting platform is selected to provide that function. A generic technically useful building block is not a stated process-to-service use; the concrete environmental functional views remain separate without adding a platform decomposition.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1017-latest-observation-DISC-upstream-acquisition-not-preparation-or-management-interface",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI-1021",
+        "CI-1051",
+        "CI-1096"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F5",
+        "A1"
+      ],
+      "rationale": "The input process acquires/collects existing warnings and observations. The scoped geography and picture services provide downstream context/preparation or view assembly; CIS services administer/protect the system. These distinct roles do not establish the upstream feed-provider interface. A selected existing-water read provider remains a separate allowed option; the unknown input datatype does not select a new picture-service dependency.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "latest-observation"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-BR-no-assigned-institutional-duty-ASSIGNED_TO-INCOMING",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "ASSIGNED_TO",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BR"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "SCOPE"
+      ],
+      "reviewFamily": "BR-no-assigned-institutional-duty",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "rationale": "The F4 facet removes active stored subscriber account/contact information when the user deletes the account. No catalogue institutional, military or professional role is assigned to perform that deletion; a public-authority recipient is not such an assignment."
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-CR-unselected-security-mechanisms-SUPPORTS-INCOMING",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1017",
+        "CR-1021",
+        "CR-1040",
+        "CR-1041",
+        "CR-1048",
+        "CR-1051",
+        "CR-1053",
+        "CR-1195"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "reviewFamily": "CR-unselected-security-mechanisms",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Public display, environmental preparation, channels, security programmes and administration do not perform that lifecycle action merely by sharing the service. Identity deprovisioning is the separately selected lifecycle support."
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-CR-unselected-security-mechanisms-USES-OUTGOING-scope-01",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1017",
+        "CR-1021",
+        "CR-1040",
+        "CR-1041",
+        "CR-1048",
+        "CR-1051",
+        "CR-1053",
+        "CR-1195"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "reviewFamily": "CR-unselected-security-mechanisms",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Identity deprovisioning is represented by the selected SUPPORTS view; that support does not select an additional process-client API/delegation. Messaging, platform, hosting and identity-interface choices are not implied by stored-data removal."
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-CR-unselected-platform-layer-SUPPORTS-INCOMING",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1046",
+        "CR-1089",
+        "CR-1090",
+        "CR-1091"
+      ],
+      "quoteIds": [
+        "F2",
+        "F5",
+        "A1"
+      ],
+      "reviewFamily": "CR-unselected-platform-layer",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Public display, environmental preparation, channels, security programmes and administration do not perform that lifecycle action merely by sharing the service. Identity deprovisioning is the separately selected lifecycle support."
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-CR-unselected-platform-layer-USES-OUTGOING-scope-01",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1046",
+        "CR-1089",
+        "CR-1090",
+        "CR-1091"
+      ],
+      "quoteIds": [
+        "F2",
+        "F5",
+        "A1"
+      ],
+      "reviewFamily": "CR-unselected-platform-layer",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Identity deprovisioning is represented by the selected SUPPORTS view; that support does not select an additional process-client API/delegation. Messaging, platform, hosting and identity-interface choices are not implied by stored-data removal."
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-DISC-BP-1140-no-independent-catalogue-product-input",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F1",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationale": "This F4 deletion facet removes active private subscriber account/contact state. Environmental pictures/warnings, military or operational products and management reports are not the semantic input of that lifecycle action. Its stored private account state is not a catalogue public information product.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-DISC-BP-1140-no-separate-product-authorship",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1",
+        "SCOPE"
+      ],
+      "rationale": "Removing active account/contact information is the F4 stored-information lifecycle action, not authorship of an environmental warning/picture, report or other separate catalogue information product. It does not decide the independent delivery-history retention policy.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-DISC-BP-1140-no-CI-functional-provider",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Public display, environmental preparation, channels, security programmes and administration do not perform that lifecycle action merely by sharing the service. Identity deprovisioning is the separately selected lifecycle support."
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-DISC-BP-1140-no-CO-functional-provider",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CO"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Public display, environmental preparation, channels, security programmes and administration do not perform that lifecycle action merely by sharing the service. Identity deprovisioning is the separately selected lifecycle support."
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-DISC-BP-1140-no-UA-functional-provider",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "UA"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Public display, environmental preparation, channels, security programmes and administration do not perform that lifecycle action merely by sharing the service. Identity deprovisioning is the separately selected lifecycle support."
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-DISC-account-functions-not-collaboration-or-message-platform",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1011",
+        "CR-1111"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Public display, environmental preparation, channels, security programmes and administration do not perform that lifecycle action merely by sharing the service. Identity deprovisioning is the separately selected lifecycle support.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-DISC-private-account-no-COI-domain-binding",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F4",
+        "A1"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Identity deprovisioning is represented by the selected SUPPORTS view; that support does not select an additional process-client API/delegation. Messaging, platform, hosting and identity-interface choices are not implied by stored-data removal.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-BP-1536-deletion-lifecycle-DISC-account-prevention-storage-not-lifecycle-or-message-platform",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1011",
+        "CR-1022",
+        "CR-1111"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact data. Identity deprovisioning is represented by the selected SUPPORTS view; that support does not select an additional process-client API/delegation. Messaging, platform, hosting and identity-interface choices are not implied by stored-data removal.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CR-additional-collaboration-REALIZES-OUTGOING",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1002",
+        "CR-1005",
+        "CR-1012",
+        "CR-1024",
+        "CR-1026",
+        "CR-1052",
+        "CR-1063",
+        "CR-1064"
+      ],
+      "quoteIds": [
+        "F3",
+        "SCOPE"
+      ],
+      "rationaleRef": "CR-additional-collaboration",
+      "reviewFamily": "CR-additional-collaboration",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CR-additional-collaboration-FULFILLS-INCOMING",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1002",
+        "CR-1005",
+        "CR-1012",
+        "CR-1024",
+        "CR-1026",
+        "CR-1052",
+        "CR-1063",
+        "CR-1064"
+      ],
+      "quoteIds": [
+        "F3",
+        "SCOPE"
+      ],
+      "rationaleRef": "CR-additional-collaboration",
+      "reviewFamily": "CR-additional-collaboration",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CR-new-business-analysis-and-workflows-REALIZES-OUTGOING",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1020",
+        "CR-1023",
+        "CR-1030"
+      ],
+      "quoteIds": [
+        "F1",
+        "F3",
+        "F4",
+        "F5"
+      ],
+      "rationaleRef": "CR-new-business-analysis-and-workflows",
+      "reviewFamily": "CR-new-business-analysis-and-workflows",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CR-new-business-analysis-and-workflows-FULFILLS-INCOMING",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1020",
+        "CR-1023",
+        "CR-1030"
+      ],
+      "quoteIds": [
+        "F1",
+        "F3",
+        "F4",
+        "F5"
+      ],
+      "rationaleRef": "CR-new-business-analysis-and-workflows",
+      "reviewFamily": "CR-new-business-analysis-and-workflows",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CR-unselected-security-mechanisms-REALIZES-OUTGOING-scope-03",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1008",
+        "CR-1017",
+        "CR-1021",
+        "CR-1040",
+        "CR-1041",
+        "CR-1048",
+        "CR-1051",
+        "CR-1053",
+        "CR-1195"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "CR-unselected-security-mechanisms",
+      "reviewFamily": "CR-unselected-security-mechanisms",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CR-unselected-security-mechanisms-FULFILLS-INCOMING-scope-03",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1008",
+        "CR-1017",
+        "CR-1021",
+        "CR-1040",
+        "CR-1041",
+        "CR-1048",
+        "CR-1051",
+        "CR-1053",
+        "CR-1195"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "CR-unselected-security-mechanisms",
+      "reviewFamily": "CR-unselected-security-mechanisms",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CR-unselected-platform-layer-REALIZES-OUTGOING-scope-03",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1010"
+      ],
+      "quoteIds": [
+        "F2",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "CR-unselected-platform-layer",
+      "reviewFamily": "CR-unselected-platform-layer",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CR-unselected-platform-layer-FULFILLS-INCOMING-scope-03",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1010"
+      ],
+      "quoteIds": [
+        "F2",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "CR-unselected-platform-layer",
+      "reviewFamily": "CR-unselected-platform-layer",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CP-1122-REALIZES-different-core-function",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1006",
+        "CR-1007",
+        "CR-1038",
+        "CR-1046",
+        "CR-1089",
+        "CR-1090",
+        "CR-1091",
+        "CR-1111"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-10",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CP-1122-FULFILLS-different-core-function",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1006",
+        "CR-1007",
+        "CR-1038",
+        "CR-1046",
+        "CR-1089",
+        "CR-1090",
+        "CR-1091",
+        "CR-1111"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-10",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-CP-1122-not-a-COI-environment-or-management-function",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-15",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-DISC-channel-account-capability-no-catalogue-product-prerequisite",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F1",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationale": "The scoped capability is subscriber protection, the additional email/identity lifecycle IT view, or availability of the selected communication channel. Those duties use private identity state or prepared delivery envelopes; they do not require a particular public environmental, military or management product as a semantic input. Channel carriage is distinct from the dissemination capability's reading of existing warning information.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-DISC-coarse-email-identity-view-not-text-channel-REALIZES",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR-1060"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4"
+      ],
+      "rationaleRef": "scoped-functional-boundary-34",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "ROLE-CP-1122-account-lifecycle-DISC-coarse-email-identity-view-not-text-channel-FULFILLS",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR-1060"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4"
+      ],
+      "rationaleRef": "scoped-functional-boundary-34",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ]
+    },
+    {
+      "id": "FACET-BP-1521-subscription-choice-ASSIGNED_TO-INCOMING",
+      "sourceIds": [
+        "BP-1521"
+      ],
+      "sourceContributionIds": [
+        "subscription-choice"
+      ],
+      "type": "ASSIGNED_TO",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BR"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This F3 facet maintains subscription/channel choices as entity state. It is not the F4 identity/contact lifecycle, A1 authentication/authorisation, channel execution, upstream environmental input or a new information-product writer. The separately scoped F4 entity-maintenance and downstream dispatch bindings remain distinct; storing a choice does not assign an institutional role or select a direct service interface.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1521-subscription-choice-SUPPORTS-INCOMING",
+      "sourceIds": [
+        "BP-1521"
+      ],
+      "sourceContributionIds": [
+        "subscription-choice"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI",
+        "CR",
+        "CO",
+        "UA"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This F3 facet maintains subscription/channel choices as entity state. It is not the F4 identity/contact lifecycle, A1 authentication/authorisation, channel execution, upstream environmental input or a new information-product writer. The separately scoped F4 entity-maintenance and downstream dispatch bindings remain distinct; storing a choice does not assign an institutional role or select a direct service interface.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1521-subscription-choice-USES-OUTGOING",
+      "sourceIds": [
+        "BP-1521"
+      ],
+      "sourceContributionIds": [
+        "subscription-choice"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI",
+        "CR"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This F3 facet maintains subscription/channel choices as entity state. It is not the F4 identity/contact lifecycle, A1 authentication/authorisation, channel execution, upstream environmental input or a new information-product writer. The separately scoped F4 entity-maintenance and downstream dispatch bindings remain distinct; storing a choice does not assign an institutional role or select a direct service interface.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1521-subscription-choice-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "BP-1521"
+      ],
+      "sourceContributionIds": [
+        "subscription-choice"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This F3 facet maintains subscription/channel choices as entity state. It is not the F4 identity/contact lifecycle, A1 authentication/authorisation, channel execution, upstream environmental input or a new information-product writer. The separately scoped F4 entity-maintenance and downstream dispatch bindings remain distinct; storing a choice does not assign an institutional role or select a direct service interface.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1521-subscription-choice-PRODUCES-OUTGOING",
+      "sourceIds": [
+        "BP-1521"
+      ],
+      "sourceContributionIds": [
+        "subscription-choice"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This F3 facet maintains subscription/channel choices as entity state. It is not the F4 identity/contact lifecycle, A1 authentication/authorisation, channel execution, upstream environmental input or a new information-product writer. The separately scoped F4 entity-maintenance and downstream dispatch bindings remain distinct; storing a choice does not assign an institutional role or select a direct service interface.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1534-subscription-organization-ASSIGNED_TO-INCOMING",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "subscription-organization"
+      ],
+      "type": "ASSIGNED_TO",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BR"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This facet organises private subscription/channel choices for retrieval. Public geographical/view assembly, protected identity lifecycle and notification dispatch are different functions, not providers of that organisation duty merely through shared state. The private choice record is not a catalogue environmental/operational product, and organising it does not publish a new one or assign an institutional duty.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1534-subscription-organization-SUPPORTS-INCOMING",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "subscription-organization"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI",
+        "CR",
+        "CO",
+        "UA"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This facet organises private subscription/channel choices for retrieval. Public geographical/view assembly, protected identity lifecycle and notification dispatch are different functions, not providers of that organisation duty merely through shared state. The private choice record is not a catalogue environmental/operational product, and organising it does not publish a new one or assign an institutional duty.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1534-subscription-organization-USES-OUTGOING",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "subscription-organization"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI",
+        "CR"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This facet organises private subscription/channel choices for retrieval. Public geographical/view assembly, protected identity lifecycle and notification dispatch are different functions, not providers of that organisation duty merely through shared state. The private choice record is not a catalogue environmental/operational product, and organising it does not publish a new one or assign an institutional duty.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1534-subscription-organization-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "subscription-organization"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This facet organises private subscription/channel choices for retrieval. Public geographical/view assembly, protected identity lifecycle and notification dispatch are different functions, not providers of that organisation duty merely through shared state. The private choice record is not a catalogue environmental/operational product, and organising it does not publish a new one or assign an institutional duty.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1534-subscription-organization-PRODUCES-OUTGOING",
+      "sourceIds": [
+        "BP-1534"
+      ],
+      "sourceContributionIds": [
+        "subscription-organization"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F3"
+      ],
+      "rationale": "This facet organises private subscription/channel choices for retrieval. Public geographical/view assembly, protected identity lifecycle and notification dispatch are different functions, not providers of that organisation duty merely through shared state. The private choice record is not a catalogue environmental/operational product, and organising it does not publish a new one or assign an institutional duty.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1866-availability-state-ASSIGNED_TO-INCOMING",
+      "sourceIds": [
+        "BP-1866"
+      ],
+      "sourceContributionIds": [
+        "availability-state"
+      ],
+      "type": "ASSIGNED_TO",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BR"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet preserves already supplied stale/unavailable state in prepared information. It is not an upstream feed, new assessment/product writer, channel/account function or separately assigned institutional duty. Its mandatory metadata-preservation constraint does not select a further functional provider or a direct platform/service interface; the F1 preparation bindings are independently scoped.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1866-availability-state-SUPPORTS-INCOMING",
+      "sourceIds": [
+        "BP-1866"
+      ],
+      "sourceContributionIds": [
+        "availability-state"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI",
+        "CR",
+        "CO",
+        "UA"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet preserves already supplied stale/unavailable state in prepared information. It is not an upstream feed, new assessment/product writer, channel/account function or separately assigned institutional duty. Its mandatory metadata-preservation constraint does not select a further functional provider or a direct platform/service interface; the F1 preparation bindings are independently scoped.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1866-availability-state-USES-OUTGOING",
+      "sourceIds": [
+        "BP-1866"
+      ],
+      "sourceContributionIds": [
+        "availability-state"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI",
+        "CR"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet preserves already supplied stale/unavailable state in prepared information. It is not an upstream feed, new assessment/product writer, channel/account function or separately assigned institutional duty. Its mandatory metadata-preservation constraint does not select a further functional provider or a direct platform/service interface; the F1 preparation bindings are independently scoped.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1866-availability-state-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "BP-1866"
+      ],
+      "sourceContributionIds": [
+        "availability-state"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet preserves already supplied stale/unavailable state in prepared information. It is not an upstream feed, new assessment/product writer, channel/account function or separately assigned institutional duty. Its mandatory metadata-preservation constraint does not select a further functional provider or a direct platform/service interface; the F1 preparation bindings are independently scoped.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-BP-1866-availability-state-PRODUCES-OUTGOING",
+      "sourceIds": [
+        "BP-1866"
+      ],
+      "sourceContributionIds": [
+        "availability-state"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet preserves already supplied stale/unavailable state in prepared information. It is not an upstream feed, new assessment/product writer, channel/account function or separately assigned institutional duty. Its mandatory metadata-preservation constraint does not select a further functional provider or a direct platform/service interface; the F1 preparation bindings are independently scoped.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "DISCLOSURE-UA-1580-SUPPORTS-OUTGOING",
+      "sourceIds": [
+        "UA-1580"
+      ],
+      "sourceContributionIds": [
+        "surface-water-scope",
+        "freshness-and-official-channels",
+        "supplementary-scope"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP"
+      ],
+      "quoteIds": [
+        "F4",
+        "F5",
+        "SCOPE"
+      ],
+      "rationale": "These facets display the explicit surface-water boundary, stale/unavailable state, official-channel retention and supplementary-service limitation. They add no separate acquisition, account, dispatch or operational-control duty, catalogue input/output product, transport peer or direct service interface. Retaining official channels is a visible safety boundary, not a newly selected channel integration. The independently scoped F1 public-reading/presentation binding is not a second disclosure-specific functional coupling.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "DISCLOSURE-UA-1580-USES-OUTGOING",
+      "sourceIds": [
+        "UA-1580"
+      ],
+      "sourceContributionIds": [
+        "surface-water-scope",
+        "freshness-and-official-channels",
+        "supplementary-scope"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI",
+        "CR",
+        "CO"
+      ],
+      "quoteIds": [
+        "F4",
+        "F5",
+        "SCOPE"
+      ],
+      "rationale": "These facets display the explicit surface-water boundary, stale/unavailable state, official-channel retention and supplementary-service limitation. They add no separate acquisition, account, dispatch or operational-control duty, catalogue input/output product, transport peer or direct service interface. Retaining official channels is a visible safety boundary, not a newly selected channel integration. The independently scoped F1 public-reading/presentation binding is not a second disclosure-specific functional coupling.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "DISCLOSURE-UA-1580-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "UA-1580"
+      ],
+      "sourceContributionIds": [
+        "surface-water-scope",
+        "freshness-and-official-channels",
+        "supplementary-scope"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F4",
+        "F5",
+        "SCOPE"
+      ],
+      "rationale": "These facets display the explicit surface-water boundary, stale/unavailable state, official-channel retention and supplementary-service limitation. They add no separate acquisition, account, dispatch or operational-control duty, catalogue input/output product, transport peer or direct service interface. Retaining official channels is a visible safety boundary, not a newly selected channel integration. The independently scoped F1 public-reading/presentation binding is not a second disclosure-specific functional coupling.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "DISCLOSURE-UA-1580-PRODUCES-OUTGOING",
+      "sourceIds": [
+        "UA-1580"
+      ],
+      "sourceContributionIds": [
+        "surface-water-scope",
+        "freshness-and-official-channels",
+        "supplementary-scope"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F4",
+        "F5",
+        "SCOPE"
+      ],
+      "rationale": "These facets display the explicit surface-water boundary, stale/unavailable state, official-channel retention and supplementary-service limitation. They add no separate acquisition, account, dispatch or operational-control duty, catalogue input/output product, transport peer or direct service interface. Retaining official channels is a visible safety boundary, not a newly selected channel integration. The independently scoped F1 public-reading/presentation binding is not a second disclosure-specific functional coupling.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "DISCLOSURE-UA-1580-COMMUNICATES_WITH-INCOMING",
+      "sourceIds": [
+        "UA-1580"
+      ],
+      "sourceContributionIds": [
+        "surface-water-scope",
+        "freshness-and-official-channels",
+        "supplementary-scope"
+      ],
+      "type": "COMMUNICATES_WITH",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CO"
+      ],
+      "quoteIds": [
+        "F4",
+        "F5",
+        "SCOPE"
+      ],
+      "rationale": "These facets display the explicit surface-water boundary, stale/unavailable state, official-channel retention and supplementary-service limitation. They add no separate acquisition, account, dispatch or operational-control duty, catalogue input/output product, transport peer or direct service interface. Retaining official channels is a visible safety boundary, not a newly selected channel integration. The independently scoped F1 public-reading/presentation binding is not a second disclosure-specific functional coupling.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CP1097-availability-REALIZES-OUTGOING",
+      "sourceIds": [
+        "CP-1097"
+      ],
+      "sourceContributionIds": [
+        "availability-state"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet preserves supplied stale/unavailable status for display; it is not another collection, environmental interpretation, channel, access-control or service-management function. Keeping those metadata states does not select an additional service implementation or a distinct catalogue information-product dependency. The separate F1 processing/view-integration contribution retains its own bounded functional bindings and its unresolved observation-input identity.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CP1097-availability-FULFILLS-INCOMING",
+      "sourceIds": [
+        "CP-1097"
+      ],
+      "sourceContributionIds": [
+        "availability-state"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI",
+        "CR"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet preserves supplied stale/unavailable status for display; it is not another collection, environmental interpretation, channel, access-control or service-management function. Keeping those metadata states does not select an additional service implementation or a distinct catalogue information-product dependency. The separate F1 processing/view-integration contribution retains its own bounded functional bindings and its unresolved observation-input identity.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CP1097-availability-REQUIRES-OUTGOING",
+      "sourceIds": [
+        "CP-1097"
+      ],
+      "sourceContributionIds": [
+        "availability-state"
+      ],
+      "type": "REQUIRES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "This facet preserves supplied stale/unavailable status for display; it is not another collection, environmental interpretation, channel, access-control or service-management function. Keeping those metadata states does not select an additional service implementation or a distinct catalogue information-product dependency. The separate F1 processing/view-integration contribution retains its own bounded functional bindings and its unresolved observation-input identity.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "WARNING-ACQUISITION-not-observation-provider-USES",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CI-1052"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5"
+      ],
+      "rationale": "This contribution acquires the already published warning/affected-area input. The bounded hydrographic read service supplies water observations, not the published-warning share. Its optional provider binding belongs to the separately scoped latest-observation contribution, not a second warning-provider interface.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "WARNING-ACQUISITION-not-observation-provider-SUPPORTS",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CI-1052"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5"
+      ],
+      "rationale": "The scoped hydrographic read function supplies the water-observation input, not published warning acquisition. Its support is explicitly represented at latest-observation; this warning-input facet does not claim the same provider supplies its distinct content.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "WARNING-ACQUISITION-not-assembled-picture",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-1116"
+      ],
+      "quoteIds": [
+        "F1"
+      ],
+      "rationale": "This facet acquires an already published warning input, not an assembled environmental picture. The datatype of the distinct F5 observation batch remains unresolved at latest-observation; it is not silently resolved by narrowing this warning role.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "OBSERVATION-BATCH-not-published-warning",
+      "sourceIds": [
+        "BP-1017"
+      ],
+      "sourceContributionIds": [
+        "latest-observation"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-2130"
+      ],
+      "quoteIds": [
+        "F5"
+      ],
+      "rationale": "The F5 water-observation batch is not the already published flood-warning product. Warning acquisition remains independently represented; consuming an observation batch does not make it a warning or establish its unspecified product identity.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "DELETION-LIFECYCLE-not-authentication-or-access-control",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CR-1006",
+        "CR-1007"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This F4 facet removes active stored account/contact information. Establishing an entitled identity and granting permission are separate A1 access-protection functions, already attached to protected storage. They do not themselves implement the deletion lifecycle share; identity deprovisioning remains the directly selected lifecycle support.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "DELETION-LIFECYCLE-no-additional-protection-client",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "sourceContributionIds": [
+        "deletion-lifecycle"
+      ],
+      "type": "USES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CR-1006",
+        "CR-1007"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This lifecycle facet concerns removal of stored active account/contact state, not a new authentication or access-control invocation for internal deletion work. Entitled request protection remains attached to the separately scoped A1 stored-information protection function.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "EMAIL-IT-VIEW-not-account-lifecycle-REALIZES",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CR-1022"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4"
+      ],
+      "rationale": "This IT capability facet is the email notification function. Identity/contact maintenance and account deprovisioning implement the separate F4 account-lifecycle facet, not this email channel share.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "EMAIL-IT-VIEW-not-account-lifecycle-FULFILLS",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CR-1022"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4"
+      ],
+      "rationale": "Identity/contact maintenance and account deprovisioning fulfil the separate F4 account-lifecycle IT facet. They do not supply the F3 email-notification share recorded by this contribution.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "ACCOUNT-IT-VIEW-not-email-REALIZES",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ],
+      "type": "REALIZES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CR-1037"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4"
+      ],
+      "rationale": "This IT capability facet is F4 identity/contact maintenance and account deprovisioning. Email messaging supplies a different F3 delivery share, not subscriber identity lifecycle.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "ACCOUNT-IT-VIEW-not-email-FULFILLS",
+      "sourceIds": [
+        "CP-1122"
+      ],
+      "sourceContributionIds": [
+        "account-lifecycle"
+      ],
+      "type": "FULFILLS",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CR-1037"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4"
+      ],
+      "rationale": "Email messaging fulfils the separately scoped F3 email share. It does not maintain the subscriber identity/contact entity or deprovision the deleted account required by this F4 facet.",
+      "reviewFamily": "authored-role-decomposition",
+      "candidateSubtreeIds": []
+    },
+    {
+      "id": "FACET-CR1098-removal-SUPPORTS-OUTGOING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP",
+        "BR"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CR1098-removal-FULFILLS-OUTGOING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CP"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CR1098-removal-REALIZES-INCOMING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "REALIZES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CP"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CR1098-removal-USES-INCOMING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "UA",
+        "BP"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CR1098-removal-COMMUNICATES_WITH-INCOMING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "COMMUNICATES_WITH",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CO"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CR1098-removal-DEPENDS_ON-OUTGOING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR",
+        "CI"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CR1098-removal-DEPENDS_ON-INCOMING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR",
+        "CI",
+        "CO"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CR1098-removal-CONSUMES-OUTGOING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "FACET-CR1098-removal-PRODUCES-OUTGOING",
+      "sourceIds": [
+        "CR-1098"
+      ],
+      "sourceContributionIds": [
+        "removal-eligibility"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F4"
+      ],
+      "rationale": "This facet applies an already removed area's changed routing eligibility. It does not modify the subscriber identity/contact entity, dispatch a new message, implement a channel or protection capability, publish/read a catalogue environmental product, or select an additional technical client/dependency. The F3 routing/dispatch implementation is independently scoped; an eligibility-state constraint alone establishes no second direct service or support binding.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "PROTECTED-STORAGE-not-identity-lifecycle-enforcement",
+      "sourceIds": [
+        "BP-1536"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "SUPPORTS",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CR-1022"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "A1",
+        "F4"
+      ],
+      "rationale": "The A1 facet protects stored subscriber details through entitled access. Identity/contact maintenance and account deprovisioning are the distinct F4 deletion-lifecycle share, where the selected identity service support is represented. Maintaining or deleting an identity does not itself authenticate the actor, authorise access or implement the storage access-protection function.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "PUBLIC-VIEW-no-second-direct-warning-input-binding",
+      "sourceIds": [
+        "BP-1535"
+      ],
+      "sourceContributionIds": [
+        "public-information"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "IP-2130"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F1",
+        "F3"
+      ],
+      "rationale": "This selected process view retrieves/presents already prepared public information through the assembled environmental-view product. The direct original published-warning input is represented at the public application and subscriber-dispatch contributions; this process view adds no second direct warning-feed binding. The view still includes every published warning, area and observation with source/time. This is a local representation boundary, not a claim that public information generally excludes or never reads warnings.",
+      "reviewFamily": "authored-role-decomposition"
+    }
+    ,
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-defence-enterprise-SUPPORTS-OUTGOING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP-1481",
+        "BP-1486",
+        "BP-1779"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "SCOPE"
+      ],
+      "rationaleRef": "BP-defence-enterprise",
+      "reviewFamily": "BP-defence-enterprise",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-defence-enterprise-USES-INCOMING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BP-1481",
+        "BP-1486",
+        "BP-1779"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "SCOPE"
+      ],
+      "rationaleRef": "BP-defence-enterprise",
+      "reviewFamily": "BP-defence-enterprise",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-physical-and-specialist-administration-SUPPORTS-OUTGOING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP-1332",
+        "BP-1351",
+        "BP-1383",
+        "BP-1459",
+        "BP-1490",
+        "BP-1599",
+        "BP-1819"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "BP-physical-and-specialist-administration",
+      "reviewFamily": "BP-physical-and-specialist-administration",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-physical-and-specialist-administration-USES-INCOMING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BP-1332",
+        "BP-1351",
+        "BP-1383",
+        "BP-1459",
+        "BP-1490",
+        "BP-1599",
+        "BP-1819"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "BP-physical-and-specialist-administration",
+      "reviewFamily": "BP-physical-and-specialist-administration",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-new-analysis-SUPPORTS-OUTGOING-scope-02",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP-1531"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5",
+        "SCOPE"
+      ],
+      "rationaleRef": "BP-new-analysis",
+      "reviewFamily": "BP-new-analysis",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-new-analysis-USES-INCOMING-scope-02",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BP-1531"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5",
+        "SCOPE"
+      ],
+      "rationaleRef": "BP-new-analysis",
+      "reviewFamily": "BP-new-analysis",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-programme-governance-SUPPORTS-OUTGOING-scope-01",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP-1532",
+        "BP-1948",
+        "BP-2060",
+        "BP-2078"
+      ],
+      "quoteIds": [
+        "F2",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "BP-programme-governance",
+      "reviewFamily": "BP-programme-governance",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-programme-governance-USES-INCOMING-scope-01",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BP-1532",
+        "BP-1948",
+        "BP-2060",
+        "BP-2078"
+      ],
+      "quoteIds": [
+        "F2",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "BP-programme-governance",
+      "reviewFamily": "BP-programme-governance",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-provider-customer-relationship-SUPPORTS-OUTGOING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP-1246"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4"
+      ],
+      "rationaleRef": "BP-provider-customer-relationship",
+      "reviewFamily": "BP-provider-customer-relationship",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-provider-customer-relationship-USES-INCOMING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BP-1246"
+      ],
+      "quoteIds": [
+        "F3",
+        "F4"
+      ],
+      "rationaleRef": "BP-provider-customer-relationship",
+      "reviewFamily": "BP-provider-customer-relationship",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-specialised-security-operations-SUPPORTS-OUTGOING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP-1128",
+        "BP-1131",
+        "BP-1137",
+        "BP-1145"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "BP-specialised-security-operations",
+      "reviewFamily": "BP-specialised-security-operations",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-specialised-security-operations-USES-INCOMING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BP-1128",
+        "BP-1131",
+        "BP-1137",
+        "BP-1145"
+      ],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "BP-specialised-security-operations",
+      "reviewFamily": "BP-specialised-security-operations",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-knowledge-and-official-registry-SUPPORTS-OUTGOING-scope-01",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP-1018",
+        "BP-1915"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "A1"
+      ],
+      "rationaleRef": "BP-knowledge-and-official-registry",
+      "reviewFamily": "BP-knowledge-and-official-registry",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BP-knowledge-and-official-registry-USES-INCOMING-scope-01",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BP-1018",
+        "BP-1915"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "A1"
+      ],
+      "rationaleRef": "BP-knowledge-and-official-registry",
+      "reviewFamily": "BP-knowledge-and-official-registry",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-BR-no-assigned-institutional-duty-SUPPORTS-OUTGOING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BR"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "SCOPE"
+      ],
+      "rationaleRef": "BR-no-assigned-institutional-duty",
+      "reviewFamily": "BR-no-assigned-institutional-duty",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CP-military-direction-and-exploitation-REALIZES-INCOMING-scope-01",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "REALIZES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CP-1010",
+        "CP-1022",
+        "CP-1027",
+        "CP-1033"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5",
+        "SCOPE"
+      ],
+      "rationaleRef": "CP-military-direction-and-exploitation",
+      "reviewFamily": "CP-military-direction-and-exploitation",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CP-military-direction-and-exploitation-FULFILLS-OUTGOING-scope-01",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CP-1010",
+        "CP-1022",
+        "CP-1027",
+        "CP-1033"
+      ],
+      "quoteIds": [
+        "F1",
+        "F5",
+        "SCOPE"
+      ],
+      "rationaleRef": "CP-military-direction-and-exploitation",
+      "reviewFamily": "CP-military-direction-and-exploitation",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CP-infrastructure-ownership-REALIZES-INCOMING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "REALIZES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CP-1024",
+        "CP-1067"
+      ],
+      "quoteIds": [
+        "F2",
+        "F3",
+        "A1"
+      ],
+      "rationaleRef": "CP-infrastructure-ownership",
+      "reviewFamily": "CP-infrastructure-ownership",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CP-infrastructure-ownership-FULFILLS-OUTGOING",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CP-1024",
+        "CP-1067"
+      ],
+      "quoteIds": [
+        "F2",
+        "F3",
+        "A1"
+      ],
+      "rationaleRef": "CP-infrastructure-ownership",
+      "reviewFamily": "CP-infrastructure-ownership",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-AUTHENTICATION-AUTHORISATION-not-public-processing-or-service-operation",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "BP-1060",
+        "BP-1529",
+        "BP-1534",
+        "BP-1535",
+        "BP-2001"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationale": "The source authenticates or authorises the entitled subscriber for protected account operations. It does not acquire/prepare public environmental content, organise that collection, route/carry notifications or operate the service. A1 privacy does not require a public-reading login or an account-authentication step on every queue retry; those would be different integration duties.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CR-no-unselected-CR-technical-decomposition",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CR"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-4",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CR-no-unselected-CI-technical-decomposition",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CI"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-4",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CR-not-an-assumed-CR-technical-prerequisite",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CR"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-5",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CR-not-an-assumed-CI-technical-prerequisite",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CI"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-5",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-CR-not-an-assumed-CO-technical-prerequisite",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "DEPENDS_ON",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CO"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-5",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-ACCESS-CONTROL-FULFILLS-distinct-capability-duty",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "CP-1020",
+        "CP-1041",
+        "CP-1097",
+        "CP-1104",
+        "CP-1122",
+        "CP-1127"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-17",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-ACCESS-CONTROL-REALIZES-distinct-capability-duty",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "REALIZES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CP-1020",
+        "CP-1041",
+        "CP-1097",
+        "CP-1104",
+        "CP-1122",
+        "CP-1127"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-17",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-DISC-CR-1006-no-independent-catalogue-product-input",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "CONSUMES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F1",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationale": "The scoped function concerns authenticating/authorising the entitled identity or maintaining its lifecycle. Its private identity state or prepared message/work envelope is not a separately identified catalogue environmental, military or management-information product. Carrying or storing an opaque prepared payload is not semantic interpretation of a public picture or warning. A1 delivery history is a separate output, not an assigned audit-review input of this contribution.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-DISC-CR-1006-no-separate-product-authorship",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "PRODUCES",
+      "direction": "OUTGOING",
+      "candidateSubtreeIds": [
+        "IP"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1",
+        "SCOPE"
+      ],
+      "rationale": "This contribution is account authentication, authorisation or identity lifecycle. It does not author an official warning, new environmental picture, management report or distinct catalogue information product. Its internal state/payload is not such a product merely because data is stored or passed on. The explicitly scoped view-assembly, forwarded-warning and A1 delivery-history writers are different contributions; no new reporting/production function is added here.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-DISC-no-direct-access-peer-for-service-functions",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "COMMUNICATES_WITH",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "CO"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "A1"
+      ],
+      "rationale": "The source supplies its scoped information, account, delivery-work, audit or administration function. F3 requires subscriber-facing text/phone/email capabilities but identifies no direct network-access peer endpoint for this source. Participation in the same delivery flow does not select a transport API, bearer or point-to-point topology. Channel availability remains required without inventing that separate communications binding.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-DISC-CR-1006-no-user-application-client",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "UA"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "A1"
+      ],
+      "rationaleRef": "scoped-functional-boundary-39",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "ROLE-CR1006-account-authentication-DISC-CR-1006-distinct-business-service-use",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateSubtreeIds": [
+        "BP-1060",
+        "BP-1529",
+        "BP-1534",
+        "BP-1535",
+        "BP-2001"
+      ],
+      "quoteIds": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "A1"
+      ],
+      "rationale": "These input/preparation, information-organisation, service-operation and delivery roles do not perform the entitled user's account authentication/authorisation operation. Public reading needs no subscriber login, routing a prepared payload is not account maintenance, and A1 does not prescribe an interactive access decision on each retry. The actual protected account/access functions remain separate.",
+      "reviewFamily": "scoped-functional-boundary",
+      "sourceContributionIds": [
+        "account-authentication"
+      ]
+    },
+    {
+      "id": "STORED-ACCESS-not-second-account-request-support",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "BP-1140",
+        "BP-1521",
+        "BP-1530"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This facet establishes the actor accessing protected stored subscriber information, whose support is represented at the stored-information protection contribution. The selected prevention/entity-change/deletion-request support views concern the separate F4 account-authentication facet. This access viewpoint adds no second support binding to those request phases; it does not deny that authentication generally contributes to account protection.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "STORED-ACCESS-not-second-account-request-client",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "BP-1140",
+        "BP-1521",
+        "BP-1530"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "These selected process clients authenticate the submitted F4 account request through the account-authentication facet. This separate stored-information access facet reuses entitled-actor assurance for protected access; it is not an additional client/interface step for the same user request or each internal deletion operation.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "ACCOUNT-REQUEST-not-internal-storage-support",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "account-authentication"
+      ],
+      "type": "SUPPORTS",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "BP-1536"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "This facet establishes the entitled user submitting a contact/area/deletion request. Stored-information access protection is supplied by the distinct A1 authentication facet. Authenticating that user request is not an internal storage safeguard or a new identity check on each stored-data removal step.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "ACCOUNT-REQUEST-not-internal-storage-client",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "account-authentication"
+      ],
+      "type": "USES",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "BP-1536"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "The stored-information access view uses the separately scoped A1 actor assurance. The F4 facet authenticates the user's account-change/deletion request, not a storage write or internal deletion step; this boundary avoids inventing a second storage-client authentication operation.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "ACCOUNT-REQUEST-no-second-capability-view-FULFILLS",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "account-authentication"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CP-1016"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "The selected CIS-security capability view represents the A1 authentication of entitled access to stored subscriber information. This F4 user-request facet retains its selected account-process support and Information Protection capability view, without adding a second CIS-security representation. This is a local viewpoint boundary, not a denial of authentication's general security relevance.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "ACCOUNT-REQUEST-no-second-capability-view-REALIZES",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "account-authentication"
+      ],
+      "type": "REALIZES",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CP-1016"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "The selected CIS-security capability view represents the A1 authentication of entitled access to stored subscriber information. This F4 user-request facet retains its selected account-process support and Information Protection capability view, without adding a second CIS-security representation. This is a local viewpoint boundary, not a denial of authentication's general security relevance.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "STORED-ACCESS-no-second-information-protection-view-FULFILLS",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "FULFILLS",
+      "direction": "OUTGOING",
+      "candidateIds": [
+        "CP-1123"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "The selected Information Protection capability view represents verification of the entitled identity before protected F4 account actions under A1. This separate stored-information access facet retains its selected storage/CIS-security viewpoints and adds no second Information Protection representation. The boundary separates local functional viewpoints, not the general relevance of authentication to information protection.",
+      "reviewFamily": "authored-role-decomposition"
+    },
+    {
+      "id": "STORED-ACCESS-no-second-information-protection-view-REALIZES",
+      "sourceIds": [
+        "CR-1006"
+      ],
+      "sourceContributionIds": [
+        "default"
+      ],
+      "type": "REALIZES",
+      "direction": "INCOMING",
+      "candidateIds": [
+        "CP-1123"
+      ],
+      "candidateSubtreeIds": [],
+      "quoteIds": [
+        "F4",
+        "A1"
+      ],
+      "rationale": "The selected Information Protection capability view represents verification of the entitled identity before protected F4 account actions under A1. This separate stored-information access facet retains its selected storage/CIS-security viewpoints and adds no second Information Protection representation. The boundary separates local functional viewpoints, not the general relevance of authentication to information protection.",
+      "reviewFamily": "authored-role-decomposition"
+    }
   ],
   "openScopes": [
     {
       "id": "OPEN-F5-input-identity-BP-1017-outgoing",
       "sourceIds": ["BP-1017"],
+      "sourceContributionIds": ["latest-observation"],
       "type": "CONSUMES",
       "direction": "OUTGOING",
       "candidateIds": ["IP-1116"],

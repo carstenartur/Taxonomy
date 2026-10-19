@@ -57,6 +57,10 @@ public final class ArchiMateExchangeCodec {
             Map<String, String> properties = properties(element); Map<String, String> extensions = extensions(element, propertyNames);
             String mapped = canonicalType(properties, propertyNames, "Taxonomy.RelationType",
                     canonicalType(properties, propertyNames, "taxonomy.type", RELATION_TYPES.get(type)));
+            // Older analysis exports carry the proposal in review metadata; an explicit current status takes precedence.
+            if (!extensions.containsKey("taxonomy:status")
+                    && "PROPOSED".equals(canonicalType(properties, propertyNames, "taxonomy.reviewStatus", null)))
+                extensions.put("taxonomy:status", "proposed");
             if (type.equals("Access") && element.getAttribute("accessType").equals("Write")) mapped = "PRODUCES";
             if (mapped == null) losses.add(loss(id, "type", "UNSUPPORTED_RELATION_TYPE", LossDisposition.UNSUPPORTED,
                     "The source relationship has no declared canonical mapping; no Association fallback is applied"));

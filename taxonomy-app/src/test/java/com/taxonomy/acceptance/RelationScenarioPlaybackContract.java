@@ -35,8 +35,13 @@ public final class RelationScenarioPlaybackContract {
                 new Node("UA-1000", "UA", "User Applications", "", false)));
         var leaf = selected.stream().filter(s -> s.node().id().equals(APPLICATION.id())).findFirst().orElseThrow();
         var ancestor = selected.stream().filter(s -> s.node().id().equals("UA-1000")).findFirst().orElseThrow();
-        check(leaf.contributions().size() == 1, "The concrete application has one scoped contribution");
-        check(original.contains(leaf.contributions().getFirst().quote()), "The quote must occur in the unchanged original");
+        check(leaf.contributions().size() == 4,
+                "Presentation, scope disclosure, freshness and the supplementary boundary retain distinct quoted contributions");
+        check(leaf.contributions().getFirst().quote().startsWith("F1:"), "The public-reading contribution remains first");
+        for (var contribution : leaf.contributions()) {
+            check(original.contains(contribution.quote()) && !original.equals(contribution.quote()),
+                    "Each local quote occurs in the unchanged original without claiming every unrelated clause");
+        }
         check(ancestor.contributions().isEmpty(), "An ancestor is a navigation context, not another required application");
     }
 

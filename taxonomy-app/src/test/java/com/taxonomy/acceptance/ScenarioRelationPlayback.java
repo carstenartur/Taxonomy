@@ -190,7 +190,7 @@ final class ScenarioRelationPlayback {
             if (counterpart.equals(node.id()) && !node.container()) {
                 JsonNode targetContribution = contributions.get(claimContributionKey(claim, outgoing ? "target" : "source"));
                 Decision expected = new Decision(node.id(), Outcome.MATCH, targetContribution.path("text").asString(),
-                        claim.path("quote").asString(), Necessity.valueOf(claim.path("necessity").asString()),
+                        targetContribution.path("quote").asString(), Necessity.valueOf(claim.path("necessity").asString()),
                         claim.path("condition").asString(), claim.path("alternativeGroup").asString(),
                         claim.path("rationale").asString("The original quote connects these specific endpoint functions."), "");
                 if (query.phase() == Phase.VERIFY) {
