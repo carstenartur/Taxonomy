@@ -28,6 +28,39 @@ final class ScenarioDocumentQa {
 
     private ScenarioDocumentQa() { }
 
+    record PageProfile(int decisionPages, int architecturePages) { }
+
+    private static final PageProfile LEGACY_PAGE_PROFILE = new PageProfile(74, 12);
+    private static final String COMPLETE_FLOOD_FIXTURE_SHA256 =
+            "5fd17eddbdeb5232e45c294bc726f43c1aef3d3d0572dd16078a912cf64b8609";
+    private static final String COMPLETE_FLOOD_REQUIREMENT_SHA256 =
+            "a5546798b6117e9d66cc3c63ce316ae9985b980aa949df7669d3c28fb5d9d989";
+
+    static PageProfile pageProfile(Map<?, ?> run, Map<?, ?> decision, Map<?, ?> architecture) {
+        if (!"flood-information-v1".equals(run.get("scenario"))
+                || !COMPLETE_FLOOD_FIXTURE_SHA256.equals(run.get("fixtureSha256"))) {
+            return LEGACY_PAGE_PROFILE;
+        }
+        String requirement = text(decision, "requirement");
+        require(COMPLETE_FLOOD_REQUIREMENT_SHA256.equals(sha256(requirement.getBytes(StandardCharsets.UTF_8)))
+                        && requirement.equals(text(architecture, "requirementText")),
+                "Reviewed complete flood corpus mismatch: requirement");
+        var diagram = object(architecture.get("diagram"));
+        var edges = array(diagram.get("edges"));
+        int scopedEvidence = edges.stream().map(ScenarioDocumentQa::object)
+                .map(edge -> object(edge.get("metadata")))
+                .mapToInt(metadata -> array(metadata.get("requirementEvidence")).size()).sum();
+        var scope = object(decision.get("scope"));
+        require(array(diagram.get("nodes")).size() == 50 && edges.size() == 36 && scopedEvidence == 72
+                        && array(decision.get("chapters")).size() == 45
+                        && array(object(scope.get("decisionTree")).get("rows")).size() == 298
+                        && object(scope.get("recordedReasons")).size() == 298,
+                "Reviewed complete flood corpus mismatch: graph, scoped evidence or decision inventory");
+        // Complete fixture: CI LibreOffice 24.2 decision 165; local LibreOfficeDev 26.8 report 52.
+        // Retain measured 3/2-page variance only for this corpus; final CI report confirmation remains required.
+        return new PageProfile(168, 54);
+    }
+
     static int run(String[] rawArguments, Path workingDirectory, PrintStream output, PrintStream error) {
         try {
             var arguments = TaxonomyTooling.Arguments.parse(rawArguments);
@@ -126,6 +159,9 @@ final class ScenarioDocumentQa {
         report.put("documents", documents);
         var decision = visioOnly ? Map.<String,Object>of() : FlatJson.parseObject(Files.readString(root.resolve("decision.json")));
         var architecture = FlatJson.parseObject(Files.readString(root.resolve("architecture.json")));
+        var run = !visioOnly && Files.isRegularFile(root.resolve("run.json"))
+                ? FlatJson.parseObject(Files.readString(root.resolve("run.json"))) : Map.<String, Object>of();
+        var profile = visioOnly ? LEGACY_PAGE_PROFILE : pageProfile(run, decision, architecture);
         String wordGraphHash=null;
         for (String name : visioOnly ? List.of("architecture.vsdx") : List.of("decision.docx", "report.docx", "architecture.vsdx")) {
             boolean word = name.endsWith(".docx");
@@ -153,7 +189,7 @@ final class ScenarioDocumentQa {
                 expected.add(wordGraphHash);
                 for(String collection:List.of("nodes","edges"))for(Object value:array(object(architecture.get("diagram")).get(collection)))expected.add(text(object(value),"id"));
             }
-            var document = checkText(name, bbox, text, expected, word);
+            var document = checkText(name, bbox, text, expected, word, profile);
             if (!word) document.put("relationshipCoverage", checkVisioRelationships(unzip(root.resolve(name)), architecture, text));
             Files.writeString(output.resolve(stem + ".txt"), text);
             Files.writeString(output.resolve(stem + ".bbox.html"), bbox);
@@ -261,6 +297,11 @@ final class ScenarioDocumentQa {
 
     static Map<String, Object> checkText(String name, String bbox, String rawText,
                                          List<String> expected, boolean word) throws IOException {
+        return checkText(name, bbox, rawText, expected, word, LEGACY_PAGE_PROFILE);
+    }
+
+    static Map<String, Object> checkText(String name, String bbox, String rawText,
+                                        List<String> expected, boolean word, PageProfile profile) throws IOException {
         // Poppler emits this fixed DOCTYPE. Strip it before our hardened parser;
         // never resolve the external XHTML DTD or accept arbitrary declarations.
         var xml = XmlSupport.parse(new ByteArrayInputStream(
@@ -293,10 +334,10 @@ final class ScenarioDocumentQa {
         // Actual full reformulation fixture: saved revision 25 pages, receipt 26;
         // allow three pages for renderer/browser-answer variance, retaining all content checks.
         int pageLimit = switch (name) {
-            case "decision.docx" -> 74;
+            case "decision.docx" -> profile.decisionPages();
             case "reformulation-revision.docx" -> 28;
             case "reformulation-adoption.docx" -> 29;
-            default -> 12;
+            default -> profile.architecturePages();
         };
         require(!word || pages.size() <= pageLimit, name + ": report grew to " + pages.size() + " pages (limit " + pageLimit + ")");
         // Join body paragraphs across pages. Draw's coordinate order interleaves
@@ -397,8 +438,12 @@ final class ScenarioDocumentQa {
     }
 
     private static String sha256(Path file) throws IOException {
+        return sha256(Files.readAllBytes(file));
+    }
+
+    private static String sha256(byte[] bytes) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException(impossible);
         }
