@@ -789,6 +789,135 @@ test('a version check started before a successful local save cannot roll that sa
   assert.equal(h.runtime.version, 8);
 });
 
+for (const invalidations of [1, 2]) for (const externalChange of [false, true]) {
+  test(`a delayed own save across ${invalidations} Copilot reanalysis changes ${externalChange ? 'still detects a later external draft' : 'keeps the new operation current'}`, async () => {
+    const writing = deferred(), calls = [];
+    const saved = { workspaceId: 'ws-1', branch: 'draft', version: 8, updatedAt: 'own-save',
+      payload: { businessText: 'changed requirement', scores: { OLD: 100 } } };
+    const remote = externalChange ? { ...saved, version: 9, updatedAt: 'external-save',
+      payload: { businessText: 'another tab requirement', scores: { FOREIGN: 20 } } } : saved;
+    const h = await savedHarness(async (url, options) => {
+      calls.push({ url, method: options.method });
+      if (options.method === 'PUT') return writing.promise;
+      return url.endsWith('/status') ? { ...remote, payload: undefined } : remote;
+    }, 'en', { withTransport: true });
+    h.editInput('changed requirement');
+    const saving = h.context.saveDraft();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.length, 1, 'The autosave PUT must already be dispatched');
+    for (let i = 0; i < invalidations; i++) {
+      h.context.invalidate({ keepText: true, silent: true, reason: 'copilot-reanalysis' });
+      h.runtime.analysisGeneration += 1;
+    }
+    h.state.analysisOperationId = 'second-operation';
+    h.state.lastAnalysisStatus = 'RUNNING';
+    const currentScores = { CURRENT: 40 };
+    h.state.currentScores = currentScores;
+    writing.resolve(saved);
+
+    assert.equal(await saving, true, 'A committed own save must retain its acknowledgement');
+    assert.equal(h.runtime.version, 8);
+    assert.equal(h.state.analysisOperationId, 'second-operation');
+    assert.equal(h.state.currentScores, currentScores, 'An acknowledgement must not hydrate the saved old scores');
+    if (externalChange) h.editInput('changed requirement with an unsaved refinement');
+    await h.context.reconcileDraft();
+
+    if (externalChange) {
+      assert.equal(h.alerts.at(-1).marker, 'resume-choice');
+      assert.equal(h.runtime.draftDecisionPending, true);
+      assert.equal(h.input.value, 'changed requirement with an unsaved refinement');
+      assert.equal(h.state.currentScores, null);
+      assert.equal(h.state.analysisOperationId, null);
+    } else {
+      assert.equal(h.runtime.draftDecisionPending, false);
+      assert.equal(h.runtime.restoring, false);
+      assert.equal(h.state.analysisOperationId, 'second-operation');
+      assert.equal(h.state.currentScores, currentScores);
+      assert.equal(calls.filter(call => call.method === 'GET').length, 1,
+        'The unchanged acknowledged revision needs only its metadata read');
+      assert.notEqual(h.alerts.at(-1).marker, 'resume-choice');
+    }
+  });
+}
+
+test('reanalysis cannot submit an obsolete queued draft write after accepting the in-flight acknowledgement', async () => {
+  const writing = deferred(), calls = [];
+  const h = await savedHarness(async (url, options) => {
+    calls.push({ url, method: options.method });
+    return writing.promise;
+  }, 'en', { withTransport: true });
+  h.editInput('changed requirement');
+  const saving = h.context.saveDraft();
+  const obsolete = h.context.jsonRequest('/api/analysis-drafts/ws-1', { method: 'PUT',
+    body: JSON.stringify({ payload: { businessText: 'obsolete queued state' }, expectedVersion: 7 }) });
+  const queuedOutcome = Promise.allSettled([obsolete]);
+  await new Promise(resolve => setImmediate(resolve));
+  h.context.invalidate({ keepText: true, silent: true, reason: 'copilot-reanalysis' });
+  writing.resolve({ workspaceId: 'ws-1', branch: 'draft', version: 8, updatedAt: 'own-save',
+    payload: { businessText: 'changed requirement', scores: { OLD: 100 } } });
+
+  assert.equal(await saving, true);
+  const [outcome] = await queuedOutcome;
+  assert.equal(outcome.status, 'rejected');
+  assert.equal(outcome.reason.code, 'STALE_DRAFT_CONTEXT');
+  assert.equal(calls.length, 1, 'The obsolete queued payload must never reach the server');
+  assert.equal(h.runtime.version, 8);
+});
+
+for (const reason of ['new-analysis', 'requirement-text-changed', 'server-draft-changed', 'server-workspace-unavailable']) {
+test(`${reason} after reanalysis revokes the previous write acknowledgement`, async () => {
+  const writing = deferred();
+  const h = await savedHarness(async () => writing.promise, 'en', { withTransport: true });
+  h.editInput('changed requirement');
+  const saving = h.context.saveDraft();
+  await new Promise(resolve => setImmediate(resolve));
+  h.context.invalidate({ keepText: true, silent: true, reason: 'copilot-reanalysis' });
+  h.context.invalidate({ keepText: false, silent: true, skipSave: true, reason });
+  writing.resolve({ workspaceId: 'ws-1', branch: 'draft', version: 8, updatedAt: 'obsolete-save',
+    payload: { businessText: 'changed requirement', scores: { OLD: 100 } } });
+
+  assert.equal(await saving, false);
+  assert.equal(h.runtime.version, 7);
+  assert.equal(h.input.value, '');
+  assert.equal(h.state.currentScores, null);
+});
+}
+
+test('reanalysis never reads or retries an obsolete PUT conflict', async () => {
+  const writing = deferred(), calls = [];
+  const h = await savedHarness(async (url, options) => {
+    calls.push({ url, method: options.method });
+    return writing.promise;
+  }, 'en', { withTransport: true });
+  h.editInput('changed requirement');
+  const saving = h.context.saveDraft();
+  await new Promise(resolve => setImmediate(resolve));
+  h.context.invalidate({ keepText: true, silent: true, reason: 'copilot-reanalysis' });
+  writing.reject(Object.assign(new Error('An external revision won'), { status: 409 }));
+
+  assert.equal(await saving, false);
+  assert.equal(calls.length, 1, 'An obsolete payload must not start conflict reads or retries');
+  assert.equal(h.runtime.version, 7);
+});
+
+test('an in-flight save from the previous workspace cannot acknowledge the new workspace draft', async () => {
+  const writing = deferred();
+  const h = await savedHarness(async () => writing.promise, 'en', { withTransport: true });
+  h.editInput('changed requirement');
+  const saving = h.context.saveDraft();
+  await new Promise(resolve => setImmediate(resolve));
+  h.context.invalidate({ keepText: true, silent: true, reason: 'copilot-reanalysis' });
+  h.runtime.workspaceId = 'ws-2';
+  h.runtime.version = 3;
+  writing.resolve({ workspaceId: 'ws-1', branch: 'draft', version: 8, updatedAt: 'old-workspace-save',
+    payload: { businessText: 'changed requirement', scores: { OLD: 100 } } });
+
+  assert.equal(await saving, false);
+  assert.equal(h.runtime.version, 3);
+  assert.equal(h.runtime.workspaceId, 'ws-2');
+  assert.equal(h.state.currentScores, null);
+});
+
 
 test('a full draft read that fails after a successful revision check remains recoverable', async () => {
   let fullReadAvailable = false;

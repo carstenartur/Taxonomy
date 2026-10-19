@@ -85,7 +85,7 @@ public class PortfolioSnapshotEvidenceReader {
     }
 
     private <T> T parse(Clob clob, Class<T> type) throws Exception {
-        try (Reader input = clob == null ? null : clob.getCharacterStream()) {
+        try (Reader input = clob == null ? null : JdbcClobReaders.open(clob)) {
             return jsonCodec.read(input, type);
         }
     }

@@ -132,6 +132,11 @@
 
         runtime.invalidating = true;
         runtime.draftGeneration = (runtime.draftGeneration || 0) + 1;
+        // Reanalysis clears derived evidence while keeping the same saved draft.
+        // Every other boundary must also fence an old write's late acknowledgement.
+        if (options.reason !== 'copilot-reanalysis') {
+            runtime.draftAcknowledgementGeneration = (runtime.draftAcknowledgementGeneration || 0) + 1;
+        }
         runtime.restoredPayload = null;
         runtime.restorationPending = false;
         S.currentScores = null;

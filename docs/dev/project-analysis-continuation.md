@@ -125,6 +125,16 @@ before returning, so a late JDBC read failure cannot publish a partial read.
 Every acquired locator is released even if an earlier payload fails to open,
 parse or close. The database JSON format and all response fields remain unchanged.
 
+Large snapshot, continuation and selection CLOBs use standard JDBC ranges of at
+most 262,144 UTF-16 code units. This aligns one HSQL compressed part and bounds
+each returned byte/character array to a 512 KiB payload, avoiding its default
+1 MiB output arrays. Successful reads verify each range's declared length and
+observed EOF before closing its stream and opening the next. Surrogate code units pass
+through unchanged. A driver that explicitly rejects the first range with
+`SQLFeatureNotSupportedException` retains its ordinary stream; later failures
+remain failures. Existing parsers and transaction-owned locator cleanup apply to
+the complete document.
+
 Snapshot persistence passes the managed instance returned by the repository to
 both mapping inserts. Because snapshots have assigned IDs, `save` merges the
 new entity; continuing with the original instance makes Hibernate reread all four
