@@ -2,15 +2,34 @@ package com.taxonomy.analysis.service;
 
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.springframework.core.env.StandardEnvironment;
 import java.util.Map;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.mockStatic;
 
 class AnalysisProgressRegistryTest {
     private final AnalysisProgressRegistry registry = new AnalysisProgressRegistry(new StandardEnvironment());
     private final WorkspaceContext scope = new WorkspaceContext("alice", "work-a", "draft", "repo-a");
+    private MockedStatic<AnalysisMemoryGuard> memory;
+
+    @BeforeEach
+    void controlHeapSample() {
+        // Progress contracts need stable resource conditions, independent of other tests' allocations.
+        memory = mockStatic(AnalysisMemoryGuard.class);
+        memory.when(AnalysisMemoryGuard::heapSample)
+                .thenReturn(new AnalysisMemoryGuard.Sample(64L * 1024 * 1024, 512L * 1024 * 1024));
+    }
+
+    @AfterEach
+    void releaseHeapSample() {
+        memory.close();
+    }
+
     @Test void completedCountSurvivesPreviewEvictionAndRepeatedAnswers() {
         try (var handle = registry.open(null, "alice", scope, null)) {
             var scores = new java.util.LinkedHashMap<String, Double>();
