@@ -27,7 +27,9 @@ public final class PreferencesBackupContributor implements BackupDataContributor
     private static final int MAX_GIT_METADATA_BYTES = 65_536;
     private static final String ENTRY = "data/application/preferences.json";
     private static final Set<String> KEYS = Set.of("llm.rpm", "llm.timeout.seconds", "rate-limit.per-minute",
-            "analysis.min-relevance-score", "analysis.reason-length", "dsl.default-branch", "dsl.project-name", "dsl.auto-save.interval-seconds",
+            "analysis.min-relevance-score", "analysis.reason-length", "analysis.relations.max-calls",
+            "analysis.relations.max-total-calls", "analysis.relations.auto-continue", "analysis.relations.max-sources",
+            "analysis.relations.max-work-items", "dsl.default-branch", "dsl.project-name", "dsl.auto-save.interval-seconds",
             "limits.max-business-text", "limits.max-architecture-nodes", "limits.max-export-nodes", "diagram.policy",
             "dsl.remote.url", "dsl.remote.token", "dsl.remote.push-on-commit");
     private static final List<String> EXCLUDED_FIELDS = List.of("dsl.remote.url", "dsl.remote.token");
@@ -108,7 +110,10 @@ public final class PreferencesBackupContributor implements BackupDataContributor
                     reasonLength(document),
                     text(document, "dsl.default-branch"), text(document, "dsl.project-name"), integer(document, "dsl.auto-save.interval-seconds"),
                     integer(document, "limits.max-business-text"), integer(document, "limits.max-architecture-nodes"),
-                    integer(document, "limits.max-export-nodes"), text(document, "diagram.policy"));
+                    integer(document, "limits.max-export-nodes"), text(document, "diagram.policy"),
+                    integer(document, "analysis.relations.max-calls"), integer(document, "analysis.relations.max-total-calls"),
+                    flag(document, "analysis.relations.auto-continue"), integer(document, "analysis.relations.max-sources"),
+                    integer(document, "analysis.relations.max-work-items"));
             var remote = new RemoteConfiguration(present(document, "dsl.remote.url"), present(document, "dsl.remote.token"),
                     flag(document, "dsl.remote.push-on-commit"));
             sink.checkpoint();
@@ -159,7 +164,19 @@ public final class PreferencesBackupContributor implements BackupDataContributor
                            Integer analysisMinimumRelevanceScore, AnalysisReasonLength analysisReasonLength,
                            String defaultBranch, String projectName,
                            Integer autoSaveIntervalSeconds, Integer maximumBusinessText, Integer maximumArchitectureNodes,
-                           Integer maximumExportNodes, String diagramPolicy) { }
+                           Integer maximumExportNodes, String diagramPolicy,
+                           Integer analysisRelationMaxCalls, Integer analysisRelationMaxTotalCalls,
+                           Boolean analysisRelationAutoContinue, Integer analysisRelationMaxSources, Integer analysisRelationMaxWorkItems) {
+        /** Legacy captures leave newly introduced settings unspecified for target review. */
+        public Settings(Integer llmRequestsPerMinute, Integer llmTimeoutSeconds, Integer rateLimitPerMinute,
+                        Integer analysisMinimumRelevanceScore, AnalysisReasonLength analysisReasonLength,
+                        String defaultBranch, String projectName, Integer autoSaveIntervalSeconds, Integer maximumBusinessText,
+                        Integer maximumArchitectureNodes, Integer maximumExportNodes, String diagramPolicy) {
+            this(llmRequestsPerMinute, llmTimeoutSeconds, rateLimitPerMinute, analysisMinimumRelevanceScore, analysisReasonLength,
+                    defaultBranch, projectName, autoSaveIntervalSeconds, maximumBusinessText, maximumArchitectureNodes,
+                    maximumExportNodes, diagramPolicy, null, null, null, null, null);
+        }
+    }
     public record RemoteConfiguration(boolean configured, boolean credentialPresent, Boolean sourcePushOnCommit) { }
     public record Inventory(int schemaVersion, BackupProfile profile, Selection selection, String sourceCommit,
                             Settings settings, RemoteConfiguration remote, RestorePolicy restorePolicy, List<String> excludedFields) {
