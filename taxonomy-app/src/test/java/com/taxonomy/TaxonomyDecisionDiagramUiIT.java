@@ -4,6 +4,8 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.taxonomy.testsupport.BrowserSession;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
@@ -129,7 +131,40 @@ class TaxonomyDecisionDiagramUiIT {
         browser.executeScript("window.open=()=>null"); browser.findElement(By.xpath("//button[text()='Print']")).click();
         assertThat(browser.findElement(By.cssSelector(".decision-print-status")).getText()).contains("views.diagram.printBlocked");
     }
-    @Test void mixedAreaOnlyRelevanceSurvivesAlongsideConcreteMatchesOnScreenAndPrint() {
+    @ParameterizedTest
+    @CsvSource({
+        "all, fixture-context|fixture-positive|fixture-zero|fixture-missing",
+        "hide-zero, fixture-context|fixture-positive|fixture-missing",
+        "positive, fixture-context|fixture-positive"
+    })
+    void sharedRelevanceSelectionIsPreservedOnScreenAndInBothPrintLayouts(String mode,String expectedCodes) {
+        browser.executeScript("""
+            fixtureData=[{code:'BP',name:'Business Processes',taxonomyContainer:true,children:[
+                {code:'fixture-context',name:'Context ancestor',children:[
+                    {code:'fixture-positive',name:'Positive sibling'},
+                    {code:'fixture-zero',name:'Zero sibling'},
+                    {code:'fixture-missing',name:'Unassessed sibling'}]}]}];
+            fixtureScores={BP:0,'fixture-context':0,'fixture-positive':75,'fixture-zero':0};
+            window.filterResultsBefore=JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons});
+            TaxonomyViews.renderDecisionMap(document.querySelector('#diagram'),
+                TaxonomyViews.filterRelevance(fixtureData,fixtureScores,{},arguments[0]),fixtureScores);
+            """,mode); settle();
+        var expected=java.util.Arrays.stream(expectedCodes.split("\\|")).sorted().toList();
+        assertThat(browser.executeScript("return [...document.querySelectorAll('[data-diagram-node]')].map(node=>node.dataset.diagramNode).sort()"))
+            .as(mode+" screen contains exactly the selected ordinary nodes and context ancestors").isEqualTo(expected);
+        browser.executeScript("window.filterScreenBefore=document.querySelector('#decision-map-svg').outerHTML");
+        preparePrint();
+        for(String printMode:new String[]{"pages","single"}) {
+            new org.openqa.selenium.support.ui.Select(browser.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue(printMode);
+            clickPrint();
+            assertThat(browser.executeScript("return [...printFrame.contentDocument.querySelectorAll('[data-print-node]')].map(node=>node.dataset.printNode).sort()"))
+                .as(mode+" "+printMode+" print contains exactly the selected ordinary nodes and context ancestors").isEqualTo(expected);
+            assertThat(browser.executeScript("return printFrame.contentDocument.body.textContent.includes('75%')")).isEqualTo(true);
+            assertThat(browser.executeScript("return document.querySelector('#decision-map-svg').outerHTML===filterScreenBefore && JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons})===filterResultsBefore"))
+                .as(mode+" "+printMode+" print preserves the screen and stored results").isEqualTo(true);
+        }
+    }
+    @Test void mixedAreaRelevanceSurvivesAlongsideConcreteAndUnassessedNodesOnScreenAndPrint() {
         browser.executeScript("""
             fixtureData=[{code:'BP',name:'Business Processes',taxonomyContainer:true,children:[{code:'fixture-positive',name:'Assessed process'}]},
                 {code:'BR',name:'Business Roles',taxonomyContainer:true,children:[{code:'fixture-unassessed',name:'Unassessed role'}]}];
@@ -140,10 +175,12 @@ class TaxonomyDecisionDiagramUiIT {
         assertThat(browser.findElements(By.cssSelector("[data-taxonomy-container='BP']"))).hasSize(1);
         assertThat(browser.findElements(By.cssSelector("[data-taxonomy-container='BR']"))).hasSize(1);
         assertThat(browser.findElement(By.cssSelector("[data-taxonomy-container='BR']")).getText()).contains("85");
-        assertThat(browser.findElements(By.cssSelector("[data-diagram-node='BR'],[data-diagram-node='fixture-unassessed']"))).isEmpty();
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node='BR']"))).isEmpty();
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-unassessed']"))).hasSize(1);
         preparePrint(); clickPrint();
         assertThat(browser.executeScript("return [...printFrame.contentDocument.querySelectorAll('[data-taxonomy-panel]')].some(p=>p.dataset.taxonomyPanel==='BR' && p.textContent.includes('85'))")).isEqualTo(true);
-        assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('[data-print-node=BR],[data-print-node=fixture-unassessed]').length")).isEqualTo(0L);
+        assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('[data-print-node=BR]').length")).isEqualTo(0L);
+        assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('[data-print-node=fixture-unassessed]').length")).isEqualTo(1L);
         assertThat(browser.executeScript("return JSON.stringify(fixtureScores)===recordedMixedScores")).isEqualTo(true);
     }
     @Test void largeSheetPrintKeepsEveryNodeAndConnectorOnOnePdfPage() throws Exception {

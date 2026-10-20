@@ -724,7 +724,7 @@
             case 'sunburst':
                 if (window.TaxonomyViews) {
                     window.TaxonomyViews.renderSunburst(
-                        container, diagramData, scores);
+                        container, diagramData, scores, data);
                 }
                 break;
             case 'tree':

@@ -437,8 +437,9 @@
      * @param {HTMLElement} container - The DOM element to render into (cleared first).
      * @param {Array}       data      - Array of root taxonomy nodes (each with `children`).
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
+     * @param {Array}       paletteData - Optional unfiltered catalogue used to preserve branch colours.
      */
-    function renderSunburst(container, data, scores) {
+    function renderSunburst(container, data, scores, paletteData) {
         rememberDiagramFocus(container);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
@@ -452,7 +453,7 @@
         container.innerHTML = '';
 
         try {
-        var colorMap = buildColorMap(data);
+        var colorMap = buildColorMap(paletteData || data);
         if (!data.length) {
             var empty = document.createElement('p');
             empty.className = 'text-muted p-3';
@@ -1299,22 +1300,10 @@
         }
         container.appendChild(statsDiv);
 
-        // ── Filter data to hot paths only ────────────────────────────────────
-        function filterToHot(node) {
-            if (!hotSet.has(node.code)) { return null; }
-            var result = Object.assign({}, node, {children: []});
-            if (node.children) {
-                var fc = node.children.map(filterToHot).filter(Boolean);
-                if (fc.length) { result.children = fc; }
-            }
-            return result;
-        }
-        var filteredData = data.map(filterToHot).filter(Boolean);
-        var visibleAreas = data.filter(function (area) {
-            return hotSet.has(area.code) || (isTaxonomyContainer(area) && Number.isFinite(scores[area.code]) && scores[area.code] > 0);
-        });
+        // Use the shared relevance projection for both the screen and print hierarchy.
+        var visibleAreas = data;
 
-        if (filteredData.length === 0 && visibleAreas.length === 0) {
+        if (data.length === 0) {
             appendContainerHeadings(container, data, scores);
             renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
             container.setAttribute('data-view-rendered', 'decision');
@@ -1328,12 +1317,12 @@
         var marginTop = 20;
         var marginBottom = 20;
 
-        // Synthetic root to hold all filtered roots
-        var rootData = { code: '__root__', name: '', children: contentRoots(filteredData) };
+        // Synthetic root to hold the selected roots
+        var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
         var panelAreas = {};
-        filteredData.forEach(function (area) {
+        data.forEach(function (area) {
             if (isTaxonomyContainer(area)) {
                 (area.children || []).forEach(function (branch) { panelAreas[branch.code] = area; });
             } else { panelAreas[area.code] = area; }
