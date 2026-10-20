@@ -11,14 +11,18 @@ import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /** Explicit, bounded connection probes. Never starts Spring, Flyway or an AI provider. */
 public final class SetupProbe {
+    // Keep permits until JDBC actually exits: cancellation is not guaranteed to stop every driver.
+    private static final Semaphore DATABASE_PROBES = new Semaphore(2);
     private SetupProbe() { }
 
     public static List<SetupChecks.Finding> check(Function<String, String> properties, Set<String> profiles) {
@@ -28,7 +32,7 @@ public final class SetupProbe {
             result.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, "database.connection",
                     "Embedded databases are not opened by preflight: opening could create files or conflict with a running instance."));
         } else {
-            result.add(bounded("database.connection", () -> database(properties), Duration.ofSeconds(10)));
+            result.add(checkDatabase(properties));
         }
         if (profiles.contains("keycloak")) {
             String issuer = SetupChecks.value(properties, "spring.security.oauth2.client.provider.keycloak.issuer-uri");
@@ -60,15 +64,55 @@ public final class SetupProbe {
         return List.copyOf(result);
     }
 
+    /** Database-only path for the optional admin assistant; never contacts identity or AI services. */
+    public static SetupChecks.Finding checkDatabase(Function<String, String> properties) {
+        if (SetupChecks.value(properties, "spring.datasource.url").startsWith("jdbc:hsqldb:")) {
+            return new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, "database.connection",
+                    "Embedded databases are not opened by preflight: opening could create files or conflict with a running instance.");
+        }
+        if (!DATABASE_PROBES.tryAcquire()) {
+            return new SetupChecks.Finding(SetupChecks.Status.WARNING, "database.connection",
+                    "Other database connection checks are still running; try again after they finish.");
+        }
+        return bounded("database.connection", () -> {
+            try { return database(properties); }
+            finally { DATABASE_PROBES.release(); }
+        }, Duration.ofSeconds(10));
+    }
+
     private static SetupChecks.Finding database(Function<String, String> properties) throws Exception {
-        String username = properties.apply("spring.datasource.username");
-        String password = properties.apply("spring.datasource.password");
-        try (Connection connection = DriverManager.getConnection(properties.apply("spring.datasource.url"), username, password)) {
+        String url = SetupChecks.value(properties, "spring.datasource.url");
+        Properties connectionProperties = connectionProperties(url, properties.apply("spring.datasource.username"),
+                properties.apply("spring.datasource.password"));
+        try (Connection connection = DriverManager.getConnection(url, connectionProperties)) {
             connection.setReadOnly(true);
             if (!connection.isValid(5)) { throw new IllegalStateException("Connection validation failed"); }
             return new SetupChecks.Finding(SetupChecks.Status.OK, "database.connection",
                     "JDBC connection validated in read-only mode; schema and migration permissions remain untested.");
         }
+    }
+
+    /** Keeps driver-specific probe limits separate from generated deployment configuration. */
+    static Properties connectionProperties(String url, String username, String password) {
+        Properties connectionProperties = new Properties();
+        if (username != null) { connectionProperties.setProperty("user", username); }
+        if (password != null) { connectionProperties.setProperty("password", password); }
+        // Probe-only settings must never become the application's production query timeouts.
+        if (url.startsWith("jdbc:postgresql:")) {
+            connectionProperties.setProperty("connectTimeout", "5");
+            // A nonzero pgJDBC loginTimeout spawns a driver-owned connection thread.
+            // Keep the actual operation on our bounded worker so its permit cannot be released early.
+            connectionProperties.setProperty("loginTimeout", "0");
+            connectionProperties.setProperty("socketTimeout", "5");
+        } else if (url.startsWith("jdbc:sqlserver:")) {
+            connectionProperties.setProperty("loginTimeout", "5");
+            connectionProperties.setProperty("socketTimeout", "5000");
+        } else if (url.startsWith("jdbc:oracle:")) {
+            connectionProperties.setProperty("oracle.net.CONNECT_TIMEOUT", "5000");
+            connectionProperties.setProperty("oracle.jdbc.ReadTimeout", "5000");
+            connectionProperties.setProperty("oracle.net.OUTBOUND_CONNECT_TIMEOUT", "5sec");
+        }
+        return connectionProperties;
     }
 
     private static SetupChecks.Finding discovery(String issuer) throws Exception {

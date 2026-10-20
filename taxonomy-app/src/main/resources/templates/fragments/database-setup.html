@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<body>
+<th:block th:fragment="dialog">
+    <dialog id="databaseSetupDialog" class="database-setup-dialog" aria-modal="true"
+            aria-labelledby="databaseSetupTitle" aria-describedby="databaseSetupIntro">
+        <header class="database-setup-heading">
+            <h2 id="databaseSetupTitle" class="h4 mb-0" th:text="#{database.setup.title}">Prepare a database connection</h2>
+            <button type="button" id="databaseSetupClose" class="btn-close"
+                    th:aria-label="#{database.setup.close}"></button>
+        </header>
+        <div class="database-setup-body">
+            <p id="databaseSetupIntro" th:text="#{database.setup.intro}">Prepare an external database without changing the running application.</p>
+            <p id="databaseSetupCurrent" class="small text-muted"></p>
+            <ol class="database-setup-steps" th:aria-label="#{database.setup.steps}">
+                <li data-database-stage="0" th:text="#{database.setup.step.type}">1. Database</li>
+                <li data-database-stage="1" th:text="#{database.setup.step.connection}">2. Connection</li>
+                <li data-database-stage="2" th:text="#{database.setup.step.deployment}">3. Deployment</li>
+            </ol>
+            <form id="databaseSetupForm" autocomplete="off">
+                <section data-database-step="0" aria-labelledby="databaseSetupTypeLabel">
+                    <label id="databaseSetupTypeLabel" for="databaseSetupType" class="form-label fw-bold"
+                           th:text="#{database.setup.type}">Target database</label>
+                    <select id="databaseSetupType" class="form-select">
+                        <option value="postgres">PostgreSQL</option>
+                        <option value="mssql">Microsoft SQL Server</option>
+                        <option value="oracle">Oracle Database</option>
+                    </select>
+                    <p id="databaseSetupSupport" class="alert alert-info mt-3"></p>
+                    <p th:text="#{database.setup.server.required}">Create the database server and application account first.</p>
+                    <p class="fw-semibold" th:text="#{database.setup.no.transfer}">Existing data is not transferred.</p>
+                </section>
+                <section data-database-step="1" hidden aria-labelledby="databaseSetupConnectionTitle">
+                    <h3 id="databaseSetupConnectionTitle" class="h5" th:text="#{database.setup.connection.title}">Connection from the Taxonomy server</h3>
+                    <div class="row g-3">
+                        <div class="col-md-9">
+                            <label for="databaseSetupHost" class="form-label" th:text="#{database.setup.host}">Host / Service DNS</label>
+                            <input id="databaseSetupHost" class="form-control" type="text" required maxlength="253"
+                                   placeholder="postgres.database.svc.cluster.local" aria-describedby="databaseSetupHostHelp"/>
+                            <div id="databaseSetupHostHelp" class="form-text" th:text="#{database.setup.host.help}">Use the address reachable from Taxonomy.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="databaseSetupPort" class="form-label" th:text="#{database.setup.port}">Port</label>
+                            <input id="databaseSetupPort" class="form-control" type="number" required min="1" max="65535" value="5432"/>
+                        </div>
+                        <div class="col-md-6">
+                            <label id="databaseSetupNameLabel" for="databaseSetupName" class="form-label" th:text="#{database.setup.name}">Database name</label>
+                            <input id="databaseSetupName" class="form-control" type="text" required maxlength="128"
+                                   pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*" value="taxonomy" aria-describedby="databaseSetupNameHelp"/>
+                            <div id="databaseSetupNameHelp" class="form-text" th:text="#{database.setup.name.help}">Letters, digits, dots, underscores and hyphens.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="databaseSetupUsername" class="form-label" th:text="#{database.setup.username}">Database user</label>
+                            <input id="databaseSetupUsername" class="form-control" type="text" required maxlength="128" value="taxonomy_app" autocomplete="off"/>
+                        </div>
+                        <div class="col-12">
+                            <label for="databaseSetupPassword" class="form-label" th:text="#{database.setup.password}">Password for the connection test</label>
+                            <input id="databaseSetupPassword" class="form-control" type="password" maxlength="4096"
+                                   autocomplete="new-password" aria-describedby="databaseSetupPasswordHelp"/>
+                            <div id="databaseSetupPasswordHelp" class="form-text" th:text="#{database.setup.password.help}">Used only for the test; cleared when the assistant closes.</div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input id="databaseSetupTls" class="form-check-input" type="checkbox" checked/>
+                                <label for="databaseSetupTls" class="form-check-label" th:text="#{database.setup.tls}">TLS with certificate and server identity verification</label>
+                            </div>
+                            <p id="databaseSetupTlsWarning" class="alert alert-warning mt-2" hidden th:text="#{database.setup.tls.warning}">TLS is disabled.</p>
+                        </div>
+                        <div class="col-12" id="databaseSetupCaGroup">
+                            <label for="databaseSetupCa" class="form-label" th:text="#{database.setup.ca}">Optional PostgreSQL CA path on the Taxonomy server</label>
+                            <input id="databaseSetupCa" class="form-control" type="text" maxlength="256"
+                                   placeholder="/etc/taxonomy-db-ca/ca.crt" aria-describedby="databaseSetupCaHelp"/>
+                            <div id="databaseSetupCaHelp" class="form-text" th:text="#{database.setup.ca.help}">An already mounted absolute server path, not a browser file upload.</div>
+                        </div>
+                        <p id="databaseSetupJvmTrust" class="small text-muted" hidden th:text="#{database.setup.jvm.trust}">Provision trusted certificates in the JVM truststore before testing.</p>
+                    </div>
+                    <button type="button" id="databaseSetupCheck" class="btn btn-outline-primary mt-3" th:text="#{database.setup.check}">Test connection</button>
+                    <p class="small text-muted mt-2" th:text="#{database.setup.check.scope}">The test checks a separate connection. Schema and migration permissions remain untested.</p>
+                </section>
+                <section data-database-step="2" hidden aria-labelledby="databaseSetupApplyTitle">
+                    <h3 id="databaseSetupApplyTitle" class="h5" tabindex="-1" th:text="#{database.setup.apply.title}">Apply through your deployment</h3>
+                    <ol class="database-setup-apply">
+                        <li th:text="#{database.setup.apply.secrets}">Set URL, user and password in the deployment Secret or protected Spring configuration.</li>
+                        <li th:text="#{database.setup.apply.profiles}">Review profiles, TLS mounts, driver and schema settings.</li>
+                        <li th:text="#{database.setup.apply.restart}">Redeploy deliberately, then verify startup and sign-in.</li>
+                    </ol>
+                    <p class="alert alert-info" th:text="#{database.setup.apply.environment}">Environment variables and other deployment overrides can take precedence over this file.</p>
+                    <h4 class="h6" th:text="#{database.setup.properties}">Spring properties</h4>
+                    <pre id="databaseSetupProperties" class="database-setup-preview" tabindex="0" th:aria-label="#{database.setup.properties}"></pre>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-database-download="properties" th:text="#{database.setup.download.properties}">Download properties</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-database-copy="properties" th:text="#{database.setup.copy}">Copy</button>
+                    </div>
+                    <h4 class="h6" th:text="#{database.setup.helm}">Helm values and Secret instructions</h4>
+                    <pre id="databaseSetupHelm" class="database-setup-preview" tabindex="0" th:aria-label="#{database.setup.helm}"></pre>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-database-download="helmValues" th:text="#{database.setup.download.helm}">Download Helm values</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-database-copy="helmValues" th:text="#{database.setup.copy}">Copy</button>
+                    </div>
+                    <p class="fw-semibold mt-3" th:text="#{database.setup.no.transfer}">Existing data is not transferred.</p>
+                </section>
+            </form>
+            <div id="databaseSetupStatus" class="mt-3" role="status" aria-live="polite"></div>
+            <ul id="databaseSetupResults" class="database-setup-results mt-3" aria-live="polite" hidden></ul>
+            <a id="databaseSetupHelp" class="d-inline-block mt-3" target="_blank" rel="noopener noreferrer"
+               th:href="@{/(lang=${#locale.language})} + '#help/DATABASE_SETUP'"
+               th:text="#{database.setup.help}">Database and Pod setup help (opens a new tab)</a>
+        </div>
+        <footer class="database-setup-footer">
+            <button type="button" id="databaseSetupDismiss" class="btn btn-outline-secondary"
+                    th:text="#{database.setup.continue}">Continue with current configuration</button>
+            <div class="d-flex gap-2 ms-auto">
+                <button type="button" id="databaseSetupBack" class="btn btn-outline-secondary" hidden th:text="#{database.setup.back}">Back</button>
+                <button type="button" id="databaseSetupNext" class="btn btn-primary" th:text="#{database.setup.next}">Next</button>
+            </div>
+        </footer>
+    </dialog>
+</th:block>
+</body>
+</html>

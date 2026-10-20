@@ -5,6 +5,7 @@
     var t = TaxonomyI18n.t;
 
     var STORAGE_KEY = 'taxonomy_onboarded';
+    var welcomeDismissed = false;
     var reviewAcknowledged = false;
     var overlayLaneObserver = null;
     var overlayLaneRefreshFrame = null;
@@ -61,8 +62,9 @@
         }
     }
 
-    function initWelcomeOverlay() {
-        if (localStorage.getItem(STORAGE_KEY) || document.getElementById('onboardingOverlay')) {
+    function initWelcomeOverlay(databasePrompt) {
+        if (welcomeDismissed || (localStorage.getItem(STORAGE_KEY) && !databasePrompt)
+                || document.getElementById('onboardingOverlay')) {
             return;
         }
 
@@ -90,6 +92,7 @@
             '</div>';
 
         document.body.appendChild(dialog);
+        if (databasePrompt) window.TaxonomyDatabaseSetup.decorateWelcome(dialog);
         var dismissBtn = document.getElementById('onboardingDismiss');
         dismissBtn.addEventListener('click', dismiss);
         dialog.addEventListener('cancel', function (event) {
@@ -118,14 +121,17 @@
     }
 
     function dismiss() {
+        welcomeDismissed = true;
         localStorage.setItem(STORAGE_KEY, '1');
         var dialog = document.getElementById('onboardingOverlay');
         if (!dialog) return;
+        if (dialog.dataset.databaseSetupPrompt === 'true') window.TaxonomyDatabaseSetup.dismissPrompt();
         if (dialog.open) dialog.close('dismissed');
         else dialog.remove();
     }
 
     function reset() {
+        welcomeDismissed = false;
         localStorage.removeItem(STORAGE_KEY);
     }
 
@@ -753,12 +759,16 @@
 
     function init() {
         installOverlayLane();
-        initWelcomeOverlay();
-        initTaskHierarchy();
+        var preparation = window.TaxonomyDatabaseSetup
+            ? window.TaxonomyDatabaseSetup.prepareWelcome() : Promise.resolve(false);
+        return preparation.then(function (databasePrompt) {
+            initWelcomeOverlay(databasePrompt);
+            initTaskHierarchy();
+        });
     }
 
     function scheduleInit() {
-        TaxonomyI18n.ready().then(init);
+        return TaxonomyI18n.ready().then(init);
     }
 
     if (document.readyState === 'loading') {

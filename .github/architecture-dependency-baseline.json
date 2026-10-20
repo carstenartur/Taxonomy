@@ -808,6 +808,13 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.setup",
+      "toContext": "preferences",
+      "toPackage": "com.taxonomy.preferences",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.shared.config",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",

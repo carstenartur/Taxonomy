@@ -13,6 +13,7 @@ public class I18nConfig {
 
     public static final List<String> MESSAGE_BASENAMES = List.of(
             "messages_onboarding",
+            "messages_database_setup",
             "messages",
             "messages_catalogue_overlay",
             "messages_document_import",

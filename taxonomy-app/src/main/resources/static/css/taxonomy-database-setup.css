@@ -1,0 +1,41 @@
+.database-setup-dialog {
+    width: min(52rem, calc(100vw - 2rem));
+    max-width: none;
+    max-height: calc(100dvh - 2rem);
+    padding: 0;
+    border: 1px solid var(--bs-border-color, #bbb);
+    border-radius: .75rem;
+    color: var(--bs-body-color, #212529);
+    background: var(--bs-body-bg, #fff);
+}
+.database-setup-dialog:not([open]) { display: none; }
+.database-setup-dialog[open] { display: flex; flex-direction: column; }
+.database-setup-dialog::backdrop { background: #0009; }
+.database-setup-heading, .database-setup-footer {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    flex-shrink: 0;
+}
+.database-setup-heading { justify-content: space-between; border-bottom: 1px solid var(--bs-border-color, #bbb); }
+.database-setup-footer { flex-wrap: wrap; border-top: 1px solid var(--bs-border-color, #bbb); }
+.database-setup-body { overflow-y: auto; overscroll-behavior: contain; padding: 1.25rem 1.5rem; }
+.database-setup-steps { display: flex; flex-wrap: wrap; gap: .5rem 1rem; list-style: none; padding: 0; }
+.database-setup-steps li { border-bottom: 3px solid transparent; padding: .25rem 0; }
+.database-setup-steps [aria-current="step"] { border-color: var(--bs-primary); font-weight: 700; }
+.database-setup-preview { max-height: 16rem; overflow: auto; padding: .75rem; border: 1px solid var(--bs-border-color, #bbb); border-radius: .25rem; background: var(--bs-tertiary-bg, #f8f9fa); font-size: .8rem; }
+.database-setup-results { padding-inline-start: 1.25rem; font-size: .9rem; }
+.database-setup-results li { margin-bottom: .6rem; }
+.database-setup-results .badge { margin-inline-end: .5rem; }
+.database-setup-apply li { margin-bottom: .5rem; }
+.database-setup-dialog button, .database-setup-invitation button { min-height: 44px; }
+.database-setup-dialog .btn-close, .database-setup-welcome-close { min-width: 44px; min-height: 44px; }
+.database-setup-invitation { padding-top: 1rem; margin-top: 1rem; border-top: 1px solid var(--bs-border-color, #bbb); }
+.database-setup-invitation h3 { font-size: 1rem; font-weight: 700; }
+.database-setup-welcome-close { float: right; margin: -.5rem -.5rem .5rem .5rem; }
+.database-setup-invitation + .onboarding-actions { margin-top: .75rem; }
+@media (max-width: 575px) {
+    .database-setup-heading, .database-setup-footer, .database-setup-body { padding: 1rem; }
+    .database-setup-footer > button { width: 100%; }
+}
