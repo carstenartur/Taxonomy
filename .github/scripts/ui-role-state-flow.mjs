@@ -607,7 +607,7 @@ export async function runRoleStateFlow({
   passed('dialog focus entry and restoration');
 
   await page.evaluate(() => {
-    localStorage.removeItem('taxonomy_onboarded');
+    window.TaxonomyOnboarding.reset();
     window.TaxonomyOnboarding.init();
   });
   const onboarding = page.locator('#onboardingOverlay');

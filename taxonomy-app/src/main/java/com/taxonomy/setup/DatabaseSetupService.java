@@ -150,15 +150,14 @@ public class DatabaseSetupService {
     /** Reads only the schema actions; never rewrites JSON, JVM options or other deployment settings. */
     private boolean hasSchemaConflict() {
         try {
-            // Use Boot's actual map binding so bracket notation cannot hide an effective native action.
+            // Boot's native-property map resolves precedence across direct and bracket notation.
             // Inspect only these fixed native actions; no other settings are copied, emitted or logged.
             Map<String, String> nativeSettings = Binder.get(environment)
                     .bind("spring.jpa.properties", Bindable.mapOf(String.class, String.class)).orElse(Map.of());
             for (String key : List.of(SCHEMA_PROPERTIES.get(1), SCHEMA_PROPERTIES.get(2), LEGACY_JPA_SCHEMA_PROPERTY)) {
-                String value = environment.getProperty(key);
                 String bound = nativeSettings.get(key.substring("spring.jpa.properties.".length()));
                 // Blank/none also suppress validation when supplied as native Hibernate/JPA settings.
-                if ((value != null && !isValidate(value)) || (bound != null && !isValidate(bound))) { return true; }
+                if (bound != null && !isValidate(bound)) { return true; }
             }
             if (environment instanceof ConfigurableEnvironment configurable) {
                 for (var source : configurable.getPropertySources()) {

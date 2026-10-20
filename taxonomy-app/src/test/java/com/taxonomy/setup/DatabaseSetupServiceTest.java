@@ -99,6 +99,35 @@ class DatabaseSetupServiceTest {
         verifyNoInteractions(preferences);
     }
 
+    @Test void higherPrecedenceBracketedNativeValidationOverridesLowerDirectActions() {
+        for (String key : new String[]{"hibernate.hbm2ddl.auto",
+                "jakarta.persistence.schema-generation.database.action",
+                "javax.persistence.schema-generation.database.action"}) {
+            StandardEnvironment effective = isolatedEnvironment(Map.of());
+            effective.getPropertySources().addLast(new MapPropertySource("lowerSchemaAction",
+                    Map.of("spring.jpa.properties." + key, "create-drop")));
+            effective.getPropertySources().addFirst(new MapPropertySource("higherSchemaAction",
+                    Map.of("spring.jpa.properties.[" + key + "]", "validate")));
+            ConfigurationPropertySources.attach(effective);
+            Map<String, String> nativeSettings = Binder.get(effective)
+                    .bind("spring.jpa.properties", Bindable.mapOf(String.class, String.class)).get();
+            assertEquals("validate", nativeSettings.get(key));
+            assertEquals(Action.VALIDATE, ActionGrouping.interpret(nativeSettings).databaseAction());
+            assertDoesNotThrow(() -> new DatabaseSetupService(effective, preferences).preview(input("postgres", true, "")), key);
+
+            effective.getPropertySources().replace("lowerSchemaAction", new MapPropertySource("lowerSchemaAction",
+                    Map.of("spring.jpa.properties." + key, "validate")));
+            effective.getPropertySources().replace("higherSchemaAction", new MapPropertySource("higherSchemaAction",
+                    Map.of("spring.jpa.properties.[" + key + "]", "create-drop")));
+            assertEquals("create-drop", Binder.get(effective)
+                    .bind("spring.jpa.properties", Bindable.mapOf(String.class, String.class)).get().get(key));
+            RuntimeException failure = assertThrows(DatabaseSetupService.SchemaConflictException.class,
+                    () -> new DatabaseSetupService(effective, preferences).preview(input("postgres", true, "")), key);
+            assertFalse(failure.getMessage().contains("PRIVATE_SENTINEL"));
+        }
+        verifyNoInteractions(preferences);
+    }
+
     @Test void higherPrecedenceJsonJvmAndCommandLineSchemaActionsBlockExport() {
         for (String kind : new String[]{"json", "jvm", "commandLine", "commandLineRelaxed"}) {
             StandardEnvironment effective = isolatedEnvironment(Map.of());
