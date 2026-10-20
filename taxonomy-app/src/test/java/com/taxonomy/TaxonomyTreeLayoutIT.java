@@ -199,8 +199,24 @@ class TaxonomyTreeLayoutIT {
                         && document.querySelector('canvas')?.toDataURL()===canvasBefore
                         && JSON.stringify({data,scores})===savedBefore;
                     """)).as(renderer+" complete filtered vector print in "+mode).isEqualTo(true);
-            if (mode.equals("single")) assertThat(driver.executeScript("return printFrame.contentDocument.querySelectorAll('.tree-print-page').length")).isEqualTo(1L);
-            else assertThat(driver.executeScript("return printFrame.contentDocument.querySelectorAll('.tree-print-page').length>1 && [...printFrame.contentDocument.querySelectorAll('use')].every(node=>node.getBBox().width>0)")).isEqualTo(true);
+            int plannedPages=((Number)driver.executeScript("return printFrame.contentDocument.querySelectorAll('.tree-print-page').length")).intValue();
+            if (mode.equals("single")) assertThat(plannedPages).isEqualTo(1);
+            else {
+                assertThat(plannedPages).isGreaterThan(1);
+                assertThat(driver.executeScript("""
+                        const doc=printFrame.contentDocument, source=doc.getElementById('taxonomy-print-tree').viewBox.baseVal;
+                        const tiles=[...doc.querySelectorAll('.tree-print-page > svg')].map(svg=>svg.viewBox.baseVal);
+                        const inside=tiles.every(tile=>tile.width>0 && tile.height>0 && tile.x>=source.x && tile.y>=source.y
+                            && tile.x+tile.width<=source.x+source.width && tile.y+tile.height<=source.y+source.height);
+                        const separate=tiles.every((a,i)=>tiles.slice(i+1).every(b=>a.x+a.width<=b.x || b.x+b.width<=a.x
+                            || a.y+a.height<=b.y || b.y+b.height<=a.y));
+                        const covered=tiles.reduce((area,tile)=>area+tile.width*tile.height,0);
+                        return inside && separate && Math.abs(covered-source.width*source.height)<0.01
+                            && tiles.length===doc.querySelectorAll('.tree-print-page').length
+                            && [...doc.querySelectorAll('.tree-print-page > svg > use')].length===tiles.length
+                            && [...doc.querySelectorAll('use')].every(node=>node.getBBox().width>0);
+                        """)).as(renderer+" A4 tiles cover the complete tree without gaps or overlaps").isEqualTo(true);
+            }
             String html=(String)driver.executeScript("return printFrame.contentDocument.documentElement.outerHTML");
             String source=driver.getWindowHandle();driver.switchTo().newWindow(WindowType.TAB);
             try {
@@ -212,10 +228,14 @@ class TaxonomyTreeLayoutIT {
                 Files.write(directory.resolve(name+".pdf"),bytes);
                 try(var pdf=Loader.loadPDF(bytes)) {
                     var stripper=new PDFTextStripper();
-                    assertThat(stripper.getText(pdf)).as(renderer+" PDF content in "+mode)
-                        .contains("fixture-1","fixture-2","fixture-3","fixture-4","fixture-5","75%")
-                        .doesNotContain("fixture-zero");
+                    String pdfText=stripper.getText(pdf);
+                    assertThat(pdfText).as(renderer+" PDF filter in "+mode).doesNotContain("fixture-zero");
+                    assertThat(pdf.getNumberOfPages()).as(renderer+" PDF has exactly the planned pages in "+mode).isEqualTo(plannedPages);
                     if(mode.equals("single")) {
+                        // A4 tile edges can split a glyph, which PDFBox then reports on both pages.
+                        // Require intact labels on the continuous sheet; A4 coverage is checked above.
+                        assertThat(pdfText).as(renderer+" complete single-sheet PDF content")
+                            .contains("fixture-1","fixture-2","fixture-3","fixture-4","fixture-5","75%");
                         assertThat(pdf.getNumberOfPages()).isEqualTo(1);
                         var box=pdf.getPage(0).getMediaBox();
                         assertThat(Math.max(box.getWidth(),box.getHeight())).isGreaterThan(842f);
