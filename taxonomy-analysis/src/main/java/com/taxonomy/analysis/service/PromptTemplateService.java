@@ -171,12 +171,11 @@ public class PromptTemplateService {
     /** Shared scope for relevance, source contributions and first-hop relation decisions. */
     public static String functionalScopeContract() {
         return "\nFunctional scope policy (" + FUNCTIONAL_SCOPE_POLICY + "): "
-                + "Judge meaning across languages. A contribution can be directly requested or necessary for a requested function "
-                + "without its service name appearing in the original. Use the original and supplied catalogue; explain which function needs it and why. "
-                + "If an allowed implementation can fulfill that function without this contribution, it is not unconditionally required. "
-                + "Necessity concerns the scoped function, not a vendor. Catalogue availability, customary design or generic usefulness alone is insufficient. "
-                + "Respect exclusions and use only justified capabilities. Preserve open choices, conditions and alternatives in existing fields; "
-                + "missing information is not a negative finding. Keep the schema and numeric rules; scores do not prove relationships.\n";
+                + "Judge meaning across languages. Scoped contributions may be requested or necessary without literal service names. "
+                + "Explain which requested function needs each using the catalogue. If an allowed implementation works without a contribution, "
+                + "it is not unconditionally required. Catalogue availability, customary design or generic usefulness is insufficient. "
+                + "Scope necessity to function, not vendor. Preserve exclusions, conditions, alternatives and open choices; "
+                + "missing information is not rejection. Keep schema and numeric rules; scores do not prove edges.\n";
     }
 
     static String childAllocationContract(double parentScore) {

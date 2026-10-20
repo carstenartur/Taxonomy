@@ -45,6 +45,19 @@ class RelationSourceContextBudgetTest {
                 .isLessThanOrEqualTo(16_000);
     }
 
+    @Test void navigationKeepsTheScenarioCohortWithinTheNormalBudget() {
+        Contribution contribution = new Contribution(scalar("BP-1140"),
+                "Under the explicit A1 test design assumption, prevent unauthorised access to protected subscriber details and account operations under A1, without choosing a login technology or extending security to unrequested military domains.",
+                "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.", "");
+        Query query = new Query(ORIGINAL, contribution, "SUPPORTS", Direction.INCOMING, Phase.NAVIGATE,
+                List.of(scalar("CR-1011"), scalar("CR-1047"), scalar("CR-1111")), null);
+        String prompt = prompt(query);
+        assertThat(RelationSearchProtocol.requestCharacters(prompt))
+                .as("Existing scenario navigation cohort must fit three full catalogue contexts")
+                .isLessThanOrEqualTo(16_000);
+        assertPromptEvidence(query, prompt);
+    }
+
     @ParameterizedTest
     @CsvSource({
             "CR-1007,BP-1128,OUTGOING,NAVIGATE",
@@ -172,8 +185,9 @@ class RelationSourceContextBudgetTest {
             if (!ancestor.getCode().equals(query.contribution().source().id()))
                 assertThat(source).contains(ancestor.getCode()).contains(ancestor.getNameEn());
         }
-        assertThat(input.get("candidates").get(0).get("description").asString())
-                .isEqualTo(query.candidates().getFirst().description());
+        for (int i = 0; i < query.candidates().size(); i++)
+            assertThat(input.get("candidates").get(i).get("description").asString())
+                    .isEqualTo(query.candidates().get(i).description());
         if (query.phase() == Phase.VERIFY)
             assertThat(input.get("proposal")).isEqualTo(JSON.valueToTree(query.proposal()));
     }
