@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.relations;
 
 import com.taxonomy.analysis.assessment.ChildAssessmentContract;
+import com.taxonomy.analysis.service.PromptTemplateService;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
@@ -63,8 +64,8 @@ public final class RelationSearchProtocol {
     }
 
     static String sourcePrompt(String original, List<Node> nodes, Map<String, String> errors) {
-        return PREAMBLE + """
-            Extract ONLY each source element's contribution actually requested by the original.
+        return PREAMBLE + PromptTemplateService.functionalScopeContract() + """
+            Extract ONLY each source element's contribution grounded in a requested function.
             A taxonomy category's entire scope is not requested merely because the category matches.
             The original states the need; node descriptions describe available functions, not requirements.
             Compare their meaning across languages, not literal words. Absence of the requirement's
@@ -72,12 +73,13 @@ public final class RelationSearchProtocol {
             express a requested function without choosing an implementation, product, role or interface.
             If the available context does not determine whether that function is required, use
             UNRESOLVED with a concrete question instead of treating uncertainty as a negative finding.
-            This does not license generic supporting dependencies or unstated features. Keep evidence
+            Necessary support must satisfy the functional scope policy; generic usefulness is insufficient. Keep evidence
             quotes verbatim in the original language; explain the functional interpretation separately.
             Return exactly one selection per offered node, in this shape:
             {"selections":[{"nodeId":"offered ID","outcome":"EXPLICIT|REJECT|UNRESOLVED",
             "contributions":[{"text":"specific contribution","requirementQuote":"substring of INPUT.original","condition":""}],
             "rationale":"why this is or is not required","question":""}]}
+            EXPLICIT means grounded in the original, including necessary scoped support; it does not require a literal service name.
             EXPLICIT needs 1 to 4 distinct contributions. REJECT and UNRESOLVED need an empty list.
             UNRESOLVED needs a concrete question. All keys are mandatory; empty strings are permitted
             for condition and question only. Keep separate read/write contributions, roles, conditions
@@ -204,8 +206,11 @@ public final class RelationSearchProtocol {
     static String decisionPrompt(Query query, Map<String, String> errors) {
         String task = query.phase() == Phase.VERIFY ? """
             VERIFY: check the proposal against the original requirement and both endpoints.
-            Check direction, requested function, necessity and every condition. Catalogue features
-            absent from the original cannot become requirements. Do not change the proposed claim.
+            Check direction, requested function, necessity and every condition. For a REQUIRED dependency,
+            explain which requested function would fail without the scoped contribution. If a permitted
+            implementation can meet that function without the contribution, REJECT the REQUIRED claim;
+            if necessity cannot be determined, use UNRESOLVED with the missing decision as a question.
+            Unrelated catalogue features cannot become requirements. Do not change the proposed claim.
             Return one decision: {"decisions":[{"targetId":"offered ID",
             "outcome":"VERIFIED|REJECT|UNRESOLVED","rationale":"specific justification","question":""}]}.
             VERIFIED accepts exactly the supplied proposal. UNRESOLVED needs a concrete question.
@@ -217,7 +222,8 @@ public final class RelationSearchProtocol {
             MATCH proposes a concrete endpoint. A non-leaf may match when further detail would invent
             an unsupported choice. Never use containers or the source itself as actual endpoints.
             REJECT only irrelevant candidates; uncertainty needs UNRESOLVED and a concrete question.
-            Do not select channels, vendors, variants or extra features absent from the original.
+            Select only the functional contribution justified by the original, including necessary support.
+            Do not choose a specific channel, vendor or variant when that implementation choice remains open.
             Return exactly one decision for EACH offered candidate, with every key mandatory:
             {"decisions":[{"targetId":"offered ID","outcome":"DESCEND|MATCH|REJECT|UNRESOLVED",
             "contribution":"specific target contribution or empty","requirementQuote":"substring of INPUT.original or empty",
@@ -226,6 +232,9 @@ public final class RelationSearchProtocol {
             MATCH requires contribution, requirementQuote and necessity. The quote must be copied
             from original, never from a catalogue description or translation. OPTIONAL needs a condition;
             ALTERNATIVE needs a stable named choice group. Keep joint necessities and alternatives distinct.
+            REQUIRED needs a rationale connecting the exact original quote to the necessary contribution;
+            the quote anchors the requested function and need not literally name the supporting service.
+            Use OPTIONAL or ALTERNATIVE only with a grounded condition or choice; otherwise use UNRESOLVED.
             """;
         Map<String, Object> input = new TreeMap<>();
         input.put("original", query.original()); input.put("contribution", promptContribution(query.contribution()));
@@ -233,7 +242,7 @@ public final class RelationSearchProtocol {
         input.put("candidates", query.candidates().stream().map(node -> promptNode(node, false)).toList());
         input.put("proposal", query.proposal());
         if (!errors.isEmpty()) input.put("validationErrors", errors);
-        return PREAMBLE + relationMeaning(query.type()) + "\n"
+        return PREAMBLE + PromptTemplateService.functionalScopeContract() + relationMeaning(query.type()) + "\n"
                 + "Source context policy: relation-source-context-v1. The source contribution was assessed with its full catalogue hierarchy. "
                 + "Its own complete description and established ancestor IDs/names remain here; ancestor names do not broaden that contribution. "
                 + "Each newly offered candidate retains its complete catalogue context.\n"

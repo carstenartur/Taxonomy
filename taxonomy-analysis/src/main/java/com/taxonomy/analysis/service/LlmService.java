@@ -877,6 +877,7 @@ public class LlmService {
         try (var reasons = withAnalysisReasonLength(null)) {
             return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
                     recoveryProviderPolicyFingerprint(requestedProvider), PromptTemplateService.childAllocationContract(100),
+                    PromptTemplateService.functionalScopeContract(),
                     AnalysisReasonContext.POLICY,
                     AnalysisReasonContext.current().value());
         }

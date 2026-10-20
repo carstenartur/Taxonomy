@@ -33,7 +33,8 @@ class PromptLiteralDataTest {
         service.setTemplate("IP-product", "{{BUSINESS_TEXT}}|{{NODE_LIST}}|{{EXPECTED_KEYS}}|{{MIN_SCORE}}");
         String prompt = service.renderProductPrompt(DATA, DATA, "IP", 30);
         assertEquals(DATA + "|" + DATA + "|IP|30" + NUMERIC_CONTRACT
-                + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n",
+                + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n"
+                + PromptTemplateService.functionalScopeContract(),
                 withoutReasonPolicy(prompt));
     }
 
