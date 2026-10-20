@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
@@ -9,9 +10,11 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -185,7 +188,10 @@ class LlmPreparedPromptTest {
         when(gatewayRegistry.getGatewayById(LlmProvider.GEMINI.id())).thenReturn(gateway);
         var templates = new PromptTemplateService();
         templates.setTemplate("IP", "Requirement:\n{{BUSINESS_TEXT}}\nReturn {{EXPECTED_KEYS}}.\n{{NODE_LIST}}");
-        var service = new LlmService(config, gatewayRegistry, new ObjectMapper(), null, templates, null, null);
+        String catalogueContext = "Catalogue context fixture for Information Products.";
+        var catalogue = mock(TaxonomyService.class);
+        when(catalogue.getAssessmentContexts(anyList())).thenReturn(Map.of("IP", catalogueContext));
+        var service = new LlmService(config, gatewayRegistry, new ObjectMapper(), catalogue, templates, null, null);
         var node = new TaxonomyNode();
         node.setCode("IP");
         node.setTaxonomyRoot("IP");
@@ -196,6 +202,8 @@ class LlmPreparedPromptTest {
             var retained = run.detail(1);
             assertTrue(retained.prompt().contains("Example requirement"),
                     "The service's constructed prompt must survive an escaping provider failure");
+            assertTrue(retained.prompt().contains(catalogueContext),
+                    "Prepared diagnostics must preserve the catalogue context sent to the provider");
             assertEquals(retained.prompt().length(), retained.promptLength());
             assertEquals("IllegalStateException", retained.error());
             assertEquals("", retained.response());

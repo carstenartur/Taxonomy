@@ -32,7 +32,7 @@ const relation = {sourceCode:'BP-1', targetCode:'CP-1', relationType:'REALIZES',
 state.currentArchView = {includedElements:[{nodeCode:'BP-1'},{nodeCode:'CP-1'},{nodeCode:'BP-1'}],
     includedRelationships:[relation,{...relation}, {sourceCode:'CP-1',targetCode:'BP-1',relationType:'CONTEXT',origin:'TAXONOMY_SEED'}]};
 text = render();
-assert.match(text, /Architektur: 2 Knoten/);
+assert.match(text, /Architekturentwurf: 2 Knoten/);
 assert.match(text, /Beziehungen: 2/);
 assert.match(text, /KI-Vorschläge: 1/);
 assert.match(text, /Fachliche Bestätigung: nicht aufgezeichnet/);

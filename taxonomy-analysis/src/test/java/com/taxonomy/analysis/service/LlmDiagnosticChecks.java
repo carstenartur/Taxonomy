@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.core.env.StandardEnvironment;
@@ -12,11 +13,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Executable production-boundary checks; only the remote provider reply is a fixture. */
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+/** Executable production-boundary checks with fixture catalogue context and remote provider replies. */
 public final class LlmDiagnosticChecks {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final WorkspaceContext SCOPE = new WorkspaceContext("owner", "workspace", "draft");
     private static final String REPLY = "please supply additional details.\nNo JSON was returned. <script>not executable</script>";
+    private static final String CATALOGUE_CONTEXT = "Catalogue context fixture for Information Products.";
 
     private LlmDiagnosticChecks() { }
 
@@ -52,6 +58,7 @@ public final class LlmDiagnosticChecks {
             require(detail.getError().equals(fields.get("error")), "Diagnostic endpoint loses the actual parse error");
             require(REPLY.equals(saved.response()), "Failed response must survive terminal completion");
             require(saved.prompt().contains("Example requirement"), "Prompt must survive failure");
+            require(saved.prompt().contains(CATALOGUE_CONTEXT), "Catalogue context must survive failure");
             expectHidden(() -> registry.callDetail(id, 1, "another-owner", SCOPE));
             expectHidden(() -> registry.callDetail(id, 1, "owner", new WorkspaceContext("owner", "other", "draft")));
         }
@@ -167,7 +174,9 @@ public final class LlmDiagnosticChecks {
         };
         var templates = new PromptTemplateService();
         templates.setTemplate("IP", "Requirement:\n{{BUSINESS_TEXT}}\nReturn JSON for {{EXPECTED_KEYS}}.\n{{NODE_LIST}}");
-        return new LlmService(config, gateways, JSON, null, templates, null, null);
+        var catalogue = mock(TaxonomyService.class);
+        when(catalogue.getAssessmentContexts(anyList())).thenReturn(Map.of("IP", CATALOGUE_CONTEXT));
+        return new LlmService(config, gateways, JSON, catalogue, templates, null, null);
     }
 
     private static TaxonomyNode node() {
