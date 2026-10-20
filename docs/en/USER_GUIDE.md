@@ -435,9 +435,13 @@ After running an analysis, the sunburst chart displays heat-mapped colour gradie
 
 ![Scored sunburst view](../images/39-scored-sunburst.png)
 
+Sunburst, Tree and Decision share a relevance selector. **All nodes** shows the available view; **Hide zero relevance** removes measured zeroes while retaining unknown or pending evaluations; **Only > 0** retains positive results and their ancestor paths. The selection applies to the diagram and its printout. An ancestor retained for orientation is not an additional positive result.
+
 ### Tree View
 
 The Tree view renders the taxonomy as an interactive node-link diagram. Use the **Taxonomy root selector** dropdown to choose which root to display when there are multiple taxonomy roots.
+
+**Print diagram** prints the complete selected taxonomy with the current relevance filter, including collapsed and offscreen branches. **Print layout** offers **A4 pages** and **One large sheet**. Both SVG and large Canvas trees use the complete vector tree for printing.
 
 ![Tree view](../images/07-tree-view.png)
 
@@ -447,7 +451,7 @@ The Decision Map view shows the taxonomy as a decision-tree style layout optimis
 
 Taxonomies occupy separate areas. Spacing accounts for complete wrapped node names and remains clear when branches expand or collapse. **Reason** at a node opens its saved analysis reason and a separately labelled catalogue description. The action also works with a keyboard or touchscreen; **Close** or Escape returns focus to the node.
 
-Use **Print diagram** in the diagram toolbar to open a separate landscape print view. It includes every relevant branch in the decision tree, independently of the current zoom and collapsed screen branches. Large areas continue on readable pages. Taxonomy headings, root overviews and references to the parent node's page preserve context. Choose a printer or **Save as PDF** in the browser. If the browser blocks the print window, allow pop-ups for this application and select **Print diagram** again.
+Use **Print diagram** in the diagram toolbar to open a separate print view. It includes every relevant branch with the selected relevance filter, independently of zoom and collapsed screen branches. **A4 pages** distributes large areas across landscape pages, retaining headings and references to continued connections. **One large sheet** places the complete diagram on one page sized to its contents. Choose a printer or **Save as PDF** in the browser. If the browser blocks the print window, allow pop-ups for this application and select **Print diagram** again.
 
 ![Decision Map view (scored)](../images/69-decision-map-scored.png)
 
@@ -573,7 +577,7 @@ The main visualization is a **stable impact graph arranged by architecture layer
 
 Graph results are bounded by stored relationships, selected types, permissions and traversal limits. They identify potential impacts for review, not every real-world dependency.
 
-The Graph Explorer lets you trace the network of confirmed architecture relationships around any taxonomy node, regardless of whether you have run an analysis.
+The Graph Explorer traces stored relationships in the primary catalogue around a selected node. Its dependency queries follow `SUPPORTS`, `REALIZES` and `USES`. The result heading identifies a node query or an impact query using the current requirement scores and shows its catalogue source. Starting a query replaces the previous result. To inspect the architecture produced by the current analysis, use the Architecture View; that is a separate result.
 
 ### Selecting a Node
 
@@ -978,6 +982,8 @@ The **🔗 Relations Browser** panel (right column, collapsible) lets you browse
 1. Open the **🔗 Relations Browser** panel.
 2. Optionally filter by relation type using the dropdown.
 3. A table lists all matching relations showing source, target, type, and provenance.
+
+If the relation view has not been built or is out of date, the panel shows its repository, workspace, branch and Git revision. Use **Rebuild relation view** to rebuild this derived view from the current saved revision. This requires the existing rebuild permission. Once the view is ready, the table reloads automatically.
 
 ### Creating a Relation
 

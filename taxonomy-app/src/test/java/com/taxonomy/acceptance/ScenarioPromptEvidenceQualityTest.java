@@ -23,6 +23,8 @@ class ScenarioPromptEvidenceQualityTest {
     private static final String FULL_CONTEXT = "\nSource hierarchy context (ancestors, not additional candidates):\n";
     private static final String COMPACT_CONTEXT = "\nAssessed source hierarchy (relation-source-context-v1; ancestor IDs and names are context, not additional candidates):\n";
     private static final String CANDIDATES = "\nNodes to evaluate (only the following candidates):\n";
+    private static final String BP_ROOT_CONTEXT = "\nRoot catalogue context (root-catalogue-context-v1; immediate source children, not additional candidates):\n"
+            + "  BP-1000: Business Processes - Enterprise process functions.\n";
     private static final String BP_CONTEXT = FULL_CONTEXT
             + "  BP: Business Processes - Process taxonomy.\n"
             + "  BP-1000: Business Processes - Enterprise process functions.\n";
@@ -33,11 +35,12 @@ class ScenarioPromptEvidenceQualityTest {
     private static final String CR_DESCRIPTION = "Control authorized access to protected information.";
     private static final String BP_COMPACT = BP_DESCRIPTION + COMPACT_CONTEXT
             + "  BP: Business Processes\n  BP-1000: Business Processes\n";
-    private static final Set<String> OVERLAY = Set.of("IP-2130", "IP-1051");
+    private static final Set<String> OVERLAY = Set.of("IP-2130", "IP-1051", "BP-9000");
 
     @Test void acceptsActualProtocolPhasesAgainstIndependentCatalogueFacts() {
         var report = verify(catalogue(), calls(), snapshots());
         assertThat(report.get("outcome")).isEqualTo("PASS");
+        assertThat(report.get("classificationCandidateAssessments")).isEqualTo(2);
     }
 
     @Test void changedCandidateNameCannotKeepItsStoredPerfectAnswer() {
@@ -120,6 +123,21 @@ class ScenarioPromptEvidenceQualityTest {
                 .isInstanceOf(AssertionError.class).hasMessageContaining("classification candidate block");
     }
 
+    @Test void independentRootContextMustMatchOnlyItsImmediateOriginalSourceChildren() {
+        for (String alteredContext : List.of(
+                BP_ROOT_CONTEXT.replace(" - Enterprise process functions.", ""),
+                BP_ROOT_CONTEXT.replace("BP-1000: Business Processes", "BP-1000: Invented scope"),
+                BP_ROOT_CONTEXT.replace("  BP-1000: Business Processes - Enterprise process functions.\n", ""),
+                BP_ROOT_CONTEXT + "  BP-1017: Data Acquisition - " + BP_DESCRIPTION + "\n",
+                BP_ROOT_CONTEXT + "  BP-9000: Navigation Alias - Overlay navigation only.\n",
+                BP_ROOT_CONTEXT + "  CR-1000: Core Services - Shared service functions.\n")) {
+            var calls = calls();
+            changePrompt(calls, 0, calls.getFirst().prompt().replace(BP_ROOT_CONTEXT, alteredContext));
+            assertThatThrownBy(() -> verify(catalogue(), calls, snapshots()))
+                    .isInstanceOf(AssertionError.class).hasMessageContaining("classification candidate block");
+        }
+    }
+
     @Test void eachMixedParentContextAndOverlayBoundaryIsChecked() {
         var calls = calls();
         calls.add(classification("mixed-ip", templates().renderPrompt("IP", ORIGINAL,
@@ -200,7 +218,8 @@ class ScenarioPromptEvidenceQualityTest {
 
     private static List<ScenarioLlmPlayback.Call> calls() {
         var calls = new ArrayList<ScenarioLlmPlayback.Call>();
-        calls.add(classification("root", templates().renderRootPrompt("BP", ORIGINAL, "BP: Business Processes - Process taxonomy.\n")));
+        calls.add(classification("root", templates().renderRootPrompt("BP", ORIGINAL,
+                BP_ROOT_CONTEXT + CANDIDATES + "BP: Business Processes - Process taxonomy.\n")));
         calls.add(classification("categories", templates().renderPrompt("BP", ORIGINAL,
                 BP_CONTEXT + CANDIDATES + "BP-1017: Data Acquisition - " + BP_DESCRIPTION + "\n", 90, "BP-1017")));
         var protocol = new RelationSearchProtocol(prompt -> {
@@ -258,7 +277,9 @@ class ScenarioPromptEvidenceQualityTest {
         var bp = node("BP", "BP", "Business Processes", "Process taxonomy.", "", "CATEGORY");
         var processes = node("BP-1000", "BP", "Business Processes", "Enterprise process functions.", "BP", "CATEGORY");
         processes.withArray("children").add(node("BP-1017", "BP", "Data Acquisition", BP_DESCRIPTION, "BP-1000", "CATEGORY"));
-        bp.withArray("children").add(processes); tree.add(bp);
+        bp.withArray("children").add(processes);
+        bp.withArray("children").add(node("BP-9000", "BP", "Navigation Alias", "Overlay navigation only.", "BP", "CATEGORY"));
+        tree.add(bp);
         var cr = node("CR", "CR", "Core Services", "Service taxonomy.", "", "CATEGORY");
         var services = node("CR-1000", "CR", "Core Services", "Shared service functions.", "CR", "CATEGORY");
         services.withArray("children").add(node("CR-1007", "CR", "Access Control Services", CR_DESCRIPTION, "CR-1000", "CATEGORY"));

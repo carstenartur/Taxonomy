@@ -70,7 +70,7 @@ class RelationGitCommandUiContractTest {
                 .contains("throw projectionReadError(response)")
                 .contains("X-Taxonomy-Relation-Projection-State")
                 .contains("X-Taxonomy-Relation-Pending-Recovery")
-                .contains("renderRelationsLoadError(content, error)")
+                .contains("renderRelationsLoadError(content, error, allowReadyRefresh)")
                 .contains("retry.addEventListener('click', loadRelations)")
                 .contains("content.setAttribute('aria-busy', 'false')")
                 .doesNotContain("r.ok ? r.json() : []")

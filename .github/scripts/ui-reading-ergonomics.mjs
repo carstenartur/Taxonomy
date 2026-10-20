@@ -48,11 +48,15 @@ export async function verifyReadingErgonomics({ page, evidence }) {
       'Summary selection must expose its details');
     evidence.assert(await selected.getAttribute('aria-pressed') === 'true', 'Summary selection is not exposed');
     await page.locator('#viewSunburst').click();
-    await page.locator('#sunburstHideZero').check();
+    await page.locator('#diagramRelevanceFilter').selectOption('hide-zero');
     evidence.assert(await page.evaluate(() => JSON.stringify({
       tree: window.TaxonomyState.taxonomyData, scores: window.TaxonomyState.currentScores
     })) === originalData, 'Sunburst visibility filter changed source data');
-    await page.locator('#sunburstHideZero').uncheck();
+    await page.locator('#diagramRelevanceFilter').selectOption('positive');
+    evidence.assert(await page.evaluate(() => JSON.stringify({
+      tree: window.TaxonomyState.taxonomyData, scores: window.TaxonomyState.currentScores
+    })) === originalData, 'Strict positive filter changed source data');
+    await page.locator('#diagramRelevanceFilter').selectOption('all');
     // Native activation of an actual rendered arc must exercise zoom, not a replacement renderer.
     const hit = await page.locator('#taxonomyTree path').evaluateAll(paths => {
       for (const path of paths) {

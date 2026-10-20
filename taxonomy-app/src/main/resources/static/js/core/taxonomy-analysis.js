@@ -407,6 +407,8 @@
     function runEnrichedFailureImpact() {
         var input = document.getElementById('graphNodeInput');
         var code = input ? input.value.trim() : '';
+        var graph = window.TaxonomyGraph;
+        var sequence = graph.beginResult('node', code);
         if (!code) {
             var content = document.getElementById('graphResultsContent');
             if (content) {
@@ -434,10 +436,10 @@
                 return r.json();
             })
             .then(function (data) {
-                if (content) content.innerHTML = renderEnrichedFailureImpact(data);
+                if (content && graph.isCurrentResult(sequence)) content.innerHTML = renderEnrichedFailureImpact(data);
             })
             .catch(function (err) {
-                if (content) {
+                if (content && graph.isCurrentResult(sequence)) {
                     content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' + t('analyze.graph.enriched.failed', escapeHtml(err.message)) + '</div>';
                 }
             });

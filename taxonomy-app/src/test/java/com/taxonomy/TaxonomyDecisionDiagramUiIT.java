@@ -146,6 +146,39 @@ class TaxonomyDecisionDiagramUiIT {
         assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('[data-print-node=BR],[data-print-node=fixture-unassessed]').length")).isEqualTo(0L);
         assertThat(browser.executeScript("return JSON.stringify(fixtureScores)===recordedMixedScores")).isEqualTo(true);
     }
+    @Test void largeSheetPrintKeepsEveryNodeAndConnectorOnOnePdfPage() throws Exception {
+        browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent']")).click(); settle();
+        browser.executeScript("document.querySelector('.tax-diagram-controls button').click();window.sheetScreenBefore=document.querySelector('#decision-map-svg').outerHTML;window.sheetResultsBefore=JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons});");
+        preparePrint();
+        new org.openqa.selenium.support.ui.Select(browser.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue("single");
+        clickPrint();
+        assertThat(browser.executeScript("""
+            const doc=printFrame.contentDocument,svg=doc.querySelector('svg'),vb=svg.viewBox.baseVal;
+            if(doc.querySelectorAll('.decision-print-page').length!==1)return 'More than one sheet';
+            if(doc.querySelectorAll('[data-print-node]').length!==26)return 'Incomplete hierarchy';
+            if(svg.querySelectorAll('path').length!==24)return 'Incomplete connectors';
+            if(vb.height<=620)return 'Large diagram was scaled to A4';
+            for(const node of svg.querySelectorAll('[data-print-node]')){
+                const b=node.getBBox();if(b.x<0||b.y<0||b.x+b.width>vb.width||b.y+b.height>vb.height)return 'Clipped '+node.dataset.printNode;
+            }
+            return document.querySelector('#decision-map-svg').outerHTML===sheetScreenBefore
+                && JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons})===sheetResultsBefore?'':'Screen or saved evidence changed';
+            """)).isEqualTo("");
+        String html=(String)browser.executeScript("return printFrame.contentDocument.documentElement.outerHTML");
+        String source=browser.getWindowHandle();browser.switchTo().newWindow(WindowType.TAB);
+        try {
+            browser.get("data:text/html;charset=UTF-8;base64,"+Base64.getEncoder().encodeToString(html.getBytes(StandardCharsets.UTF_8)));
+            var result=((HasCdp)new Augmenter().augment(browser)).executeCdpCommand("Page.printToPDF",Map.of("preferCSSPageSize",true,"printBackground",true));
+            byte[] bytes=Base64.getDecoder().decode((String)result.get("data"));
+            Path directory=Path.of("target/decision-diagram-evidence");Files.createDirectories(directory);
+            Files.write(directory.resolve("decision-large-sheet-print.pdf"),bytes);
+            try(var pdf=Loader.loadPDF(bytes)) {
+                assertThat(pdf.getNumberOfPages()).isEqualTo(1);
+                assertThat(pdf.getPage(0).getMediaBox().getHeight()).isGreaterThan(842f);
+                assertThat(new PDFTextStripper().getText(pdf)).contains("fixture-deeper", "fixture-second", "75%");
+            }
+        } finally {browser.close();browser.switchTo().window(source);}
+    }
     @Test void fragmentedParentWithChildAndSiblingsKeepsEveryActualFragmentInsideItsPage() {
         browser.executeScript("""
             fixtureData=[{code:'BP',name:'Business Processes',taxonomyContainer:true,children:[
@@ -281,7 +314,7 @@ class TaxonomyDecisionDiagramUiIT {
     static void serve(HttpExchange exchange) throws java.io.IOException {
         String path=exchange.getRequestURI().getPath();byte[] bytes;
         if(path.equals("/fixture")){bytes=HTML.getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type","text/html; charset=UTF-8");}
-        else if(path.equals("/views.js")){bytes=Files.readAllBytes(Path.of("src/main/resources/static/js/core/taxonomy-views.js"));exchange.getResponseHeaders().set("Content-Type","application/javascript");}
+        else if(path.equals("/views.js")){try(var input=new ClassPathResource("static/js/core/taxonomy-views.js").getInputStream()){bytes=input.readAllBytes();}exchange.getResponseHeaders().set("Content-Type","application/javascript");}
         else if(path.equals("/d3.js")){bytes=new ClassPathResource("META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js").getInputStream().readAllBytes();exchange.getResponseHeaders().set("Content-Type","application/javascript");}
         else {exchange.sendResponseHeaders(404,-1);exchange.close();return;}
         exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();

@@ -33,3 +33,28 @@ test('a missing product-family evaluation must not become a zero rejection',()=>
     assert.equal(filter(product, {'IP-1286': 0}, detail).length, 1);
     assert.equal(filter(product, {'IP-1286': 0}, {'IP-1286': {...detail['IP-1286'], parentScore: 0}}).length, 0);
 });
+test('strict positive projection excludes unknown, pending and nonpositive evidence',()=>{
+    const scores=Object.freeze({BP:0,BR:75,CP:null,CI:NaN,CO:'80',CR:-1,IP:Infinity});
+    const project=context.window.TaxonomyViews.filterRelevance;
+    assert.equal(typeof project,'function','All diagrams need the shared relevance projection');
+    assert.deepEqual(Array.from(project(catalogue,scores,{},'positive'),node=>node.code),['BR']);
+    assert.equal(project(catalogue,scores,{},'all'),catalogue);
+    assert.deepEqual(Array.from(project(catalogue,scores,{},'hide-zero'),node=>node.code),
+        Array.from(filter(catalogue,scores),node=>node.code));
+    assert.equal(project(catalogue,null,{},'positive').length,0);
+    const product=[{code:'IP-1286',children:[]}];
+    const pending={'IP-1286':{kind:'PRODUCT_SUITABILITY',parentScore:null}};
+    assert.equal(project(product,{'IP-1286':0},pending,'positive').length,0);
+});
+test('strict positive projection keeps context ancestors without introducing unassessed siblings',()=>{
+    const nodes=Object.freeze([Object.freeze({code:'BP',children:Object.freeze([
+        Object.freeze({code:'BP-1000',children:Object.freeze([])})
+    ])}),catalogue[1]]);
+    const scores=Object.freeze({BP:0,'BP-1000':75});
+    const projected=context.window.TaxonomyViews.filterRelevance(nodes,scores,{},'positive');
+    assert.deepEqual(Array.from(projected,node=>node.code),['BP']);
+    assert.deepEqual(Array.from(projected[0].children,node=>node.code),['BP-1000']);
+    assert.equal(nodes.length,2);
+    assert.notEqual(projected[0],nodes[0]);
+    assert.deepEqual(scores,{BP:0,'BP-1000':75});
+});

@@ -713,8 +713,9 @@ dialog.onboarding-overlay .onboarding-card {
 .taxonomy-view-selector { display: flex; flex-wrap: wrap; justify-content: flex-start; width: fit-content; max-width: 100%; }
 .taxonomy-view-selector > .btn { flex: 0 0 auto; }
 .taxonomy-view-tools { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; min-height: 2.25rem; margin-top: .5rem; }
-#sunburstFilterGroup { display: none; }
-#leftPanel:has(#taxonomyTree[data-view-rendered="sunburst"]) #sunburstFilterGroup { display: block; }
+#diagramRelevanceFilterGroup { display: none; align-items: center; gap: .35rem; }
+#leftPanel:has(#taxonomyTree:is([data-view-rendered="sunburst"], [data-view-rendered="tree"], [data-view-rendered="tree-canvas"], [data-view-rendered="decision"])) #diagramRelevanceFilterGroup { display: flex; }
+#diagramRelevanceFilter, .tax-diagram-print-mode { width: auto; }
 button.summary-layer-element { font: inherit; text-align: left; }
 button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
 #summarySelectionDetails { margin-top: 1rem; padding: .75rem; border: 1px solid var(--bs-border-color); border-radius: .375rem; overflow-wrap: anywhere; }

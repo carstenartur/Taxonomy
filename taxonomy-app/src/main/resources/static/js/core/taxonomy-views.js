@@ -408,19 +408,27 @@
         return colorMap[code] || '#aaa';
     }
 
-    /** A display-only projection. Missing/pending measurements are not negative evidence. */
-    function filterZeroRelevance(data, scores, details) {
+    /** A display-only projection; retained ancestors give positive descendants their original context. */
+    function filterRelevance(data, scores, details, mode) {
+        if (mode === 'all' || !mode) { return data || []; }
         function project(node) {
             var children = (node.children || []).map(project).filter(Boolean);
             var detail = details && details[node.code];
             var pendingProduct = detail && detail.kind === 'PRODUCT_SUITABILITY'
                 && !Number.isFinite(detail.parentScore);
-            var zero = scores && Object.prototype.hasOwnProperty.call(scores, node.code)
-                && scores[node.code] === 0 && !pendingProduct;
-            if (zero && children.length === 0) return null;
+            var measured = scores && Object.prototype.hasOwnProperty.call(scores, node.code);
+            // Hide-zero preserves unknown/pending evidence; strict positive requires an actual positive score.
+            var keep = mode === 'positive'
+                ? measured && Number.isFinite(scores[node.code]) && scores[node.code] > 0 && !pendingProduct
+                : !(measured && scores[node.code] === 0 && !pendingProduct);
+            if (!keep && children.length === 0) return null;
             return Object.assign({}, node, { children: children });
         }
         return (data || []).map(project).filter(Boolean);
+    }
+
+    function filterZeroRelevance(data, scores, details) {
+        return filterRelevance(data, scores, details, 'hide-zero');
     }
 
     // ── Sunburst ────────────────────────────────────────────────────────────────
@@ -444,20 +452,7 @@
         container.innerHTML = '';
 
         try {
-        var originalData = data;
-        var colorMap = buildColorMap(originalData);
-        var filter = document.getElementById('sunburstHideZero');
-        if (filter) {
-            if (filter._taxonomyZeroFilter) filter.removeEventListener('change', filter._taxonomyZeroFilter);
-            filter._taxonomyZeroFilter = function () {
-                if (container.getAttribute('data-view-rendered') === 'sunburst') {
-                    renderSunburst(container, originalData, scores);
-                }
-            };
-            filter.addEventListener('change', filter._taxonomyZeroFilter);
-            if (filter.checked) data = filterZeroRelevance(originalData, scores,
-                window.TaxonomyState && window.TaxonomyState.currentScoreDetails);
-        }
+        var colorMap = buildColorMap(data);
         if (!data.length) {
             var empty = document.createElement('p');
             empty.className = 'text-muted p-3';
@@ -680,6 +675,7 @@
             .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); });
         svg.call(treeZoom);
         installDiagramZoomControls(container, svg.node(), svg, treeZoom, function () { return zoomLayer.node().getBBox(); });
+        installDiagramPrintControls(container, function (mode) { printTreeDiagram(data, scores, container, mode); });
         var treeNavigation = createDiagramNavigation(container, svg.node(), {
             scores: scores, activate: function (node) { toggleDiagramBranch(node, update); }
         });
@@ -1041,7 +1037,7 @@
                 rootLines = rootLines.concat(decisionLines(t('views.diagram.printRoots', root.data.code) + ' · ' + t('views.diagram.printContinue', nodePage[root.data.code], totalPages), layout.measure, 900));
             });
             for (var overview = 0; overview < overviewCount; overview++) {
-                var overviewPage = doc.createElement('section'); overviewPage.className = 'decision-print-page';
+                var overviewPage = doc.createElement('section'); overviewPage.className = 'diagram-print-page decision-print-page';
                 overviewPage.setAttribute('data-taxonomy-panel', panel.area.code);
                 var overviewHeading = doc.createElement('h2');
                 overviewHeading.textContent = panel.area.code + ' · ' + t('views.diagram.printOverview') + ' · ' + t('views.diagram.printContinue', overview + 1, totalPages);
@@ -1054,7 +1050,7 @@
             }
             if (headerLines.length > 9) {
                 for (var captionLine = 0; captionLine < headerLines.length; captionLine += 28) {
-                    var captionPage = doc.createElement('section'); captionPage.className = 'decision-print-page';
+                    var captionPage = doc.createElement('section'); captionPage.className = 'diagram-print-page decision-print-page';
                     captionPage.setAttribute('data-taxonomy-panel', panel.area.code);
                     var captionTitle = doc.createElement('h2'); captionTitle.textContent = panel.area.code + ' · ' + t('views.diagram.printContinue', overviewCount + Math.floor(captionLine / 28) + 1, totalPages);
                     captionPage.appendChild(captionTitle);
@@ -1066,7 +1062,7 @@
                 }
             }
             batches.forEach(function (batch, index) {
-                var page = doc.createElement('section'); page.className = 'decision-print-page';
+                var page = doc.createElement('section'); page.className = 'diagram-print-page decision-print-page';
                 page.setAttribute('data-taxonomy-panel', panel.area.code);
                 var heading = doc.createElement('h2'); heading.textContent = headerLines.length > 9 ? panel.area.code : containerLabel(panel.area, layout.scores);
                 // Very long area headings wrap in a bounded header, rather than consuming the diagram page.
@@ -1085,37 +1081,58 @@
                 var pageHeight = batch.bottom - batch.top + 24;
                 var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 ' + pageWidth + ' ' + pageHeight,
                     width: pageWidth, height: pageHeight, role: 'img', 'aria-label': heading.textContent});
-                var included = new Set(batch.nodes);
-                batch.nodes.forEach(function (node) {
-                    if (included.has(node.parent)) {
-                        decisionSvgElement(doc, svg, 'path', {d: 'M' + (node.parent.box.right + offsetX) + ',' + (node.parent.x + offsetY) + 'H' + (node.y - 10 + offsetX) + 'V' + (node.x + offsetY),
-                            fill: 'none', stroke: '#64748b', 'stroke-width': decisionPrintLinkWidth(node, layout.scores, layout.rankMap)});
-                    } else if (node.parent && node.parent.data.code !== '__root__') {
-                        // A continued edge keeps its original weight beside the page reference.
-                        decisionSvgElement(doc, svg, 'path', {d: 'M' + (node.y + offsetX - 20) + ',' + (node.x + offsetY) + 'H' + (node.y + offsetX - 10),
-                            'data-parent-page': nodePage[node.parent.data.code], fill: 'none', stroke: '#64748b',
-                            'stroke-width': decisionPrintLinkWidth(node, layout.scores, layout.rankMap)});
-                    }
-                });
-                batch.nodes.forEach(function (node) {
-                    var box = {left: node.box.left + offsetX, right: node.box.right + offsetX, top: node.box.top + offsetY, bottom: node.box.bottom + offsetY};
-                    var group = decisionSvgElement(doc, svg, 'g', {'data-print-node': node.fragment ? '' : node.data.code, 'data-print-fragment': node.data.code, 'data-occupied-bounds': JSON.stringify(box)});
-                    decisionSvgElement(doc, group, 'rect', {class: 'decision-print-card', x: box.left + 1, y: box.top + 1,
-                        width: box.right - box.left - 2, height: box.bottom - box.top - 2, rx: 6, fill: '#FFFFFF', stroke: '#334155', 'stroke-width': 2});
-                    decisionSvgElement(doc, group, 'circle', {cx: node.y + offsetX, cy: node.x + offsetY, r: 7, fill: '#fff', stroke: '#334155', 'stroke-width': 1.5});
-                    node.lines.forEach(function (line, lineIndex) {
-                        decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.top + 16 + lineIndex * 20, fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
-                    });
-                    if (node.parent && node.parent.data.code !== '__root__') {
-                        decisionLines(t('views.diagram.printParent', node.parent.data.code, nodePage[node.parent.data.code]), layout.measure, layout.textWidth).forEach(function (line, index) {
-                            decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.bottom - node.contextHeight + 20 + index * 20, fill: '#334155', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
-                        });
-                    }
-                });
+                drawDecisionPrintNodes(doc, svg, batch.nodes, layout, offsetX, offsetY, nodePage);
                 doc.body.appendChild(page); pages.push(page);
             });
         });
         return pages;
+    }
+
+    function drawDecisionPrintNodes(doc, svg, nodes, layout, offsetX, offsetY, nodePage) {
+        var included = new Set(nodes);
+        nodes.forEach(function (node) {
+            if (included.has(node.parent)) {
+                decisionSvgElement(doc, svg, 'path', {d: 'M' + (node.parent.box.right + offsetX) + ',' + (node.parent.x + offsetY) + 'H' + (node.y - 10 + offsetX) + 'V' + (node.x + offsetY),
+                    fill: 'none', stroke: '#64748b', 'stroke-width': decisionPrintLinkWidth(node, layout.scores, layout.rankMap)});
+            } else if (nodePage && node.parent && node.parent.data.code !== '__root__') {
+                // A continued edge keeps its original weight beside the page reference.
+                decisionSvgElement(doc, svg, 'path', {d: 'M' + (node.y + offsetX - 20) + ',' + (node.x + offsetY) + 'H' + (node.y + offsetX - 10),
+                    'data-parent-page': nodePage[node.parent.data.code], fill: 'none', stroke: '#64748b',
+                    'stroke-width': decisionPrintLinkWidth(node, layout.scores, layout.rankMap)});
+            }
+        });
+        nodes.forEach(function (node) {
+            var box = {left: node.box.left + offsetX, right: node.box.right + offsetX, top: node.box.top + offsetY, bottom: node.box.bottom + offsetY};
+            var group = decisionSvgElement(doc, svg, 'g', {'data-print-node': node.fragment ? '' : node.data.code, 'data-print-fragment': node.data.code, 'data-occupied-bounds': JSON.stringify(box)});
+            decisionSvgElement(doc, group, 'rect', {class: 'decision-print-card', x: box.left + 1, y: box.top + 1,
+                width: box.right - box.left - 2, height: box.bottom - box.top - 2, rx: 6, fill: '#FFFFFF', stroke: '#334155', 'stroke-width': 2});
+            decisionSvgElement(doc, group, 'circle', {cx: node.y + offsetX, cy: node.x + offsetY, r: 7, fill: '#fff', stroke: '#334155', 'stroke-width': 1.5});
+            node.lines.forEach(function (line, lineIndex) {
+                decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.top + 16 + lineIndex * 20, fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+            });
+            if (nodePage && node.parent && node.parent.data.code !== '__root__') {
+                decisionLines(t('views.diagram.printParent', node.parent.data.code, nodePage[node.parent.data.code]), layout.measure, layout.textWidth).forEach(function (line, index) {
+                    decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.bottom - node.contextHeight + 20 + index * 20, fill: '#334155', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+                });
+            }
+        });
+    }
+
+    function buildDecisionPrintSheet(layout, doc) {
+        var page = doc.createElement('section'); page.className = 'diagram-print-page decision-print-page';
+        var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg',
+            width: layout.width, height: layout.height, viewBox: '0 0 ' + layout.width + ' ' + layout.height,
+            role: 'img', 'aria-label': t('views.diagram.printTitle')});
+        layout.panels.forEach(function (panel) {
+            var group = decisionSvgElement(doc, svg, 'g', {'data-taxonomy-panel': panel.area.code});
+            panel.lines.forEach(function (line, index) {
+                decisionSvgElement(doc, group, 'text', {x: 16, y: panel.top + 16 + index * 20,
+                    fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+            });
+            drawDecisionPrintNodes(doc, group, panel.nodes, layout, 0, 0);
+        });
+        doc.body.appendChild(page);
+        return {width: layout.width, height: layout.height};
     }
 
     function decisionPrintLinkWidth(node, scores, rankMap) {
@@ -1124,7 +1141,25 @@
         return value > 0 ? Math.max(2, Math.min(4, 2 + value / 50)) : 1;
     }
 
-    function printDecisionDiagram(layout, container) {
+    function installDiagramPrintControls(container, print) {
+        var toolbar = container.querySelector('.tax-diagram-controls');
+        var mode = document.createElement('select');
+        mode.className = 'form-select form-select-sm tax-diagram-print-mode';
+        mode.setAttribute('aria-label', t('views.diagram.printMode'));
+        [['pages', 'views.diagram.printPages'], ['single', 'views.diagram.printSingle']].forEach(function (entry) {
+            var option = document.createElement('option'); option.value = entry[0]; option.textContent = t(entry[1]); mode.appendChild(option);
+        });
+        mode.value = container._taxPrintMode || 'pages';
+        mode.addEventListener('change', function () { container._taxPrintMode = mode.value; });
+        var button = document.createElement('button'); button.type = 'button';
+        button.className = 'btn btn-sm btn-outline-secondary tax-diagram-print-button';
+        button.textContent = t('views.diagram.print');
+        button.addEventListener('click', function () { print(mode.value); });
+        toolbar.insertBefore(mode, toolbar.querySelector('.tax-diagram-hint'));
+        toolbar.insertBefore(button, toolbar.querySelector('.tax-diagram-hint'));
+    }
+
+    function printDiagram(container, mode, titleKey, build) {
         // Open synchronously in the user gesture so normal popup policies can allow it.
         var popup = window.open('', '_blank');
         if (!popup) {
@@ -1133,18 +1168,55 @@
             message.textContent = t('views.diagram.printBlocked'); return;
         }
         var doc = popup.document;
+        doc.head.replaceChildren(); doc.body.replaceChildren();
         doc.documentElement.lang = document.documentElement.lang || 'en';
         var charset = doc.createElement('meta'); charset.setAttribute('charset', 'utf-8');
         doc.head.appendChild(charset);
-        doc.title = t('views.diagram.printTitle');
+        doc.title = t(titleKey);
+        var single = mode === 'single';
+        var size = build(doc, single);
+        // CSS pixels preserve the measured text size; add the 20mm page margins without scaling the diagram.
+        var pageSize = single ? Math.ceil(size.width + 76) + 'px ' + Math.ceil(size.height + 76) + 'px' : 'A4 landscape';
         var style = doc.createElement('style');
-        style.textContent = '@page{size:A4 landscape;margin:10mm}html,body{margin:0;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif}.decision-print-page{box-sizing:border-box;width:1040px;break-after:page;page-break-after:always;padding:0}.decision-print-page:last-child{break-after:auto;page-break-after:auto}.decision-print-page svg{display:block;max-width:100%;height:auto}h2{font-weight:600}@media screen{body{padding:20px}.decision-print-page{border-bottom:1px solid #ccc;margin-bottom:24px}}';
+        style.textContent = '@page{size:' + pageSize + ';margin:10mm}html,body{margin:0;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif}.diagram-print-page{box-sizing:border-box;width:'
+            + (single ? Math.ceil(size.width) : 1040) + 'px;break-after:page;page-break-after:always;padding:0}.diagram-print-page:last-child{break-after:auto;page-break-after:auto}.diagram-print-page>svg{display:block;max-width:100%;height:auto}h2{font-weight:600}@media screen{body{padding:20px}.diagram-print-page{border-bottom:1px solid #ccc;margin-bottom:24px}}';
         doc.head.appendChild(style);
-        buildDecisionPrintPages(layout, doc);
+        var status = container.querySelector('.decision-print-status');
+        if (status) { status.remove(); }
         popup.addEventListener('afterprint', function () { popup.close(); }, {once: true});
         popup.focus();
         // Let the new DOM and fonts settle; cancellation affects only this disposable window.
         popup.requestAnimationFrame(function () { popup.requestAnimationFrame(function () { if (!popup.closed) { popup.print(); } }); });
+    }
+
+    function printDecisionDiagram(layout, container, mode) {
+        printDiagram(container, mode, 'views.diagram.printTitle', function (doc, single) {
+            return single ? buildDecisionPrintSheet(layout, doc) : buildDecisionPrintPages(layout, doc);
+        });
+    }
+
+    function printTreeDiagram(data, scores, container, mode) {
+        printDiagram(container, mode, 'views.diagram.printTreeTitle', function (doc, single) {
+            var exported = doc.importNode(buildExportSVG(data, scores, {expandAll: true}), true);
+            var width = Number(exported.getAttribute('width')), height = Number(exported.getAttribute('height'));
+            exported.id = 'taxonomy-print-tree';
+            for (var y = 0; y < height; y += single ? height : 620) {
+                for (var x = 0; x < width; x += single ? width : 1040) {
+                    var page = doc.createElement('section'); page.className = 'diagram-print-page tree-print-page';
+                    if (single) { page.appendChild(exported); }
+                    else {
+                        var tileWidth = Math.min(1040, width - x), tileHeight = Math.min(620, height - y);
+                        var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg', width: tileWidth, height: tileHeight,
+                            viewBox: x + ' ' + y + ' ' + tileWidth + ' ' + tileHeight});
+                        // Keep one vector source for all A4 tiles, including very large Canvas taxonomies.
+                        if (!x && !y) { decisionSvgElement(doc, svg, 'defs', {}).appendChild(exported); }
+                        decisionSvgElement(doc, svg, 'use', {href: '#taxonomy-print-tree'});
+                    }
+                    doc.body.appendChild(page);
+                }
+            }
+            return {width: width, height: height};
+        });
     }
 
     function renderDecisionMap(container, data, scores) {
@@ -1292,12 +1364,7 @@
             .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); });
         svg.call(decisionZoom);
         installDiagramZoomControls(container, svg.node(), svg, decisionZoom, function () { return zoomLayer.node().getBBox(); });
-        var printButton = document.createElement('button'); printButton.type = 'button';
-        printButton.className = 'btn btn-sm btn-outline-secondary';
-        printButton.textContent = t('views.diagram.print');
-        printButton.addEventListener('click', function () { printDecisionDiagram(printLayout, container); });
-        var toolbar = container.querySelector('.tax-diagram-controls');
-        toolbar.insertBefore(printButton, toolbar.querySelector('.tax-diagram-hint'));
+        installDiagramPrintControls(container, function (mode) { printDecisionDiagram(printLayout, container, mode); });
         var decisionNavigation = createDiagramNavigation(container, svg.node(), {
             scores: scores, activate: function (node) { toggleDiagramBranch(node, dmUpdate); }
         });
@@ -1904,6 +1971,7 @@
             var dpr = window.devicePixelRatio || 1;
             return {x: 0, y: 0, width: canvas.width / dpr, height: canvas.height / dpr};
         }, true);
+        installDiagramPrintControls(container, function (mode) { printTreeDiagram(data, scores, container, mode); });
 
         // Initial layout and draw
         root.x0 = 0;
@@ -2170,6 +2238,7 @@
     // ── Export ─────────────────────────────────────────────────────────────────
     window.TaxonomyViews = {
         renderSunburst: renderSunburst,
+        filterRelevance: filterRelevance,
         filterZeroRelevance: filterZeroRelevance,
         renderTreeDiagram: renderTreeDiagram,
         renderTreeCanvas: renderTreeCanvas,

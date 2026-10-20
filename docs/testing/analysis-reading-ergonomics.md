@@ -12,10 +12,13 @@ Summary items are native keyboard-actionable selection buttons. Selecting an ite
 keeps Summary and exposes text details. Only the explicit “Show in taxonomy tree”
 action changes view and expands/focuses the actual catalogue path.
 
-Sunburst has an optional “Hide zero relevance” checkbox. This is an immutable
-projection, not a change to catalogue, scores or architecture. Only explicit
-numeric zeroes are hidden. Unknown/missing evaluations, pending product-family
-measurements and ancestors needed to reach retained descendants stay visible.
+Sunburst, Tree and Decision share a relevance selector. “Hide zero relevance”
+preserves the original immutable projection: only explicit numeric zeroes are
+hidden. Unknown/missing evaluations, pending product-family measurements and
+ancestors needed to reach retained descendants stay visible. “Only scores > 0%”
+retains only finite positive scores and their original ancestor paths. The
+projected data also feeds full diagram printing; catalogue, scores and saved
+architecture remain unchanged. An empty selected taxonomy does not switch roots.
 An empty projection explains how to show the catalogue again. The pre-existing
 zoom handler no longer shadows the translation function with its D3 transition.
 Filtering still recomputes the Sunburst layout; zoom continuity during filtering

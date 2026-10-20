@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', import.meta.url), 'utf8');
+const statisticsSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-result-statistics.js', import.meta.url), 'utf8');
 const clientSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8');
 const routingSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js', import.meta.url), 'utf8');
@@ -71,7 +72,7 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         }
     };
     const sandbox = vm.createContext({ window, document, AbortController, console,
-        URL, Request, Headers, Response, CustomEvent, setTimeout: schedule, clearTimeout: unschedule });
+        URL, Request, Headers, Response, CustomEvent, queueMicrotask, setTimeout: schedule, clearTimeout: unschedule });
     vm.runInContext(clientSource, sandbox);
     vm.runInContext(apiSource, sandbox);
     vm.runInContext(routingSource, sandbox);
@@ -91,7 +92,11 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         await entry[1].fn();
         await new Promise(resolve => setImmediate(resolve));
     }
-    return { window, document, scope, timers, calls, snapshots, unavailable, authFailures, elements, streams, results, api: window.TaxonomyAnalysisSessionApi, monitor, step };
+    function statistics(state) {
+        window.TaxonomyState = state;
+        vm.runInContext(statisticsSource, sandbox);
+    }
+    return { window, document, scope, timers, calls, snapshots, unavailable, authFailures, elements, streams, results, api: window.TaxonomyAnalysisSessionApi, monitor, step, statistics };
 }
 function descendants(element) { return element.children.flatMap(child => [child, ...descendants(child)]); }
 function workBar(fixture, kind, root = '') {
@@ -632,8 +637,53 @@ test('relations have overall and target bars based on completed searches indepen
         const label = f.elements.get(bar.getAttribute('aria-labelledby'))?.textContent;
         assert.match(label, root ? new RegExp(root) : /Relationship search/);
     }
-    assert.match(f.elements.get('analysisWorkProgress').textContent, /99 relationship proposals checked/);
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /source nodes assessed/);
+    assert.match(f.elements.get('analysisWorkProgress').textContent, /99 relationship evidence records verified by AI/);
     assert.match(f.elements.get('analysisWorkProgress').textContent, /search tasks.*relationships found/i);
+    f.monitor.stop();
+});
+
+test('result inventory counts unique draft edges and nodes without connections, independently of evidence records', async () => {
+    const f = fixture(async () => response(snapshot()), 'workspace-a', true);
+    const state = {
+        taxonomyData: [],
+        currentRelationSearchReport: {progress: {verifiedRelations: 15}},
+        currentArchView: {
+            includedElements: ['A', 'B', 'C', 'C'].map(nodeCode => ({nodeCode})),
+            includedRelationships: [
+                {sourceCode: 'A', targetCode: 'B', relationType: 'USES', requirementEvidence: [{}, {}]},
+                {sourceCode: 'A', targetCode: 'B', relationType: 'USES', requirementEvidence: [{}]},
+                {sourceCode: 'A', targetCode: 'B', relationType: 'DEPENDS_ON', origin: 'MANUAL'},
+                {sourceCode: 'C', targetCode: 'omitted', relationType: 'USES', origin: 'LLM_SUPPORTED'}
+            ]
+        }
+    };
+    const before = JSON.stringify(state);
+    f.statistics(state);
+    await new Promise(resolve => setImmediate(resolve));
+    const line = f.elements.get('taxonomyResultStatistics');
+    assert.match(line.textContent, /Architecture draft: 3 nodes/);
+    assert.match(line.textContent, /Distinct relationships: 2 · of these AI proposals: 1/);
+    assert.match(line.textContent, /Nodes without a displayed connection: 1/);
+    assert.match(line.textContent, /Human confirmation: not recorded/);
+    assert.equal(JSON.stringify(state), before, 'Display counts must not modify the saved result');
+
+    state.currentArchView = null;
+    f.document.dispatchEvent(new CustomEvent('taxonomy:analysis-invalidated'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(line.hidden, true, 'Invalidated architecture counts must disappear');
+    f.monitor.stop();
+});
+
+test('German result inventory retains isolated nodes when the architecture has no relationships', async () => {
+    const f = fixture(async () => response(snapshot()), 'workspace-a', true);
+    f.document.documentElement.lang = 'de';
+    f.statistics({currentArchView: {includedElements: [{nodeCode: 'A'}, {nodeCode: 'B'}], includedRelationships: []}});
+    await new Promise(resolve => setImmediate(resolve));
+    const line = f.elements.get('taxonomyResultStatistics');
+    assert.match(line.textContent, /Architekturentwurf: 2 Knoten/);
+    assert.match(line.textContent, /Eindeutige Beziehungen: 0/);
+    assert.match(line.textContent, /Knoten ohne dargestellte Verbindung: 2/);
     f.monitor.stop();
 });
 

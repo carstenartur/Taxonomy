@@ -773,8 +773,11 @@
                 work.append(node('div', text('Fortschritt zählt Suchaufträge, nicht gefundene Beziehungen.',
                     'Progress counts search tasks, not relationships found.'), 'analysis-work-note'));
                 work.append(node('div', r.assessedSources + text(' von ', ' of ') + r.totalSources
-                    + text(' Quellenbeiträge bewertet · ', ' source contributions assessed · ')
-                    + r.verifiedRelations + text(' geprüfte Relationsvorschläge', ' relationship proposals checked')));
+                    + text(' Quellknoten bewertet · ', ' source nodes assessed · ')
+                    + r.verifiedRelations + text(' durch KI verifizierte Beziehungsnachweise', ' relationship evidence records verified by AI')));
+                work.append(node('div', text(
+                    'Mehrere Nachweise können dieselbe Beziehung belegen. Die Vorschlagsliste enthält separat gespeicherte Katalogvorschläge.',
+                    'Several evidence records may support the same relationship. The proposal list contains separately saved catalogue proposals.'), 'analysis-work-note'));
                 if (r.current) {
                     var current = node('div', undefined, 'analysis-current-work');
                     current.append(node('strong', text('Aktuell: ', 'Current: ')), node('span', currentRelation(r)));

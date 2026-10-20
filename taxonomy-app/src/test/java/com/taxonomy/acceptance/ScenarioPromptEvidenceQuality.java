@@ -14,6 +14,7 @@ public final class ScenarioPromptEvidenceQuality {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Pattern KEYS = Pattern.compile("EXACTLY these keys: ([^\\r\\n]+)");
     private static final String ROOT_PROMPT = "You assess the independent relevance of the offered C3 taxonomy root";
+    private static final String ROOT_CONTEXT = "\nRoot catalogue context (root-catalogue-context-v1; immediate source children, not additional candidates):\n";
     private static final String FULL_CONTEXT = "\nSource hierarchy context (ancestors, not additional candidates):\n";
     private static final String COMPACT_CONTEXT = "\nAssessed source hierarchy (relation-source-context-v1; ancestor IDs and names are context, not additional candidates):\n";
     private static final int NORMAL_CALLS = 24, NORMAL_BATCH = 3, NORMAL_INPUT = 16_000;
@@ -211,7 +212,7 @@ public final class ScenarioPromptEvidenceQuality {
 
     private String classificationBlock(List<CatalogueNode> candidates) {
         var groups = new LinkedHashMap<String, List<CatalogueNode>>();
-        for (CatalogueNode candidate : candidates) groups.computeIfAbsent(context(candidate, false), ignored -> new ArrayList<>()).add(candidate);
+        for (CatalogueNode candidate : candidates) groups.computeIfAbsent(classificationContext(candidate), ignored -> new ArrayList<>()).add(candidate);
         var result = new StringBuilder();
         for (var group : groups.entrySet()) {
             if (!group.getKey().isBlank()) result.append(group.getKey()).append("\nNodes to evaluate (only the following candidates):\n");
@@ -222,6 +223,20 @@ public final class ScenarioPromptEvidenceQuality {
             }
         }
         return result.toString();
+    }
+
+    private String classificationContext(CatalogueNode node) {
+        if (!node.parent().isBlank()) return context(node, false);
+        List<CatalogueNode> sources = nodes.values().stream()
+                .filter(child -> child.parent().equals(node.code()) && !overlayParents.contains(child.code())).toList();
+        if (sources.isEmpty()) return "";
+        var text = new StringBuilder(ROOT_CONTEXT);
+        for (CatalogueNode source : sources) {
+            text.append("  ").append(source.code()).append(": ").append(source.name());
+            if (!source.description().isBlank()) text.append(" - ").append(source.description());
+            text.append('\n');
+        }
+        return text.toString();
     }
 
     private String context(CatalogueNode node, boolean compact) {
