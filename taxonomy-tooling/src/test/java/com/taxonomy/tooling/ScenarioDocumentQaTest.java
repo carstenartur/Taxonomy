@@ -3,11 +3,114 @@ package com.taxonomy.tooling;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ScenarioDocumentQaTest {
+    @Test
+    void completeCapturedFloodFixtureSelectsItsReviewedDecisionPageBaseline() throws Exception {
+        var run = completeFixture("run");
+        var decision = completeFixture("decision");
+        var architecture = completeFixture("architecture");
+
+        assertThat(ScenarioDocumentQa.pageProfile(run, decision, architecture).decisionPages()).isEqualTo(168);
+    }
+
+    @Test
+    void completeProfileRetainsAnExplicitUpperBoundAndAllRenderedContentGates() throws Exception {
+        var profile = completeProfile();
+        assertThat(ScenarioDocumentQa.checkText("decision.docx", xml(page("Source").repeat(168)), "",
+                List.of("Source"), true, profile)).containsEntry("pages", 168);
+        assertThatThrownBy(() -> ScenarioDocumentQa.checkText("decision.docx", xml(page("Source").repeat(169)), "",
+                List.of("Source"), true, profile)).hasMessageContaining("limit 168");
+        assertThatThrownBy(() -> ScenarioDocumentQa.checkText("decision.docx", xml(page("")), "",
+                List.of("Running header"), true, profile)).hasMessageContaining("empty page bodies [1]");
+        assertThatThrownBy(() -> ScenarioDocumentQa.checkText("decision.docx", xml(page("Source")), "",
+                List.of("A missing source sentence"), true, profile)).hasMessageContaining("missing text");
+        assertThatThrownBy(() -> ScenarioDocumentQa.checkText("decision.docx",
+                xml(page("Source Decision result") + page("Explanation")), "", List.of("Source"), true, profile))
+                .hasMessageContaining("orphan rationale heading on page 1");
+        assertThatThrownBy(() -> ScenarioDocumentQa.checkText("decision.docx",
+                "<!DOCTYPE html [<!ENTITY secret SYSTEM 'file:///does-not-exist'>]>" + xml(page("Source")), "",
+                List.of("Source"), true, profile)).isInstanceOf(java.io.IOException.class);
+        assertThatThrownBy(() -> ScenarioDocumentQa.checkText("reformulation-revision.docx", xml(page("Source").repeat(29)), "",
+                List.of("Source"), true, profile)).hasMessageContaining("limit 28");
+        assertThatThrownBy(() -> ScenarioDocumentQa.checkText("reformulation-adoption.docx", xml(page("Source").repeat(30)), "",
+                List.of("Source"), true, profile)).hasMessageContaining("limit 29");
+    }
+
+    @Test
+    void completeCapturedArchitectureReportRetainsItsMeasuredStandaloneBound() throws Exception {
+        var profile = completeProfile();
+        assertThat(profile.architecturePages()).isEqualTo(54);
+        assertThat(ScenarioDocumentQa.checkText("report.docx", xml(page("Source").repeat(54)), "",
+                List.of("Source"), true, profile)).containsEntry("pages", 54);
+        assertThatThrownBy(() -> ScenarioDocumentQa.checkText("report.docx", xml(page("Source").repeat(55)), "",
+                List.of("Source"), true, profile)).hasMessageContaining("limit 54");
+    }
+
+    @Test
+    void absentOrUnreviewedRunIdentityCannotRaiseLegacyPageLimits() throws Exception {
+        var decision = completeFixture("decision");
+        var architecture = completeFixture("architecture");
+        var wrongScenario = completeFixture("run");
+        wrongScenario.put("scenario", "another-scenario");
+        var unknownFixture = completeFixture("run");
+        unknownFixture.put("fixtureSha256", "0".repeat(64));
+        for (var run : List.of(Map.of(), wrongScenario, unknownFixture)) {
+            var profile = ScenarioDocumentQa.pageProfile(run, decision, architecture);
+            assertThat(profile.decisionPages()).isEqualTo(74);
+            assertThat(profile.architecturePages()).isEqualTo(12);
+            assertThatThrownBy(() -> ScenarioDocumentQa.checkText("decision.docx", xml(page("Source").repeat(75)), "",
+                    List.of("Source"), true, profile)).hasMessageContaining("limit 74");
+            assertThatThrownBy(() -> ScenarioDocumentQa.checkText("report.docx", xml(page("Source").repeat(13)), "",
+                    List.of("Source"), true, profile)).hasMessageContaining("limit 12");
+        }
+    }
+
+    @Test
+    void reviewedRunWithChangedRequirementCannotBorrowTheCompleteProfile() throws Exception {
+        var run = completeFixture("run");
+        for (String changed : List.of("decision", "architecture")) {
+            var decision = completeFixture("decision");
+            var architecture = completeFixture("architecture");
+            if (changed.equals("decision")) decision.put("requirement", "An unrelated requirement");
+            else architecture.put("requirementText", "An unrelated requirement");
+            assertThatThrownBy(() -> ScenarioDocumentQa.pageProfile(run, decision, architecture))
+                    .as(changed).hasMessageContaining("corpus mismatch: requirement");
+        }
+    }
+
+    @Test
+    void reviewedRunWithChangedCorpusInventoryFailsClosedInsteadOfUsingHigherLimits() throws Exception {
+        var run = completeFixture("run");
+        for (String changed : List.of("nodes", "edges", "scopes", "chapters", "rows", "reasons")) {
+            var decision = completeFixture("decision");
+            var architecture = completeFixture("architecture");
+            var diagram = mutableObject(architecture.get("diagram"));
+            var scope = mutableObject(decision.get("scope"));
+            switch (changed) {
+                case "nodes", "edges" -> mutableArray(diagram.get(changed)).removeFirst();
+                case "scopes" -> {
+                    var edge = mutableObject(mutableArray(diagram.get("edges")).getFirst());
+                    var metadata = mutableObject(edge.get("metadata"));
+                    mutableArray(metadata.get("requirementEvidence")).removeFirst();
+                }
+                case "chapters" -> mutableArray(decision.get("chapters")).removeFirst();
+                case "rows" -> mutableArray(mutableObject(scope.get("decisionTree")).get("rows")).removeFirst();
+                case "reasons" -> {
+                    var reasons = mutableObject(scope.get("recordedReasons"));
+                    reasons.remove(reasons.keySet().iterator().next());
+                }
+                default -> throw new AssertionError(changed);
+            }
+            assertThatThrownBy(() -> ScenarioDocumentQa.pageProfile(run, decision, architecture))
+                    .as(changed).hasMessageContaining("corpus mismatch: graph, scoped evidence or decision inventory");
+        }
+    }
+
     @Test
     void reformulationExportsHaveMeasuredBudgetsWithNoEmptyBodyAllowance() throws Exception {
         assertThat(ScenarioDocumentQa.checkText("reformulation-revision.docx", xml(page("Source").repeat(25)), "", List.of("Source"), true))
@@ -194,6 +297,39 @@ class ScenarioDocumentQaTest {
 
     private static String xml(String pages) {
         return "<html xmlns='http://www.w3.org/1999/xhtml'><body><doc>" + pages + "</doc></body></html>";
+    }
+
+    private static ScenarioDocumentQa.PageProfile completeProfile() throws Exception {
+        return ScenarioDocumentQa.pageProfile(completeFixture("run"), completeFixture("decision"), completeFixture("architecture"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mutableObject(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> mutableArray(Object value) {
+        return (List<Object>) value;
+    }
+
+    private static Map<String, Object> completeFixture(String name) throws Exception {
+        String expectedSha256 = switch (name) {
+            case "run" -> "3c87bbfebd5aef138246398f8231d5f8249750d0dd550d771e803118f15ef4c7";
+            case "decision" -> "99ae0aa3be022e35ee888b1ad9c26caa5a5c85d6949a6501086feea47c67237a";
+            case "architecture" -> "f69ed7cb262e2a208e6f5d9f832d6c34c73d614db353d5849c3ff6698cc4c981";
+            default -> throw new AssertionError(name);
+        };
+        try (var resource = ScenarioDocumentQaTest.class.getResourceAsStream(
+                "/scenario-documents/complete-flood-v1/" + name + ".json.gz")) {
+            assertThat(resource).as("complete captured %s fixture", name).isNotNull();
+            try (var input = new java.util.zip.GZIPInputStream(resource)) {
+                byte[] bytes = input.readAllBytes();
+                assertThat(java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes)))
+                        .as("unmodified captured %s source", name).isEqualTo(expectedSha256);
+                return FlatJson.parseObject(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
     }
 
     private static String page(String body) {

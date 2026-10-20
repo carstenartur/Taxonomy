@@ -46,6 +46,7 @@ com.taxonomy.portfolio.model.ProjectSolution	portfolio	PORTABLE_PRIMARY	Explicit
 com.taxonomy.portfolio.model.RequirementAnalysisJob	portfolio	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
 com.taxonomy.portfolio.model.RequirementAnalysisJobItem	portfolio	PORTABLE_PRIMARY	Durable work/status retained; restore interrupted, never restore leases or automatically start external work
 com.taxonomy.portfolio.model.RequirementAnalysisSnapshot	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
+com.taxonomy.portfolio.model.SnapshotReference	portfolio	REBUILDABLE	Read-only same-table identity view; snapshot rows are captured and restored once through RequirementAnalysisSnapshot
 com.taxonomy.portfolio.model.RequirementElementMapping	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.RequirementRelationMapping	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys
 com.taxonomy.portfolio.model.RequirementSolutionLink	portfolio	PORTABLE_PRIMARY	Explicit versioned records; preserve business IDs and map technical foreign keys

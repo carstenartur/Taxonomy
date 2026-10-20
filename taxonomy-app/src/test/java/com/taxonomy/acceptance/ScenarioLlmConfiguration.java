@@ -23,7 +23,7 @@ public class ScenarioLlmConfiguration {
         var playback = environment.getProperty("scenario.reformulation", Boolean.class, false)
                 ? new ScenarioLlmPlayback(ReformulationScenarioCorpus.scenario(environment.getProperty("scenario.reformulation-case", "flood"))) : ScenarioLlmPlayback.flood();
         var mapper = new ObjectMapper();
-        var server = MockRestServiceServer.bindTo(restTemplate).build();
+        var server = MockRestServiceServer.bindTo(restTemplate).build(new ScenarioRequestExpectationManager());
         server.expect(ExpectedCount.manyTimes(), request -> { }).andRespond(request -> {
             if (!request.getURI().toString().equals(URL) || request.getMethod() != HttpMethod.POST) {
                 playback.reject("Unexpected remote request; no network fallback permitted");

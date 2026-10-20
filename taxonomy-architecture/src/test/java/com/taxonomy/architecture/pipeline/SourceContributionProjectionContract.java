@@ -95,6 +95,41 @@ public final class SourceContributionProjectionContract {
                 "Adding isolated proposals must not displace an already verified edge");
         check(context.getElements().stream().noneMatch(element -> element.getNodeCode().equals("isolated")), "No hidden cap overflow");
     }
+    public static void testRelatedElementRetainsAllScopedPartsWithoutChangingMembershipOrProvenance() {
+        Edge edge = EvidenceRelationProjectionContract.edge(Necessity.REQUIRED);
+        var first = edge.contribution();
+        var second = new Contribution(first.source(), "Disclose the supplementary scope", "Supplementary scope.", "only in the selected view");
+        var source = new SourceAssessment(first.source(), List.of(first, second), "Assessed separately", "");
+        var evidence = report(List.of(source), List.of(edge));
+        var context = project(evidence, 2);
+        check(context.getElements().size() == 2 && context.getRelationships().size() == 1, "Additional parts cannot add membership or edges");
+        var element = context.getElements().stream().filter(value -> value.getNodeCode().equals(first.source().id())).findFirst().orElseThrow();
+        String reason = element.getPresenceReason();
+        for (var part : source.contributions()) {
+            check(reason.contains(part.text()) && reason.contains(part.quote()) && reason.contains(part.condition()), "Every scoped part retains its quote and condition");
+            check(reason.indexOf(part.text()) == reason.lastIndexOf(part.text()), "Do not duplicate the first edge contribution");
+        }
+        check(element.getOrigin() == NodeOrigin.RELATION_EVIDENCE && element.isSelectedForImpact(), "Existing verified-edge provenance is unchanged");
+        check(element.getRelevance() == .5 && element.getScoreDetail() == null, "No score or assessment is invented");
+        check(context.getView().getRelationSearchReport().equals(evidence), "The full immutable report remains unchanged");
+    }
+    public static void testTruncatedRelatedPartsCannotLoseTheirConditionWhileKeepingTheirClaim() {
+        Edge edge = EvidenceRelationProjectionContract.edge(Necessity.REQUIRED);
+        var first = new Contribution(edge.contribution().source(), "😀".repeat(500), "First quote.", "");
+        var conditional = new Contribution(first.source(), "A conditional local disclosure", "😀".repeat(450), "only when explicitly selected by the user");
+        var source = new SourceAssessment(first.source(), List.of(first, conditional), "Full source evidence", "");
+        var evidence = report(List.of(source), List.of(edge));
+        var element = project(evidence, 2).getElements().stream().filter(value -> value.getNodeCode().equals(first.source().id())).findFirst().orElseThrow();
+        String reason = element.getPresenceReason();
+        check(reason.length() <= 1800 && reason.endsWith("[full evidence in analysis report]"), "Keep the existing bounded-summary policy and visible full-report pointer");
+        check(!reason.contains(conditional.text()) || reason.contains(conditional.condition()), "A retained conditional claim cannot appear without its condition");
+        for (int i = 0; i < reason.length(); i++) {
+            char value = reason.charAt(i);
+            if (Character.isHighSurrogate(value)) check(++i < reason.length() && Character.isLowSurrogate(reason.charAt(i)), "Do not split a Unicode scalar");
+            else check(!Character.isLowSurrogate(value), "Do not retain an orphan low surrogate");
+        }
+        check(evidence.sources().getFirst().contributions().get(1).equals(conditional), "The original complete part is unchanged");
+    }
     private static SourceAssessment assessment(Node node, Contribution part) {
         return new SourceAssessment(node, List.of(part), "Explicit original contribution", "");
     }

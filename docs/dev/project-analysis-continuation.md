@@ -102,7 +102,10 @@ analysis payload, bound to snapshot, job, requirement, version, project and scop
 The complete `AnalysisResult` parser and budget, warning and clarification checks
 still apply. The durable store still locks, expires and flushes the run before
 checking its revision and question states. Prepare and Begin keep their existing
-entity reads, locks and renewed authorization checks.
+entity locks and renewed authorization checks, while reading snapshot provenance
+through its immutable identity view. All three paths parse the complete analysis
+directly from its scoped JDBC CLOB stream instead of materializing a second full
+payload String or loading the unrelated enrichment payloads.
 
 The actual HSQL regression reduced this GET from eighteen SELECTs, including
 three reads of every snapshot payload, to seven SELECTs with exactly one analysis
@@ -115,8 +118,49 @@ cases and the original byte-identical probe then passed privately. Exact SQL,
 commands and hashes are retained under `target/continuation-view-payload-regression`.
 
 A complete snapshot read selects its four payloads once and projects its element
-and relation mappings directly into the existing response records. Selecting a
-Copilot result reads only the analysis payload and mapping counts for each pass.
+and relation mappings directly into the existing response records. Each CLOB is
+parsed into its complete existing DTO while the transaction owns its locator;
+no intermediate full payload String is constructed. The parser drains the source
+before returning, so a late JDBC read failure cannot publish a partial read.
+Every acquired locator is released even if an earlier payload fails to open,
+parse or close. The database JSON format and all response fields remain unchanged.
+
+Large snapshot, continuation and selection CLOBs use standard JDBC ranges of at
+most 262,144 UTF-16 code units. This aligns one HSQL compressed part and bounds
+each returned byte/character array to a 512 KiB payload, avoiding its default
+1 MiB output arrays. Successful reads verify each range's declared length and
+observed EOF before closing its stream and opening the next. Surrogate code units pass
+through unchanged. A driver that explicitly rejects the first range with
+`SQLFeatureNotSupportedException` retains its ordinary stream; later failures
+remain failures. Existing parsers and transaction-owned locator cleanup apply to
+the complete document.
+
+Snapshot persistence passes the managed instance returned by the repository to
+both mapping inserts. Because snapshots have assigned IDs, `save` merges the
+new entity; continuing with the original instance makes Hibernate reread all four
+CLOBs to check whether the mapping's parent is transient. The real database
+regression permits the initial lookup of the new ID, rejects this second payload
+read, and verifies every payload field and the tenant-bound element and relation
+mappings after commit.
+
+Durable result serialization writes every field directly into the existing
+lossless UTF-16 frame through a bounded character writer. The common compressible
+path does not first construct an expanded JSON String. Small or incompressible
+values retain their exact plain JSON representation; the same decoded and stored
+limits still apply, and failed serialization cannot replace accepted evidence.
+The scenario HTTP client likewise parses complete JSON responses from the body
+stream, retaining its original request deadline, status checks and immutable
+snapshot comparisons. Binary export responses retain their complete byte checks.
+
+Catalogue authority and continuation signatures retain their existing SHA-256
+identities, including each field's four-byte UTF-8 length prefix. Catalogue JSON
+is serialized through the same configured character mapper into bounded counting
+and hashing streams, avoiding a full JSON String and UTF-8 byte array. Large
+String fields use a bounded encoder with the same unmatched-surrogate replacement
+as `String.getBytes`; ordinary provider prompts keep the small-array path. No
+catalogue, signature or completed-result cache is introduced.
+
+Selecting a Copilot result reads only the analysis payload and mapping counts for each pass.
 The payload is consumed through an explicit JDBC CLOB locator inside the existing
 read-only transaction, without first building a complete intermediate String.
 The same scoped SELECT computes both mapping counts from the current rows. Reader
@@ -195,6 +239,20 @@ allows both settings only before LOBs exist. The supported LOB block scales are
 1, 2, 4, 8, 16 and 32 KiB; the engine's default is 32 KiB. The explicit URL
 override is preserved even when it specifies a different block scale.
 
+The default MEM URL also sets `hsqldb.log_size=1` to enable automatic database
+checkpoints. HSQL memory databases otherwise keep obsolete LOB generations until
+a checkpoint, including old versions of an overwritten continuation result. The
+engine can then reuse those blocks while preserving every still-referenced
+immutable snapshot. The log-size setting triggers database storage maintenance;
+it does not increase the JVM heap or change analysis admission, provider budgets
+or evidence retention. Explicit database URLs and the file profile keep their
+configured settings.
+
+An actual HSQL 2.7.3 regression repeatedly commits large CLOB/BLOB replacements
+alongside checkpoint journal updates, checks bounded allocated LOB storage, and
+reopens all current and immutable historical payloads exactly. The regression
+does not issue a manual database checkpoint or force JVM garbage collection.
+
 A controlled Hibernate/HSQL comparison inserted 40 snapshots containing the same
 four actual scenario payloads, committed and cleared each session, and measured
 heap after collection. The additional retained heap was approximately 640.4 MiB
@@ -259,6 +317,12 @@ The existing counter does not include `node_codes`. A write that upgrades a
 legacy question changes both fields, its layout and the counter atomically.
 Accepted replay, status reads and state-only changes do not rewrite historical
 payloads. Existing legacy runs are not silently migrated or given a new budget.
+
+Corrective-question scans exclude terminal `SUCCESS` and `SUPERSEDED` history
+before evaluating the original eligible-state set. These redundant exclusions
+avoid HSQL's allocating temporary `IN`-table comparisons for terminal history;
+the eligible states, complete inputs, ownership checks and state transitions are
+unchanged.
 
 Portable analysis archives retain schema version 1 and contain the complete
 original plaintext prompt, original diagnostic JSON and legacy node array.

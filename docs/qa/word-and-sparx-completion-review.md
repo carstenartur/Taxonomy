@@ -61,6 +61,31 @@ detail pages. LibreOffice 24.2 pages from CI 35524367930 were also reviewed; the
 page hashes were checked with unchanged-dependency visual evidence reused. This is not
 Microsoft Visio certification; see [Visio evidence](visio-graphical-quality.json).
 
+## Complete Flood fixture pagination review — 2026-10-19
+
+The historical 74/12-page decision/standalone limits remain the defaults. They
+predate the complete scoped relationship provenance and are not universal Word
+document capacity limits. The retained 30-node/7-relation provenance regression
+remains unchanged; the completed Flood source has 50 nodes, 36 relations and 72
+scoped evidence records, plus 45 decision chapters, 298 tree rows and 298 recorded
+reasons. No renderer, evidence text or content/readability gate is changed.
+
+An explicit reviewed profile is selected only by scenario `flood-information-v1`,
+fixture SHA-256 `5fd17eddbdeb5232e45c294bc726f43c1aef3d3d0572dd16078a912cf64b8609`,
+requirement SHA-256 `a5546798b6117e9d66cc3c63ce316ae9985b980aa949df7669d3c28fb5d9d989`
+and the exact inventories above. A known source with changed inventories fails
+closed; other sources retain the historical limits. Gzipped captured run, decision
+and architecture JSON fixtures are checked against their decompressed original
+hashes in JUnit.
+
+The unchanged CI artifact from run 39296468148 renders its decision report to 165
+pages with LibreOffice 24.2, giving a 168-page bound. The same run's immutable
+standalone report renders to 52 pages locally with LibreOfficeDev 26.8, giving a
+54-page bound. These retain 3/2 pages of renderer variance. Merging requires fresh
+CI confirmation of the standalone/native render; local evidence does not establish
+Microsoft Word or Microsoft Visio acceptance. Existing frozen-source,
+complete-content, empty-body, orphan-heading and native relationship checks remain.
+
 ## Feasible #1075 slices now implemented
 
 The merged native foundation [PR 1089](https://github.com/carstenartur/Taxonomy/pull/1089)

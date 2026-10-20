@@ -135,12 +135,17 @@ public final class PortableRows {
     }
     /** Read LOB text through a bounded character stream; never allocate an unbounded driver String. */
     public static String text(ResultSet row, String column) throws SQLException, IOException {
+        return text(row, column, MAX_RECORD_BYTES / 2);
+    }
+    /** An owner may read a larger, explicitly bounded document before packing its portable field. */
+    public static String text(ResultSet row, String column, int maxCharacters) throws SQLException, IOException {
+        if (maxCharacters < 0) throw new IllegalArgumentException("Invalid portable text limit");
         try (Reader input = row.getCharacterStream(column)) {
             if (input == null) return null;
             var value = new StringBuilder(); var buffer = new char[8192];
             for (int count; (count = input.read(buffer)) != -1;) {
                 cancelled();
-                if (count > MAX_RECORD_BYTES / 2 - value.length()) throw new IOException("Portable text limit exceeded");
+                if (count > maxCharacters - value.length()) throw new IOException("Portable text limit exceeded");
                 value.append(buffer, 0, count);
             }
             return value.toString();

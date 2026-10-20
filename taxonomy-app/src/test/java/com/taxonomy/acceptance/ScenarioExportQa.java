@@ -201,10 +201,11 @@ public final class ScenarioExportQa {
         report.put("relationships", expected.edges().size());
         report.put("isolatedElements", isolated);
         report.put("architectureState", "GENERATED_CANDIDATE");
-        report.put("referenceReview", Map.of("decision", "ACCEPTED_AS_INTEGRATION_TEST_REFERENCE",
+        report.put("referenceReview", Map.of("decision", "SEPARATE_DOMAIN_ACCEPTANCE_REQUIRED",
                 "document", "docs/qa/scenario-reference-review.md", "productionApproval", false,
-                "remainingCoverage", List.of("F3 phone/email and subscription model", "F4 account management/deletion",
-                        "F5 timing/outage contracts", "A1 delivery/privacy/audit contracts")));
+                "reference", "scenarios/flood-quality-reference.json",
+                "requiredGates", List.of("classification-quality.json", "relation-quality.json",
+                        "architecture-quality.json", "integration-quality.json")));
         report.put("automaticChecks", List.of("ArchiMate semantic round trip", "Visio identity and endpoint parity",
                 "ZIP and manifest checksums", "SVG identity and scene bounds", "PDF text, provenance and minimum 7pt glyph size",
                 "DOCX/HTML/JSON report provenance", "All registered diagram adapters, including Sparx fresh-copy handoff",
@@ -217,9 +218,9 @@ public final class ScenarioExportQa {
         return report;
     }
 
-    private static void verifyReadyContents(XWPFDocument document, int depth) {
+    static void verifyReadyContents(XWPFDocument document, int depth) throws Exception {
         assertThat(document.getSettings().getCTSettings().isSetUpdateFields()).isFalse();
-        assertThat(document.getDocument().xmlText()).doesNotContain("TOC ");
+        verifyNoAutomaticTocFields(XmlSupport(document.getDocument().xmlText()));
         var body = document.getBodyElements();
         int headingIndex = -1;
         for (int i = 0; i < body.size(); i++) {
@@ -250,6 +251,55 @@ public final class ScenarioExportQa {
             assertThat(anchor).isNotBlank();
             assertThat(heading.getCTP().getBookmarkStartList()).extracting(bookmark -> bookmark.getName()).contains(anchor);
         }
+    }
+
+    private static void verifyNoAutomaticTocFields(org.w3c.dom.Document word) {
+        String namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        var fields = new ArrayDeque<WordFieldInstruction>();
+        var elements = word.getElementsByTagNameNS(namespace, "*");
+        for (int i = 0; i < elements.getLength(); i++) {
+            var element = (org.w3c.dom.Element) elements.item(i);
+            switch (element.getLocalName()) {
+                case "fldSimple" -> verifyNotTocInstruction(element.getAttributeNS(namespace, "instr"));
+                case "fldChar" -> {
+                    switch (element.getAttributeNS(namespace, "fldCharType")) {
+                        case "begin" -> fields.push(new WordFieldInstruction());
+                        case "separate" -> {
+                            if (!fields.isEmpty()) {
+                                verifyNotTocInstruction(fields.peek().text.toString());
+                                fields.peek().collecting = false;
+                            }
+                        }
+                        case "end" -> {
+                            if (!fields.isEmpty()) verifyNotTocInstruction(fields.pop().text.toString());
+                        }
+                        default -> { }
+                    }
+                }
+                case "instrText" -> {
+                    if (fields.isEmpty()) {
+                        verifyNotTocInstruction(element.getTextContent());
+                    } else if (fields.peek().collecting) {
+                        // Runs can split the keyword itself. Preserve every code unit and
+                        // keep each nested field independent of its parent's instruction.
+                        fields.peek().text.append(element.getTextContent());
+                    }
+                }
+                default -> { }
+            }
+        }
+        // An incomplete field must not bypass the check by omitting its final marker.
+        for (var field : fields) verifyNotTocInstruction(field.text.toString());
+    }
+
+    private static void verifyNotTocInstruction(String instruction) {
+        assertThat(instruction.stripLeading().matches("(?is)TOC(?:\\s|\\\\|$).*"))
+                .as("Ready-to-read contents must not depend on a Word TOC field").isFalse();
+    }
+
+    private static final class WordFieldInstruction {
+        final StringBuilder text = new StringBuilder();
+        boolean collecting = true;
     }
 
     public static Map<String, byte[]> unzip(byte[] bytes) throws Exception {

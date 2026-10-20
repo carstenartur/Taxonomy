@@ -2,6 +2,7 @@ package com.taxonomy.acceptance;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
@@ -10,7 +11,7 @@ import java.util.regex.Pattern;
 /** Test-only semantic response corpus. No live fallback is possible. */
 public final class ScenarioLlmPlayback {
     private static final Pattern KEYS = Pattern.compile("EXACTLY these keys: ([^\\r\\n]+)");
-    private static final Pattern BUDGET = Pattern.compile("distribute the parent relevance score of (\\d+)");
+    private static final Pattern BUDGET = Pattern.compile("distribute the parent relevance score of (\\d+(?:\\.\\d+)?)(?=\\s|$)");
     private static final Pattern REQUIREMENT = Pattern.compile("Business Requirement: (.*?)\\n\\s*\\n(?=(?:(?:[^\\r\\n]*Categories|Concrete Information Product candidates|Nodes to evaluate):\\r?\\n|Taxonomy root: [^\\r\\n]+\\r?\\n))", Pattern.DOTALL);
     private static final Set<String> ROOT_CODES = Set.of("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA");
     private static final String ROOT_PROMPT = "You assess the independent relevance of the offered C3 taxonomy root";
@@ -19,11 +20,25 @@ public final class ScenarioLlmPlayback {
     private final ScenarioRelationPlayback relationPlayback;
     private final ScenarioReformulationPlayback reformulationPlayback;
     private final Map<String, JsonNode> rules = new LinkedHashMap<>();
-    private final List<Call> calls = new ArrayList<>();
+    private final List<CallEvidence> calls = new ArrayList<>();
     private final List<String> failures = new ArrayList<>();
-    private final List<String> prompts = new ArrayList<>();
+    private final List<PromptEvidence> prompts = new ArrayList<>();
     private final List<ScenarioLlmPlayback> adoptedSources = new ArrayList<>();
     private ResponsePause nextReformulationPause;
+    private ScenarioCallJournal.Writer callJournal;
+
+    private interface PromptEvidence { String prompt(); }
+    private record LiteralPrompt(String prompt) implements PromptEvidence { }
+    private record CallEvidence(Call retained, ScenarioCallJournal.Reference reference) implements PromptEvidence {
+        String ruleId() { return retained == null ? reference.ruleId() : retained.ruleId(); }
+        String promptSha256() { return retained == null ? reference.promptSha256() : retained.promptSha256(); }
+        Call full() {
+            if (retained != null) return retained;
+            try { return reference.read(); }
+            catch (java.io.IOException failure) { throw new java.io.UncheckedIOException("Cannot read accepted provider exchange", failure); }
+        }
+        @Override public String prompt() { return full().prompt(); }
+    }
 
     /** Hold one validated remote response while the real HTTP client changes the proposal. */
     public synchronized ResponsePause pauseNextReformulation() {
@@ -56,28 +71,61 @@ public final class ScenarioLlmPlayback {
             require(!keys.isEmpty() && new HashSet<>(keys).size() == keys.size(), "Duplicate or missing keys: " + id);
             String task = rule.path("task").asText();
             require(Set.of("categories", "products").contains(task), "Unknown task: " + id);
-            int total = 0;
+            require(rule.path("answers").isObject(), "Missing answers: " + id);
+            BigDecimal total = BigDecimal.ZERO;
             for (var entry : rule.path("answers").properties()) {
                 var answer = entry.getValue();
                 require(keys.contains(entry.getKey()), "Answer outside requested keys: " + id);
-                int score = answer.path("score").asInt(-1);
-                require(score >= 0 && score <= 100 && !answer.path("reason").asText().isBlank(), "Invalid answer: " + id);
-                total += score;
+                BigDecimal score = percentage(answer.path("score"), "answer: " + id + "/" + entry.getKey());
+                require(answer.path("reason").isString() && !answer.path("reason").asText().isBlank(), "Invalid answer: " + id);
+                total = total.add(score);
             }
-            require(!rule.path("excludedReason").asText().isBlank(), "Missing exclusion reason: " + id);
+            for (String key : keys) require(rule.path("answers").has(key), "Missing answer: " + id + "/" + key);
+            BigDecimal budget = task.equals("products") ? BigDecimal.valueOf(-1)
+                    : percentage(rule.path("parentScore"), "budget: " + id);
             boolean independentRoot = keys.size() == 1 && ROOT_CODES.contains(keys.getFirst());
-            require(!task.equals("categories") || independentRoot || total == rule.path("parentScore").asInt(), "Budget mismatch: " + id);
-            String signature = signature(task, rule.path("parentScore").asInt(-1), keys);
+            require(!task.equals("categories") || independentRoot || total.signum() == 0 || total.compareTo(budget) == 0,
+                    "Budget mismatch: " + id);
+            String signature = signature(task, budget, keys);
             require(rules.putIfAbsent(signature, rule.deepCopy()) == null, "Duplicate response scope: " + id);
         }
         require(!rules.isEmpty(), "Empty response corpus");
     }
     public static ScenarioLlmPlayback flood() throws Exception {
         try (var input = ScenarioLlmPlayback.class.getResourceAsStream("/scenarios/flood-information.json")) {
-            return new ScenarioLlmPlayback(new ObjectMapper().readTree(input));
+            var mapper = new ObjectMapper();
+            var fixture = mapper.readTree(input);
+            String exclusionResource = fixture.at("/relationPlayback/exclusionResource").asString();
+            require(exclusionResource.startsWith("/scenarios/") && !exclusionResource.contains(".."),
+                    "Missing scenario exclusion resource");
+            try (var exclusions = ScenarioLlmPlayback.class.getResourceAsStream(exclusionResource)) {
+                require(exclusions != null, "Missing authored relation exclusion resource: " + exclusionResource);
+                ((tools.jackson.databind.node.ObjectNode) fixture.path("relationPlayback")).set("exclusions", ScenarioExclusionResource.expand(mapper.readTree(exclusions)));
+            }
+            return new ScenarioLlmPlayback(fixture);
         }
     }
     public JsonNode fixture() { return fixture.deepCopy(); }
+
+    public synchronized void recordCallsTo(java.nio.file.Path journal) throws java.io.IOException {
+        require(callJournal == null && callCount() == 0, "Call journal must be registered before any exchange");
+        if (journal.getParent() != null) java.nio.file.Files.createDirectories(journal.getParent());
+        java.nio.file.Files.createFile(journal);
+        callJournal = new ScenarioCallJournal.Writer(journal);
+    }
+
+    private void accepted(Call call, int promptIndex) {
+        CallEvidence evidence;
+        if (callJournal != null) {
+            try { evidence = new CallEvidence(null, callJournal.accept(call)); }
+            catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException("Cannot journal accepted provider exchange", failure);
+            }
+        } else evidence = new CallEvidence(call, null);
+        calls.add(evidence);
+        // Promote the same arrival slot only after the complete response is durable.
+        prompts.set(promptIndex, evidence);
+    }
 
     /** Test driver registers only text read back after its explicit authenticated adoption command. */
     public synchronized void registerAdoptedSource(String source) {
@@ -87,16 +135,23 @@ public final class ScenarioLlmPlayback {
         require(adoptedSources.stream().noneMatch(p -> p.fixture.at("/requirement/text").asText().equals(source)), "Duplicate adoption source");
         var next = (tools.jackson.databind.node.ObjectNode) fixture.deepCopy();
         ((tools.jackson.databind.node.ObjectNode) next.path("requirement")).put("text", source);
-        adoptedSources.add(new ScenarioLlmPlayback(next));
+        var playback = new ScenarioLlmPlayback(next);
+        playback.callJournal = callJournal;
+        adoptedSources.add(playback);
     }
 
     public synchronized String respond(String prompt) {
-        prompts.add(prompt);
+        int promptIndex = prompts.size();
+        prompts.add(new LiteralPrompt(prompt));
         try {
             if (!adoptedSources.isEmpty()) {
                 String source = requestSource(prompt);
-                for (var next : adoptedSources) if (normalize(source).equals(normalize(next.fixture.at("/requirement/text").asText())))
-                    return next.respond(prompt);
+                for (var next : adoptedSources) if (normalize(source).equals(normalize(next.fixture.at("/requirement/text").asText()))) {
+                    String body = next.respond(prompt);
+                    // Parent and adopted source share evidence, not a closure retaining the prompt.
+                    prompts.set(promptIndex, next.prompts.getLast());
+                    return body;
+                }
             }
             if (ScenarioReformulationPlayback.accepts(prompt)) {
                 var reply = reformulationPlayback.respond(prompt);
@@ -104,14 +159,14 @@ public final class ScenarioLlmPlayback {
                 if (pause != null) pause.hold();
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
-                calls.add(new Call(reply.id(), sha256(prompt), sha256(body)));
+                accepted(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body), promptIndex);
                 return body;
             }
             if (prompt.startsWith(ScenarioRelationPlayback.PREFIX)) {
                 var reply = relationPlayback.respond(prompt);
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
-                calls.add(new Call(reply.id(), sha256(prompt), sha256(body)));
+                accepted(new Call(reply.id(), sha256(prompt), sha256(body), prompt, body), promptIndex);
                 return body;
             }
             String requirement = unique(REQUIREMENT, prompt, "requirement");
@@ -126,20 +181,18 @@ public final class ScenarioLlmPlayback {
                 require(keys.size() == 1 && ROOT_CODES.contains(keys.getFirst()), "Unknown root question");
                 require(prompt.contains("\n" + keys.getFirst() + ": "), "Missing offered root node");
             }
-            int budget = products ? -1 : root ? 100 : Integer.parseInt(unique(BUDGET, prompt, "category task and budget"));
+            BigDecimal budget = products ? BigDecimal.valueOf(-1) : root ? BigDecimal.valueOf(100)
+                    : new BigDecimal(unique(BUDGET, prompt, "category task and budget"));
             require(!(products || root) || !BUDGET.matcher(prompt).find(), "Ambiguous task");
             JsonNode rule = rules.get(signature(products ? "products" : "categories", budget, keys));
             require(rule != null, "Unknown response scope: " + String.join(",", keys));
             var answer = json.createObjectNode();
             for (String key : new TreeSet<>(keys)) {
-                JsonNode explicit = rule.path("answers").get(key);
-                answer.set(key, explicit == null
-                        ? json.createObjectNode().put("score", 0).put("reason", rule.path("excludedReason").asText())
-                        : explicit.deepCopy());
+                answer.set(key, rule.path("answers").get(key).deepCopy());
             }
             String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                     Map.of("role", "assistant", "content", json.writeValueAsString(answer))))));
-            calls.add(new Call(rule.path("id").asText(), sha256(prompt), sha256(body)));
+            accepted(new Call(rule.path("id").asText(), sha256(prompt), sha256(body), prompt, body), promptIndex);
             return body;
         } catch (RuntimeException failure) {
             failures.add(failure.getMessage());
@@ -148,8 +201,10 @@ public final class ScenarioLlmPlayback {
         }
     }
 
-    public synchronized List<Call> calls() { var all = new ArrayList<>(calls); adoptedSources.forEach(p -> all.addAll(p.calls())); return List.copyOf(all); }
-    public synchronized List<String> prompts() { return List.copyOf(prompts); }
+    public synchronized List<Call> calls() { var all = new ArrayList<Call>(); calls.forEach(call -> all.add(call.full())); adoptedSources.forEach(p -> all.addAll(p.calls())); return List.copyOf(all); }
+    public synchronized int callCount() { return calls.size() + adoptedSources.stream().mapToInt(ScenarioLlmPlayback::callCount).sum(); }
+    public synchronized int promptCount() { return prompts.size(); }
+    public synchronized List<String> prompts() { return List.copyOf(prompts.stream().map(PromptEvidence::prompt).toList()); }
     public synchronized List<String> failures() { return List.copyOf(failures); }
     private String requestSource(String prompt) {
         for (String marker : List.of("\nINPUT_DATA_JSON\n", "\nRECONCILIATION_DATA_JSON\n")) {
@@ -177,13 +232,15 @@ public final class ScenarioLlmPlayback {
         if (!failures.isEmpty()) throw new AssertionError("Unmatched LLM calls: " + failures);
         relationPlayback.verifyCoverage(repetitions);
         Map<String, Long> frequencies = calls.stream().filter(call -> call.ruleId().startsWith("relation:"))
-                .collect(java.util.stream.Collectors.groupingBy(Call::ruleId, java.util.stream.Collectors.counting()));
+                .collect(java.util.stream.Collectors.groupingBy(CallEvidence::promptSha256, java.util.stream.Collectors.counting()));
         for (var entry : frequencies.entrySet()) {
             if (entry.getValue() != repetitions) {
                 throw new AssertionError("Unstable repeated relation query " + entry.getKey() + ": " + entry.getValue());
             }
         }
     }
+
+    public synchronized Map<String, Object> relationCoverage() { return relationPlayback.coverage(); }
 
     public synchronized void verifyReformulationCoverage(int repetitions) {
         if (!failures.isEmpty()) throw new AssertionError("Unmatched LLM calls: " + failures);
@@ -194,8 +251,17 @@ public final class ScenarioLlmPlayback {
         }
     }
 
-    private static String signature(String task, int budget, List<String> keys) {
-        return task + ":" + budget + ":" + String.join(",", new TreeSet<>(keys));
+    private static String signature(String task, BigDecimal budget, List<String> keys) {
+        return task + ":" + budget.stripTrailingZeros().toPlainString() + ":" + String.join(",", new TreeSet<>(keys));
+    }
+    private static BigDecimal percentage(JsonNode value, String label) {
+        require(value.isNumber(), "Invalid " + label);
+        BigDecimal number;
+        try { number = value.decimalValue(); }
+        catch (NumberFormatException invalid) { throw new IllegalArgumentException("Invalid " + label, invalid); }
+        require(number.compareTo(BigDecimal.ZERO) >= 0 && number.compareTo(BigDecimal.valueOf(100)) <= 0,
+                "Invalid " + label);
+        return number;
     }
     private static List<String> strings(JsonNode node) {
         var result = new ArrayList<String>();
@@ -218,5 +284,6 @@ public final class ScenarioLlmPlayback {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException failure) { throw new IllegalStateException(failure); }
     }
-    public record Call(String ruleId, String promptSha256, String responseSha256) { }
+    /** Actual exchanges make every authored decision reviewable against its rendered prompt. */
+    public record Call(String ruleId, String promptSha256, String responseSha256, String prompt, String response) { }
 }

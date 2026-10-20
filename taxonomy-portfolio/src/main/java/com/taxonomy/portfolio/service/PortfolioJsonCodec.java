@@ -55,6 +55,33 @@ public class PortfolioJsonCodec {
         }
     }
 
+    /** Full payload deserialization without materializing the CLOB; the caller owns the reader. */
+    public <T> T read(Reader json, Class<T> type) {
+        if (json == null) return null;
+        try (var input = new PushbackReader(new FilterReader(json) {
+            @Override public void close() { }
+        }, 1)) {
+            boolean nonJsonWhitespace = false;
+            int next;
+            while ((next = input.read()) != -1 && Character.isWhitespace(next))
+                nonJsonWhitespace |= next != ' ' && next != '\t' && next != '\r' && next != '\n';
+            if (next == -1) return null;
+            if (nonJsonWhitespace) throw new IOException("Non-JSON whitespace before portfolio payload");
+            input.unread(next);
+            // Jackson may close its source; keep the pushback reader open for the final JDBC read.
+            T result = objectMapper.readValue(new FilterReader(input) {
+                @Override public void close() { }
+            }, type);
+            // The String path had read the whole CLOB, so late read failures must remain observable.
+            char[] tail = new char[8192];
+            while (input.read(tail) != -1) { }
+            return result;
+        } catch (Exception exception) {
+            throw PortfolioException.analysisFailed(
+                    "Could not deserialize portfolio payload as " + type.getSimpleName(), exception);
+        }
+    }
+
     /**
      * Skip report graphs and text during streaming deserialization. Reuse the normal score setters
      * and semantics, including legacy envelopes and product/family context, instead of trusting

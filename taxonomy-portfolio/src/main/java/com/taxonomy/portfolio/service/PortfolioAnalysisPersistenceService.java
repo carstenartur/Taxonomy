@@ -32,7 +32,6 @@ import com.taxonomy.portfolio.model.RequirementElementMapping;
 import com.taxonomy.portfolio.model.RequirementRelationMapping;
 import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
 import com.taxonomy.portfolio.repository.AnalysisJobReadRow;
-import com.taxonomy.portfolio.repository.AnalysisSnapshotReadRow;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
@@ -81,6 +80,7 @@ public class PortfolioAnalysisPersistenceService {
     private final AnalysisHypothesisLinkPort hypothesisLinks;
     private final PortfolioJsonCodec jsonCodec;
     private final PortfolioSnapshotSelectionReader snapshotSelectionReader;
+    private final PortfolioSnapshotEvidenceReader snapshotEvidenceReader;
     private final ProjectProviderBinding providerBinding;
 
     public PortfolioAnalysisPersistenceService(ArchitectureProjectRepository projectRepository,
@@ -94,6 +94,7 @@ public class PortfolioAnalysisPersistenceService {
                                                AnalysisHypothesisLinkPort hypothesisLinks,
                                                PortfolioJsonCodec jsonCodec,
                                                PortfolioSnapshotSelectionReader snapshotSelectionReader,
+                                               PortfolioSnapshotEvidenceReader snapshotEvidenceReader,
                                                org.springframework.beans.factory.ObjectProvider<ProjectProviderBinding> providerBindings) {
         this.projectRepository = projectRepository;
         this.requirementRepository = requirementRepository;
@@ -106,6 +107,7 @@ public class PortfolioAnalysisPersistenceService {
         this.hypothesisLinks = hypothesisLinks;
         this.jsonCodec = jsonCodec;
         this.snapshotSelectionReader = snapshotSelectionReader;
+        this.snapshotEvidenceReader = snapshotEvidenceReader;
         this.providerBinding = providerBindings.getIfAvailable(() -> ProjectProviderBinding.NONE);
     }
 
@@ -258,7 +260,9 @@ public class PortfolioAnalysisPersistenceService {
                 jsonCodec.write(gaps),
                 jsonCodec.write(patterns),
                 jsonCodec.write(recommendation));
-        snapshotRepository.save(snapshot);
+        // Assigned snapshot IDs make save merge the entity. Mapping inserts must reference
+        // the managed return, avoiding a transient FK check that rereads all four CLOBs.
+        snapshot = snapshotRepository.save(snapshot);
         persistElementMappings(snapshot, analysis);
         persistRelationMappings(snapshot, analysis);
         linkHypotheses(
@@ -407,11 +411,16 @@ public class PortfolioAnalysisPersistenceService {
                                       WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
-        AnalysisSnapshotReadRow snapshot = snapshotRepository
-                .findReadRowByIdAndProjectIdAndScopeKey(snapshotId, projectId, scopeKey)
+        SnapshotSummary snapshot = snapshotRepository
+                .findSummaryByIdAndProjectIdAndScopeKey(snapshotId, projectId, scopeKey)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Analysis snapshot not found: " + snapshotId));
-        return toSnapshotDetail(snapshot, scopeKey);
+        var evidence = snapshotEvidenceReader.read(projectId, snapshotId, scopeKey)
+                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found: " + snapshotId));
+        return new SnapshotDetail(snapshot, evidence.analysis(), evidence.gapAnalysis(), evidence.patternDetection(),
+                evidence.recommendation(),
+                List.copyOf(elementRepository.findViewsBySnapshotIdAndScopeKey(snapshot.id(), scopeKey)),
+                List.copyOf(relationRepository.findViewsBySnapshotIdAndScopeKey(snapshot.id(), scopeKey)));
     }
 
     @Transactional(readOnly = true)
@@ -695,18 +704,6 @@ public class PortfolioAnalysisPersistenceService {
         return new com.taxonomy.extension.api.plugin.PluginInvocation(
                 new com.taxonomy.extension.api.plugin.PluginIdentity(job.providerPluginId(),
                         job.providerPluginVersion(), job.providerPluginSha256()), job.providerConfigRevision());
-    }
-
-    private SnapshotDetail toSnapshotDetail(AnalysisSnapshotReadRow snapshot, String scopeKey) {
-        return new SnapshotDetail(
-                snapshot.summary(),
-                jsonCodec.read(snapshot.analysisPayload(), AnalysisResult.class),
-                jsonCodec.read(snapshot.gapAnalysisPayload(), GapAnalysisView.class),
-                jsonCodec.read(snapshot.patternDetectionPayload(), PatternDetectionView.class),
-                jsonCodec.read(
-                        snapshot.recommendationPayload(), ArchitectureRecommendation.class),
-                List.copyOf(elementRepository.findViewsBySnapshotIdAndScopeKey(snapshot.id(), scopeKey)),
-                List.copyOf(relationRepository.findViewsBySnapshotIdAndScopeKey(snapshot.id(), scopeKey)));
     }
 
     private SnapshotSummary toSnapshotSummary(RequirementAnalysisSnapshot snapshot) {

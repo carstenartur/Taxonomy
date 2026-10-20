@@ -6,17 +6,25 @@ import com.taxonomy.acceptance.ScenarioExportQa;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
+import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpSessionEvent;
+import jakarta.servlet.http.HttpSessionIdListener;
+import jakarta.servlet.http.HttpSessionListener;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.event.EventListener;
+import org.springframework.security.authentication.event.InteractiveAuthenticationSuccessEvent;
 import org.springframework.test.annotation.DirtiesContext;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.net.URI;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -25,6 +33,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,132 +50,149 @@ class ScenarioArchitectureAcceptanceTest {
             "llm.provider=CUSTOM_OPENAI", "custom.llm.url=" + ScenarioLlmConfiguration.URL,
             "custom.llm.model=scenario-fixture", "taxonomy.admin-password=Scenario-Acceptance-2026!",
             "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2",
-            // Exhaustive authored response coverage, not a change to the production budget.
-            "taxonomy.analysis.relations.hierarchical.max-calls=256",
-            "taxonomy.analysis.relations.hierarchical.max-total-calls=256",
-            "taxonomy.analysis.relations.hierarchical.batch-size=10",
-            "taxonomy.analysis.relations.hierarchical.max-prompt-characters=120000"
+            // Keep the original acceptance envelope despite higher configurable production defaults.
+            "taxonomy.analysis.relations.hierarchical.max-calls=24",
+            "taxonomy.analysis.relations.hierarchical.max-total-calls=3096",
+            "taxonomy.analysis.relations.hierarchical.auto-continue=false",
+            "taxonomy.analysis.relations.hierarchical.batch-size=3",
+            "taxonomy.analysis.relations.hierarchical.max-prompt-characters=16000",
+            "taxonomy.analysis.relations.hierarchical.max-sources=32",
+            "taxonomy.analysis.relations.hierarchical.max-work-items=512",
+            "taxonomy.analysis.relations.hierarchical.max-depth=8"
     })
-    @Import({ScenarioLlmConfiguration.class, com.taxonomy.interop.publication.PublicationScenarioConfiguration.class})
+    @Import({ScenarioLlmConfiguration.class, com.taxonomy.interop.publication.PublicationScenarioConfiguration.class,
+            BrowserSessions.class})
     @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
     static class Scenario extends ScenarioArchitectureAcceptanceTest { }
 
+    /** Spring Boot registers this test-only listener in the existing child application. */
+    @TestConfiguration(proxyBeanMethods = false)
+    static class BrowserSessions implements HttpSessionListener, HttpSessionIdListener {
+        final Map<String, HttpSession> sessions = new ConcurrentHashMap<>();
+        final AtomicInteger successfulLogins = new AtomicInteger();
+        @EventListener void loggedIn(InteractiveAuthenticationSuccessEvent event) { successfulLogins.incrementAndGet(); }
+        @Override public void sessionCreated(HttpSessionEvent event) {
+            sessions.put(event.getSession().getId(), event.getSession());
+        }
+        @Override public void sessionDestroyed(HttpSessionEvent event) {
+            sessions.remove(event.getSession().getId());
+        }
+        @Override public void sessionIdChanged(HttpSessionEvent event, String oldSessionId) {
+            sessions.remove(oldSessionId);
+            sessions.put(event.getSession().getId(), event.getSession());
+        }
+    }
+
     static final String PASSWORD = "Scenario-Acceptance-2026!";
     @LocalServerPort int port;
+    @Autowired BrowserSessions browserSessions;
     @Autowired ScenarioLlmPlayback playback;
     @Autowired com.taxonomy.interop.publication.PublicationContractProvider publicationProvider;
     @Autowired ExportFormatExtensionRegistry exportFormats;
     @Autowired com.taxonomy.portfolio.report.SnapshotWordReportService snapshotWords;
     @Autowired com.taxonomy.preferences.PreferencesService preferences;
+    @Autowired com.taxonomy.analysis.relations.RelationSearchBudgetSettings relationBudgetSettings;
     @Autowired com.taxonomy.catalog.repository.TaxonomyNodeRepository catalogueRepository;
     @Autowired com.taxonomy.catalog.service.TaxonomyService catalogueService;
+    @Autowired com.taxonomy.catalog.service.CatalogueOverlayService catalogueOverlay;
     @Autowired com.taxonomy.relations.repository.RelationProposalRepository proposalRepository;
     @Autowired com.taxonomy.export.DiagramProjectionService diagramProjection;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     com.taxonomy.architecture.service.ArchitectureReportService liveReports;
     final ObjectMapper json = new ObjectMapper();
-    final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-    final Path output = Path.of("target/scenario-acceptance");
+    final CookieManager sessionCookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
+    final HttpClient http = HttpClient.newBuilder().cookieHandler(sessionCookies)
+            .connectTimeout(Duration.ofSeconds(10)).build();
+    final ScenarioHttpSession httpSession = new ScenarioHttpSession(http, sessionCookies, json, "admin", PASSWORD);
+    final Path output = Path.of(System.getProperty("scenario.output", "target/scenario-acceptance"));
+    final Map<String, com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.Cycle> observedAnalysisCycles = new LinkedHashMap<>();
+    private final Map<String, Integer> observedRelationSpending = new LinkedHashMap<>();
+    private boolean initialCheckpointPublished;
+    private JsonNode evidenceIdentity;
 
     @Test void generatesAndReopensScenarioArchitectureThroughTheRealCopilot() throws Exception {
         ScenarioAcceptanceProcess.verify();
     }
 
     void verifyScenario() throws Exception {
+        assertThat(relationBudgetSettings.snapshot()).as("Resolved original scenario resource envelope")
+                .isEqualTo(new com.taxonomy.analysis.relations.RelationSearchBudgetSettings.Snapshot(24, 3096, false, 32, 512));
         Files.createDirectories(output);
+        playback.recordCallsTo(output.resolve("llm-calls.jsonl"));
         JsonNode fixture = playback.fixture();
+        evidenceIdentity = ScenarioAcceptanceProcess.runIdentity(fixture, System.getProperty("scenario.runId", "direct-test"));
         JsonNode catalogue = get("/api/taxonomy");
+        save("prompt-catalogue.json", catalogue);
         var names = new LinkedHashMap<String, String>();
         catalogueNames(catalogue, names);
+        var overlayParents = new TreeSet<String>();
+        names.keySet().stream().filter(catalogueOverlay::hasParentPatch).forEach(overlayParents::add);
         for (var binding : fixture.get("bindings").properties()) {
             assertThat(names).containsEntry(binding.getKey(), binding.getValue().asText());
         }
         try (var browser = Boolean.getBoolean("generateScreenshots")
                 ? new ScenarioBrowserWalkthrough(port, output) : null) {
-            Run run = browser == null ? startThroughHttp(fixture) : browser.start(fixture);
+            Run run = browser == null ? startThroughHttp(fixture) : browser.start(fixture, this);
             long projectId = run.projectId();
             long requirementId = run.requirementId();
             JsonNode requirement = fixture.get("requirement");
             String requirementPath = "/api/projects/" + projectId + "/requirements/" + requirementId;
-            JsonNode operation;
             String operationPath = "/api/projects/" + projectId + "/copilot-operations/" + run.operationId();
-            long deadline = System.nanoTime() + Duration.ofMinutes(2).toNanos();
-            do {
-                // Real status clients race with the background finalizer. Every reader
-                // must succeed; retrying a 500 here would hide a persistence defect.
-                var readers = java.util.stream.IntStream.range(0, 3).mapToObj(index ->
-                        java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-                            try { return get(operationPath); }
-                            catch (Exception failure) { throw new java.util.concurrent.CompletionException(failure); }
-                        })).toList();
-                operation = null;
-                for (var reader : readers) operation = reader.join();
-                if (Set.of("SUCCESS", "PARTIAL", "FAILED", "CANCELLED").contains(operation.path("status").asText())) break;
-                Thread.sleep(200);
-            } while (System.nanoTime() < deadline);
+            JsonNode operation = ScenarioContinuationWalkthrough.finishIndependentBudgetWork(this, projectId, operationPath, browser);
             save("operation.json", operation);
-            save("llm-calls.json", json.valueToTree(playback.calls()));
-            assertThat(playback.failures()).isEmpty();
-            assertThat(operation.path("status").asText()).as(operation.toPrettyString()).isEqualTo("SUCCESS");
-            assertThat(operation.path("completedPasses").asInt()).isEqualTo(2);
-            playback.verifyCoverage(2);
-            playback.verifyRelationCoverage(2);
+            save("playback-coverage.json", json.valueToTree(playback.relationCoverage()));
+            // Keep the actual evidence even when a quality gate rejects a partial run.
             String snapshotId = operation.path("selectedSnapshotId").asText();
             assertThat(snapshotId).isNotBlank();
             String snapshotPath = "/api/projects/" + projectId + "/snapshots/" + snapshotId;
             JsonNode snapshot = get(snapshotPath);
-            save("snapshot.json", snapshot);
+            checkpointSnapshot(projectId, requirementId, snapshot);
+            ScenarioAcceptanceProcess.materializeCheckpoint(output, evidenceIdentity);
+            assertThat(playback.failures()).isEmpty();
+            // The independent reference retains one genuine, non-core F5 input-identity
+            // question. Its exact scope is checked below; it must not become false success.
+            assertThat(operation.path("status").asText()).as(operation.toPrettyString()).isEqualTo("PARTIAL");
+            assertThat(operation.path("completedPasses").asInt()).isEqualTo(2);
+            playback.verifyCoverage(2);
+            playback.verifyRelationCoverage(2);
             assertThat(get(snapshotPath)).isEqualTo(snapshot);
             assertThat(get(requirementPath).path("currentAnalysisSnapshotId").asText()).isEqualTo(snapshotId);
             JsonNode analysis = snapshot.path("analysis");
-            assertThat(analysis.path("status").asText()).isEqualTo("SUCCESS");
+            assertThat(analysis.path("status").asText()).isEqualTo("PARTIAL");
+            assertThat(analysis.at("/recovery/state").asText()).isEqualTo("COMPLETED_WITH_GAPS");
             assertThat(operation.path("provider").asText()).isEqualTo("CUSTOM_OPENAI");
             assertThat(analysis.path("provider").asText()).isEqualTo("Custom OpenAI-compatible");
-            assertThat(analysis.path("warnings").isEmpty()).isTrue();
-            for (JsonNode job : operation.path("jobs")) {
-                String passSnapshotId = job.path("items").get(0).path("snapshotId").asText();
-                JsonNode pass = get("/api/projects/" + projectId + "/snapshots/" + passSnapshotId).path("analysis");
-                for (String field : List.of("scores", "reasons")) {
-                    assertThat(pass.path(field)).as("Stable %s across verification passes", field).isEqualTo(analysis.path(field));
-                }
-                assertThat(semanticArchitecture(pass.path("architectureView")))
-                        .isEqualTo(semanticArchitecture(analysis.path("architectureView")));
-            }
-            for (JsonNode leaf : fixture.get("expectedLeaves")) {
-                assertThat(analysis.path("scores").path(leaf.asText()).asInt()).isEqualTo(100);
-                assertThat(analysis.path("reasons").path(leaf.asText()).asText()).matches("[FA]\\d: .+");
-            }
+            // The independent relation gate below checks the exact permitted F5
+            // identity warnings; all other warnings remain acceptance failures.
+            verifyIndependentPasses(projectId, operation, analysis);
+            assertThat(observedRelationSpending).as("Two independent passes retain separate cumulative call ledgers").hasSize(2);
+            JsonNode continuationHistory = json.readTree(Files.readString(output.resolve("continuation-history.json")));
+            assertThat(continuationHistory.isArray()).isTrue();
+            assertThat(observedAnalysisCycles).as("Both initial snapshots and every explicit continuation were budget-checked")
+                    .hasSize(2 + continuationHistory.size());
+            save("prompt-evidence-quality.json", json.valueToTree(
+                    com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.verifyObservedCycles(catalogue, overlayParents,
+                            requirement.path("text").asText(), playback.calls(), observedAnalysisCycles.values())));
+            save("classification-quality.json", json.valueToTree(
+                    com.taxonomy.acceptance.ScenarioScoringQuality.verify(fixture, catalogue, analysis)));
             String workbenchPath = "/api/projects/" + projectId + "/architecture-workbench/" + snapshotId;
             JsonNode projection = get(workbenchPath);
             save("architecture.json", projection);
             assertThat(projection.path("snapshotId").asText()).isEqualTo(snapshotId);
             assertThat(projection.path("requirementText")).isEqualTo(requirement.get("text"));
-            // Accepted concrete scores also remain visible; these are required scenario elements.
-            Set<String> requiredScenarioElements = Set.of(
-                    "BP-1017", "BR-1223", "CI-1052", "CP-1041", "CR-1097", "IP-1116", "UA-1580");
             JsonNode projectedElements = projection.path("elements");
-            assertThat(projectedElements.propertyNames()).contains(
-                    "BP-1017", "BR-1223", "CI-1052", "CP-1041", "CR-1097", "IP-1116", "UA-1580");
+            assertThat(projectedElements.isEmpty()).isFalse();
             assertThat(projectedElements.propertyNames()).doesNotContain("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA");
-            var projectedCodes = new HashSet<String>();
             for (var element : projectedElements.properties()) {
-                projectedCodes.add(element.getKey());
                 assertThat(analysis.path("scores").has(element.getKey()))
                         .as("Projected element %s must come from retained assessed evidence", element.getKey())
                         .isTrue();
-                if (!requiredScenarioElements.contains(element.getKey())) {
-                    var included = java.util.stream.StreamSupport.stream(
-                                    analysis.at("/architectureView/includedElements").spliterator(), false)
-                            .filter(candidate -> candidate.path("nodeCode").asText().equals(element.getKey()))
-                            .findFirst().orElseThrow();
-                    assertThat(included.path("origin").asText()).isEqualTo("DIRECT_SCORED");
-                    assertThat(included.path("presenceReason").asText()).contains("Directly assessed relevance");
-                    assertThat(element.getValue().path("mappingOrigin").asText()).isEqualTo("DIRECT");
-                    assertThat(element.getValue().path("presenceReason").asText()).contains("Directly assessed relevance");
-                }
+                assertThat(element.getValue().path("presenceReason").asText()).isNotBlank();
             }
-            assertThat(projectedCodes).containsAll(requiredScenarioElements);
-            assertThat(projection.path("relations").size()).isEqualTo(7);
+            // This reference is maintained separately from stored provider replies. It also
+            // rejects a superficially successful run with sources or searches left unassessed.
+            com.taxonomy.acceptance.ScenarioRelationQuality.verify(output);
+            assertThat(projection.path("relations").isEmpty()).isFalse();
             for (var relation : projection.path("relations").properties()) {
                 var value = relation.getValue();
                 assertThat(projection.path("elements").has(value.path("sourceCode").asText())).isTrue();
@@ -173,28 +200,16 @@ class ScenarioArchitectureAcceptanceTest {
                 assertThat(value.path("sourceCode")).isNotEqualTo(value.path("targetCode"));
                 assertThat(value.path("relationType").asText()).isNotBlank();
             }
-            Set<String> signatures = new TreeSet<>();
             for (JsonNode relation : analysis.at("/architectureView/includedRelationships")) {
                 assertThat(relation.path("origin").asText()).isEqualTo("LLM_SUPPORTED");
                 assertThat(relation.path("requirementEvidence").isEmpty()).isFalse();
-                signatures.add(relation.path("sourceCode").asText() + ":" + relation.path("relationType").asText()
-                        + ":" + relation.path("targetCode").asText());
             }
-            // Expectations are authored here independently of the LLM response corpus.
-            assertThat(signatures).containsExactlyInAnyOrder("CI-1052:SUPPORTS:BP-1017", "UA-1580:CONSUMES:IP-1116",
-                    "BP-1017:CONSUMES:IP-1116", "CI-1052:FULFILLS:CP-1041", "UA-1580:USES:CI-1052",
-                    "CI-1052:PRODUCES:IP-1116", "UA-1580:USES:CR-1097");
             JsonNode evidence = analysis.path("relationSearchReport");
             assertThat(evidence.path("warnings").isEmpty()).isTrue();
-            assertThat(evidence.path("result").path("unfinished").isEmpty()).isTrue();
+            assertThat(evidence.path("progress").path("pendingSearches").asInt()).isZero();
             assertThat(evidence.path("result").path("edges")).anySatisfy(edge -> {
                 assertThat(edge.path("evidence").path("necessity").asText()).isEqualTo("OPTIONAL");
-                assertThat(edge.path("evidence").path("condition").asText()).contains("text");
-            });
-            assertThat(analysis.at("/architectureView/includedElements")).anySatisfy(element -> {
-                assertThat(element.path("nodeCode").asText()).isEqualTo("BR-1223");
-                assertThat(element.path("origin").asText()).isEqualTo("REQUIREMENT_EVIDENCE");
-                assertThat(element.path("selectedForImpact").asBoolean()).isFalse();
+                assertThat(edge.path("evidence").path("condition").asText()).contains("oversight");
             });
             var artifacts = new LinkedHashMap<String, byte[]>();
             var graphHashes = new HashSet<String>();
@@ -249,7 +264,7 @@ class ScenarioArchitectureAcceptanceTest {
             Files.write(output.resolve("report.docx"), wordResponse.body());
             save("quality.json", json.valueToTree(ScenarioExportQa.verify(projection, artifacts, output,
                     Boolean.getBoolean("generateScreenshots"))));
-            ScenarioIntegrationWalkthrough.verify(this, artifacts.get("architecture.archimate.xml"));
+            ScenarioIntegrationWalkthrough.verify(this, snapshot, projection, artifacts.get("architecture.archimate.xml"));
             // Export/reopen must not perform another analysis, even when a provider is configured.
             playback.verifyCoverage(2);
             playback.verifyRelationCoverage(2);
@@ -258,13 +273,51 @@ class ScenarioArchitectureAcceptanceTest {
             playback.verifyCoverage(2);
             playback.verifyRelationCoverage(2);
             assertFrozenWordSourceSurvivesLiveStateMutations(projectId,snapshotId,projection);
-            save("run.json", json.valueToTree(Map.of("scenario", fixture.path("id").asText(),
-                    "fixtureSha256", ScenarioLlmPlayback.sha256(fixture.toString()),
-                    "projectId", projectId, "requirementId", requirementId, "snapshotId", snapshotId,
-                    "llmCalls", playback.calls().size(), "mockBoundary", "remote LLM HTTP response only",
-                    "sourceRevision", System.getenv().getOrDefault("GITHUB_SHA", "local-working-tree"),
-                    "ciRun", System.getenv().getOrDefault("GITHUB_RUN_ID", "local"))));
+            saveRun(projectId, requirementId, snapshotId);
         }
+    }
+
+    void verifyIndependentPasses(long projectId, JsonNode operation, JsonNode analysis) throws Exception {
+        for (JsonNode job : operation.path("jobs")) {
+            String passSnapshotId = job.path("items").get(0).path("snapshotId").asText();
+            JsonNode passSnapshot = get("/api/projects/" + projectId + "/snapshots/" + passSnapshotId);
+            com.taxonomy.acceptance.ScenarioArchitectureQuality.verifyPassCompletion(passSnapshot);
+            JsonNode pass = passSnapshot.path("analysis");
+            for (String field : List.of("scores", "reasons")) {
+                assertThat(pass.path(field)).as("Stable %s across verification passes", field).isEqualTo(analysis.path(field));
+            }
+            assertThat(semanticArchitecture(pass.path("architectureView")))
+                    .isEqualTo(semanticArchitecture(analysis.path("architectureView")));
+        }
+    }
+
+    void checkpointSnapshot(long projectId, long requirementId, JsonNode snapshot) throws Exception {
+        String snapshotId = snapshot.at("/summary/id").asText();
+        assertThat(snapshotId).as("Checkpoint identifies its actual immutable snapshot").isNotBlank();
+        JsonNode run = runManifest(projectId, requirementId, snapshotId);
+        var checkpoint = json.createObjectNode().put("schemaVersion", 1)
+                .put("snapshotSha256", com.taxonomy.acceptance.ScenarioJsonFingerprint.sha256(snapshot));
+        checkpoint.set("run", run); checkpoint.set("snapshot", snapshot);
+        // This single atomic replacement is the recovery authority. Conventional
+        // files are mirrors, never guessed or rebound from an unrelated snapshot.
+        save("checkpoint.json", checkpoint);
+        if (!initialCheckpointPublished) {
+            save("snapshot.json", snapshot); save("run.json", run);
+            initialCheckpointPublished = true;
+        }
+    }
+
+    private void saveRun(long projectId, long requirementId, String snapshotId) throws Exception {
+        save("playback-coverage.json", json.valueToTree(playback.relationCoverage()));
+        save("run.json", runManifest(projectId, requirementId, snapshotId));
+    }
+
+    private JsonNode runManifest(long projectId, long requirementId, String snapshotId) {
+        if (evidenceIdentity == null) evidenceIdentity = ScenarioAcceptanceProcess.runIdentity(
+                playback.fixture(), System.getProperty("scenario.runId", "direct-test"));
+        var run = (tools.jackson.databind.node.ObjectNode) evidenceIdentity.deepCopy();
+        return run.put("projectId", projectId).put("requirementId", requirementId).put("snapshotId", snapshotId)
+                .put("llmCalls", playback.callCount()).put("mockBoundary", "remote LLM HTTP response only");
     }
 
     private static JsonNode semanticArchitecture(JsonNode architecture) {
@@ -290,7 +343,7 @@ class ScenarioArchitectureAcceptanceTest {
         proposal.setRepositoryId(context.repositoryId());proposal.setWorkspaceId(context.workspaceId());proposal.setOwnerUsername("admin");
         proposal.setSourceNode(node);proposal.setTargetNode(target);proposal.setRelationType(com.taxonomy.model.RelationType.DEPENDS_ON);
         proposal.setConfidence(.99);proposal.setRationale("Live proposal added after frozen analysis");
-        int callsBefore=playback.calls().size();
+        int callsBefore=playback.callCount();
         var originalPolicy = diagramProjection.getPolicy();
         org.mockito.Mockito.clearInvocations(liveReports);
         try {
@@ -318,7 +371,7 @@ class ScenarioArchitectureAcceptanceTest {
             assertThat(after.architecture().elements()).isEqualTo(before.architecture().elements());
             assertThat(after.architecture().relations()).isEqualTo(before.architecture().relations());
             org.mockito.Mockito.verifyNoInteractions(liveReports);
-            assertThat(playback.calls()).hasSize(callsBefore);
+            assertThat(playback.callCount()).isEqualTo(callsBefore);
             save("frozen-word-mutation.json",json.valueToTree(Map.of("snapshotId",snapshotId,"graphSha256",after.architecture().evidence().graphSha256(),"catalogueChanged",true,"selectionPolicyChanged",true,"pendingProposalAdded",true,"frozenSourceUnchanged",true,"additionalLlmCalls",0)));
         } finally {
             node.setNameEn(oldName);node.setDescriptionEn(oldDescription);catalogueRepository.saveAndFlush(node);
@@ -347,26 +400,57 @@ class ScenarioArchitectureAcceptanceTest {
     }
     record Run(long projectId, long requirementId, String operationId) { }
 
-    JsonNode get(String path) throws Exception { return json.readTree(request("GET", path, null, 200).body()); }
+    JsonNode get(String path) throws Exception {
+        JsonNode value = requestJson("GET", path, null, 200);
+        if (path.matches("/api/projects/[0-9]+/snapshots/[^/?]+")) {
+            var checked = com.taxonomy.acceptance.ScenarioPromptEvidenceQuality.verifyCycle(value);
+            var previous = observedAnalysisCycles.putIfAbsent(checked.snapshotId(), checked);
+            if (previous != null) assertThat(checked).as("Repeated snapshot reads preserve the checked immutable source").isEqualTo(previous);
+            if (previous == null) {
+                JsonNode budget = value.at("/analysis/relationSearchReport/budget");
+                assertThat(budget.isObject()).as("Resolved durable relation budget").isTrue();
+                for (var expected : Map.of("callsPerSlice", 24, "maxTotalCalls", 3096,
+                        "sourcesPerSlice", 32, "workItemsPerSlice", 512, "sourceCohortSize", 32).entrySet())
+                    assertThat(budget.path(expected.getKey()).asInt()).as(expected.getKey()).isEqualTo(expected.getValue());
+                assertThat(budget.path("automatic").asBoolean()).isFalse();
+                String journal = value.at("/analysis/recovery/id").asText();
+                assertThat(journal).isNotBlank();
+                int before = observedRelationSpending.getOrDefault(journal, 0);
+                int spent = budget.path("spentCalls").asInt(), fresh = budget.path("newCalls").asInt();
+                assertThat(fresh).isBetween(0, 24);
+                assertThat(spent).isBetween(before, 3096);
+                assertThat(spent - before).as("Only actual new provider calls charge each durable journal").isEqualTo(fresh);
+                observedRelationSpending.put(journal, spent);
+            }
+        }
+        return value;
+    }
     JsonNode post(String path, Object body, int status) throws Exception {
-        return json.readTree(request("POST", path, body, status).body());
+        return requestJson("POST", path, body, status);
+    }
+    private JsonNode requestJson(String method, String path, Object body, int status) throws Exception {
+        var builder = authenticatedRequest(method, path)
+                .header("Content-Type", "application/json");
+        var request = builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
+        return ScenarioJsonResponseReader.read(http, request, json, status);
     }
     HttpResponse<byte[]> request(String method, String path, Object body, int status) throws Exception {
-        var builder = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
-                .timeout(Duration.ofSeconds(30))
-                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(
-                        ("admin:" + PASSWORD).getBytes(StandardCharsets.UTF_8)))
+        var builder = authenticatedRequest(method, path)
                 .header("Content-Type", "application/json");
         var response = http.send(builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofByteArray());
-        String excerpt = new String(response.body(), StandardCharsets.UTF_8);
-        assertThat(response.statusCode()).as("%s %s: %s", method, path,
-                excerpt.substring(0, Math.min(excerpt.length(), 400)))
-                .isEqualTo(status);
+        assertThat(response.statusCode()).as(() -> {
+            String excerpt = new String(response.body(), StandardCharsets.UTF_8);
+            return "%s %s: %s".formatted(method, path, excerpt.substring(0, Math.min(excerpt.length(), 400)));
+        }).isEqualTo(status);
         return response;
     }
+    HttpRequest.Builder authenticatedRequest(String method, String path) throws Exception {
+        return httpSession.request(port, method, path);
+    }
     void save(String file, JsonNode value) throws Exception {
-        Files.writeString(output.resolve(file), value.toPrettyString());
+        ScenarioAcceptanceProcess.saveArtifact(output.resolve(file), value);
     }
     static void catalogueNames(JsonNode nodes, Map<String, String> names) {
         for (JsonNode node : nodes) {

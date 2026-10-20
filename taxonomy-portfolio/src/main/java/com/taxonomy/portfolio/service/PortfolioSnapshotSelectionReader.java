@@ -109,7 +109,7 @@ public class PortfolioSnapshotSelectionReader {
     private ParsedEvidence parseAndClose(Clob clob) throws Exception {
         // Register the locator first so it is freed even if opening the stream fails.
         try (AutoCloseable locator = () -> { if (clob != null) clob.free(); };
-             Reader input = clob == null ? null : clob.getCharacterStream()) {
+             Reader input = clob == null ? null : JdbcClobReaders.open(clob)) {
             var analysis = jsonCodec.readSelectionAnalysis(input);
             return new ParsedEvidence(analysis == null ? Map.of() : analysis.getScores(),
                     analysis == null || analysis.getWarnings() == null ? 0 : analysis.getWarnings().size());

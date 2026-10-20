@@ -1,6 +1,8 @@
 package com.taxonomy.analysis.runtime;
 
 import org.hibernate.type.descriptor.java.DataHelper;
+import org.hsqldb.DatabaseManager;
+import org.hsqldb.DatabaseType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -97,10 +99,98 @@ class HsqldbMemoryProfileTest {
         }
     }
 
+    @Test
+    void repeatedCheckpointUpdatesReuseDiscardedLobsAndPreserveHistoricalPayloads() throws Exception {
+        String url = isolatedDefaultUrl();
+        String name = url.substring("jdbc:hsqldb:mem:".length(), url.indexOf(';'));
+        String original = variedText(1703);
+        String current = variedText(1704);
+        byte[] originalBytes = new byte[128 * 1024];
+        byte[] currentBytes = new byte[128 * 1024];
+        new Random(1705).nextBytes(originalBytes);
+        new Random(1706).nextBytes(currentBytes);
+        try (Connection owner = open(url)) {
+            try {
+                owner.setAutoCommit(false);
+                try (var statement = owner.createStatement()) {
+                    statement.execute("CREATE TABLE payload_probe (id INTEGER PRIMARY KEY, reason CLOB, document BLOB)");
+                    statement.execute("CREATE TABLE journal_probe (id INTEGER PRIMARY KEY, detail CLOB)");
+                }
+                try (var insert = owner.prepareStatement("INSERT INTO payload_probe VALUES (?, ?, ?)")) {
+                    for (int id : new int[]{1, 2, 3}) {
+                        insert.setInt(1, id);
+                        insert.setCharacterStream(2, new StringReader(original));
+                        insert.setBinaryStream(3, new ByteArrayInputStream(originalBytes));
+                        assertThat(insert.executeUpdate()).isEqualTo(1);
+                    }
+                }
+                try (var insert = owner.prepareStatement("INSERT INTO journal_probe VALUES (?, ?)")) {
+                    for (int id = 0; id < 64; id++) {
+                        insert.setInt(1, id);
+                        insert.setString(2, "Initial complete checkpoint evidence " + id);
+                        assertThat(insert.executeUpdate()).isEqualTo(1);
+                    }
+                }
+                owner.commit();
+                for (int generation = 0; generation < 64; generation++) {
+                    try (var update = owner.prepareStatement("UPDATE payload_probe SET reason = ?, document = ? WHERE id = 2")) {
+                        update.setCharacterStream(1, new StringReader(current));
+                        update.setBinaryStream(2, new ByteArrayInputStream(currentBytes));
+                        assertThat(update.executeUpdate()).isEqualTo(1);
+                    }
+                    try (var update = owner.prepareStatement("UPDATE journal_probe SET detail = ? WHERE id = ?")) {
+                        for (int id = 0; id < 64; id++) {
+                            update.setString(1, "Complete accepted checkpoint evidence " + generation + ":" + id);
+                            update.setInt(2, id);
+                            assertThat(update.executeUpdate()).isEqualTo(1);
+                        }
+                    }
+                    owner.commit();
+                }
+                // Observe allocated database blocks, not JVM garbage or a forced collection.
+                // No SQL read transaction may hold up the engine's asynchronous checkpoint.
+                var database = DatabaseManager.lookupDatabaseObject(DatabaseType.DB_MEM, name);
+                long deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+                while (database.lobManager.getLobCount() > 1_300 && System.nanoTime() < deadline) {
+                    Thread.sleep(25);
+                }
+                assertThat(database.lobManager.getLobCount())
+                        .as("Discarded checkpoint LOB generations must be reclaimed automatically")
+                        .isLessThanOrEqualTo(1_300);
+                assertThat(database.lobManager.getLobStore().getLength())
+                        .as("Repeated updates must reuse obsolete blocks instead of retaining every large version")
+                        .isLessThanOrEqualTo(48L * 1024 * 1024);
+                assertPayload(url, 1, original, originalBytes);
+                assertPayload(url, 2, current, currentBytes);
+                assertPayload(url, 3, original, originalBytes);
+                try (var observer = open(url); var statement = observer.createStatement();
+                     var rows = statement.executeQuery("SELECT id, detail FROM journal_probe ORDER BY id")) {
+                    for (int id = 0; id < 64; id++) {
+                        assertThat(rows.next()).isTrue();
+                        assertThat(rows.getInt(1)).isEqualTo(id);
+                        assertThat(rows.getString(2)).isEqualTo("Complete accepted checkpoint evidence 63:" + id);
+                    }
+                    assertThat(rows.next()).isFalse();
+                }
+            } finally {
+                shutdown(owner);
+            }
+        }
+    }
+
+    private static String variedText(long seed) {
+        var random = new Random(seed);
+        var text = new StringBuilder("Complete Unicode evidence – 水位 🌊; e\u0301; \u0000;\n");
+        for (int i = 0; i < 1024 * 1024; i++) text.append((char) (' ' + random.nextInt(95)));
+        return text.toString();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "jdbc:hsqldb:mem:explicit-database;hsqldb.lob_compressed=false",
             "jdbc:hsqldb:mem:explicit-database;hsqldb.lob_compressed=true;hsqldb.lob_file_scale=32",
+            "jdbc:hsqldb:mem:explicit-database;hsqldb.log_size=0",
+            "jdbc:hsqldb:mem:explicit-database;hsqldb.log_size=16",
             "jdbc:hsqldb:file:/existing/database;shutdown=true;hsqldb.write_delay_millis=0",
             "jdbc:hsqldb:file:/existing/database;hsqldb.lob_file_scale=8;shutdown=true"
     })

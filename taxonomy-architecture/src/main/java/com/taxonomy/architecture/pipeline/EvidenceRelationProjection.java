@@ -85,7 +85,19 @@ public final class EvidenceRelationProjection {
                     throw new IllegalArgumentException("Contribution belongs to another source");
                 }
             }
-            if (node.container() || !assessment.question().isBlank() || elements.containsKey(node.id())) continue;
+            if (node.container() || !assessment.question().isBlank()) continue;
+            RequirementElementView existing = elements.get(node.id());
+            if (existing != null) {
+                if (!assessment.contributions().isEmpty()) {
+                    String explanation = assessment.contributions().stream()
+                            .map(c -> (c.condition().isBlank() ? "" : "Condition: " + c.condition() + " | ")
+                                    + c.text() + " | Original: " + c.quote())
+                            .collect(java.util.stream.Collectors.joining(" | "));
+                    existing.setPresenceReason(summary("Requirement-scoped contribution proposals: " + explanation));
+                    existing.setIncludedBecause(existing.getPresenceReason());
+                }
+                continue;
+            }
             List<Contribution> unconditional = assessment.contributions().stream()
                     .filter(c -> c.condition().isBlank()).toList();
             if (unconditional.isEmpty()) continue;

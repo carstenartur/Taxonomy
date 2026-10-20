@@ -56,8 +56,8 @@ class RequirementAnalysisJobItemTest {
         assertThat(item.getCompletedAt()).isNull();
         assertThat(item.getErrorMessage()).isNull();
 
-        RequirementAnalysisSnapshot staleAssociation =
-                mock(RequirementAnalysisSnapshot.class);
+        SnapshotReference staleAssociation =
+                mock(SnapshotReference.class);
         set(item, "snapshot", staleAssociation);
         item.complete(AnalysisStatus.SUCCESS, "snapshot-1", firstCompletion);
         assertThat(item.getStatus()).isEqualTo(AnalysisStatus.SUCCESS);

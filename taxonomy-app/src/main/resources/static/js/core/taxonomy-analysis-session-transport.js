@@ -9,6 +9,7 @@
     var DRAFT_TRACE_LIMIT = 48;
     runtime.analysisGeneration = Number(runtime.analysisGeneration) || 0;
     runtime.draftGeneration = Number(runtime.draftGeneration) || 0;
+    runtime.draftAcknowledgementGeneration = Number(runtime.draftAcknowledgementGeneration) || 0;
     runtime.activeAnalysisControllers = runtime.activeAnalysisControllers || new Set();
     runtime.copilotIntervals = runtime.copilotIntervals || new Set();
     runtime.draftMutationQueue = runtime.draftMutationQueue || Promise.resolve();
@@ -359,7 +360,9 @@
             requestId: null
         });
         return C.nativeJsonRequest(url, request).then(function (view) {
-            assertCurrent();
+            // A successful PUT already changed the server revision. Reanalysis
+            // may discard its old scores, but must retain that write's acknowledgement.
+            assertCurrent(method === 'PUT');
             // The queue owns revision advancement. Callers may mirror this state,
             // but the next queued mutation cannot start before this update.
             if ((method === 'PUT' || method === 'POST')
@@ -433,12 +436,16 @@
             }
             var workspace = runtime.workspaceId;
             var generation = runtime.draftGeneration;
+            var acknowledgementGeneration = runtime.draftAcknowledgementGeneration;
             var analysisGeneration = runtime.analysisGeneration;
             var readingDraft = methodOf(url, options) === 'GET';
-            function assertCurrent() {
-                // Cancellation retains write acknowledgements. Full reads must
-                // still share the loader's analysis scope before advancing it.
-                if (workspace !== runtime.workspaceId || generation !== runtime.draftGeneration
+            function assertCurrent(acknowledgedPut) {
+                // Queued requests and conflict retries stay fenced before dispatch.
+                // Only an already committed PUT may cross analysis-only changes;
+                // reset/discard/scope boundaries revoke its acknowledgement too.
+                var sameAcknowledgement = acknowledgedPut
+                    && acknowledgementGeneration === runtime.draftAcknowledgementGeneration;
+                if (workspace !== runtime.workspaceId || generation !== runtime.draftGeneration && !sameAcknowledgement
                         || (readingDraft && analysisGeneration !== runtime.analysisGeneration)) {
                     throw Object.assign(new Error('The draft context has changed'), {
                         name: 'AbortError', code: 'STALE_DRAFT_CONTEXT'

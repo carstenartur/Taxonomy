@@ -234,7 +234,9 @@ public final class RecoveryDurabilityProbe {
             @Override public AnalysisResult completeWithFallback(Claim claim, AnalysisResult result,
                     java.util.function.Supplier<List<TaxonomyNodeDto>> fallbackTree) {
                 var progress = registry.recent("alice", SCOPE, null, null).getFirst();
-                check(progress.finishedAt() == null, "Terminal live progress was published before the durable commit");
+                check(progress.finishedAt() == null, "Terminal live progress was published before the durable commit"
+                        + "; status=" + progress.status() + "; stopReason=" + progress.stopReason()
+                        + "; memory=" + progress.memory());
                 if (failPersistence) throw new IllegalStateException("simulated durable write failure");
                 var saved = new AnalysisResult(Map.of("BP",70d), fallbackTree.get()); saved.setStatus(persistedStatus); return saved;
             }

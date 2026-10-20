@@ -3,6 +3,7 @@ package com.taxonomy.analysis.backup;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.taxonomy.backup.*;
 import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.exchange.backup.PortableRows.Query;
 import com.taxonomy.workspace.backup.BackupRowScope;
 import com.taxonomy.workspace.model.RepositoryTenantIdentity;
@@ -87,7 +88,8 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
                 if (!currentTexts.containsKey(draftKey) && "COMPLETED".equals(run.state())) return null;
             }
             includedRuns.put(run.id(),run);
-            return new ContinuationRecord(new SourceRecordId("analysis.continuation",run.id()),key.owner(),key.repository(),key.workspace(),key.branch(),run.inputHash(),request,text(r,"result_json"),
+            String result = PortableJsonPayloads.unpack(text(r,"result_json",24_000_000),24_000_000);
+            return new ContinuationRecord(new SourceRecordId("analysis.continuation",run.id()),key.owner(),key.repository(),key.workspace(),key.branch(),run.inputHash(),request,PortableJsonPayloads.pack(result,24_000_000),
                     run.state(),ResumePolicy.REVIEW_REQUIRED,run.updatedAt(),run.currentNode(),r.getObject("relation_calls_spent",Integer.class),
                     r.getObject("relation_source_cohort_size",Integer.class));
         });

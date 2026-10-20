@@ -26,6 +26,22 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Actual persisted relationships, including historical and foreign records with the same business keys. */
 class PortfolioRecordsExportIT {
+    @Test void largeAnalysisSnapshotExportsCompletelyWithoutChangingItsDatabaseProjection() throws Exception {
+        String original = "{\"reasons\":{\"CP\":\"" + "Complete snapshot evidence. ".repeat(500_000) + "\"}}";
+        assertThat(original.length()).isGreaterThan(12_000_000);
+        try (var fixture = new Fixture()) {
+            graph(fixture,"repo-a","private-a","ALICE");
+            fixture.jdbc.update("update req_analysis_snapshot set analysis_payload=?",original);
+            var output = new Contents();
+            new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.CURRENT_STATE,
+                    new BackupScope.Workspace("repo-a","private-a")),output);
+            String exported = one(output,"analysis-snapshot").path("analysisPayload").asText();
+            assertThat(com.taxonomy.exchange.backup.PortableJsonPayloads.unpack(exported,24_000_000)).isEqualTo(original);
+            assertThat(output.entries.get("data/portfolio/analysis-snapshot.ndjson").length).isLessThan(PortableRows.MAX_RECORD_BYTES);
+            assertThat(fixture.jdbc.queryForObject("select analysis_payload from req_analysis_snapshot",String.class)).isEqualTo(original);
+        }
+    }
+
     @ParameterizedTest @ValueSource(strings = {"SHORT", "STANDARD", "DETAILED"})
     void portableJobPreservesItsRecordedReasonLength(String length) throws Exception {
         try (var fixture = new Fixture()) {

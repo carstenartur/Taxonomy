@@ -218,6 +218,32 @@ class RelationCallLedgerTest {
         }
     }
 
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void packedLegacyResultSeedsItsNullableLedgerWithoutLosingEvidence(boolean cumulativeBudget) throws Exception {
+        try (var db = new Database(7)) {
+            var previous = result(7);
+            previous.setReasons(Map.of("CP", "Original evidence — 水位 🌊. ".repeat(6000)));
+            if (cumulativeBudget) previous.setRelationSearchReport(previous.getRelationSearchReport().withBudget(
+                    new com.taxonomy.dto.RelationSearchBudget(24, 3096, 7, 19, false, 1, 32, 512, 32)));
+            String raw = db.json.writeValueAsString(previous);
+            assertTrue(raw.length() > 65_536);
+            String packed = com.taxonomy.exchange.backup.PortableJsonPayloads.pack(raw, 24_000_000);
+            assertNotEquals(raw, packed, "The regression must exercise the actual packed storage frame");
+            db.tx(em -> {
+                var run = em.find(AnalysisContinuationRun.class, db.id);
+                run.resultJson = packed; run.relationCallsSpent = null; return null;
+            });
+            int expected = cumulativeBudget ? 19 : 7;
+            assertEquals(expected, assertDoesNotThrow(() -> spent(db),
+                    "A restored packed result must initialize the same durable call ledger as plain JSON"));
+            assertEquals(packed, db.tx(em -> em.find(AnalysisContinuationRun.class, db.id).resultJson));
+            db.statements.clear(); db.factory.getStatistics().clear();
+            assertEquals(expected, spent(db)); debit(db, expected + 1); assertEquals(expected + 1, spent(db));
+            assertTrue(db.statements.stream().noneMatch(sql -> sql.startsWith("select") && sql.contains("result_json")),
+                    "An initialized ledger must not reread the complete result on subsequent admissions");
+        }
+    }
+
     @Test void legacyReportSeedsTheCounterOnceWithoutLoadingLargePayloadsOnEveryCall() {
         try (var db = new Database(7)) {
             assertEquals(7, spent(db));

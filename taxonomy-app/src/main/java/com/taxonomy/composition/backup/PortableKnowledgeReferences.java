@@ -82,6 +82,7 @@ final class PortableKnowledgeReferences {
     void encoded(JsonNode record,String field)throws IOException {
         var value=record.get(field);if(value==null || value.isNull())return;
         if(!value.isTextual())throw new IOException("Invalid encoded analysis references");
-        payload(com.taxonomy.exchange.backup.PortableRows.json().readTree(value.textValue()));
+        String document=com.taxonomy.exchange.backup.PortableJsonPayloads.unpack(value.textValue(),24_000_000);
+        payload(com.taxonomy.exchange.backup.PortableRows.json().readTree(document));
     }
 }

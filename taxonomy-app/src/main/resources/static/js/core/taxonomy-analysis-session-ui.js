@@ -131,10 +131,11 @@
         var preservedText = input ? input.value : '';
 
         runtime.invalidating = true;
-        // Reanalysis replaces results inside the same draft. Its pending saves
-        // still own their acknowledgements; resets and replacements do not.
-        if (options.keepDraftLifecycle !== true) {
-            runtime.draftGeneration = (runtime.draftGeneration || 0) + 1;
+        runtime.draftGeneration = (runtime.draftGeneration || 0) + 1;
+        // Reanalysis clears derived evidence while keeping the same saved draft.
+        // Every other boundary must also fence an old write's late acknowledgement.
+        if (options.reason !== 'copilot-reanalysis') {
+            runtime.draftAcknowledgementGeneration = (runtime.draftAcknowledgementGeneration || 0) + 1;
         }
         runtime.restoredPayload = null;
         runtime.restorationPending = false;

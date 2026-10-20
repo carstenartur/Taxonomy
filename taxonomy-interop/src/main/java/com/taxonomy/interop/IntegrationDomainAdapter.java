@@ -657,9 +657,9 @@ public class IntegrationDomainAdapter {
     }
     /** Pure validation of the full planned state, including real/planned requirement identities. */
     public void validateCompletePlan(String dsl, List<ArchitectureCommand> commands, Map<String, RequirementApplyPlan> plans) {
-        String preview = dsl;
         ArchitectureDslCommands transformer = new ArchitectureDslCommands();
-        for (ArchitectureCommand command : commands) if (!(command instanceof UpsertRequirementMapping)) preview = transformer.apply(preview, command).dsl();
+        String preview = transformer.applyAll(dsl, commands.stream()
+                .filter(command -> !(command instanceof UpsertRequirementMapping)).toList()).dsl();
         Set<String> planned = plans.values().stream().map(RequirementApplyPlan::canonicalIdentity).collect(java.util.stream.Collectors.toSet());
         for (ArchitectureCommand command : commands) if (command instanceof UpsertRequirementMapping mapping) {
             try { transformer.validatePlannedRequirementMapping(preview, mapping, planned); }

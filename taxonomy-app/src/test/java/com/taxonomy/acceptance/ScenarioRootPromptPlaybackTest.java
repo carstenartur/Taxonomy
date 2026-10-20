@@ -49,7 +49,7 @@ class ScenarioRootPromptPlaybackTest {
 
     @Test
     void renderedRootPromptRetainsLaterRequirementParagraph() throws Exception {
-        var fixture = (tools.jackson.databind.node.ObjectNode) ScenarioLlmPlayback.flood().fixture();
+        var fixture = (tools.jackson.databind.node.ObjectNode) ReformulationScenarioCorpus.flood();
         var source = fixture.at("/requirement/text").asText() + "\n\nRetain this later paragraph.";
         ((tools.jackson.databind.node.ObjectNode) fixture.path("requirement")).put("text", source);
         var playback = new ScenarioLlmPlayback(fixture);
@@ -115,7 +115,7 @@ class ScenarioRootPromptPlaybackTest {
         templates.loadDefaults();
         String prompt = templates.renderPrompt("BP", playback.fixture().at("/requirement/text").asText(),
                 String.join("\n", codes.stream().map(code -> code + ": " + code).toList()) + "\n",
-                rule.path("parentScore").asInt(), String.join(", ", codes));
+                rule.path("parentScore").asDouble(), String.join(", ", codes));
         assertDoesNotThrow(() -> playback.respond(prompt));
         assertTrue(playback.failures().isEmpty());
     }

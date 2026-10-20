@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.recovery;
 
 import com.taxonomy.dto.*;
+import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -18,6 +19,9 @@ public class AnalysisContinuationStore {
     private static final int MAX_QUESTIONS = 16_384;
     private static final int MAX_QUESTION_CHARACTERS = 2_000_000;
     private static final long MAX_RUN_CHARACTERS = 24_000_000;
+    // The existing stored result quota is unchanged. Expansion is independently bounded
+    // to the existing continuation archive document quota, including duplicate view evidence.
+    static final int MAX_RESULT_CHARACTERS = 24_000_000;
     // Must exceed the existing evaluator's 30 minute active-work limit. No automatic replay on expiry.
     private static final long CLAIM_MILLIS = 35 * 60 * 1000L;
     private final EntityManager em;
@@ -442,9 +446,13 @@ public class AnalysisContinuationStore {
         if (owner != null && !Objects.equals(run.operationId(), owner.operationId()))
             throw conflict("Question operation binding was superseded");
         Set<String> candidates = singletonCodes == null ? null : Set.copyOf(singletonCodes);
+        // These terminal states cannot match the positive list. Excluding them first
+        // avoids HSQL's allocating, space-padded IN-table lookup for every retained
+        // successful answer on every replay, without dropping any stored evidence.
         var pending = em.createQuery("select q.questionKey, q.inputHash, q.provider, q.nodeCodes, q.state "
                         + "from AnalysisQuestionCheckpoint q where q.run.id=:id and q.provider=:provider "
-                        + "and q.prompt is not null and q.state in ('READY','UNASSESSED','CLARIFICATION','FAILED','SKIPPED')", Object[].class)
+                        + "and q.prompt is not null and q.state<>'SUCCESS' and q.state<>'SUPERSEDED' "
+                        + "and q.state in ('READY','UNASSESSED','CLARIFICATION','FAILED','SKIPPED')", Object[].class)
                 .setParameter("id", run.id()).setParameter("provider", provider).getResultList().stream()
                 .map(row -> new QuestionInput((String) row[0], (String) row[1], (String) row[2],
                         (String) row[3], (String) row[4])).toList();
@@ -537,7 +545,7 @@ public class AnalysisContinuationStore {
         var rows = em.createQuery("select r.resultJson from AnalysisContinuationRun r where r.id=:id and r.claimToken=:token", String.class)
                 .setParameter("id", claim.id()).setParameter("token", claim.token()).getResultList();
         if (rows.isEmpty() || rows.getFirst() == null) return null;
-        return mapper.readValue(rows.getFirst(), AnalysisResult.class).getRelationSearchReport();
+        return resultPayload(rows.getFirst()).getRelationSearchReport();
     }
 
     /** Claimed, scalar accounting; only a legacy journal needs its saved report loaded once. */
@@ -603,7 +611,7 @@ public class AnalysisContinuationStore {
         }
         String saved = em.createQuery("select r.resultJson from AnalysisContinuationRun r where r.id=:id", String.class)
                 .setParameter("id", claim.id()).getSingleResult();
-        var report = saved == null ? null : mapper.readValue(saved, AnalysisResult.class).getRelationSearchReport();
+        var report = saved == null ? null : resultPayload(saved).getRelationSearchReport();
         int baseline = report == null ? 0 : report.budget() == null
                 ? Math.max(0, report.totalCalls()) : report.budget().spentCalls();
         em.flush();
@@ -984,7 +992,12 @@ public class AnalysisContinuationStore {
                 all.stream().mapToInt(q -> q.attempts).sum(), run.currentNode, openQuestions(all));
     }
     private void writeResult(AnalysisContinuationRun run, AnalysisResult result) {
-        String json = mapper.writeValueAsString(result);
+        String json;
+        try { json = PortableJsonPayloads.packSerialized(writer -> mapper.writeValue(writer, result), MAX_RESULT_CHARACTERS); }
+        catch (java.io.IOException failure) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Analysis result exceeds or cannot satisfy the bounded durable result format; individual answers remain stored", failure);
+        }
         if (json.length() > 12_000_000) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "Analysis result exceeds the durable result limit; individual answers remain stored");
         run.resultJson = json;
@@ -994,8 +1007,13 @@ public class AnalysisContinuationStore {
     }
     private AnalysisResult readResult(AnalysisContinuationRun run, AnalysisRecoveryView recovery) {
         if (run.resultJson == null) return null;
-        var result = mapper.readValue(run.resultJson, AnalysisResult.class);
+        var result = resultPayload(run.resultJson);
         result.setRecovery(recovery); return result;
+    }
+    private AnalysisResult resultPayload(String stored) {
+        try { return PortableJsonPayloads.read(stored, MAX_RESULT_CHARACTERS,
+                reader -> mapper.readValue(reader, AnalysisResult.class)); }
+        catch (java.io.IOException failure) { throw new IllegalStateException("Invalid durable analysis result payload", failure); }
     }
     private AnalysisResult withRecovery(AnalysisResult result, AnalysisContinuationRun run) {
         result.setRecovery(view(run)); return result;

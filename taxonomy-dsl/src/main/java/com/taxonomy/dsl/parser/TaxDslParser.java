@@ -128,7 +128,8 @@ public class TaxDslParser {
 
     /** Block structure excludes quoted values and full-line or trailing comments. Shared with source patches. */
     public static int blockDelimiter(String line) {
-        String structural = QUOTED_VALUE.matcher(withoutComment(line)).replaceAll("\"\"").strip();
+        // Retaining a quoted span's outer quotes cannot change either structural endpoint.
+        String structural = withoutComment(line).strip();
         if (structural.startsWith("}")) return -1;
         return structural.endsWith("{") ? 1 : 0;
     }
@@ -184,15 +185,7 @@ public class TaxDslParser {
         String key = line.substring(0, colonIdx).strip();
         String rest = line.substring(colonIdx + 1).strip();
 
-        String value;
-        Matcher m = QUOTED_VALUE.matcher(rest);
-        if (m.find()) {
-            value = unescapeQuotedValue(m.group(1));
-        } else {
-            value = rest;
-        }
-
-        return new PropertyAst(key, value, new SourceLocation(fileName, lineNumber, 1));
+        return new PropertyAst(key, propertyValue(rest), new SourceLocation(fileName, lineNumber, 1));
     }
 
     /**
@@ -205,14 +198,27 @@ public class TaxDslParser {
         }
         String key = line.substring(0, firstSpace);
         String rest = line.substring(firstSpace).strip();
-        Matcher m = QUOTED_VALUE.matcher(rest);
-        String value;
-        if (m.find()) {
-            value = unescapeQuotedValue(m.group(1));
-        } else {
-            value = rest;
+        return new PropertyAst(key, propertyValue(rest), new SourceLocation(fileName, lineNumber, 1));
+    }
+
+    private String propertyValue(String rest) {
+        // Serialized evidence starts with a quote. Locate its closing quote without a regex pass.
+        if (rest.startsWith("\"")) {
+            for (int end = 1; end < rest.length(); end++) {
+                char value = rest.charAt(end);
+                if (value == '"') return unescapeQuotedValue(rest.substring(1, end));
+                if (value == '\\') {
+                    if (++end == rest.length()) break;
+                    char escaped = rest.charAt(end);
+                    // The legacy regex dot does not consume these escaped line terminators.
+                    if (escaped == '\n' || escaped == '\r' || escaped == '\u0085'
+                            || escaped == '\u2028' || escaped == '\u2029') break;
+                }
+            }
         }
-        return new PropertyAst(key, value, new SourceLocation(fileName, lineNumber, 1));
+        // Preserve tolerant matching of later quoted spans, malformed input and unquoted values.
+        Matcher match = QUOTED_VALUE.matcher(rest);
+        return match.find() ? unescapeQuotedValue(match.group(1)) : rest;
     }
 
     private String findProperty(List<PropertyAst> properties, String key) {

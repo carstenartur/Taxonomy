@@ -37,6 +37,7 @@ com.taxonomy.portfolio.model.ProjectSolution
 com.taxonomy.portfolio.model.RequirementAnalysisJob
 com.taxonomy.portfolio.model.RequirementAnalysisJobItem
 com.taxonomy.portfolio.model.RequirementAnalysisSnapshot
+com.taxonomy.portfolio.model.SnapshotReference
 com.taxonomy.portfolio.model.RequirementElementMapping
 com.taxonomy.portfolio.model.RequirementRelationMapping
 com.taxonomy.portfolio.model.RequirementSolutionLink

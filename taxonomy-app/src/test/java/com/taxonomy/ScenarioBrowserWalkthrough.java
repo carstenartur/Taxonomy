@@ -21,7 +21,7 @@ import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Opt-in real browser journey. No intercepted application requests, injected HTML or result data. */
+/** Real browser journey enabled by generateScreenshots in the scenario workflow and test-local. */
 final class ScenarioBrowserWalkthrough implements AutoCloseable {
     private final RemoteWebDriver driver;
     private final WebDriverWait wait;
@@ -32,6 +32,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
     private final BrowserSession session;
     private final List<Map<String, Object>> controls = new ArrayList<>();
     private boolean completed;
+    private int continuedPasses;
 
     ScenarioBrowserWalkthrough(int port, Path output) throws Exception {
         assertThat(Boolean.getBoolean("generateScreenshots")).isTrue();
@@ -49,7 +50,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         wait = new WebDriverWait(driver, Duration.ofSeconds(45));
     }
 
-    ScenarioArchitectureAcceptanceTest.Run start(JsonNode fixture) throws Exception {
+    ScenarioArchitectureAcceptanceTest.Run start(JsonNode fixture, ScenarioArchitectureAcceptanceTest app) throws Exception {
         driver.get(origin + "/login");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.name("username"))).sendKeys("admin");
         driver.findElement(By.name("password")).sendKeys(ScenarioArchitectureAcceptanceTest.PASSWORD);
@@ -82,6 +83,7 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
                 "return window.localStorage.getItem('taxonomy.portfolio.projectId')")));
         driver.get(origin + "/projects/" + projectId + "/requirements/" + requirementId + "?lang=en");
         wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
+        verifySessionRefresh(app);
         new Select(driver.findElement(By.id("copilotProfile"))).selectByValue("EXHAUSTIVE");
         inventory("requirement");
         screenshot("73-scenario-requirement.png");
@@ -99,8 +101,94 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         return new ScenarioArchitectureAcceptanceTest.Run(projectId, requirementId, operation);
     }
 
+    /** Exercise both refresh paths before analysis, using the existing application's provisioned workspace. */
+    private void verifySessionRefresh(ScenarioArchitectureAcceptanceTest app) throws Exception {
+        String originalUrl = driver.getCurrentUrl();
+        String sourceText = "Original review note\n  Preserve this source fragment and the existing requirement version.";
+        long projectId = app.post("/api/projects", Map.of("projectKey", "SESSION-" + UUID.randomUUID().toString().substring(0, 8),
+                "title", "Browser session source check"), 201).path("id").asLong();
+        long requirementId = app.post("/api/projects/" + projectId + "/requirements", Map.of(
+                "requirementKey", "SESSION-001", "title", "Return to retained source",
+                "text", "Retain this saved requirement across sign-in.",
+                "source", Map.of("originalText", sourceText)), 201).path("id").asLong();
+        String operationUrl = origin + "/projects/" + projectId + "/requirements/" + requirementId + "?lang=en#requirementCopilotCard";
+        String requirementPath = "/api/projects/" + projectId + "/requirements/" + requirementId;
+        String jobsPath = "/api/projects/" + projectId + "/analysis-jobs";
+        JsonNode original = app.get(requirementPath);
+        assertThat(original.at("/currentVersion/source/originalText").asText()).isEqualTo(sourceText);
+        assertThat(app.get(jobsPath).isEmpty()).as("No analysis before the explicit Run click").isTrue();
+        assertThat(app.get(requirementPath + "/snapshots").isEmpty()).as("No snapshots before session recovery").isTrue();
+        String sessionId = driver.manage().getCookieNamed("JSESSIONID").getValue();
+        var servletSession = app.browserSessions.sessions.get(sessionId);
+        assertThat(servletSession).as("The browser owns an actual authenticated servlet session").isNotNull();
+        int logins = app.browserSessions.successfulLogins.get();
+        driver.get(operationUrl);
+        wait.until(browser -> sourceText.equals(browser.findElement(By.id("sourceText")).getDomProperty("textContent")));
+
+        refreshAuthenticatedOperation(driver, wait, operationUrl);
+        assertThat(driver.getCurrentUrl()).isEqualTo(operationUrl);
+        assertThat(driver.manage().getCookieNamed("JSESSIONID").getValue().equals(sessionId))
+                .as("A live refresh retains its session").isTrue();
+        assertThat(app.browserSessions.successfulLogins.get()).as("A live refresh needs no login").isEqualTo(logins);
+        assertThat(app.get(requirementPath)).isEqualTo(original);
+
+        servletSession.invalidate();
+        assertThat(app.browserSessions.sessions.containsKey(sessionId)).as("The actual session was destroyed").isFalse();
+        refreshAuthenticatedOperation(driver, wait, operationUrl);
+        assertThat(driver.getCurrentUrl()).as("Expired-session recovery restores the exact requirement URL").isEqualTo(operationUrl);
+        assertThat(app.browserSessions.successfulLogins.get()).as("Exactly one real login recovers the expired session").isEqualTo(logins + 1);
+        assertThat(driver.manage().getCookieNamed("JSESSIONID").getValue().equals(sessionId)).isFalse();
+        wait.until(browser -> original.at("/currentVersion/text").asText().equals(
+                browser.findElement(By.id("currentText")).getDomProperty("textContent")));
+        assertThat(driver.findElement(By.id("sourceText")).getDomProperty("textContent")).isEqualTo(sourceText);
+        assertThat(driver.findElements(By.id("copilotOpenResult"))).hasSize(1);
+        assertThat(app.get(requirementPath)).as("Requirement version and source remain unchanged").isEqualTo(original);
+        assertThat(app.get(jobsPath).isEmpty()).as("Session recovery starts no analysis").isTrue();
+        assertThat(app.get(requirementPath + "/snapshots").isEmpty()).as("Session recovery creates no snapshots").isTrue();
+        driver.get(originalUrl);
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
+    }
+
+    static void refreshAuthenticatedOperation(WebDriver browser, WebDriverWait wait, String operationUrl) {
+        browser.navigate().refresh();
+        if (!"/login".equals(java.net.URI.create(browser.getCurrentUrl()).getPath())) return;
+        // HTTP-only analysis can outlive this browser's separate servlet session.
+        // Sign in through the real form, then restore the operation being reviewed.
+        var form = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("loginForm")));
+        form.findElement(By.name("username")).sendKeys("admin");
+        form.findElement(By.name("password")).sendKeys(ScenarioArchitectureAcceptanceTest.PASSWORD);
+        form.findElement(By.cssSelector("button[type='submit']")).click();
+        wait.until(current -> !"/login".equals(java.net.URI.create(current.getCurrentUrl()).getPath()));
+        browser.get(operationUrl);
+    }
+
+    /** Observe the same operation during HTTP-only cycles and keep the remote WebDriver session active. */
+    void observeOperation(String operationId) {
+        wait.until(ExpectedConditions.attributeToBe(By.id("copilotOperation"), "data-operation-id", operationId));
+    }
+
+    /** One real click authorizes one further cycle; status polling never submits another POST. */
+    void continuePass(String jobId, long itemId) throws Exception {
+        // Reload the persisted operation, including cycles performed before this page was read.
+        driver.navigate().refresh();
+        By action = By.cssSelector("[data-session-control='continue-analysis-pass'][data-job-id='"
+                + jobId + "'][data-item-id='" + itemId + "']");
+        wait.until(ExpectedConditions.elementToBeClickable(action));
+        if (continuedPasses++ == 0) {
+            inventory("analysis-continuation");
+            screenshot("86-scenario-continuation.png");
+        }
+        click(action);
+    }
+
     void inspect(long projectId, long requirementId, String snapshotId, JsonNode projection,
                  Map<String, byte[]> artifacts, ScenarioArchitectureAcceptanceTest app) throws Exception {
+        // A partial analysis stays on its operation surface so its questions and
+        // continuation actions remain reviewable. Open the selected result explicitly.
+        refreshAuthenticatedOperation(driver, wait,
+                origin + "/projects/" + projectId + "/requirements/" + requirementId + "?lang=en");
+        wait.until(ExpectedConditions.attributeContains(By.id("copilotOpenResult"), "href", "snapshot=" + snapshotId));
+        click(By.id("copilotOpenResult"));
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot=" + snapshotId));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotResultOverview")));
         inventory("result");
