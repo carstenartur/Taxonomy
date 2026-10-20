@@ -46,12 +46,19 @@ class RelationBudgetLegacyContinuationTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String SCORING = "a".repeat(64);
     private static final String PROMPT = "Frozen source question";
+    private static final String HISTORICAL_V9_POLICY =
+            "relation-downwalk-v9/source-call-reservation=half/relation-semantics-v2/"
+            + "relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/true"
+            + "/max-depth=8/standard-batch=10/standard-prompt=120000/batch-override=null/prompt-override=null";
     private final WorkspaceContext scope = new WorkspaceContext("alice", "workspace", "draft", "repo");
     private final TaxonomyService catalogue = mock(TaxonomyService.class);
     private final LlmService llm = mock(LlmService.class);
     private final LlmProviderConfig providers = mock(LlmProviderConfig.class);
     private final WorkspaceManager workspaces = mock(WorkspaceManager.class);
-    private final RequirementRelationSearchService relations = new RequirementRelationSearchService(null, null, null, null);
+    // Exercise the historical resource migration with its original semantics and real compatibility path.
+    private final RequirementRelationSearchService relations = new RequirementRelationSearchService(null, null, null, null) {
+        @Override public String recoveryPolicyFingerprint() { return HISTORICAL_V9_POLICY; }
+    };
     private RetainedStore store;
     private AnalysisContinuationService service;
     private AnalysisRequest saved;

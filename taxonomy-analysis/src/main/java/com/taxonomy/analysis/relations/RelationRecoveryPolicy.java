@@ -19,6 +19,11 @@ public final class RelationRecoveryPolicy {
         if (savedHash.equals(AnalysisCheckpointSession.digest(currentFingerprint)))
             return new Compatible(currentFingerprint, 0);
 
+        // This bridge proves only the original v8 -> v9 resource migration.
+        // A later semantic policy must never inherit answers through that migration.
+        if (!currentFingerprint.equals(legacyBridgeTarget(enabled, depth, batchOverride, promptOverride)))
+            return null;
+
         // Old fingerprints did not retain separate settings. Enumerate only bounded
         // call counts and known deployment/default packing; all semantics stay fixed.
         var sources = new LinkedHashSet<>(List.of(32, configuredSources));
@@ -38,6 +43,14 @@ public final class RelationRecoveryPolicy {
             }
         }
         return null;
+    }
+
+    /** Frozen target of the historical migration; do not follow future semantic policy changes. */
+    private static String legacyBridgeTarget(boolean enabled, int depth, Integer batchOverride, Integer promptOverride) {
+        return "relation-downwalk-v9/source-call-reservation=half/relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/" + enabled
+                + "/max-depth=" + depth + "/standard-batch=" + (batchOverride == null ? 10 : batchOverride)
+                + "/standard-prompt=" + (promptOverride == null ? 120_000 : promptOverride)
+                + "/batch-override=" + batchOverride + "/prompt-override=" + promptOverride;
     }
 
     private static String legacy(boolean enabled, int depth, Integer batchOverride, Integer promptOverride,

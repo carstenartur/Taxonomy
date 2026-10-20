@@ -27,6 +27,8 @@ import java.util.regex.Pattern;
 @Service
 public class PromptTemplateService {
 
+    public static final String FUNCTIONAL_SCOPE_POLICY = "functional-necessity-v1";
+
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{[A-Z_]+\\}\\}");
 
     private static final Logger log = LoggerFactory.getLogger(PromptTemplateService.class);
@@ -152,7 +154,7 @@ public class PromptTemplateService {
                 "{{TAXONOMY_NAME}}", name,
                 "{{PARENT_SCORE}}", com.taxonomy.dto.AnalysisPercentages.canonical(parentScore),
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")) + numericContract()
-                + childAllocationContract(parentScore) + reasonContract();
+                + childAllocationContract(parentScore) + functionalScopeContract() + reasonContract();
     }
 
     /** Evaluates one catalogue root independently, without a child allocation budget. */
@@ -162,7 +164,18 @@ public class PromptTemplateService {
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode),
-                "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n" + reasonContract();
+                "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n"
+                + functionalScopeContract() + reasonContract();
+    }
+
+    /** Shared scope for relevance, source contributions and first-hop relation decisions. */
+    public static String functionalScopeContract() {
+        return "\nFunctional scope policy (" + FUNCTIONAL_SCOPE_POLICY + "): "
+                + "Judge meaning across languages. Scoped contributions may be requested or necessary without literal service names. "
+                + "Explain which requested function needs each using the catalogue. If an allowed implementation works without a contribution, "
+                + "it is not unconditionally required. Catalogue availability, customary design or generic usefulness is insufficient. "
+                + "Scope necessity to function, not vendor. Preserve exclusions, conditions, alternatives and open choices; "
+                + "missing information is not rejection. Keep schema and numeric rules; scores do not prove edges.\n";
     }
 
     static String childAllocationContract(double parentScore) {
@@ -214,7 +227,8 @@ public class PromptTemplateService {
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{NODE_LIST}}", nodeList,
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "",
-                "{{MIN_SCORE}}", String.valueOf(minimumScore))) + numericContract() + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n" + reasonContract();
+                "{{MIN_SCORE}}", String.valueOf(minimumScore))) + numericContract() + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n"
+                + functionalScopeContract() + reasonContract();
     }
 
     private static String reasonContract() {
