@@ -66,26 +66,16 @@ public final class RelationSearchProtocol {
     static String sourcePrompt(String original, List<Node> nodes, Map<String, String> errors) {
         return PREAMBLE + PromptTemplateService.functionalScopeContract() + """
             Extract ONLY each source element's contribution grounded in a requested function.
-            A taxonomy category's entire scope is not requested merely because the category matches.
-            The original states the need; node descriptions describe available functions, not requirements.
-            Compare their meaning across languages, not literal words. Absence of the requirement's
-            wording in a node description is not, by itself, a reason to REJECT. A contribution can
-            express a requested function without choosing an implementation, product, role or interface.
-            If the available context does not determine whether that function is required, use
-            UNRESOLVED with a concrete question instead of treating uncertainty as a negative finding.
-            Necessary support must satisfy the functional scope policy; generic usefulness is insufficient. Keep evidence
-            quotes verbatim in the original language; explain the functional interpretation separately.
-            Return exactly one selection per offered node, in this shape:
+            Return exactly one selection per offered node:
             {"selections":[{"nodeId":"offered ID","outcome":"EXPLICIT|REJECT|UNRESOLVED",
             "contributions":[{"text":"specific contribution","requirementQuote":"substring of INPUT.original","condition":""}],
             "rationale":"why this is or is not required","question":""}]}
-            EXPLICIT means grounded in the original, including necessary scoped support; it does not require a literal service name.
-            EXPLICIT needs 1 to 4 distinct contributions. REJECT and UNRESOLVED need an empty list.
-            UNRESOLVED needs a concrete question. All keys are mandatory; empty strings are permitted
-            for condition and question only. Keep separate read/write contributions, roles, conditions
-            and alternatives distinct; never invent an implementation choice absent from the original.
-            requirementQuote MUST be copied from INPUT.original, never from a node description or translation.
-            A matching node does not make its other features required. A request to read does not request editing.
+            EXPLICIT covers direct or necessary scoped contributions and needs 1 to 4 distinct entries.
+            REJECT and UNRESOLVED need an empty list. UNRESOLVED needs a concrete question.
+            All keys are mandatory; only condition and question may be empty.
+            Keep read/write contributions, roles, conditions and alternatives distinct; do not invent an implementation choice.
+            A request to read does not request editing. Explain the functional interpretation separately from its exact quote.
+            requirementQuote MUST come from INPUT.original, never a node description or translation.
             validationErrors, when present, identifies rejected entries. Reassess only the offered nodes.
             INPUT
             """ + JSON.writeValueAsString(input(original, nodes, errors));

@@ -35,6 +35,17 @@ class RelationSourceContextBudgetTest {
     }
 
     @ParameterizedTest
+    @CsvSource({"CR-1097,CR-1014,CR-1039", "CR-1047,CR-1037,CR-1038"})
+    void realSourceCohortsFitTheNormalBatchBudget(String first, String second, String third) {
+        List<Node> nodes = List.of(scalar(first), scalar(second), scalar(third));
+        String prompt = ReflectionTestUtils.invokeMethod(RelationSearchProtocol.class,
+                "sourcePrompt", ORIGINAL, nodes, Map.of());
+        assertThat(RelationSearchProtocol.requestCharacters(prompt))
+                .as("Existing scenario source cohort must fit three full catalogue contexts")
+                .isLessThanOrEqualTo(16_000);
+    }
+
+    @ParameterizedTest
     @CsvSource({
             "CR-1007,BP-1128,OUTGOING,NAVIGATE",
             "CR-1007,BP-1140,OUTGOING,NAVIGATE",
