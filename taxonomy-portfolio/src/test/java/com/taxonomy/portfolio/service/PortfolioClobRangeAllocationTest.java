@@ -62,7 +62,6 @@ class PortfolioClobRangeAllocationTest {
                         assertThat(w.requested()).isLessThanOrEqualTo(MAX_DRIVER_CHARACTERS);
                         assertThat(w.returned()).isLessThanOrEqualTo(MAX_DRIVER_CHARACTERS);
                     });
-            f.assertForeignOwnershipRejected(path);
         }
     }
 
@@ -224,23 +223,6 @@ class PortfolioClobRangeAllocationTest {
         void assertJsonParity(Object expected, Object actual) {
             tools.jackson.databind.JsonNode original = json.valueToTree(expected), restored = json.valueToTree(actual);
             assertThat(restored).isEqualTo(original);
-        }
-
-        void assertForeignOwnershipRejected(ReadPath path) {
-            try (var session = factory.openSession()) {
-                if (path == ReadPath.SELECTION) {
-                    var reader = new PortfolioSnapshotSelectionReader(session, codec);
-                    assertThat(reader.read(8L, "snapshot", "scope")).isEmpty();
-                    assertThat(reader.read(7L, "snapshot", "other-scope")).isEmpty();
-                } else {
-                    var reader = new PortfolioSnapshotEvidenceReader(session, codec);
-                    assertThat(reader.read(8L, "snapshot", "scope")).isEmpty();
-                    assertThat(reader.read(7L, "snapshot", "other-scope")).isEmpty();
-                    assertThat(reader.readAnalysis(7L, "snapshot", "scope", "other-job", 11L, 12L)).isEmpty();
-                    assertThat(reader.readAnalysis(7L, "snapshot", "scope", "job", 13L, 12L)).isEmpty();
-                    assertThat(reader.readAnalysis(7L, "snapshot", "scope", "job", 11L, 13L)).isEmpty();
-                }
-            }
         }
 
         @Override public void close() {

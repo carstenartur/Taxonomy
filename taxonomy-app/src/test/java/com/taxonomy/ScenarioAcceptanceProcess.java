@@ -170,7 +170,10 @@ public final class ScenarioAcceptanceProcess {
                     () -> context.afterTestMethod(scenario, method, scenarioFailure));
             failure = cleanup(failure, context::afterTestClass);
         }
-        if (failure != null) throw failure;
+        if (failure != null) {
+            failure.printStackTrace(System.err); // The Spring logging context is already closed.
+            throw failure;
+        }
         System.out.println(COMPLETED);
     }
 

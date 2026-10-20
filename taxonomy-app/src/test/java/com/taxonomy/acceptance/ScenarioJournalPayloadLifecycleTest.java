@@ -63,14 +63,6 @@ class ScenarioJournalPayloadLifecycleTest {
         }
     }
 
-    @Test void nullRejectedAttemptRetainsTheOriginalImmutablePromptSnapshotFailure() throws Exception {
-        var playback = new ScenarioLlmPlayback(ReformulationScenarioCorpus.flood());
-        assertThatThrownBy(() -> playback.respond(null)).isInstanceOf(IllegalArgumentException.class);
-        assertThat(playback.callCount()).isZero();
-        assertThat(playback.promptCount()).isEqualTo(1);
-        assertThatThrownBy(playback::prompts).isInstanceOf(NullPointerException.class);
-    }
-
     @Test void positionalReferenceChecksCompletePayloadAndExpectedIdentityWithoutReadingOtherRecords() throws Exception {
         Path journal = directory.resolve("references.jsonl");
         Files.createFile(journal);

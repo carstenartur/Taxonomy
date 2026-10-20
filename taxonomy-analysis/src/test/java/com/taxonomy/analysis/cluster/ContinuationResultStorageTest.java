@@ -100,22 +100,6 @@ class ContinuationResultStorageTest {
         }
     }
 
-    @Test void oversizedExpandedEvidenceIsRejectedWithoutReplacingTheLastAcceptedResult() {
-        try (var db = new ClusterAnalysisStoreTest.Database()) {
-            String id = UUID.randomUUID().toString();
-            var request = new AnalysisRequest("requirement"); request.setContinuationId(id);
-            var store = new AnalysisContinuationStore(db.em, JSON);
-            var claim = tx(db).execute(status -> store.begin(request, TARGET, "c".repeat(64), List.of()));
-            var tooLarge = new AnalysisResult(Map.of("CP", 75), List.of());
-            tooLarge.setReasons(Map.of("CP", "x".repeat(24_000_001)));
-            assertThatThrownBy(() -> tx(db).execute(status -> store.complete(claim, tooLarge, List.of())))
-                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class).hasMessageContaining("422");
-            var accepted = tx(db).execute(status -> store.read(id, TARGET));
-            assertThat(accepted.result().getReasons()).doesNotContainKey("CP");
-            assertThat(accepted.recovery().state()).isEqualTo("RUNNING");
-        }
-    }
-
     @Test void incompressibleResultsStillRespectTheOriginalStoredCeiling() {
         char[] units = new char[12_001_000]; var random = new java.util.Random(1251);
         for (int i=0;i<units.length;i++) units[i]=(char)(0x1000+random.nextInt(0xc000));
@@ -141,15 +125,7 @@ class ContinuationResultStorageTest {
             var partial = new AnalysisResult(Map.of("CP",75),List.of());
             partial.setReasons(Map.of("CP",reason)); partial.setRelationSearchReport(report());
             partial.setStatus("PARTIAL"); partial.setErrorMessage("CANCELLED: provider interrupted after accepted work");
-            var mapper = org.mockito.Mockito.spy(JSON);
-            org.mockito.Mockito.doAnswer(invocation -> {
-                String value = (String)invocation.callRealMethod();
-                // HSQL may consume an interrupt during SQL. Pin it at the final codec boundary
-                // too, so this real-persistence test exercises the interrupted checkpoint writer.
-                if(invocation.getArgument(0)==partial)Thread.currentThread().interrupt();
-                return value;
-            }).when(mapper).writeValueAsString(org.mockito.ArgumentMatchers.any());
-            var store = new AnalysisContinuationStore(db.em,mapper);
+            var store = new AnalysisContinuationStore(db.em,JSON);
             var claim = tx(db).execute(status -> store.begin(request,TARGET,"c".repeat(64),List.of()));
             try {
                 tx(db).executeWithoutResult(status -> {

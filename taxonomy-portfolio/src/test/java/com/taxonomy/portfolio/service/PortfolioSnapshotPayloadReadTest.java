@@ -242,7 +242,11 @@ class PortfolioSnapshotPayloadReadTest {
                     var identity = foreign.get(i);
                     assertThat(reader.readAnalysis(identity.projectId(), identity.snapshotId(), identity.scopeKey(), identity.jobId(),
                             identity.requirementId(), identity.requirementVersionId())).isEmpty();
-                    if (i < 3) assertThat(reader.read(identity.projectId(), identity.snapshotId(), identity.scopeKey())).isEmpty();
+                    if (i < 3) {
+                        assertThat(reader.read(identity.projectId(), identity.snapshotId(), identity.scopeKey())).isEmpty();
+                        assertThat(new PortfolioSnapshotSelectionReader(em, f.codec)
+                                .read(identity.projectId(), identity.snapshotId(), identity.scopeKey())).isEmpty();
+                    }
                 }
             });
             f.assertNoResultEntityLoads();

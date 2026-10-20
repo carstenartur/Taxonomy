@@ -6,12 +6,19 @@ import com.taxonomy.acceptance.ScenarioExportQa;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
+import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpSessionEvent;
+import jakarta.servlet.http.HttpSessionIdListener;
+import jakarta.servlet.http.HttpSessionListener;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.event.EventListener;
+import org.springframework.security.authentication.event.InteractiveAuthenticationSuccessEvent;
 import org.springframework.test.annotation.DirtiesContext;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -26,6 +33,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,12 +60,32 @@ class ScenarioArchitectureAcceptanceTest {
             "taxonomy.analysis.relations.hierarchical.max-work-items=512",
             "taxonomy.analysis.relations.hierarchical.max-depth=8"
     })
-    @Import({ScenarioLlmConfiguration.class, com.taxonomy.interop.publication.PublicationScenarioConfiguration.class})
+    @Import({ScenarioLlmConfiguration.class, com.taxonomy.interop.publication.PublicationScenarioConfiguration.class,
+            BrowserSessions.class})
     @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
     static class Scenario extends ScenarioArchitectureAcceptanceTest { }
 
+    /** Spring Boot registers this test-only listener in the existing child application. */
+    @TestConfiguration(proxyBeanMethods = false)
+    static class BrowserSessions implements HttpSessionListener, HttpSessionIdListener {
+        final Map<String, HttpSession> sessions = new ConcurrentHashMap<>();
+        final AtomicInteger successfulLogins = new AtomicInteger();
+        @EventListener void loggedIn(InteractiveAuthenticationSuccessEvent event) { successfulLogins.incrementAndGet(); }
+        @Override public void sessionCreated(HttpSessionEvent event) {
+            sessions.put(event.getSession().getId(), event.getSession());
+        }
+        @Override public void sessionDestroyed(HttpSessionEvent event) {
+            sessions.remove(event.getSession().getId());
+        }
+        @Override public void sessionIdChanged(HttpSessionEvent event, String oldSessionId) {
+            sessions.remove(oldSessionId);
+            sessions.put(event.getSession().getId(), event.getSession());
+        }
+    }
+
     static final String PASSWORD = "Scenario-Acceptance-2026!";
     @LocalServerPort int port;
+    @Autowired BrowserSessions browserSessions;
     @Autowired ScenarioLlmPlayback playback;
     @Autowired com.taxonomy.interop.publication.PublicationContractProvider publicationProvider;
     @Autowired ExportFormatExtensionRegistry exportFormats;
@@ -103,7 +132,7 @@ class ScenarioArchitectureAcceptanceTest {
         }
         try (var browser = Boolean.getBoolean("generateScreenshots")
                 ? new ScenarioBrowserWalkthrough(port, output) : null) {
-            Run run = browser == null ? startThroughHttp(fixture) : browser.start(fixture);
+            Run run = browser == null ? startThroughHttp(fixture) : browser.start(fixture, this);
             long projectId = run.projectId();
             long requirementId = run.requirementId();
             JsonNode requirement = fixture.get("requirement");

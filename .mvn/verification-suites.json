@@ -218,7 +218,6 @@
           "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
           "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
           "com.taxonomy.ScenarioArchitectureAcceptanceTest",
-          "com.taxonomy.ScenarioBrowserSessionAcceptanceTest",
           "com.taxonomy.DerivedMetadataAndSummaryTests",
           "com.taxonomy.CoreUiAcceptanceIT",
           "com.taxonomy.PortfolioClientRoutingIT",

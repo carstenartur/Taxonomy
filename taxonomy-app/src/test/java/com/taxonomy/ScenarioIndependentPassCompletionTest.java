@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,46 +38,14 @@ class ScenarioIndependentPassCompletionTest {
         }
     }
 
-    @ParameterizedTest @MethodSource("incompletePasses")
-    void rejectsTechnicalFailureInTheUnselectedPassDespiteIdenticalArchitecture(String selected, String mutation) {
+    @ParameterizedTest(name = "{index}: {0}, {1}") @MethodSource("incompletePasses")
+    void rejectsTechnicalFailureInTheUnselectedPassDespiteIdenticalArchitecture(
+            String selected, String expectedFailure, Consumer<ObjectNode> mutation) {
         var app = new Application(true, selected);
         String unselected = selected.equals("first") ? "second" : "first";
         ObjectNode snapshot = app.snapshots.get(unselected);
         ObjectNode analysis = (ObjectNode) snapshot.path("analysis");
-        ObjectNode recovery = (ObjectNode) analysis.path("recovery");
-        ObjectNode checkpoint = (ObjectNode) recovery.path("openQuestions").get(0);
-        String expectedFailure = switch (mutation) {
-            case "recovery-paused" -> {
-                recovery.put("state", "PAUSED");
-                yield "durable recovery state";
-            }
-            case "uncertain-transport" -> {
-                checkpoint.put("outcomeUncertain", true);
-                yield "skipped or uncertain transport";
-            }
-            case "skipped-question" -> {
-                checkpoint.put("skipped", true);
-                yield "skipped or uncertain transport";
-            }
-            case "unrelated-checkpoint" -> {
-                checkpoint.put("error", "RELATION_UNRESOLVED: CR-1097: Is queue durability required?");
-                yield "Unrelated or uncertain durable question";
-            }
-            case "extra-warning" -> {
-                ((ArrayNode) analysis.path("warnings")).add("MEMORY_PRESSURE: analysis stopped");
-                yield "Analysis warnings";
-            }
-            case "analysis-status" -> {
-                analysis.put("status", "FAILED");
-                ((ObjectNode) snapshot.path("summary")).put("status", "FAILED");
-                yield "analysis completion status";
-            }
-            case "summary-status" -> {
-                ((ObjectNode) snapshot.path("summary")).put("status", "FAILED");
-                yield "snapshot analysis completion status";
-            }
-            default -> throw new AssertionError(mutation);
-        };
+        mutation.accept(snapshot);
         for (String field : List.of("scores", "reasons", "architectureView")) {
             assertThat(analysis.path(field)).as("The old cross-pass comparison still accepts %s", field)
                     .isEqualTo(app.selectedAnalysis().path(field));
@@ -88,9 +57,24 @@ class ScenarioIndependentPassCompletionTest {
     }
 
     private static Stream<Arguments> incompletePasses() {
-        return Stream.of("first", "second").flatMap(selected -> Stream.of("recovery-paused", "uncertain-transport",
-                "skipped-question", "unrelated-checkpoint", "extra-warning", "analysis-status", "summary-status")
-                .map(mutation -> Arguments.of(selected, mutation)));
+        return Stream.of("first", "second").flatMap(selected -> Stream.of(
+                Arguments.of(selected, "durable recovery state", (Consumer<ObjectNode>) snapshot ->
+                        snapshot.withObject("/analysis/recovery").put("state", "PAUSED")),
+                Arguments.of(selected, "skipped or uncertain transport", (Consumer<ObjectNode>) snapshot ->
+                        ((ObjectNode) snapshot.at("/analysis/recovery/openQuestions/0")).put("outcomeUncertain", true)),
+                Arguments.of(selected, "skipped or uncertain transport", (Consumer<ObjectNode>) snapshot ->
+                        ((ObjectNode) snapshot.at("/analysis/recovery/openQuestions/0")).put("skipped", true)),
+                Arguments.of(selected, "Unrelated or uncertain durable question", (Consumer<ObjectNode>) snapshot ->
+                        ((ObjectNode) snapshot.at("/analysis/recovery/openQuestions/0"))
+                                .put("error", "RELATION_UNRESOLVED: CR-1097: Is queue durability required?")),
+                Arguments.of(selected, "Analysis warnings", (Consumer<ObjectNode>) snapshot ->
+                        ((ArrayNode) snapshot.at("/analysis/warnings")).add("MEMORY_PRESSURE: analysis stopped")),
+                Arguments.of(selected, "analysis completion status", (Consumer<ObjectNode>) snapshot -> {
+                    snapshot.withObject("/analysis").put("status", "FAILED");
+                    snapshot.withObject("/summary").put("status", "FAILED");
+                }),
+                Arguments.of(selected, "snapshot analysis completion status", (Consumer<ObjectNode>) snapshot ->
+                        snapshot.withObject("/summary").put("status", "FAILED"))));
     }
 
     /** Small completion-only evidence; the complete exported graph has its existing independent QA suite. */
