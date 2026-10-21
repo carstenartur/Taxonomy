@@ -7,6 +7,8 @@ Diese Anleitung erläutert, wie Sie den Taxonomy Architecture Analyzer mit versc
 ## Inhaltsverzeichnis
 
 - [Übersicht](#übersicht)
+- [Optionaler Datenbankassistent](#optionaler-datenbankassistent)
+- [PostgreSQL-Pod in Rancher oder Kubernetes](#postgresql-pod-in-rancher-oder-kubernetes)
 - [HSQLDB (Standard)](#hsqldb-standard)
 - [PostgreSQL](#postgresql)
 - [Microsoft SQL Server (MSSQL)](#microsoft-sql-server-mssql)
@@ -20,16 +22,148 @@ Diese Anleitung erläutert, wie Sie den Taxonomy Architecture Analyzer mit versc
 
 ## Übersicht
 
-Die Anwendung unterstützt mehrere Datenbank-Backends über **Spring Profiles**. Jedes Datenbankprofil konfiguriert den JDBC-Treiber, den Dialekt, den Verbindungspool sowie datenbankspezifische Spaltentyp-Zuordnungen.
+Die Anwendung stellt Datenbank-Backends über **Spring Profiles** bereit. Jedes Datenbankprofil konfiguriert den JDBC-Treiber, den Dialekt, den Verbindungspool sowie datenbankspezifische Spaltentyp-Zuordnungen. Die Unterstützung für Betrieb und Migration unterscheidet sich:
 
-| Profil | Datenbank | Aktivierung | Docker-Compose-Datei |
-|---|---|---|---|
-| `hsqldb` *(Standard)* | HSQLDB (In-Process) | Keine Konfiguration erforderlich | — |
-| `postgres` | PostgreSQL 14+ | `SPRING_PROFILES_ACTIVE=postgres` | `docker-compose-postgres.yml` |
-| `mssql` | SQL Server 2019+ | `SPRING_PROFILES_ACTIVE=mssql` | `docker-compose-mssql.yml` |
-| `oracle` | Oracle 19c+ / 23c Free | `SPRING_PROFILES_ACTIVE=oracle` | `docker-compose-oracle.yml` |
+| Profil | Datenbank | Aktivierung | Docker-Compose-Datei | Unterstützungsgrenze |
+|---|---|---|---|---|
+| `hsqldb` *(Standard)* | HSQLDB (In-Process) | Keine Konfiguration erforderlich | — | In-Memory für Entwicklung/Tests; dateibasierter kontrollierter Basisbetrieb |
+| `postgres` | PostgreSQL 14+ | `SPRING_PROFILES_ACTIVE=postgres` | `docker-compose-postgres.yml` | Dauerhafte externe Datenbank mit freigegebenen Migrationen |
+| `mssql` | SQL Server 2019+ | `SPRING_PROFILES_ACTIVE=mssql` | `docker-compose-mssql.yml` | Kompatibilität/Evaluierung; kein vollständig abgenommener Migrationspfad |
+| `oracle` | Oracle 19c+ / 23c Free | `SPRING_PROFILES_ACTIVE=oracle` | `docker-compose-oracle.yml` | Kompatibilität/Evaluierung; kein vollständig abgenommener Migrationspfad |
 
 Alle Datenbankprofile verwenden dasselbe Entity-Modell. Die Hibernate-Annotationen `@Nationalized` und `@Lob` gewährleisten korrekte Unicode- und Langtext-Verarbeitung über alle Datenbanken hinweg.
+
+---
+
+## Optionaler Datenbankassistent
+
+Beim ersten geeigneten Administratorbesuch mit eingebetteter HSQLDB bietet der
+Begrüßungsdialog die Datenbankeinrichtung an. Sie können ihn schließen, Escape
+drücken oder mit der aktuellen Datenbank fortfahren. Dabei bleiben aktive
+Konfiguration und Anwendungsdaten erhalten. `PreferencesService` speichert die
+Entscheidung serverseitig als `setup.database.dismissed` für die Installation;
+sie gilt auch in einer neuen Browsersitzung. Bei In-Memory-HSQLDB gilt sie nur,
+solange diese Datenbank besteht. Ein Zurücksetzen oder Neuerstellen der Daten
+entfernt auch die gespeicherte Entscheidung. Administratoren können den
+Assistenten unter **Einstellungen > Datenbank einrichten** erneut öffnen.
+
+1. Wählen Sie **PostgreSQL**, **SQL Server** oder **Oracle** und geben Sie den
+   erreichbaren Datenbankhost, Port, Datenbanknamen (Oracle: Dienstname),
+   Benutzernamen und das Passwort ein. Datenbankserver und Konto müssen bereits
+   vorhanden sein.
+2. Lassen Sie **TLS mit Zertifikatsprüfung** aktiviert. Für PostgreSQL geben Sie
+   bei Bedarf den absoluten Pfad zu einer vertrauenswürdigen CA-Datei an, die
+   bereits im **Taxonomy-Server/Pod** eingebunden ist, beispielsweise
+   `/etc/taxonomy-db-ca/ca.crt`. Dies ist ein Serverpfad, kein Datei-Upload und kein
+   Pfad auf dem Rechner Ihres Browsers. SQL Server und Oracle verwenden das
+   bereits eingerichtete Zertifikatsvertrauen der Anwendungs-JVM; der Assistent
+   installiert keine Zertifikate und erstellt keinen Truststore.
+3. Prüfen Sie die Verbindung. Der Test öffnet eine separate, zeitlich begrenzte
+   JDBC-Verbindung mit Read-only-Hinweis und führt weder DDL noch Schreibzugriffe
+   auf Anwendungsdaten aus. Ein Erfolg bestätigt nur Erreichbarkeit und
+   Datenbankanmeldung. Schemakompatibilität, Schreib-/Migrationsrechte, Upgrade
+   und Wiederherstellung bleiben ungeprüft. SQL Server und Oracle bleiben auch
+   nach einem erfolgreichen Test Evaluierungsprofile.
+4. Kopieren Sie die Konfiguration oder laden Sie `taxonomy-database.properties`
+   und `taxonomy-database-values.yaml` herunter. Passwort-Properties fehlen
+   vollständig; Kommentare erläutern die Bereitstellung über das vorhandene
+   Deployment-Secret oder geschützte Spring-Konfiguration. Das Testpasswort wird
+   nicht als Einstellung gespeichert. Das gewählte Datenbankprofil ersetzt das
+   alte; andere aktive beziehungsweise Standardprofile bleiben erhalten.
+   `production` bleibt erhalten, wenn es vorhanden ist, wird aber nicht automatisch
+   ergänzt. Die Helm-Ausgabe enthält zusätzlich `kubernetes`. Prüfen Sie die
+   Profilliste für den vorgesehenen Betrieb und Anmeldemodus.
+
+Meldet der Konfigurationsexport einen **Konflikt bei den Schema-Einstellungen**,
+prüfen Sie vorhandene Werte für `spring.jpa.properties.hibernate.hbm2ddl.auto`,
+`spring.jpa.properties.jakarta.persistence.schema-generation.database.action`
+und die ältere Einstellung `spring.jpa.properties.javax.persistence.schema-generation.database.action`.
+Prüfen Sie außerdem `spring.jpa.hibernate.ddl-auto` in `SPRING_APPLICATION_JSON`,
+JVM-Systemeigenschaften oder Startargumenten: Diese Quellen können Vorrang vor
+den erzeugten Umgebungsvariablen haben. Entfernen Sie die widersprüchlichen
+Überschreibungen im Deployment oder setzen Sie sie auf `validate`. Wiederholen
+Sie den Export, sobald die korrigierte Konfiguration wirksam ist. Der normale
+HSQLDB-Standardwert in einer Application-Properties-Datei verhindert den Export
+nicht. Der Verbindungstest bleibt auch bei einem Konflikt möglich. Die Prüfung
+erfasst die aktuelle Serverkonfiguration; kontrollieren Sie vor dem Neustart auch
+später ergänzte Einstellungen des Zieldeployments.
+
+Der Betreiber übernimmt die Konfiguration und startet beziehungsweise deployt
+Taxonomy anschließend bewusst neu. Der Assistent wechselt keine laufende
+Datenquelle, erstellt keine Pods oder Schemata und startet die Anwendung nicht
+neu. Er **überträgt keine vorhandenen HSQLDB-Daten**. Bewahren Sie die
+Quelldatenbank und eine geprüfte Sicherung auf, wenn deren Datensätze erhalten
+bleiben müssen; siehe [Wechsel von HSQLDB zu PostgreSQL](#wechsel-von-hsqldb-zu-postgresql).
+
+TLS-Referenzen: [pgJDBC](https://jdbc.postgresql.org/documentation/ssl/),
+[Microsoft JDBC](https://learn.microsoft.com/en-us/sql/connect/jdbc/connecting-with-ssl-encryption)
+und [Oracle JDBC](https://docs.oracle.com/en/database/oracle/oracle-database/23/jjdbc/client-side-security.html).
+
+## PostgreSQL-Pod in Rancher oder Kubernetes
+
+Ein einfacher Ausgangspunkt ist ein separates PostgreSQL-**StatefulSet** mit
+eigenem **PersistentVolumeClaim (PVC)** und **ClusterIP-Service** im selben
+Namespace wie Taxonomy. Das Taxonomy-Chart und der Browserassistent erstellen die
+Datenbank nicht. Die vorhandene [Anleitung für Datenbank-Pods](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md)
+und das [PostgreSQL-Values-Beispiel](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-postgres-service.yaml)
+zeigen die Verbindung zu einer separat verwalteten Datenbank.
+
+1. **Workload und Speicher anlegen.** Öffnen Sie in Rancher die Workload-Ansicht
+   des Clusters, erstellen Sie ein StatefulSet im vorgesehenen Namespace und
+   binden Sie einen Volume Claim mit geeigneter StorageClass ein. Legen Sie eine
+   für Ihren Release und Betrieb freigegebene PostgreSQL-Imageversion fest. Beim
+   offiziellen `postgres`-Image verwendet Version 17 `/var/lib/postgresql/data`;
+   Version 18 bindet das Volume unter `/var/lib/postgresql` ein und setzt
+   standardmäßig `PGDATA=/var/lib/postgresql/18/docker`. Stimmen Sie den PVC-Mount
+   auf Image und Konfiguration ab. Siehe [Rancher-Workloads](https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/kubernetes-resources-setup/workloads-and-pods/deploy-workloads),
+   [Kubernetes-StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
+   und die [offizielle Image-Anleitung](https://hub.docker.com/_/postgres).
+2. **Datenbank und Anwendungskonto erstellen.** Verwenden Sie die Datenbank
+   `taxonomy` und ein eigenes eingeschränktes Konto, etwa `taxonomy_app`.
+   Administrator-/Bootstrap-Zugangsdaten bleiben getrennt. `POSTGRES_USER` des
+   offiziellen Images erstellt einen **Superuser**; der Anwendungsname in dieser
+   Variable ergibt kein eingeschränktes Anwendungskonto. Richten Sie die Rolle
+   separat mit den für Startmigrationen benötigten Eigentums-/DDL-Rechten auf
+   Taxonomy-Datenbank und Schema ein, ohne clusterweite Superuser-Rechte.
+   `POSTGRES_DB=taxonomy` und Initialisierungsskripte wirken auf ein leeres
+   Datenverzeichnis; Änderungen konfigurieren kein vorhandenes PVC nachträglich
+   um. Siehe [Initialisierungsvertrag des Images](https://hub.docker.com/_/postgres).
+3. **Internen Service und TLS einrichten.** Ein Service `postgres` auf TCP 5432
+   ist im selben Namespace unter `postgres` erreichbar. Für einen anderen
+   Namespace eignet sich etwa `postgres.database.svc.cluster.local`, angepasst
+   an die DNS-Domain des Clusters. Verwenden Sie den schreibfähigen Primary-Endpunkt.
+   `localhost` wäre der Taxonomy-Pod; NodePort, öffentlicher LoadBalancer oder
+   HTTP-Ingress sind dafür nicht erforderlich. Aktivieren Sie TLS auf PostgreSQL,
+   verwenden Sie ein Serverzertifikat für den gewählten Service-DNS-Namen und
+   mounten Sie die öffentliche CA-Datei in Taxonomy. Die TLS-Auswahl im Assistenten
+   konfiguriert den Datenbankserver nicht. Siehe [Service-DNS](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/)
+   und [pgJDBC-Zertifikatsprüfung](https://jdbc.postgresql.org/documentation/ssl/).
+4. **Taxonomy konfigurieren.** Hinterlegen Sie im Taxonomy-Namespace im durch
+   `existingSecret` referenzierten Secret die Schlüssel `SPRING_DATASOURCE_URL`,
+   `SPRING_DATASOURCE_USERNAME` und `SPRING_DATASOURCE_PASSWORD`. Die URL kann
+   beispielsweise `jdbc:postgresql://postgres:5432/taxonomy?sslmode=verify-full&sslrootcert=/etc/taxonomy-db-ca/ca.crt`
+   lauten. Wählen Sie `database.type=postgres`; lassen Sie `database.url` und
+   `database.username` leer, um diese Secret-Schlüssel zu verwenden, oder
+   überschreiben Sie die jeweiligen Werte bewusst in den Values. Erhalten Sie den Anmeldemodus
+   samt benötigter Secret-Schlüssel, etwa `ADMIN_PASSWORD` für lokale Anmeldung
+   oder `KEYCLOAK_CLIENT_SECRET` für Keycloak. Die Datenbankauswahl darf keine
+   Anmelde- oder Deploymentprofile entfernen.
+5. **Beide Netzwerkrichtungen freigeben.** Anwendbare NetworkPolicies müssen
+   Taxonomy-Egress zur Datenbank und Datenbank-Ingress von Taxonomy auf TCP 5432
+   erlauben. Auch der Cluster-DNS-Dienst muss aus Taxonomy erreichbar sein.
+   Verwenden Sie die tatsächlichen Namespace- und Pod-Labels und erhalten Sie
+   weitere nötige Regeln und Mounts beim Kombinieren von Values-Dateien. Siehe
+   [Kubernetes-NetworkPolicies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
+   und die [Chart-Beispiele](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md#netzwerk-und-dauerhafte-daten).
+6. **Prüfen, deployen und Persistenz abnehmen.** Führen Sie den Verbindungstest
+   aus dem laufenden Taxonomy-Server aus und übernehmen Sie anschließend bewusst
+   die geprüfte Deployment-Konfiguration mit `TAXONOMY_DDL_AUTO=validate`. Beim
+   nächsten Anwendungsstart initialisieren die freigegebenen Flyway-Strecken von
+   JGit Core und Taxonomy ein frisches PostgreSQL-Schema. Der Verbindungstest
+   erledigt dies nicht. Prüfen Sie den tatsächlichen Start, die Anmeldung und die
+   Anwendungsfunktionen. Erhalten Sie das Datenbank-PVC unabhängig vom Taxonomy-PVC
+   für `/app/data` und richten Sie geprüfte Sicherung/Wiederherstellung ein.
+   Ein einzelner Datenbank-Pod bietet noch keine Hochverfügbarkeit.
 
 ---
 
@@ -310,7 +444,7 @@ Das Entity-Modell allein qualifiziert kein neues Backend: Auch Migrationen der S
 
 ### HikariCP-Verbindungspool
 
-Alle Produktions-Datenbankprofile (PostgreSQL, MSSQL, Oracle) konfigurieren HikariCP mit denselben Standardwerten:
+Alle externen Datenbankprofile (PostgreSQL, MSSQL, Oracle) konfigurieren HikariCP mit denselben Standardwerten:
 
 | Eigenschaft | Wert | Beschreibung |
 |---|---|---|
@@ -348,7 +482,7 @@ von JGit Core und Taxonomy das Schema anlegen. Vor weiteren Upgrades ist eine
 Sicherung nötig; Helm verwendet sicherheitshalber `Recreate`, während
 Rolling-Kompatibilität release-spezifisch nachzuweisen ist. Siehe
 [JGit-Speicher](JGIT_STORAGE_HIBERNATE.md) und
-[Helm-Upgrade-Vertrag](../../deploy/helm/taxonomy/README.md#upgrade-safety-and-database-migrations).
+[Helm-Upgrade-Vertrag](https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/README.md#upgrade-safety-and-database-migrations).
 
 SQL-Server- und Oracle-Compose-Dateien sind Evaluierungsumgebungen, keine
 produktiven Migrationsziele und kein Ersatz für einen geprüften Datentransfer.

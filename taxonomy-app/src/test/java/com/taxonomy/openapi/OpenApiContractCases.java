@@ -11,6 +11,7 @@ import com.taxonomy.export.controller.ExportApiController;
 import com.taxonomy.shared.config.OpenApiConfig;
 import com.taxonomy.security.controller.AccountApiController;
 import com.taxonomy.security.service.PasswordChangeService;
+import com.taxonomy.setup.DatabaseSetupController;
 import com.taxonomy.templates.DocumentTemplateAdminController;
 import org.springdoc.core.configuration.SpringDocConfiguration;
 import org.springdoc.webmvc.core.configuration.SpringDocWebMvcConfiguration;
@@ -49,6 +50,7 @@ public final class OpenApiContractCases {
     private static final String ADOPTION =
             "/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}";
     private static final String TEMPLATES = "/api/admin/document-templates";
+    private static final String DATABASE_SETUP = "/api/admin/database-setup";
     private static final String DOTX = "application/vnd.openxmlformats-officedocument.wordprocessingml.template";
 
     private OpenApiContractCases() { }
@@ -147,6 +149,7 @@ public final class OpenApiContractCases {
             }
         }
         checkAccountContract(document, errors);
+        checkDatabaseSetupContract(document, errors);
         for (String suffix : List.of("/adoption-previews", "/adoptions")) {
             var operation = operation(document, ADOPTION + suffix, "post", errors);
             var header = parameter(operation, "If-Match", "header");
@@ -318,6 +321,49 @@ public final class OpenApiContractCases {
         }
     }
 
+    private static void checkDatabaseSetupContract(JsonNode document, List<String> errors) {
+        for (String suffix : List.of("", "/dismiss", "/preview", "/check")) {
+            var operation = operation(document, DATABASE_SETUP + suffix, suffix.isEmpty() ? "get" : "post", errors);
+            var statuses = new ArrayList<>(List.of("200", "401", "403"));
+            if (!suffix.isEmpty()) statuses.add("503");
+            boolean acceptsSettings = suffix.equals("/preview") || suffix.equals("/check");
+            if (acceptsSettings) statuses.addAll(List.of("400", "413", "415"));
+            if (suffix.equals("/preview")) statuses.add("409");
+            for (String status : statuses) {
+                check(operation.path("responses").has(status),
+                        "Database setup " + suffix + " response missing: " + status, errors);
+            }
+            if (!acceptsSettings) continue;
+
+            check(operation.path("requestBody").path("required").asBoolean(false),
+                    "Database setup " + suffix + " JSON body must be required", errors);
+            var request = resolve(document, operation.path("requestBody").path("content")
+                    .path("application/json").path("schema"));
+            for (String field : List.of("type", "host", "port", "database", "username")) {
+                check(request.path("properties").has(field),
+                        "Database setup request field missing: " + field, errors);
+                check(contains(request.path("required"), field),
+                        "Database setup required field missing: " + field, errors);
+            }
+            for (String field : List.of("password", "tls", "caCertificate")) {
+                check(request.path("properties").has(field),
+                        "Database setup optional field missing: " + field, errors);
+                check(!contains(request.path("required"), field),
+                        "Database setup field must remain optional: " + field, errors);
+            }
+            var password = request.path("properties").path("password");
+            check("string".equals(password.path("type").asText())
+                            && "password".equals(password.path("format").asText()),
+                    "Database setup password must use the string/password format", errors);
+            check(password.path("writeOnly").asBoolean(false),
+                    "Database setup password must be write-only", errors);
+            if (suffix.equals("/check")) {
+                check(!operation.path("responses").has("409"),
+                        "Database connection checks report schema overrides as findings, not a 409 conflict", errors);
+            }
+        }
+    }
+
     private static JsonNode operation(JsonNode doc, String path, String method, List<String> errors) {
         var value = doc.path("paths").path(path).path(method);
         check(!value.isMissingNode(), "Missing " + method + " " + path, errors);
@@ -369,6 +415,9 @@ public final class OpenApiContractCases {
         }
         @Bean BackupJobController backupController() {
             return new BackupJobController(null, null);
+        }
+        @Bean DatabaseSetupController databaseSetupController() {
+            return new DatabaseSetupController(null);
         }
         @Bean ArchitectureEditorController editorController() {
             return new ArchitectureEditorController(null, null, null);

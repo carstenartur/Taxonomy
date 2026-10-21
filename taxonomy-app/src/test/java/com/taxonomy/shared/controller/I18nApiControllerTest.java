@@ -51,7 +51,8 @@ class I18nApiControllerTest {
                 .andExpect(jsonPath("$.['analysis.task.stage.describe.label']")
                         .value("Describe"))
                 .andExpect(jsonPath("$.['analysis.task.operational.summary']")
-                        .value("Operational context"));
+                        .value("Operational context"))
+                .andExpect(jsonPath("$.['database.setup.menu']").value("Database setup"));
     }
 
     @Test
@@ -66,7 +67,8 @@ class I18nApiControllerTest {
                 .andExpect(jsonPath("$.['analysis.task.stage.describe.label']")
                         .value("Beschreiben"))
                 .andExpect(jsonPath("$.['analysis.task.operational.summary']")
-                        .value("Betriebszustand"));
+                        .value("Betriebszustand"))
+                .andExpect(jsonPath("$.['database.setup.menu']").value("Datenbank einrichten"));
     }
 
     @Test

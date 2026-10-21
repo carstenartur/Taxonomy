@@ -220,6 +220,7 @@
           "com.taxonomy.ScenarioArchitectureAcceptanceTest",
           "com.taxonomy.DerivedMetadataAndSummaryTests",
           "com.taxonomy.CoreUiAcceptanceIT",
+          "com.taxonomy.ui.DatabaseSetupBrowserTest",
           "com.taxonomy.PortfolioClientRoutingIT",
           "com.taxonomy.CompleteCopilotSessionIT",
           "com.taxonomy.SeleniumPostgresContainerIT",

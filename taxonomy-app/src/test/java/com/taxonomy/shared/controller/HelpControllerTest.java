@@ -136,6 +136,19 @@ class HelpControllerTest {
     // ── Endpoint tests ───────────────────────────────────────────────────────
 
     @Test
+    void databasePodGuidanceLinksWorkInBundledHelp() throws Exception {
+        for (String language : List.of("en", "de")) {
+            mockMvc.perform(get("/help/DATABASE_SETUP").param("lang", language))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(containsString(
+                            "https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/DATABASE_PODS.md")))
+                    .andExpect(content().string(containsString(
+                            "https://github.com/carstenartur/Taxonomy/blob/main/deploy/helm/taxonomy/values-postgres-service.yaml")))
+                    .andExpect(content().string(not(containsString("href=\"../../deploy/"))));
+        }
+    }
+
+    @Test
     void tocReturnsJsonArray() throws Exception {
         mockMvc.perform(get("/help").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())

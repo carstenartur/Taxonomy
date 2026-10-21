@@ -5,6 +5,38 @@ external Spring configuration and the existing application remain authoritative.
 No public first-run endpoint is installed. A database/login failure never enables
 setup or a fallback identity provider.
 
+## Optional database assistant / Optionaler Datenbankassistent
+
+Beim ersten geeigneten Administratorbesuch mit eingebetteter HSQLDB bietet der
+Begrüßungsdialog einen optionalen Datenbankassistenten an. Schließen, Escape oder
+Fortfahren mit der aktuellen Datenbank erhält Konfiguration und Anwendungsdaten.
+Die Entscheidung wird über `PreferencesService` serverseitig für die Installation
+gespeichert und überlebt neue Browsersitzungen. Bei In-Memory-HSQLDB geht sie mit
+einem Zurücksetzen der Datenbank verloren. Unter **Einstellungen >
+Datenbank einrichten** kann ein Administrator den Assistenten erneut öffnen.
+
+Der Assistent nimmt PostgreSQL-, SQL-Server- oder Oracle-Verbindungsdaten entgegen,
+verwendet standardmäßig geprüftes TLS und bietet einen begrenzten, separaten
+JDBC-Test mit Read-only-Hinweis sowie passwortfreie Konfiguration zum Kopieren oder
+als `taxonomy-database.properties` und `taxonomy-database-values.yaml` zum
+Herunterladen. Passwort-Properties fehlen vollständig. Andere aktive/Standardprofile
+bleiben erhalten; `production` wird nur erhalten, nicht automatisch ergänzt.
+Die Helm-Ausgabe ergänzt `kubernetes`. PostgreSQL-CA-Pfade müssen im Taxonomy-Server/Pod bereits
+absolut eingebunden sein; SQL Server und Oracle verwenden das vorhandene
+JVM-Zertifikatsvertrauen. Ein erfolgreicher Test bestätigt Erreichbarkeit und
+Datenbankanmeldung, keine Schema-/Migrationsrechte oder Produktionsfreigabe.
+SQL Server und Oracle bleiben Evaluierungsprofile ohne vollständig abgenommene
+Migrationsstrecke.
+
+Der Betreiber übernimmt Konfiguration und Passwort über das vorhandene
+Deployment-Secret beziehungsweise geschützte Spring-Konfiguration und deployt
+bewusst neu. Es gibt keinen Datentransfer, laufenden Datenquellenwechsel,
+automatischen Neustart oder Datenbank-Provisionierung. Die Hilfe enthält einen
+praktischen PostgreSQL-Pod-Ablauf mit StatefulSet, PVC, ClusterIP-Service,
+dediziertem Konto, TLS, NetworkPolicies und Sicherung:
+[Deutsch](de/DATABASE_SETUP.md#postgresql-pod-in-rancher-oder-kubernetes) /
+[English](en/DATABASE_SETUP.md#postgresql-pod-in-rancher-or-kubernetes).
+
 ## Rancher / Helm
 
 The chart's `questions.yaml` now groups database settings, authentication, AI,
@@ -152,9 +184,11 @@ For an installation in another directory, set the JVM option
 `--configure=/absolute/config` argument only chooses where setup writes; it does not
 change the default directory of future processes. Ordinary `java -jar` use keeps
 its existing developer behavior and normal Spring location handling. The local initializer
-currently creates **HSQLDB + local authentication only**. Other database/OIDC/AI
-settings use the same normal Spring properties and protected configtree; they are
-not a new GUI wizard. See the existing configuration reference and Keycloak guide.
+currently creates **HSQLDB + local authentication only**. The browser database
+assistant prepares external connection configuration after administrator login;
+the operator applies it using normal Spring properties and protected configtree
+or deployment Secrets. OIDC/AI setup remains in the existing configuration
+reference and Keycloak guide.
 A bootstrap-secret change does not reset an already-created administrator account.
 
 ## Linux / Windows packages

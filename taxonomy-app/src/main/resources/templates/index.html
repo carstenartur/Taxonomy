@@ -11,6 +11,7 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-impact-map.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-analysis-recovery.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-database-setup.css}"/>
     <link rel="stylesheet" th:href="@{/css/git-status.css}"/>
     <!-- i18n: load translations before other scripts -->
     <script th:src="@{/js/taxonomy-i18n.js}"></script>
@@ -113,6 +114,9 @@
                        data-required-roles="ADMIN" hidden th:text="#{navbar.administration}">Administration</a>
                     <a class="application-utility-link admin-only" id="preferencesNavTab" data-page="preferences" href="#preferences"
                        data-required-roles="ADMIN" hidden th:text="#{navbar.server.settings}">Server settings</a>
+                    <button type="button" class="btn btn-link text-start p-0 application-utility-link"
+                            id="databaseSetupMenuAction" data-required-roles="ADMIN" hidden
+                            th:text="#{database.setup.menu}">Database setup</button>
                     <span id="analysisStatusMenuSlot"></span>
                 </div>
             </details>
@@ -126,6 +130,7 @@
         </div>
     </div>
 </nav>
+<div id="databaseSetupNotice" class="alert alert-warning m-3" role="status" hidden></div>
 <!-- Status widgets are moved into the single on-demand Status menu. -->
 <div id="applicationOperationalStaging" hidden>
     <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" th:title="#{navbar.ai.status.title}" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
@@ -1566,6 +1571,8 @@
     </div><!-- /row -->
 </div><!-- /container-fluid -->
 
+<th:block th:replace="~{fragments/database-setup :: dialog}"></th:block>
+
 <script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}" src="/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js"></script>
 <script th:src="@{/webjars/d3/7.9.0/dist/d3.min.js}" src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
 <script th:src="@{/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js}" src="/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js"></script>
@@ -1602,6 +1609,7 @@
 <script th:src="@{/js/relations/taxonomy-coverage.js}"></script>
 <script th:src="@{/js/relations/taxonomy-relations.js}"></script>
 <script th:src="@{/js/core/taxonomy-analysis.js}"></script>
+<script th:src="@{/js/shared/taxonomy-database-setup.js}"></script>
 <script th:src="@{/js/shared/taxonomy-onboarding.js}"></script>
 <script th:src="@{/js/shared/taxonomy-help.js}"></script>
 <script th:src="@{/js/shared/taxonomy-dsl-editor.js}"></script>

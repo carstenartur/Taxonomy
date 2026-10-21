@@ -48,6 +48,13 @@
         }
         if (!isSameApplicationApi(resolved)) return input;
 
+        // Database setup manages installation-wide preferences and connection
+        // guidance, so it must remain available when the active workspace is
+        // unavailable. Retain any explicit caller pin for server validation.
+        var path = applicationApiPath(resolved);
+        if (!explicitPin && (path === '/api/admin/database-setup'
+                || path.indexOf('/api/admin/database-setup/') === 0)) return input;
+
         resolved.searchParams.set(WORKSPACE_QUERY_PARAMETER, workspaceId == null ? '' : workspaceId);
         return /^[a-z][a-z0-9+.-]*:/i.test(input)
             ? resolved.href

@@ -44,12 +44,15 @@ Its focused contracts include:
 - Durable analysis SSE, original-input and result recovery.
 - Mixed MVC/REST editor, integration and backup adapters, including the strict
   backup wire request, streamed archive and semantic editor preconditions.
+- Database setup status, dismissal, configuration preview and connection checks,
+  including required JSON fields, optional write-only passwords and actual error
+  statuses; schema conflicts block preview but remain findings for connection checks.
 - Local password-change fields and non-echoed password formats, success and all
   five domain rejection codes, authentication/CSRF responses and actual feature
   conditions. The real account controller is imported, rather than constructed
   through a bean that would bypass its profile/property conditions.
 
-The fixture checks ten production controllers. It starts three isolated contexts:
+The fixture checks eleven production controllers. It starts three isolated contexts:
 normal local-account support, password change disabled, and Keycloak. The last two
 must not advertise the local password endpoint. Each HTTP client and context is
 closed. Domain password errors have their own schema; framework binding failures
