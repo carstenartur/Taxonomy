@@ -71,6 +71,7 @@
 ## Verification results
 
 - Final verified set: 1,057 tests in 66 existing Maven-owned suites, with no remaining failures, errors or skips. The broad focused reactor run was followed by a strict 58-test rerun of the eight affected report, Autopilot and browser suites after correcting two nested Mockito fixture stubs and the print continuation identity marker.
+- The additional full `JavascriptContractTest` gate passed all 1,402 callbacks after CI exposed incomplete legacy DOM fixtures. The three fixture-only corrections add the browser's existing `documentElement.lang` and `append()` support; production code and the original behavior assertions remain unchanged.
 - The existing Decision and Tree Node drivers verify complete original explanations, selected area-caption evidence, fractional percentages, and exact source-node identities. Continuation text fragments remain visible without being counted as additional nodes.
 - Chrome/ChromeDriver 149.0.7827.55 exercised the existing local-browser profile, including real PDF generation, A4 pagination, one large sheet, four ordinary hierarchy levels, both Tree renderers, shared relevance controls and accessible rationale actions.
 - Word fixtures were rendered and visually inspected, including long compact-report explanations and separate saved relationship selection/review reasons. Visio package contracts and evidence pages were checked with the existing native consumer; Microsoft Visio Desktop was not available in this environment.
