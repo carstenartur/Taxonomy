@@ -144,7 +144,7 @@ final class AppTestShardVerifier {
             if (!commit.equals(manifest.get("commit"))) throw invalid(group + " commit mismatch");
             if (!tree.equals(manifest.get("sourceTree"))) throw invalid(group + " source tree mismatch");
             String build = text(manifest.get("buildId")); requireBuild(group, build);
-            runIds.add(build.substring(0, build.lastIndexOf('.')));
+            runIds.add(build.substring(0, build.indexOf('.')));
             Set<String> actual = new HashSet<>();
             files(directory.resolve("tests")).stream().filter(AppTestShardVerifier::isReport).forEach(path -> actual.add(slash(directory.relativize(path))));
             Set<String> listed = new HashSet<>();

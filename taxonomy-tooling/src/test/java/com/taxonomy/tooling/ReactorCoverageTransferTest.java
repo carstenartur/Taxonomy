@@ -63,9 +63,14 @@ class ReactorCoverageTransferTest {
         for (String line : block.substring(run + "        run: |\n".length()).split("\n")) { if (line.startsWith("          ")) script.append(line.substring(10)).append('\n'); else if (line.isBlank()) script.append('\n'); else break; }
         return script.toString();
     }
-    @Test void realWorkflowAcceptsAllShardsAndWritesValidatedTimings() throws Exception {
+    @ParameterizedTest @ValueSource(ints = {1, 2}) void realWorkflowAcceptsAllShardsAndWritesValidatedTimings(int browserAttempt) throws Exception {
+        Path browserManifest = root.resolve("target/app-test-shards/browser/manifest.json");
+        var manifest = read(browserManifest); manifest.put("buildId", "123." + browserAttempt + ".browser"); write(browserManifest, manifest);
         prepare(); Result result = consume(); assertEquals(0, result.status, result.text);
         var timings = read(root.resolve("target/app-test-shards/timings.json")); assertEquals(3L, object(timings.get("tests")).get("classes")); assertEquals(3L, object(timings.get("tests")).get("cases")); assertEquals(List.of("core", "recovery", "browser"), timings.get("coverage"));
+        for (String shard : List.of("core", "recovery", "browser")) {
+            assertEquals("123." + (shard.equals("browser") ? browserAttempt : 1) + "." + shard, read(root.resolve("target/app-test-shards/" + shard + "/manifest.json")).get("buildId"));
+        }
         assertFalse(result.text.contains("NaN")); assertFalse(result.text.contains("undefined"));
     }
     @ParameterizedTest @ValueSource(strings = {"core", "recovery", "browser"}) void realWorkflowFailsWithoutEachShard(String shard) throws Exception {
