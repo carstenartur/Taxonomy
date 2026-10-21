@@ -8,6 +8,7 @@
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     var MAX_AUTOCOMPLETE_SUGGESTIONS = 200;
+    var resultSequence = 0;
 
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
@@ -23,6 +24,42 @@
     function getMaxHops() {
         var select = document.getElementById('graphMaxHops');
         return select ? parseInt(select.value, 10) : 2;
+    }
+
+    // Node, requirement and hierarchy queries share one visible result. A token
+    // also prevents an older response from restoring a result after switching.
+    function clearResults() {
+        resultSequence += 1;
+        ['graphResultsArea', 'requirementImpactResults', 'graphResultContext'].forEach(function (id) {
+            var area = document.getElementById(id);
+            if (area) area.style.display = 'none';
+        });
+        ['graphResultsContent', 'requirementImpactResults', 'graphResultContext'].forEach(function (id) {
+            var content = document.getElementById(id);
+            if (content) content.innerHTML = '';
+        });
+    }
+
+    function beginResult(kind, code) {
+        clearResults();
+        var area = document.getElementById(kind === 'requirement'
+            ? 'requirementImpactResults' : 'graphResultsArea');
+        if (area) area.style.display = '';
+        var context = document.getElementById('graphResultContext');
+        if (context) {
+            var label = kind === 'requirement' ? t('graph.result.requirement')
+                : kind === 'apqc' ? t('graph.apqc.title') : t('graph.result.node', code || '—');
+            context.innerHTML = '<strong>' + escapeHtml(label) + '</strong>'
+                + (kind === 'apqc' ? '' : '<div>' + escapeHtml(t('graph.result.catalogue.scope')) + '</div>');
+            context.style.display = '';
+        }
+        var apqc = document.getElementById('graphApqcFilter');
+        if (apqc) apqc.checked = kind === 'apqc';
+        return resultSequence;
+    }
+
+    function isCurrentResult(sequence) {
+        return sequence === resultSequence;
     }
 
     function showGraphLoading() {
@@ -748,9 +785,14 @@
     // ── API calls ─────────────────────────────────────────────────────────────
 
     function fetchGraphData(apiPromise, label, callback) {
-        apiPromise
-            .then(callback)
-            .catch(function (err) { showGraphError(t('graph.query.failed', label, err.message)); });
+        var sequence = resultSequence;
+        return apiPromise
+            .then(function (data) {
+                if (isCurrentResult(sequence)) callback(data);
+            })
+            .catch(function (err) {
+                if (isCurrentResult(sequence)) showGraphError(t('graph.query.failed', label, err.message));
+            });
     }
 
     function fetchUpstream(nodeCode, maxHops, callback) {
@@ -772,6 +814,7 @@
 
     function onUpstreamClick() {
         var code = getNodeCode();
+        beginResult('node', code);
         if (!code) { showGraphError(t('graph.enter.code')); return; }
         showGraphLoading();
         fetchUpstream(code, getMaxHops(), function (data) {
@@ -784,6 +827,7 @@
 
     function onDownstreamClick() {
         var code = getNodeCode();
+        beginResult('node', code);
         if (!code) { showGraphError(t('graph.enter.code')); return; }
         showGraphLoading();
         fetchDownstream(code, getMaxHops(), function (data) {
@@ -796,6 +840,7 @@
 
     function onFailureClick() {
         var code = getNodeCode();
+        beginResult('node', code);
         if (!code) { showGraphError(t('graph.enter.code')); return; }
         showGraphLoading();
         fetchFailureImpact(code, getMaxHops(), function (data) {
@@ -828,8 +873,7 @@
         if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         // Clear any previous results
-        var area = document.getElementById('graphResultsArea');
-        if (area) area.style.display = 'none';
+        clearResults();
     }
 
     // ── Full-detail modal ─────────────────────────────────────────────────────
@@ -991,6 +1035,7 @@
         var content = document.getElementById('graphResultsContent');
 
         if (checkbox.checked) {
+            var sequence = beginResult('apqc');
             if (area) area.style.display = '';
             if (content) {
                 content.innerHTML =
@@ -1000,7 +1045,7 @@
             }
             AnalysisApi.apqcHierarchy()
                 .then(function (data) {
-                    if (!content) return;
+                    if (!content || !isCurrentResult(sequence)) return;
                     if (!data || data.length === 0) {
                         content.innerHTML = '<div class="alert alert-info py-1 px-2 small mb-0">' +
                             t('graph.apqc.no.data') + '</div>';
@@ -1014,14 +1059,13 @@
                     if (treeContainer) renderApqcTree(treeContainer, data);
                 })
                 .catch(function (err) {
-                    if (content) {
+                    if (content && isCurrentResult(sequence)) {
                         content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' +
                             t('graph.apqc.load.failed', escapeHtml(err.message)) + '</div>';
                     }
                 });
         } else {
-            if (area) area.style.display = 'none';
-            if (content) content.innerHTML = '';
+            clearResults();
         }
     }
 
@@ -1048,9 +1092,13 @@
         if (failBtn) failBtn.addEventListener('click', onFailureClick);
         if (apqcCheckbox) apqcCheckbox.addEventListener('change', onApqcFilterChange);
     });
+    document.addEventListener('taxonomy:analysis-invalidated', clearResults);
 
     // ── Public API ────────────────────────────────────────────────────────────
     window.TaxonomyGraph = {
+        beginResult: beginResult,
+        isCurrentResult: isCurrentResult,
+        clearResults: clearResults,
         openGraphExplorer: openGraphExplorer,
         populateNodeSuggestions: populateNodeSuggestions,
         fetchUpstream: fetchUpstream,
@@ -1059,6 +1107,9 @@
         showInModal: showInModal,
         renderNeighborhoodResult: renderNeighborhoodResult,
         renderFailureResult: renderFailureResult,
+        renderElementsTable: renderElementsTable,
+        renderRelationshipsTable: renderRelationshipsTable,
+        attachNodeLinks: attachNodeLinks,
         renderImpactForceGraph: renderImpactForceGraph
     };
 

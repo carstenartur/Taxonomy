@@ -878,6 +878,7 @@ public class LlmService {
             return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
                     recoveryProviderPolicyFingerprint(requestedProvider), PromptTemplateService.childAllocationContract(100),
                     PromptTemplateService.functionalScopeContract(),
+                    TaxonomyService.ROOT_ASSESSMENT_CONTEXT_POLICY,
                     AnalysisReasonContext.POLICY,
                     AnalysisReasonContext.current().value());
         }
@@ -1455,14 +1456,11 @@ public class LlmService {
             return detail;
         }
 
-        String nodeList = buildNodeListWithContext(nodes);
-        String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
-        String expectedKeys = String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList());
         String prompt = preparedPrompt != null ? preparedPrompt : assessmentPrompt(businessText, nodes, parentScore, kind);
         detail.setPrompt(prompt);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
-                provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
+                provider, nodes.size(), nodes.stream().map(TaxonomyNode::getCode).toList());
         log.debug("Full LLM prompt:\n{}", prompt);
 
         long start = System.currentTimeMillis();
@@ -1568,9 +1566,9 @@ public class LlmService {
 
     /** Shared source context is sent once per sibling group, never inferred from the first node. */
     private String buildNodeListWithContext(List<TaxonomyNode> nodes) {
-        // Root-only assessments have no inherited context and need no catalogue lookup.
-        if (nodes.isEmpty() || nodes.stream().allMatch(node -> node.getParentCode() == null
-                || node.getParentCode().isBlank())) return buildNodeList(nodes);
+        if (nodes.isEmpty()) return buildNodeList(nodes);
+        var frozen = com.taxonomy.catalog.snapshot.FrozenCatalogueContext.current();
+        if (frozen != null) nodes = frozen.canonicalNodes(nodes);
         Map<String, String> contexts = taxonomyService.getAssessmentContexts(nodes);
         Map<String, List<TaxonomyNode>> groups = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {

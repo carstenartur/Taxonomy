@@ -25,6 +25,28 @@ window.TaxonomyRelationsApi = (function () {
         return fetch(url, { cache: 'no-store' });
     }
 
+    function readProjectionReadiness(workspaceId) {
+        return projectionRequest('/readiness', 'GET', workspaceId);
+    }
+
+    function rebuildProjection(status, headEtag) {
+        return projectionRequest('/rebuild', 'POST', status.workspaceId, {
+            'If-Match': headEtag
+        });
+    }
+
+    function projectionRequest(path, method, workspaceId, headers) {
+        headers = Object.assign({}, headers || {});
+        if (workspaceId !== undefined) {
+            headers['X-Taxonomy-Workspace-Id'] = workspaceId == null ? '' : workspaceId;
+        }
+        // The named transport preserves this operation's inspected workspace,
+        // including explicit central scope, while supplying CSRF and base paths.
+        return window.TaxonomyApiClient.request('/api/architecture/relations/projection' + path, {
+            method: method, headers: headers, cache: 'no-store'
+        }, { idempotent: method === 'GET', pinnedWorkspaceId: workspaceId });
+    }
+
     function upsertRelation(sourceCode, relationType, targetCode, payload, headers) {
         return fetch(commandUrl(sourceCode, relationType, targetCode), {
             method: 'PUT',
@@ -50,6 +72,8 @@ window.TaxonomyRelationsApi = (function () {
     return {
         readQualityDashboard: readQualityDashboard,
         readSnapshot: readSnapshot,
+        readProjectionReadiness: readProjectionReadiness,
+        rebuildProjection: rebuildProjection,
         upsertRelation: upsertRelation,
         deleteRelation: deleteRelation
     };

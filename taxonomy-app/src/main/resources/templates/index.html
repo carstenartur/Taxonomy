@@ -177,9 +177,13 @@
                         <div id="treeRootGroup" style="display:none;">
                             <select id="treeRootSelect" class="form-select form-select-sm" th:aria-label="#{view.tree.root.select}" aria-label="Select taxonomy to display"></select>
                         </div>
-                        <div id="sunburstFilterGroup" class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="sunburstHideZero"/>
-                            <label class="form-check-label small" for="sunburstHideZero" th:text="#{view.sunburst.hide.zero}">Hide zero relevance</label>
+                        <div id="diagramRelevanceFilterGroup" class="small">
+                            <label class="mb-0" for="diagramRelevanceFilter" th:text="#{view.relevance.label}">Relevance</label>
+                            <select id="diagramRelevanceFilter" class="form-select form-select-sm" th:title="#{view.relevance.hint}" title="Ancestors of matching nodes remain visible for context.">
+                                <option value="all" th:text="#{view.relevance.all}">All nodes</option>
+                                <option value="hide-zero" th:text="#{view.sunburst.hide.zero}">Hide zero relevance</option>
+                                <option value="positive" th:text="#{view.relevance.positive}">Only &gt; 0</option>
+                            </select>
                         </div>
                         <!-- Show/hide descriptions -->
                         <div class="form-check form-switch mb-0 ms-1 d-flex align-items-center gap-1">
@@ -817,6 +821,7 @@
                                     Show APQC hierarchy only (filter nodes with <code>x-source-framework: apqc</code>)
                                 </label>
                             </div>
+                            <div id="graphResultContext" class="small text-muted mt-2" style="display:none;" role="status"></div>
                             <div id="graphResultsArea" class="mt-2" style="display:none;">
                                 <div id="graphResultsContent"></div>
                             </div>

@@ -20,7 +20,7 @@ function dom() {
             removeAttribute(k) {delete this.attributes[k]; if (k === 'src') this.src = '';},
             getAttribute(k) {return this.attributes[k] || null;},
             append(...children) {children.forEach(child => this.appendChild(child));},
-            replaceChildren(...children) {this.children = []; this.append(...children);},
+            replaceChildren(...children) {this.children = []; this.innerHTML = ''; this.textContent = ''; this.append(...children);},
             appendChild(child) {this.children.push(child); child.parentElement = this; return child;},
             addEventListener(name, fn) {if (!listeners.has(name)) listeners.set(name, []); listeners.get(name).push(fn);},
             fire(name, event = {}) {event.preventDefault ||= () => {event.defaultPrevented = true;}; return Promise.all((listeners.get(name) || []).map(fn => fn(event)));},
@@ -465,4 +465,239 @@ test('successful saved requirement custom submit still downloads and reports suc
     assert.equal(f.events.at(-1).detail.bytes, 10);
     assert.equal(f.button.disabled, false);
     assert.equal(f.dialog.open, false);
+});
+
+function impactFixture() {
+    const f = dom(), requests = [], ready = [];
+    const addListener = f.document.addEventListener;
+    f.document.addEventListener = (name, listener) => name === 'DOMContentLoaded'
+        ? ready.push(listener) : addListener(name, listener);
+    for (const id of ['graphResultContext', 'graphResultsArea', 'graphResultsContent', 'requirementImpactResults',
+        'businessText', 'graphNodeInput', 'graphMaxHops', 'graphUpstreamBtn', 'graphDownstreamBtn',
+        'graphFailureBtn', 'graphEnrichedFailureBtn', 'requirementImpactBtn']) f.element('div', id);
+    f.document.getElementById('graphNodeInput').value = 'CP.1';
+    f.document.getElementById('graphMaxHops').value = '2';
+    function request(kind, options) {const gate = deferred(); requests.push({kind, options, ...gate}); return gate.promise;}
+    const window = {TaxonomyState: {currentScores: {'CP.1': 82}}, _getCurrentScores: () => ({'CP.1': 82})};
+    const context = vm.createContext({window, document: f.document,
+        TaxonomyI18n: {t: (key, ...args) => [key, ...args].join(' ')},
+        TaxonomyUtils: {escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')},
+        AnalysisApi: {graphUpstream: () => request('upstream'), graphDownstream: () => request('downstream'),
+            graphFailureImpact: () => request('failure')}, fetch: request});
+    for (const name of ['shared/taxonomy-graph.js', 'relations/taxonomy-relations.js', 'core/taxonomy-analysis.js']) {
+        vm.runInContext(source(name), context);
+    }
+    ready.forEach(listener => listener());
+    return {...f, window, requests, area: f.document.getElementById('requirementImpactResults'),
+        graph: f.document.getElementById('graphResultsContent')};
+}
+
+const impactDto = () => ({businessText: 'Current requirement', maxHops: 2,
+    impactedElements: Array.from({length: 16}, (_, index) => ({nodeCode: 'CP.' + index,
+        title: 'Capability ' + index, taxonomySheet: 'Capabilities', relevance: 0.82,
+        hopDistance: index ? 1 : 0, includedBecause: index ? 'SUPPORTS via <origin>' : 'Selected anchor'})),
+    traversedRelationships: [{sourceCode: 'CP.0', targetCode: 'CP.1', relationType: 'SUPPORTS',
+        propagatedRelevance: 0.656, hopDistance: 1}], notes: ['Primary catalogue traversal'], totalElements: 16,
+    totalRelationships: 1});
+const jsonResponse = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
+    status, headers: {'Content-Type': 'application/json', ...headers}});
+
+test('requirement impact renders the real ImpactElement DTO with codes, titles and traversal evidence', async () => {
+    const f = impactFixture();
+    f.window.TaxonomyRelations.runRequirementImpact();
+    f.requests[0].resolve(jsonResponse(impactDto())); await tick();
+    assert.equal((f.area.innerHTML.match(/class="graph-element-row"/g) || []).length, 16);
+    for (let index = 0; index < 16; index++) {
+        assert.match(f.area.innerHTML, new RegExp('data-code="CP\\.' + index + '"'));
+        assert.ok(f.area.innerHTML.includes('Capability ' + index));
+    }
+    assert.match(f.area.innerHTML, /82%/);
+    assert.match(f.area.innerHTML, /graph\.badge\.hop 1/);
+    assert.match(f.area.innerHTML, /SUPPORTS via &lt;origin>/);
+    assert.match(f.area.innerHTML, /Primary catalogue traversal/);
+    assert.doesNotMatch(f.area.innerHTML, /NaN|<td[^>]*><\/td>/);
+    assert.match(f.document.getElementById('graphResultContext').innerHTML, /graph\.result\.requirement/);
+    assert.match(f.document.getElementById('graphResultContext').innerHTML, /graph\.result\.catalogue\.scope/);
+});
+
+test('switching requirement and node or enriched impact clears prior results and ignores late success and failure', async () => {
+    for (const buttonId of ['graphUpstreamBtn', 'graphDownstreamBtn', 'graphFailureBtn', 'graphEnrichedFailureBtn']) {
+        for (const lateFailure of [false, true]) {
+            const f = impactFixture();
+            f.window.TaxonomyRelations.runRequirementImpact();
+            await f.document.getElementById(buttonId).click();
+            assert.equal(f.area.style.display, 'none');
+            assert.equal(f.area.innerHTML, '');
+            assert.match(f.document.getElementById('graphResultContext').innerHTML, /graph\.result\.node CP\.1/);
+            if (lateFailure) f.requests[0].reject(new Error('stale requirement failure'));
+            else f.requests[0].resolve(jsonResponse(impactDto()));
+            await tick();
+            assert.equal(f.area.innerHTML, '');
+            f.window.TaxonomyRelations.runRequirementImpact();
+            assert.equal(f.document.getElementById('graphResultsArea').style.display, 'none');
+            assert.equal(f.graph.innerHTML, '');
+            if (lateFailure) f.requests[1].reject(new Error('stale node failure'));
+            else f.requests[1].resolve(buttonId === 'graphEnrichedFailureBtn'
+                ? jsonResponse({failedNodeCode: 'CP.1', riskScore: 0, totalAffected: 0})
+                : {originNodeCode: 'CP.1', failedNodeCode: 'CP.1', neighbors: [], totalAffected: 0});
+            f.requests[2].resolve(jsonResponse(impactDto())); await tick();
+            assert.equal(f.graph.innerHTML, '');
+            assert.match(f.area.innerHTML, /Capability 15/);
+        }
+    }
+});
+
+test('requirement impact reads current browser scores and clears node output even when no scores exist', () => {
+    const f = impactFixture();
+    f.window.TaxonomyState.currentScores = {};
+    f.graph.innerHTML = 'previous node result';
+    f.window.TaxonomyRelations.runRequirementImpact();
+    assert.equal(f.graph.innerHTML, '');
+    assert.equal(f.requests.length, 0);
+    assert.match(f.area.innerHTML, /relations\.impact\.no\.scores/);
+});
+
+function projectionFixture() {
+    const f = dom(), requests = [], timers = new Set();
+    const table = f.element('div', 'relationsTableContainer');
+    f.element('select', 'relationsTypeFilter');
+    f.document.querySelector = selector => selector === 'meta[name="_csrf"]' ? {content: 'csrf-fixture'}
+        : selector === 'meta[name="_csrf_header"]' ? {content: 'X-CSRF-TOKEN'} : null;
+    const window = {location: {href: 'https://taxonomy.test/', origin: 'https://taxonomy.test', pathname: '/'},
+        TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        __TaxonomyAnalysisSessionContext: {runtime: {workspaceId: 'workspace-A'}},
+        fetch(url, options = {}) {const gate = deferred(); requests.push({url, options, ...gate}); return gate.promise;}};
+    const context = vm.createContext({window, document: f.document, URL, URLSearchParams, Request, Response,
+        Headers, AbortController, DOMException, CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
+        TaxonomyI18n: {t: (key, ...args) => [key, ...args].join(' ')}, TaxonomyUtils: {escapeHtml: String},
+        fetch: (...args) => window.fetch(...args), setTimeout(fn) {timers.add(fn); return fn;}, clearTimeout: timer => timers.delete(timer)});
+    for (const name of ['api/taxonomy-api-client.js', 'core/taxonomy-analysis-session-api-routing.js',
+        'api/relations-api.js', 'relations/taxonomy-relations.js']) vm.runInContext(source(name), context);
+    return {...f, window, requests, table, timers, text: () => {
+        function collect(node) {return node.textContent + node.innerHTML + node.children.map(collect).join(' ');}
+        return collect(table);
+    }, button: () => table.querySelectorAll('button').find(button => button.textContent === 'relations.projection.rebuild')};
+}
+const projectionStatus = overrides => ({repositoryId: 'repository-A', workspaceId: 'workspace-A', branch: 'draft',
+    operationStatus: 'INSPECTED', readinessState: 'NOT_BUILT', currentHeadCommit: 'a'.repeat(40),
+    projectedCommit: null, relationCount: 0, pendingRecoveries: [], ...overrides});
+const readinessResponse = status => jsonResponse(status, 200, {ETag: '"' + status.currentHeadCommit + '"'});
+async function unavailableProjection(f, status = projectionStatus()) {
+    f.window.TaxonomyRelations.loadRelations(); await tick();
+    f.requests[0].resolve(new Response(null, {status: 409, headers: {'X-Taxonomy-Relation-Projection-State': status.readinessState}}));
+    await tick();
+    assert.equal(f.requests.length, 2, 'an unavailable projection must inspect readiness');
+    f.requests[1].resolve(readinessResponse(status)); await tick();
+    assert.ok(f.button(), 'a verified missing/stale projection offers recovery');
+}
+
+test('projection recovery uses current head, pinned context and canonical CSRF transport with one POST', async () => {
+    const f = projectionFixture(); await unavailableProjection(f);
+    assert.match(f.text(), /relations\.projection\.not\.built/);
+    assert.match(f.text(), /repository-A.*workspace-A.*draft/);
+    const button = f.button(); const first = button.click(), second = button.click(); await tick();
+    assert.equal(f.requests.length, 3, 'duplicate clicks share the readiness/rebuild flight');
+    const fresh = projectionStatus({readinessState: 'STALE', currentHeadCommit: 'b'.repeat(40)});
+    f.window.__TaxonomyAnalysisSessionContext.runtime.workspaceId = 'workspace-B';
+    f.requests[2].resolve(readinessResponse(fresh)); await tick();
+    const rebuild = f.requests[3];
+    assert.match(rebuild.url, /\/projection\/rebuild\?workspaceId=workspace-A$/);
+    assert.equal(rebuild.options.headers.get('If-Match'), '"' + fresh.currentHeadCommit + '"');
+    assert.equal(rebuild.options.headers.get('X-Taxonomy-Workspace-Id'), 'workspace-A');
+    assert.equal(rebuild.options.headers.get('X-CSRF-TOKEN'), 'csrf-fixture');
+    assert.equal(rebuild.options.credentials, 'same-origin');
+    assert.equal(rebuild.options.method, 'POST');
+    assert.equal(rebuild.options.body, undefined);
+    rebuild.resolve(readinessResponse({...fresh, operationStatus: 'REBUILT', readinessState: 'READY'})); await tick();
+    f.requests[4].resolve(jsonResponse([{sourceCode: 'CP.1', targetCode: 'BP.1', relationType: 'SUPPORTS', id: 1}]));
+    await Promise.all([first, second]); await tick();
+    assert.equal(f.requests.filter(request => request.options.method === 'POST').length, 1);
+    assert.match(f.table.innerHTML, /CP\.1/);
+    assert.doesNotMatch(f.table.innerHTML, /relations\.none/);
+    assert.equal(f.timers.size, 0);
+});
+
+test('changed projection context prevents recovery and a moved Git head remains an error, never an empty table', async () => {
+    for (const changedContext of [true, false]) {
+        const f = projectionFixture(); await unavailableProjection(f);
+        const click = f.button().click(); await tick();
+        f.requests[2].resolve(readinessResponse(projectionStatus(changedContext ? {branch: 'other-branch'} : {})));
+        await tick();
+        if (!changedContext) f.requests[3].resolve(new Response(null, {status: 412}));
+        await click; await tick();
+        assert.equal(f.requests.filter(request => request.options.method === 'POST').length, changedContext ? 0 : 1);
+        assert.match(f.text(), /relations\.projection\.changed/);
+        assert.doesNotMatch(f.text(), /relations\.none/);
+        assert.equal(f.table.getAttribute('aria-busy'), 'false');
+    }
+});
+
+test('unavailable readiness, forbidden rebuild and pending verification stay distinct from empty relations', async () => {
+    for (const state of ['readiness-forbidden', 'rebuild-forbidden', 'rebuild-pending']) {
+        const f = projectionFixture();
+        if (state === 'readiness-forbidden') {
+            f.window.TaxonomyRelations.loadRelations(); await tick();
+            f.requests[0].resolve(new Response(null, {status: 409, headers: {'X-Taxonomy-Relation-Projection-State': 'NOT_BUILT'}})); await tick();
+            assert.equal(f.requests.length, 2);
+            f.requests[1].resolve(new Response(null, {status: 403})); await tick();
+            assert.match(f.text(), /relations\.projection\.check\.failed/);
+            assert.equal(f.button(), undefined);
+        } else {
+            await unavailableProjection(f);
+            const click = f.button().click(); await tick();
+            f.requests[2].resolve(readinessResponse(projectionStatus())); await tick();
+            f.requests[3].resolve(state === 'rebuild-forbidden' ? new Response(null, {status: 403})
+                : jsonResponse(projectionStatus({operationStatus: 'RECOVERY_RECONCILIATION_PENDING'}), 202));
+            await click; await tick();
+            assert.match(f.text(), state === 'rebuild-forbidden' ? /relations\.projection\.rebuild\.failed/ : /relations\.projection\.pending/);
+            assert.equal(f.requests.length, 4, 'failed or pending recovery must not render an unchecked relation count');
+        }
+        assert.doesNotMatch(f.text(), /relations\.none/);
+        assert.equal(f.table.getAttribute('aria-busy'), 'false');
+    }
+});
+
+test('relation refresh keeps the newest valid empty list and rejects malformed success without showing emptiness', async () => {
+    for (const oldFails of [false, true]) {
+        const f = projectionFixture();
+        const older = f.window.TaxonomyRelations.loadRelations();
+        const newer = f.window.TaxonomyRelations.loadRelations(); await tick();
+        f.requests[1].resolve(jsonResponse([])); await newer;
+        f.requests[0].resolve(oldFails
+            ? new Response(null, {status: 409, headers: {'X-Taxonomy-Relation-Projection-State': 'NOT_BUILT'}})
+            : jsonResponse([{sourceCode: 'STALE', targetCode: 'BP.1', relationType: 'SUPPORTS', id: 1}]));
+        await older;
+        assert.match(f.text(), /relations\.none/);
+        assert.doesNotMatch(f.text(), /STALE|relations\.load\.failed/);
+        assert.equal(f.requests.length, 2);
+    }
+    const f = projectionFixture(), invalid = f.window.TaxonomyRelations.loadRelations(); await tick();
+    f.requests[0].resolve(jsonResponse(null)); await invalid;
+    assert.match(f.text(), /relations\.load\.failed/);
+    assert.doesNotMatch(f.text(), /relations\.none/);
+});
+
+test('READY disagreement allows one automatic relation refresh per user load and then requires manual Retry', async () => {
+    const f = projectionFixture();
+    let loading = f.window.TaxonomyRelations.loadRelations();
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const offset = attempt * 4;
+        await tick();
+        for (let step = 0; step < 4; step++) {
+            assert.equal(f.requests.length, offset + step + 1);
+            f.requests[offset + step].resolve(step % 2
+                ? readinessResponse(projectionStatus({readinessState: 'READY'}))
+                : new Response(null, {status: 409, headers: {'X-Taxonomy-Relation-Projection-State': 'STALE'}}));
+            await tick();
+        }
+        assert.equal(f.requests.length, offset + 4, 'persistent disagreement must not start a third list request');
+        await loading;
+        assert.equal(f.table.getAttribute('aria-busy'), 'false');
+        assert.match(f.text(), /relations\.projection\.unavailable/);
+        assert.doesNotMatch(f.text(), /relations\.none/);
+        assert.equal(f.button(), undefined, 'READY does not offer a rebuild');
+        const retry = f.table.querySelector('button');
+        assert.ok(retry && !retry.disabled, 'manual status refresh remains available');
+        if (attempt === 0) loading = retry.click();
+    }
 });

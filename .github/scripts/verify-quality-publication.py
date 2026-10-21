@@ -54,7 +54,7 @@ def compatible_application_build(producer: str, publication: object) -> bool:
     if not isinstance(publication, str) or not producer or not publication:
         return False
     # Preserve exact local build identities. Earlier attempts require a positive
-    # GitHub run/attempt identity; only the final publication is being repeated.
+    # GitHub run/attempt identity within the same workflow run.
     if producer == publication and not re.match(r"[0-9]+\.", producer):
         return True
     producer_id = re.fullmatch(r"([1-9][0-9]*)\.([1-9][0-9]*)", producer)
@@ -76,7 +76,6 @@ def verify_application_shards(root: Path, summary: dict) -> None:
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError(f"application shard original digest differs: {path}")
 
-    cohort_build_id = None
     for shard in ("core", "browser", "recovery"):
         manifest_path = evidence / shard / "manifest.json"
         if not manifest_path.is_file():
@@ -93,12 +92,9 @@ def verify_application_shards(root: Path, summary: dict) -> None:
         if not isinstance(build_id, str) or not build_id.endswith(suffix):
             raise ValueError(f"application shard source/build metadata differs: {shard}")
         producer = build_id[:-len(suffix)]
-        if (not compatible_application_build(producer, summary["buildId"])
-                or cohort_build_id is not None and producer != cohort_build_id):
+        # Independently retried jobs retain their original producer attempts.
+        if not compatible_application_build(producer, summary["buildId"]):
             raise ValueError(f"application shard source/build metadata differs: {shard}")
-        # Keep the original producer identity and require one compiled cohort,
-        # even when the finalizer runs in a later attempt of the same workflow.
-        cohort_build_id = producer
         coverage = manifest.get("coverage")
         if not isinstance(coverage, dict) or coverage.get("path") != "coverage.exec":
             raise ValueError(f"application shard coverage metadata is invalid: {shard}")

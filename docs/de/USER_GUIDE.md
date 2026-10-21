@@ -439,9 +439,13 @@ Nach Durchführung einer Analyse zeigt das Sunburst-Diagramm Heatmap-Farbverläu
 
 ![Bewertete Sunburst-Ansicht](../images/39-scored-sunburst.png)
 
+Sunburst, Baum und Entscheidungskarte haben eine gemeinsame Relevanzauswahl. **Alle Knoten** zeigt die verfügbare Ansicht; **0-Relevanz ausblenden** entfernt gemessene Nullwerte und erhält unbekannte oder ausstehende Bewertungen; **Nur > 0** zeigt positive Treffer mit ihren übergeordneten Pfaden. Die Auswahl gilt für Diagramm und Druck. Ein zur Orientierung erhaltener Elternknoten ist kein zusätzlicher positiver Treffer.
+
 ### Baumansicht
 
 Die Baumansicht stellt die Taxonomie als interaktives Knoten-Verbindungs-Diagramm dar. Verwenden Sie das **Taxonomy root selector**-Dropdown, um auszuwählen, welcher Stamm angezeigt werden soll, wenn es mehrere Taxonomiestämme gibt.
+
+**Diagramm drucken** druckt die vollständige ausgewählte Teiltaxonomie mit dem aktuellen Relevanzfilter, einschließlich zugeklappter und außerhalb des Bildschirms liegender Zweige. Unter **Drucklayout** stehen **A4-Seiten** und **Ein großes Blatt** zur Wahl. Auch große, als Canvas dargestellte Bäume werden als vollständiger Vektorbaum gedruckt.
 
 ![Baumansicht](../images/07-tree-view.png)
 
@@ -451,7 +455,7 @@ Die Entscheidungskarten-Ansicht zeigt die Taxonomie als Entscheidungsbaum-Layout
 
 Die Teiltaxonomien stehen in getrennten Bereichen. Der Abstand berücksichtigt die vollständigen umgebrochenen Knotenbezeichnungen und bleibt beim Auf- und Zuklappen erhalten. Über **Begründung** am Knoten öffnen Sie die gespeicherte Analysebegründung und die getrennt beschriftete Katalogbeschreibung. Die Aktion funktioniert auch per Tastatur und auf Touchscreens; **Schließen** oder Escape führt zum Knoten zurück.
 
-Mit **Diagramm drucken** in der Diagrammleiste öffnen Sie eine eigene Druckansicht im Querformat. Sie enthält alle relevanten Zweige des Entscheidungsbaums, unabhängig vom aktuellen Zoom und von zugeklappten Bildschirmzweigen. Große Bereiche werden auf lesbare Folgeseiten verteilt. Taxonomieüberschrift, Wurzelübersicht und Verweise auf die Seite des übergeordneten Knotens erhalten die Orientierung. Wählen Sie im Browser einen Drucker oder **Als PDF speichern**. Falls der Browser das Druckfenster blockiert, erlauben Sie Pop-ups für diese Anwendung und wählen Sie **Diagramm drucken** erneut.
+Mit **Diagramm drucken** öffnen Sie eine eigene Druckansicht. Sie enthält alle relevanten Zweige mit dem gewählten Relevanzfilter, unabhängig von Zoom und zugeklappten Bildschirmzweigen. **A4-Seiten** verteilt große Bereiche auf Seiten im Querformat; Überschriften und Verweise auf fortgesetzte Verbindungen erhalten die Orientierung. **Ein großes Blatt** platziert das vollständige Diagramm auf einer Seite, deren Größe sich nach dem Inhalt richtet. Wählen Sie im Browser einen Drucker oder **Als PDF speichern**. Falls der Browser das Druckfenster blockiert, erlauben Sie Pop-ups für diese Anwendung und wählen Sie **Diagramm drucken** erneut.
 
 ![Entscheidungskarten-Ansicht (bewertet)](../images/69-decision-map-scored.png)
 
@@ -577,7 +581,7 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 <a id="guide-section-8"></a>
 ## 8. Den Graph Explorer verwenden
 
-Der Graph Explorer ermöglicht es Ihnen, das Netzwerk bestätigter Architekturbeziehungen um jeden Taxonomieknoten herum zu verfolgen, unabhängig davon, ob Sie eine Analyse durchgeführt haben.
+Der Graph Explorer verfolgt gespeicherte Beziehungen im primären Katalog um einen ausgewählten Knoten. Seine Abhängigkeitsabfragen berücksichtigen `SUPPORTS`, `REALIZES` und `USES`. Die Ergebnisüberschrift kennzeichnet die Knotenabfrage beziehungsweise die Auswirkungsabfrage anhand der aktuellen Anforderungsbewertungen und nennt die Katalogquelle. Eine neue Abfrage ersetzt das vorherige Ergebnis. Den Architekturentwurf der aktuellen Analyse prüfen Sie in der Architekturansicht; das ist ein gesondertes Ergebnis.
 
 ### Einen Knoten auswählen
 
@@ -987,6 +991,8 @@ Das Panel **🔗 Relations Browser** (rechte Spalte, einklappbar) ermöglicht es
 1. Öffnen Sie das Panel **🔗 Relations Browser**.
 2. Filtern Sie optional nach Relationstyp über das Dropdown-Menü.
 3. Eine Tabelle listet alle passenden Relationen mit Quelle, Ziel, Typ und Herkunft auf.
+
+Wenn die Relationsansicht noch nicht aufgebaut oder veraltet ist, zeigt das Panel Repository, Arbeitsbereich, Branch und Git-Revision an. Mit **Relationsansicht wiederherstellen** wird diese abgeleitete Ansicht aus dem aktuellen gespeicherten Stand neu aufgebaut. Dafür ist die bestehende Berechtigung zum Neuaufbau erforderlich. Sobald die Ansicht bereit ist, lädt die Tabelle automatisch neu.
 
 ### Eine Relation erstellen
 

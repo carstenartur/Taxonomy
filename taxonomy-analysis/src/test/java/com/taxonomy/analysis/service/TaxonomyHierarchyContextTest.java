@@ -40,7 +40,7 @@ class TaxonomyHierarchyContextTest {
                     case "Information Products" -> "IP"; default -> "UA";
                 };
                 TaxonomyNode root = new TaxonomyNode(); root.setCode(rootCode); root.setTaxonomyRoot(rootCode);
-                root.setNameEn(sheet.getSheetName()); root.setDescriptionEn("Catalogue root " + sheet.getSheetName());
+                root.setNameEn(sheet.getSheetName()); root.setDescriptionEn("C3 Taxonomy – " + sheet.getSheetName());
                 nodes.put(rootCode, root);
                 for (Row row : sheet) {
                     if (row.getRowNum() == 0) continue;
@@ -59,6 +59,9 @@ class TaxonomyHierarchyContextTest {
         overlay.applyAndValidate(nodes,uuids,"classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx");
         repository = mock(TaxonomyNodeRepository.class);
         when(repository.findByCode(anyString())).thenAnswer(a -> Optional.ofNullable(nodes.get(a.getArgument(0))));
+        when(repository.findByParentCodeOrderByNameEnAsc(anyString())).thenAnswer(a -> nodes.values().stream()
+                .filter(n -> a.getArgument(0).equals(n.getParentCode()))
+                .sorted(Comparator.comparing(TaxonomyNode::getNameEn)).toList());
         catalogue = new TaxonomyService(repository,null,null);
         ReflectionTestUtils.setField(catalogue,"catalogueOverlayService",overlay);
         llm = new LlmService(null,null,JsonMapper.builder().build(),catalogue,null,null,null);
@@ -79,6 +82,31 @@ class TaxonomyHierarchyContextTest {
     @Test void businessProcessKeepsItsInheritedSourceDescription() {
         TaxonomyNode n = descendant("BP");
         assertThat(prompt(List.of(n))).contains(nodes.get(n.getParentCode()).getDescriptionEn()).contains(n.getDescriptionEn());
+    }
+    @Test void virtualRootsReceiveTheirUppermostSourceDescriptionsWithoutExpandingTheWholeCatalogue() {
+        var templates = new PromptTemplateService();
+        templates.loadDefaults();
+        var budget = new AiPromptBudgetPolicy(new AiTargetCatalogService(new LlmProviderConfig(null)));
+        for (String rootCode : List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")) {
+            TaxonomyNode root = nodes.get(rootCode);
+            String original = root.getDescriptionEn();
+            String rendered = prompt(List.of(root));
+            for (TaxonomyNode source : nodes.values()) {
+                if (rootCode.equals(source.getParentCode()) && !overlay.hasParentPatch(source.getCode())) {
+                    assertThat(rendered).as("Uppermost source context for %s", rootCode)
+                            .contains(source.getCode() + ": " + source.getNameEn()).contains(source.getDescriptionEn());
+                }
+            }
+            assertThat(root.getDescriptionEn()).isEqualTo(original);
+            String fullPrompt = templates.renderRootPrompt(rootCode, "Arbeitszeiterfassung", rendered);
+            assertThatCode(() -> budget.requireWithinBudget(fullPrompt, "OPENAI")).doesNotThrowAnyException();
+            System.out.printf("Root prompt %s: %d characters, %d UTF-8 bytes%n", rootCode,
+                    fullPrompt.codePointCount(0, fullPrompt.length()),
+                    fullPrompt.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        }
+        String communications = prompt(List.of(nodes.get("CO")));
+        assertThat(communications).contains(nodes.get("CO-1000").getDescriptionEn())
+                .doesNotContain(descendant("CO").getDescriptionEn(), nodes.get("CR-1074").getDescriptionEn());
     }
     @Test void overlayClassificationDoesNotBecomeInheritedRestriction() {
         TaxonomyNode n = nodes.get("IP-1051");

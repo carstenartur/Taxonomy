@@ -49,10 +49,12 @@ class QualityEvidenceFinalizationTest {
         }
     }
 
-    @Test
-    void reusesTheUnchangedApplicationCohortWhenOnlyThePublicationJobIsRetried() throws Exception {
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void preservesApplicationEvidenceAcrossPartialAndPublicationRetries(int browserAttempt) throws Exception {
         fixture();
         applicationBuildId("123.1");
+        applicationBuildId("browser", "123." + browserAttempt);
 
         Result result = finalizeEvidence();
 
@@ -61,7 +63,7 @@ class QualityEvidenceFinalizationTest {
                 .containsEntry("buildId", "123.2");
         for (String shard : List.of("core", "browser", "recovery")) {
             assertThat(FlatJson.parseObject(read(QUALITY + "evidence/application-test-shards/" + shard + "/manifest.json")))
-                    .containsEntry("buildId", "123.1." + shard);
+                    .containsEntry("buildId", "123." + (shard.equals("browser") ? browserAttempt : 1) + "." + shard);
         }
     }
 
@@ -105,7 +107,7 @@ class QualityEvidenceFinalizationTest {
             case "coverage-bytes" -> put(QUALITY + "evidence/application-test-shards/core/coverage.exec", "changed execution data");
             case "commit" -> put(manifest, read(manifest).replace("\"HEAD\"", "\"other-commit\""));
             case "sourceTree" -> put(manifest, read(manifest).replace(tree(), "0".repeat(40)));
-            case "buildId" -> put(manifest, read(manifest).replace("123.2.core", "123.1.core"));
+            case "buildId" -> put(manifest, read(manifest).replace("123.2.core", "124.2.core"));
             case "counter" -> put(manifest, read(manifest).replace("\"tests\": 1", "\"tests\": 2"));
             default -> throw new IllegalArgumentException(mutation);
         }
@@ -162,11 +164,15 @@ class QualityEvidenceFinalizationTest {
 
     private void applicationBuildId(String buildId) throws Exception {
         for (String shard : List.of("core", "browser", "recovery")) {
-            String path = QUALITY + "evidence/application-test-shards/" + shard + "/manifest.json";
-            var manifest = new java.util.LinkedHashMap<>(FlatJson.parseObject(read(path)));
-            manifest.put("buildId", buildId + "." + shard);
-            put(path, FlatJson.pretty(manifest));
+            applicationBuildId(shard, buildId);
         }
+    }
+
+    private void applicationBuildId(String shard, String buildId) throws Exception {
+        String path = QUALITY + "evidence/application-test-shards/" + shard + "/manifest.json";
+        var manifest = new java.util.LinkedHashMap<>(FlatJson.parseObject(read(path)));
+        manifest.put("buildId", buildId + "." + shard);
+        put(path, FlatJson.pretty(manifest));
     }
 
     private String tree() throws Exception {

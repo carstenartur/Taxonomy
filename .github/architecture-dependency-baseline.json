@@ -160,7 +160,7 @@
       "fromPackage": "com.taxonomy.analysis.service",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.snapshot",
-      "classDependencyCount": 1
+      "classDependencyCount": 2
     },
     {
       "fromContext": "analysis",

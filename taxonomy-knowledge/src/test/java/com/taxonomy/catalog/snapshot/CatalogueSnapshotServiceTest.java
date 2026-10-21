@@ -81,6 +81,27 @@ class CatalogueSnapshotServiceTest {
         verifyNoInteractions(repository);
     }
 
+    @Test
+    void rootAssessmentContextUsesOnlyUppermostSourceNodesFromTheBoundSnapshot() {
+        var base = snapshot(CP_SOURCE, "CP", "Capability context", false);
+        var category = base.nodes().getFirst().metadata();
+        var nested = node("nested", "CP", "shared-node", "Deeper catalogue description");
+        nested.setLevel(2);
+        var frozen = new RootCatalogueSnapshot(base.schemaVersion(), base.source(), base.rootCode(),
+                List.of(base.nodes().getFirst(), base.nodes().getLast(),
+                        RootCatalogueSnapshot.Node.capture(nested, category, false),
+                        RootCatalogueSnapshot.Node.capture(node("overlay", "CP", "CP", "Navigation-only assignment"),
+                                category, true)), base.overlayMetadata(), base.catalogueProvenance());
+        try (var ignored = snapshots.bind(CP_SOURCE, Set.of("CP"), List.of(frozen))) {
+            var root = taxonomy.getRootNodes().getFirst();
+            root.getChildren().getFirst().setDescriptionEn("Caller-mutated child description");
+            String context = taxonomy.getAssessmentContexts(List.of(root)).get("CP");
+            assertThat(context).contains("shared-node: Child", "Child description", "not additional candidates")
+                    .doesNotContain("Deeper catalogue description", "Navigation-only assignment", "Caller-mutated");
+        }
+        verifyNoInteractions(repository);
+    }
+
     private String readBound(RootCatalogueSnapshot snapshot, CyclicBarrier together) throws Exception {
         try (var ignored = snapshots.bind(snapshot.source(), Set.of(snapshot.rootCode()), List.of(snapshot))) {
             together.await(5, TimeUnit.SECONDS);

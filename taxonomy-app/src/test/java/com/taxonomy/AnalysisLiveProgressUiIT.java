@@ -191,7 +191,11 @@ class AnalysisLiveProgressUiIT {
         assertThat(target.getAttribute("aria-valuetext")).contains("ungeklärt", "offen");
         assertThat(driver.findElement(By.cssSelector("progress[data-taxonomy-root='BP']")).getAttribute("data-relations-completed")).isEqualTo("1");
         assertThat(driver.findElement(By.id("analysis-taxonomy-counts-BP")).getText()).contains("Gesamt", "Verarbeitet", "Nichtnull", "Verteilt", "0,125%");
-        assertThat(driver.findElement(By.id("analysisWorkProgress")).getText()).contains("99 geprüfte Relationsvorschläge", "3 durch übergeordnete Entscheidung ausgeschlossen");
+        assertThat(driver.findElement(By.id("analysisWorkProgress")).getText()).contains(
+                "99 durch KI verifizierte Beziehungsnachweise",
+                "Mehrere Nachweise können dieselbe Beziehung belegen.",
+                "Die Vorschlagsliste enthält separat gespeicherte Katalogvorschläge.",
+                "3 durch übergeordnete Entscheidung ausgeschlossen");
         var cdp = (HasCdp) new Augmenter().augment(driver);
         cdp.executeCdpCommand("Emulation.setDeviceMetricsOverride", Map.of("width", 390, "height", 844, "deviceScaleFactor", 1, "mobile", true));
         cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features", List.of(

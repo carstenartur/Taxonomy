@@ -52,6 +52,8 @@ public class TaxonomyService {
 
     private static final int BATCH_SIZE = 50;
 
+    public static final String ROOT_ASSESSMENT_CONTEXT_POLICY = "root-catalogue-context-v1";
+
     /** Maps sheet name → two-letter prefix used as virtual root code. */
     private static final Map<String, String> SHEET_PREFIXES = new LinkedHashMap<>();
     static {
@@ -923,9 +925,28 @@ public class TaxonomyService {
         Map<String, String> descriptions = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {
             List<TaxonomyNode> path = resolveCataloguePath(node.getCode(), true, resolved);
-            descriptions.put(node.getCode(), assessmentHierarchyContext(path, false));
+            descriptions.put(node.getCode(), node.getParentCode() == null || node.getParentCode().isBlank()
+                    ? assessmentRootContext(node.getCode()) : assessmentHierarchyContext(path, false));
         }
         return Collections.unmodifiableMap(descriptions);
+    }
+
+    /** One source level gives virtual roots catalogue meaning without copying their whole branches. */
+    private String assessmentRootContext(String rootCode) {
+        List<TaxonomyNode> sources = getChildrenOf(rootCode).stream()
+                .filter(node -> !hasOverlayParent(node.getCode()))
+                .sorted(Comparator.comparing(TaxonomyNode::getCode)).toList();
+        if (sources.isEmpty()) return "";
+        StringBuilder text = new StringBuilder("\nRoot catalogue context (")
+                .append(ROOT_ASSESSMENT_CONTEXT_POLICY)
+                .append("; immediate source children, not additional candidates):\n");
+        for (TaxonomyNode source : sources) {
+            text.append("  ").append(source.getCode()).append(": ").append(source.getNameEn());
+            if (source.getDescriptionEn() != null && !source.getDescriptionEn().isBlank())
+                text.append(" - ").append(source.getDescriptionEn());
+            text.append('\n');
+        }
+        return text.toString();
     }
 
     public record RelationAssessmentDescriptions(String full, String assessedSource) { }

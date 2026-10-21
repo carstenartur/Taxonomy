@@ -2,6 +2,8 @@ package com.taxonomy;
 
 import com.sun.net.httpserver.HttpServer;
 import com.taxonomy.testsupport.BrowserSession;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,13 +13,19 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.WindowType;
+import org.openqa.selenium.chromium.HasCdp;
+import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Base64;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -157,6 +165,98 @@ class TaxonomyTreeLayoutIT {
                 return TaxonomyViews.buildExportSVG(data,{},{}).textContent;
                 """);
         assertThat(exported.toString()).contains("fixture-3").doesNotContain("fixture-4", "fixture-5");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"renderTreeDiagram", "renderTreeCanvas"})
+    void fullTreePrintUsesTheFilteredSelectionAndPreservesTheLiveDiagram(String renderer) throws Exception {
+        driver.executeScript("""
+                window.data=[{code:'fixture-1',children:[{code:'fixture-2',children:[
+                  {code:'fixture-3',name:'Printable branch label '.repeat(12),children:[{code:'fixture-4',children:[{code:'fixture-5'}]}]}]},
+                  {code:'fixture-zero'}]}];
+                window.scores={'fixture-1':0,'fixture-2':0,'fixture-3':0,'fixture-4':0,'fixture-5':75,'fixture-zero':0};
+                window.savedBefore=JSON.stringify({data,scores});
+                TaxonomyViews[arguments[0]](document.getElementById('tree'),TaxonomyViews.filterZeroRelevance(data,scores,{}),scores);
+                """, renderer);
+        if (renderer.equals("renderTreeDiagram")) settled();
+        driver.executeScript("""
+                document.querySelector('.tax-diagram-controls button').click();
+                document.querySelector('.tax-diagram-print-button').focus();
+                window.screenBefore=document.querySelector('#tree').innerHTML;
+                window.canvasBefore=document.querySelector('canvas')?.toDataURL();
+                window.printFrame=document.createElement('iframe');document.body.append(printFrame);window.printCalls=0;
+                window.open=()=>({document:printFrame.contentDocument,closed:false,focus(){},addEventListener(){},requestAnimationFrame(fn){fn()},print(){printCalls++}});
+                """);
+        for (String mode : new String[]{"pages", "single"}) {
+            new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue(mode);
+            driver.findElement(By.cssSelector(".tax-diagram-print-button")).click();
+            assertThat(driver.executeScript("""
+                    const doc=printFrame.contentDocument;
+                    return ['fixture-1','fixture-2','fixture-3','fixture-4','fixture-5','75%'].every(text=>doc.body.textContent.includes(text))
+                        && !doc.body.textContent.includes('fixture-zero')
+                        && doc.querySelectorAll('svg').length>0 && doc.querySelectorAll('canvas').length===0
+                        && document.querySelector('#tree').innerHTML===screenBefore
+                        && document.querySelector('canvas')?.toDataURL()===canvasBefore
+                        && JSON.stringify({data,scores})===savedBefore;
+                    """)).as(renderer+" complete filtered vector print in "+mode).isEqualTo(true);
+            int plannedPages=((Number)driver.executeScript("return printFrame.contentDocument.querySelectorAll('.tree-print-page').length")).intValue();
+            if (mode.equals("single")) assertThat(plannedPages).isEqualTo(1);
+            else {
+                assertThat(plannedPages).isGreaterThan(1);
+                assertThat(driver.executeScript("""
+                        const doc=printFrame.contentDocument, source=doc.getElementById('taxonomy-print-tree').viewBox.baseVal;
+                        const tiles=[...doc.querySelectorAll('.tree-print-page > svg')].map(svg=>svg.viewBox.baseVal);
+                        const inside=tiles.every(tile=>tile.width>0 && tile.height>0 && tile.x>=source.x && tile.y>=source.y
+                            && tile.x+tile.width<=source.x+source.width && tile.y+tile.height<=source.y+source.height);
+                        const separate=tiles.every((a,i)=>tiles.slice(i+1).every(b=>a.x+a.width<=b.x || b.x+b.width<=a.x
+                            || a.y+a.height<=b.y || b.y+b.height<=a.y));
+                        const covered=tiles.reduce((area,tile)=>area+tile.width*tile.height,0);
+                        return inside && separate && Math.abs(covered-source.width*source.height)<0.01
+                            && tiles.length===doc.querySelectorAll('.tree-print-page').length
+                            && [...doc.querySelectorAll('.tree-print-page > svg > use')].length===tiles.length
+                            && [...doc.querySelectorAll('use')].every(node=>node.getBBox().width>0);
+                        """)).as(renderer+" A4 tiles cover the complete tree without gaps or overlaps").isEqualTo(true);
+            }
+            String html=(String)driver.executeScript("return printFrame.contentDocument.documentElement.outerHTML");
+            String source=driver.getWindowHandle();driver.switchTo().newWindow(WindowType.TAB);
+            try {
+                driver.get("data:text/html;charset=UTF-8;base64,"+Base64.getEncoder().encodeToString(html.getBytes(StandardCharsets.UTF_8)));
+                var result=((HasCdp)new Augmenter().augment(driver)).executeCdpCommand("Page.printToPDF",Map.of("preferCSSPageSize",true,"printBackground",true));
+                byte[] bytes=Base64.getDecoder().decode((String)result.get("data"));
+                Path directory=Path.of("target/decision-diagram-evidence");Files.createDirectories(directory);
+                String name=(renderer.equals("renderTreeCanvas")?"tree-canvas-":"tree-svg-")+mode+"-print";
+                Files.write(directory.resolve(name+".pdf"),bytes);
+                try(var pdf=Loader.loadPDF(bytes)) {
+                    var stripper=new PDFTextStripper();
+                    String pdfText=stripper.getText(pdf);
+                    assertThat(pdfText).as(renderer+" PDF filter in "+mode).doesNotContain("fixture-zero");
+                    assertThat(pdf.getNumberOfPages()).as(renderer+" PDF has exactly the planned pages in "+mode).isEqualTo(plannedPages);
+                    if(mode.equals("single")) {
+                        // A4 tile edges can split a glyph, which PDFBox then reports on both pages.
+                        // Require intact labels on the continuous sheet; A4 coverage is checked above.
+                        assertThat(pdfText).as(renderer+" complete single-sheet PDF content")
+                            .contains("fixture-1","fixture-2","fixture-3","fixture-4","fixture-5","75%");
+                        assertThat(pdf.getNumberOfPages()).isEqualTo(1);
+                        var box=pdf.getPage(0).getMediaBox();
+                        assertThat(Math.max(box.getWidth(),box.getHeight())).isGreaterThan(842f);
+                    } else {
+                        assertThat(pdf.getNumberOfPages()).isGreaterThan(1);
+                        for(int page=1;page<=pdf.getNumberOfPages();page++) {
+                            var box=pdf.getPage(page-1).getMediaBox();
+                            assertThat(box.getWidth()).isBetween(840f,844f);
+                            assertThat(box.getHeight()).isBetween(593f,597f);
+                            stripper.setStartPage(page);stripper.setEndPage(page);
+                            assertThat(stripper.getText(pdf)).as(renderer+" populated A4 page "+page).isNotBlank();
+                        }
+                    }
+                }
+            } finally {driver.close();driver.switchTo().window(source);}
+        }
+        assertThat(driver.executeScript("return document.querySelector('#tree').innerHTML===screenBefore && document.querySelector('canvas')?.toDataURL()===canvasBefore && JSON.stringify({data,scores})===savedBefore")).isEqualTo(true);
+        assertThat(driver.executeScript("return printCalls")).isEqualTo(2L);
+        driver.executeScript("window.open=()=>null");
+        driver.findElement(By.cssSelector(".tax-diagram-print-button")).click();
+        assertThat(driver.findElement(By.cssSelector(".decision-print-status")).getText()).contains("views.diagram.printBlocked");
     }
 
     @ParameterizedTest

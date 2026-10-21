@@ -32,19 +32,23 @@
         }
         var view = state.currentArchView;
         if (view) {
-            var elements = new Set(), relations = new Map();
+            var elements = new Set(), relations = new Map(), connected = new Set();
             list(view.includedElements).forEach(function (node) { if (node && node.nodeCode) elements.add(node.nodeCode); });
             list(view.includedRelationships).forEach(function (relation) {
-                if (!relation || !relation.sourceCode || !relation.targetCode || !relation.relationType) return;
+                if (!relation || !relation.relationType
+                    || !elements.has(relation.sourceCode) || !elements.has(relation.targetCode)) return;
                 var key = JSON.stringify([relation.sourceCode, relation.targetCode, relation.relationType]);
                 var proposal = list(relation.requirementEvidence).length > 0
                     || relation.origin === 'LLM_SUPPORTED' || relation.origin === 'SUGGESTED_CANDIDATE';
                 relations.set(key, relations.get(key) === true || proposal);
+                connected.add(relation.sourceCode); connected.add(relation.targetCode);
             });
             var proposals = Array.from(relations.values()).filter(Boolean).length;
-            parts.push(t('Architektur: ', 'Architecture: ') + elements.size + t(' Knoten', ' nodes'));
-            parts.push(t('Beziehungen: ', 'Relationships: ') + relations.size
+            parts.push(t('Architekturentwurf: ', 'Architecture draft: ') + elements.size + t(' Knoten', ' nodes'));
+            parts.push(t('Eindeutige Beziehungen: ', 'Distinct relationships: ') + relations.size
                 + t(' · davon KI-Vorschläge: ', ' · of these AI proposals: ') + proposals);
+            parts.push(t('Knoten ohne dargestellte Verbindung: ', 'Nodes without a displayed connection: ')
+                + (elements.size - connected.size));
             parts.push(t('Fachliche Bestätigung: nicht aufgezeichnet', 'Human confirmation: not recorded'));
         }
         return parts.join(' | ');

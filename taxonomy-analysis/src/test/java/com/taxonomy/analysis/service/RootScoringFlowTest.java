@@ -30,6 +30,7 @@ class RootScoringFlowTest {
     private static TaxonomyNode node(String code, String parent, String root) {
         var n = new TaxonomyNode();
         n.setCode(code); n.setNameEn(code); n.setParentCode(parent); n.setTaxonomyRoot(root);
+        n.setLevel(parent == null ? 0 : 1);
         return n;
     }
 
@@ -38,11 +39,17 @@ class RootScoringFlowTest {
         private final TaxonomyNode child = node("BP-1", "BP", "BP");
         private final boolean withChild;
         Catalogue(boolean withChild) { super(null, null, null); this.withChild = withChild; }
-        @Override public List<TaxonomyNode> getRootNodes() { return new ArrayList<>(List.of(root)); }
+        @Override public List<TaxonomyNode> getRootNodes() {
+            return FrozenCatalogueContext.current() == null ? new ArrayList<>(List.of(root)) : super.getRootNodes();
+        }
         @Override public List<TaxonomyNode> getChildrenOf(String parent) {
+            if (FrozenCatalogueContext.current() != null) return super.getChildrenOf(parent);
             return withChild && parent.equals("BP") ? List.of(child) : List.of();
         }
-        @Override public Map<String, String> getAssessmentContexts(List<TaxonomyNode> nodes) { return Map.of(); }
+        @Override public TaxonomyNode getNodeByCode(String code) {
+            if (FrozenCatalogueContext.current() != null) return super.getNodeByCode(code);
+            return code.equals("BP") ? root : withChild && code.equals("BP-1") ? child : null;
+        }
         @Override public List<com.taxonomy.dto.TaxonomyNodeDto> getFullTree() { return List.of(); }
     }
 
@@ -107,14 +114,66 @@ class RootScoringFlowTest {
 
     private static LlmService service(LlmProvider provider, boolean withChild, Gateway gateway,
                                       LocalEmbeddingService embeddings) {
+        return service(provider, new Catalogue(withChild), gateway, embeddings);
+    }
+
+    private static LlmService service(LlmProvider provider, TaxonomyService catalogue, Gateway gateway,
+                                      LocalEmbeddingService embeddings) {
         var config = new Provider(provider);
         var registry = new LlmGatewayRegistry(config, new RestTemplate(), new ObjectMapper(), null, null, null) {
             @Override public LlmGateway getGatewayById(com.taxonomy.extension.api.llm.ProviderId selected) { return gateway; }
         };
         var prompts = new PromptTemplateService();
         prompts.loadDefaults();
-        return new LlmService(config, registry, new ObjectMapper(), new Catalogue(withChild),
+        return new LlmService(config, registry, new ObjectMapper(), catalogue,
                 prompts, embeddings, null);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void firstRootPromptUsesCatalogueContextWhileZeroStillStopsDescent(boolean frozenCatalogue) {
+        var catalogue = new Catalogue(true);
+        catalogue.root.setDescriptionEn("C3 Taxonomy – Business Processes");
+        String sourceDescription = "Full original top-level catalogue description.";
+        catalogue.child.setDescriptionEn(sourceDescription);
+        try (var ignored = frozenCatalogue ? frozen(List.of(catalogue.root, catalogue.child), null) : null) {
+            if (frozenCatalogue) catalogue.child.setDescriptionEn("Current catalogue changed after admission");
+            var gateway = new Gateway("{\"BP\":0}", "{\"BP\":0}");
+            var llm = service(LlmProvider.OPENAI, catalogue, gateway, null);
+            var previewRoot = catalogue.getRootNodes().getFirst();
+            if (frozenCatalogue) previewRoot.setDescriptionEn("Mutable caller description");
+            String preview = ReflectionTestUtils.invokeMethod(llm, "assessmentPrompt",
+                    "Arbeitszeiterfassung", List.of(previewRoot), 100d, ScoreAssessmentKind.ROOT_RELEVANCE);
+
+            AnalysisResult result = llm.analyzeWithBudget("Arbeitszeiterfassung");
+            assertEquals("SUCCESS", result.getStatus());
+            assertEquals(Map.of("BP", 0d), result.getRawScores());
+            var callback = new Capture();
+            llm.analyzeStreaming("Arbeitszeiterfassung", callback);
+            assertEquals("SUCCESS", callback.status);
+            assertEquals(Map.of("BP", 0d), callback.scores);
+            assertEquals(2, gateway.prompts.size(), "Each run assesses only its root when relevance is zero");
+            assertEquals(preview, gateway.prompts.getFirst());
+            assertEquals(preview, gateway.prompts.getLast());
+            assertTrue(preview.contains(sourceDescription), "The first root assessment needs its catalogue meaning");
+            assertFalse(preview.contains("Current catalogue changed after admission"));
+            assertFalse(preview.contains("Mutable caller description"));
+            assertTrue(preview.contains("not additional candidates"));
+            String candidates = preview.substring(preview.indexOf("Nodes to evaluate (only the following candidates):"));
+            assertTrue(candidates.contains("BP: BP - C3 Taxonomy – Business Processes"));
+            assertFalse(candidates.contains("BP-1"), "Context must not change the root question's candidate IDs");
+        }
+    }
+
+    @Test
+    void rootCatalogueContextInvalidatesTheFormerRecoveryPolicy() {
+        var llm = service(LlmProvider.OPENAI, false, new Gateway(), null);
+        String providerPolicy = ReflectionTestUtils.invokeMethod(llm, "recoveryProviderPolicyFingerprint", "OPENAI");
+        String formerPolicy = AnalysisCheckpointSession.digest(providerPolicy,
+                PromptTemplateService.childAllocationContract(100), PromptTemplateService.functionalScopeContract(),
+                AnalysisReasonContext.POLICY, com.taxonomy.dto.AnalysisReasonLength.STANDARD.value());
+        assertNotEquals(formerPolicy, llm.recoveryPolicyFingerprint("OPENAI"),
+                "A root answer obtained without catalogue context must not be reused under the new policy");
     }
 
     @ParameterizedTest
@@ -185,15 +244,19 @@ class RootScoringFlowTest {
     }
 
     private static FrozenCatalogueContext.Scope frozen(FrozenEmbeddings embeddings) {
+        return frozen(List.of(node("BP", null, "BP")), embeddings);
+    }
+
+    private static FrozenCatalogueContext.Scope frozen(List<TaxonomyNode> nodes, FrozenEmbeddings embeddings) {
         var source = new CatalogueSourceIdentity("repo", "workspace", "branch", "a".repeat(40));
         var input = new CatalogueSourceJournal.InputReference(CatalogueSourceJournal.Use.NOT_USED, null, 0);
         var provenance = new CatalogueSourceJournal.Snapshot("00000000-0000-0000-0000-000000000001",
                 java.time.Instant.EPOCH, input, input, input);
         var snapshot = new RootCatalogueSnapshot(RootCatalogueSnapshot.SCHEMA_VERSION, source, "BP",
-                List.of(RootCatalogueSnapshot.Node.capture(node("BP", null, "BP"),
-                        new CatalogueOverlayService.NodeMetadata("CATEGORY", List.of(), 1, false, null), false)),
-                new CatalogueOverlayService.OverlayMetadata(false, "fixture", "fixture", "v1", null, 1), provenance)
-                .withEmbeddings(new RootEmbeddingSnapshot(RootEmbeddingSnapshot.SCHEMA_VERSION, source, "BP",
+                nodes.stream().map(node -> RootCatalogueSnapshot.Node.capture(node,
+                        new CatalogueOverlayService.NodeMetadata("CATEGORY", List.of(), 1, false, null), false)).toList(),
+                new CatalogueOverlayService.OverlayMetadata(false, "fixture", "fixture", "v1", null, 1), provenance);
+        if (embeddings != null) snapshot = snapshot.withEmbeddings(new RootEmbeddingSnapshot(RootEmbeddingSnapshot.SCHEMA_VERSION, source, "BP",
                         source.sourceCommit(), RootEmbeddingSnapshot.TEXT_VERSION, embeddings.embeddingIdentity(),
                         Map.of("BP", "frozen root text")));
         return new CatalogueSnapshotService(null, null, new CatalogueRuntimePolicy("worker", "BP"), null)
