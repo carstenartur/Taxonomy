@@ -81,6 +81,31 @@ assert.equal(
 assert.equal(client.getJson('/assets/help.json'), '/assets/help.json');
 assert.equal(calls.length, 5);
 
+// Database setup is installation-wide and must remain usable when the tab's
+// workspace is unavailable. All wizard operations retain their original URL.
+for (const prefix of ['', '/taxonomy', 'https://taxonomy.example.test/taxonomy']) {
+  const setupUrl = prefix + '/api/admin/database-setup';
+  assert.equal(client.getJson(setupUrl), setupUrl);
+  for (const operation of ['dismiss', 'check', 'preview']) {
+    const operationUrl = setupUrl + '/' + operation;
+    assert.equal(client.sendJson(operationUrl, {}), operationUrl);
+  }
+}
+// The exception is limited to this exact route family, and explicit caller
+// pins are retained for the server's usual ownership/lifecycle validation.
+assert.equal(
+  client.getJson('/api/admin/database-setup-history'),
+  '/api/admin/database-setup-history?workspaceId=workspace+A%2F1'
+);
+assert.equal(
+  client.getJson('/api/admin/database-setup?workspaceId=explicit'),
+  '/api/admin/database-setup?workspaceId=explicit'
+);
+assert.equal(
+  client.request('/api/admin/database-setup', { method: 'GET' }, { pinnedWorkspaceId: 'explicit' }),
+  '/api/admin/database-setup?workspaceId=explicit'
+);
+
 runtime.workspaceId = 'workspace-b';
 assert.equal(
   client.deleteJson('/api/items/1?workspaceId=obsolete'),
