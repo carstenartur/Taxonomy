@@ -92,8 +92,10 @@ class CopilotAutomationServiceCoverageTest {
         verifyNoInteractions(fixture.analysisService, fixture.coordinator);
     }
 
-    @Test
-    void readyAutopilotPersistsOnePassAndExposesRecoverablePendingState() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(com.taxonomy.dto.AnalysisLanguage.class)
+    void readyAutopilotPersistsOnePassWithItsExplicitLanguageAndExposesRecoverablePendingState(
+            com.taxonomy.dto.AnalysisLanguage language) {
         Fixture fixture = new Fixture();
         RequirementView requirement = requirement(version(), null);
         AtomicReference<AnalysisJobView> persisted = new AtomicReference<>();
@@ -108,9 +110,10 @@ class CopilotAutomationServiceCoverageTest {
                 eq(PROJECT_ID), eq(REQUIREMENT_ID), eq("CUSTOM_OPENAI"), eq(50),
                 anyString(), eq(context.username()), eq(context)))
                 .thenAnswer(invocation -> {
+                    assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current()).isEqualTo(language);
                     String key = invocation.getArgument(4);
-                    AnalysisJobView job = jobWithKey(
-                            "job-1", key, AnalysisStatus.PENDING, null, Instant.now());
+                    AnalysisJobView job = withLanguage(jobWithKey(
+                            "job-1", key, AnalysisStatus.PENDING, null, Instant.now()), language);
                     persisted.set(job);
                     return job;
                 });
@@ -120,7 +123,7 @@ class CopilotAutomationServiceCoverageTest {
                         ? List.of() : List.of(persisted.get()));
 
         var result = fixture.service.tryAutopilot(
-                PROJECT_ID, REQUIREMENT_ID, context.username(), context);
+                PROJECT_ID, REQUIREMENT_ID, context.username(), context, language);
 
         assertThat(result).isPresent();
         assertThat(result.orElseThrow().autopilot()).isTrue();
@@ -636,7 +639,7 @@ class CopilotAutomationServiceCoverageTest {
                 status == AnalysisStatus.PARTIAL ? 1 : 0,
                 status == AnalysisStatus.FAILED ? 1 : 0,
                 null,
-                items);
+                items, null, null, com.taxonomy.dto.AnalysisLanguage.ENGLISH);
     }
 
     private static boolean isTerminal(AnalysisStatus status) {
@@ -672,4 +675,93 @@ class CopilotAutomationServiceCoverageTest {
                 jobControlService,
                 coordinator);
     }
+    @Test
+    void copilotFreezesLanguageAcrossCoordinatorPassesAndSeparatesOperationIdentity() {
+        Fixture fixture = fixtureWithCapturedCoordinator();
+        var persisted = new java.util.LinkedHashMap<String, AnalysisJobView>();
+        var expectedLanguage = new AtomicReference<>(com.taxonomy.dto.AnalysisLanguage.ENGLISH);
+        when(fixture.policy.manual(any())).thenReturn(settings(false, 2, true, true));
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.UNMETERED);
+        when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), null));
+        fingerprints(fixture);
+        when(fixture.analysisService.enqueueRequirement(eq(PROJECT_ID), eq(REQUIREMENT_ID), eq("CUSTOM_OPENAI"), eq(50),
+                anyString(), eq(context.username()), eq(context))).thenAnswer(call -> {
+            String key = call.getArgument(4);
+            assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current()).isEqualTo(expectedLanguage.get());
+            return persisted.computeIfAbsent(key, unused -> withLanguage(jobWithKey("job-" + persisted.size(), key,
+                    AnalysisStatus.SUCCESS, null, Instant.now()), expectedLanguage.get()));
+        });
+        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
+                .thenAnswer(ignored -> List.copyOf(persisted.values()));
+        when(fixture.analysisService.getJob(anyString(), eq(PROJECT_ID), eq(context.username()), eq(context)))
+                .thenAnswer(call -> persisted.values().stream().filter(job -> job.id().equals(call.getArgument(0))).findFirst().orElseThrow());
+        when(fixture.policy.maximumRuntime()).thenReturn(Duration.ofSeconds(5));
+        when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.empty());
+        var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
+        try {
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.GERMAN);
+            var request = new CopilotRunRequest(null, "CUSTOM_OPENAI", 50, AnalysisAutomationProfile.FULL, 2,
+                    false, true, true, com.taxonomy.dto.AnalysisLanguage.ENGLISH);
+            var english = fixture.service.enqueueManual(PROJECT_ID, REQUIREMENT_ID, request, context.username(), context);
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.FRENCH);
+            captured(fixture).run();
+            assertThat(persisted.values()).hasSize(2).allSatisfy(job ->
+                    assertThat(job.analysisLanguage()).isEqualTo(com.taxonomy.dto.AnalysisLanguage.ENGLISH));
+            expectedLanguage.set(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+            var german = fixture.service.enqueueManual(PROJECT_ID, REQUIREMENT_ID,
+                    new CopilotRunRequest(null, "CUSTOM_OPENAI", 50, AnalysisAutomationProfile.FULL, 2,
+                            false, true, true, com.taxonomy.dto.AnalysisLanguage.GERMAN), context.username(), context);
+            assertThat(german.operationId()).isNotEqualTo(english.operationId());
+        } finally { org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous); }
+        assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current()).isNull();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(com.taxonomy.dto.AnalysisLanguage.class)
+    @org.junit.jupiter.params.provider.NullSource
+    void resumedCopilotPassesPreserveRecordedOrUnknownLanguageAcrossLocaleChanges(
+            com.taxonomy.dto.AnalysisLanguage recorded) {
+        Fixture fixture = fixtureWithCapturedCoordinator();
+        String operation = "9".repeat(64);
+        var persisted = new java.util.LinkedHashMap<String, AnalysisJobView>();
+        var first = withLanguage(job("job-1", operation, 1, 2, REQUIREMENT_ID,
+                AnalysisStatus.SUCCESS, null, Instant.now()), recorded);
+        persisted.put(first.idempotencyKey(), first);
+        when(fixture.policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+        when(fixture.policy.maximumRuntime()).thenReturn(Duration.ofSeconds(5));
+        when(fixture.projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, context.username(), context))
+                .thenReturn(requirement(version(), null));
+        when(fixture.analysisService.listJobs(PROJECT_ID, context.username(), context))
+                .thenAnswer(ignored -> List.copyOf(persisted.values()));
+        when(fixture.analysisService.enqueueRequirement(eq(PROJECT_ID), eq(REQUIREMENT_ID), eq("CUSTOM_OPENAI"), eq(50),
+                anyString(), eq(context.username()), eq(context))).thenAnswer(call -> {
+            assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null))
+                    .isEqualTo(recorded);
+            String key = call.getArgument(4);
+            return persisted.computeIfAbsent(key, unused -> withLanguage(jobWithKey("job-2", key,
+                    AnalysisStatus.SUCCESS, null, Instant.now()), recorded));
+        });
+        when(fixture.analysisService.getJob(anyString(), eq(PROJECT_ID), eq(context.username()), eq(context)))
+                .thenAnswer(call -> persisted.values().stream().filter(job -> job.id().equals(call.getArgument(0))).findFirst().orElseThrow());
+        when(fixture.resultSelector.selectForOperation(anyList())).thenReturn(Optional.empty());
+
+        var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
+        try {
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.GERMAN);
+            fixture.service.getOperation(PROJECT_ID, operation, context.username(), context);
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
+            captured(fixture).run();
+            assertThat(persisted.values()).hasSize(2).allSatisfy(job -> assertThat(job.analysisLanguage()).isEqualTo(recorded));
+        } finally { org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous); }
+        assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current()).isNull();
+    }
+
+    private static AnalysisJobView withLanguage(AnalysisJobView job, com.taxonomy.dto.AnalysisLanguage language) {
+        return new AnalysisJobView(job.id(), job.projectId(), job.status(), job.idempotencyKey(), job.provider(),
+                job.maxArchitectureNodes(), job.requestedBy(), job.workspaceId(), job.createdAt(), job.startedAt(),
+                job.completedAt(), job.totalItems(), job.successfulItems(), job.partialItems(), job.failedItems(),
+                job.errorSummary(), job.items(), job.providerBinding(), job.analysisReasonLength(), language);
+    }
+
 }

@@ -21,6 +21,7 @@ import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisRequest;
 import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.AnalysisMode;
 import com.taxonomy.dto.AnalysisResult;
@@ -181,7 +182,8 @@ public class AnalysisApiController {
                     var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
                             maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope);
                     if (continuation != null) command = continuation.bind(command);
-                    else command = command.withAnalysisReasonLength(resolveReasonLength(request.getAnalysisReasonLength()));
+                    else command = command.withAnalysisReasonLength(resolveReasonLength(request.getAnalysisReasonLength()))
+                            .withAnalysisLanguage(resolveLanguage(request.getAnalysisLanguage()));
                     String branch = context.currentBranch();
                     var view = repositoryStateService.getViewContext(context.username(), branch, context);
                     var operation = AnalysisOperationContexts.create(operationId, command, view);
@@ -201,13 +203,14 @@ public class AnalysisApiController {
             }
             var reasonLength = continuation == null ? resolveReasonLength(request.getAnalysisReasonLength())
                     : continuation.analysisReasonLength();
+            var language = continuation == null ? resolveLanguage(request.getAnalysisLanguage()) : continuation.analysisLanguage();
             String pinnedProvider = followUpProviders == null ? request.getProvider()
-                    : followUpProviders.remember(operationId, request.getProvider(), request.getBusinessText(), username, context, reasonLength);
+                    : followUpProviders.remember(operationId, request.getProvider(), request.getBusinessText(), username, context, reasonLength, language);
             try (var run = analysisProgressRegistry == null ? null
                     : analysisProgressRegistry.open(operationId, username, context, null)) {
             var command = new AnalyzeRequirementCommand(request.getBusinessText(), request.isIncludeArchitectureView(),
                     maxArchitectureNodes, request.getProvider(), username, context, null, analysisScope)
-                    .withAnalysisReasonLength(reasonLength);
+                    .withAnalysisReasonLength(reasonLength).withAnalysisLanguage(language);
             final var boundCommand = continuation == null ? command : continuation.bind(command);
             AnalyzeRequirementResult result = followUpProviders == null ? analyzeRequirementUseCase.analyze(boundCommand)
                     : followUpProviders.execute(operationId, null, request.getBusinessText(), username, context,
@@ -216,6 +219,7 @@ public class AnalysisApiController {
             result.analysisResult().setAnalysisProviderId(continuation != null && boundCommand.provider() != null
                     ? boundCommand.provider() : pinnedProvider);
             result.analysisResult().setAnalysisReasonLength(reasonLength);
+            result.analysisResult().setAnalysisLanguage(language);
             AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());
             if (run != null) {
                 // The continuation is the durable authority. Publishing live completion must
@@ -250,7 +254,8 @@ public class AnalysisApiController {
             @Parameter(description = "LLM provider override")
             @RequestParam(required = false) String provider,
             @RequestParam(required = false) java.util.Set<String> taxonomyRoots,
-            @RequestParam(defaultValue = "FULL") AnalysisMode analysisMode) {
+            @RequestParam(defaultValue = "FULL") AnalysisMode analysisMode,
+            @RequestParam(required = false) String analysisLanguage) {
         AnalysisScope analysisScope;
         try {
             analysisScope = validateAnalysisScope(new AnalysisScope(taxonomyRoots, analysisMode));
@@ -262,7 +267,12 @@ public class AnalysisApiController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A disconnected stream is not restarted. Observe the existing analysis operation instead.");
         }
-        if (clusterExecution != null) return clusteredStream(businessText, provider, analysisScope);
+        AnalysisLanguage language;
+        try { language = resolveLanguage(AnalysisLanguage.fromValue(analysisLanguage)); }
+        catch (IllegalArgumentException invalid) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalid.getMessage(), invalid);
+        }
+        if (clusterExecution != null) return clusteredStream(businessText, provider, analysisScope, language);
         // The reserved operation owns the configured deadline, including executor-queue time.
         // A second servlet deadline can expire first and discard the terminal partial result.
         // Keep transport open until the worker's terminal event or client disconnect; provider
@@ -329,9 +339,9 @@ public class AnalysisApiController {
 
         var reasonLength = resolveReasonLength(null);
         String followUpProvider = followUpProviders == null ? provider
-                : followUpProviders.remember(operationId, provider, businessText, username, streamContext, reasonLength);
+                : followUpProviders.remember(operationId, provider, businessText, username, streamContext, reasonLength, language);
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
-                businessText, provider, LocaleContextHolder.getLocale(), analysisScope, reasonLength);
+                businessText, provider, LocaleContextHolder.getLocale(), analysisScope, reasonLength, language);
         // Conflicts and capacity failures must retain their HTTP status, before async response commitment.
         // Reservation does not install thread-local control; the executor's worker claims that ownership.
         var reservation = analysisProgressRegistry == null ? null
@@ -376,6 +386,7 @@ public class AnalysisApiController {
                     ((Map<?, ?>) mapped.payload()).forEach((key, value) -> scopedPayload.put(String.valueOf(key), value));
                     scopedPayload.put("analysisScope", analysisScope);
                     scopedPayload.put("analysisReasonLength", reasonLength);
+                    scopedPayload.put("analysisLanguage", language);
                     if (followUpProvider != null) scopedPayload.put("analysisProviderId", followUpProvider);
                     mapped = new AnalysisSseEventMapper.MappedEvent(mapped.name(), scopedPayload);
                     if (!sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload())) {
@@ -429,11 +440,16 @@ public class AnalysisApiController {
         return emitter;
     }
 
+    public SseEmitter analyzeStream(String businessText, String provider, java.util.Set<String> taxonomyRoots,
+                                    AnalysisMode analysisMode) {
+        return analyzeStream(businessText, provider, taxonomyRoots, analysisMode, null);
+    }
+
     public SseEmitter analyzeStream(String businessText, String provider) {
         return analyzeStream(businessText, provider, null, AnalysisMode.FULL);
     }
 
-    private SseEmitter clusteredStream(String businessText, String provider, AnalysisScope scope) {
+    private SseEmitter clusteredStream(String businessText, String provider, AnalysisScope scope, AnalysisLanguage language) {
         if (!taxonomyService.isInitialized()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 "Taxonomy data is still loading. Please wait.");
         if (businessText == null || businessText.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -448,11 +464,11 @@ public class AnalysisApiController {
         var reasonLength = resolveReasonLength(null);
         var command = new AnalyzeRequirementCommand(businessText, scope.includesRelations(),
                 resolveMaxArchitectureNodes(new AnalysisRequest(businessText)), provider, username, workspace, null, scope)
-                .withAnalysisReasonLength(reasonLength);
+                .withAnalysisReasonLength(reasonLength).withAnalysisLanguage(language);
         String branch = workspace.currentBranch();
         var view = repositoryStateService.getViewContext(workspace.username(), branch, workspace);
         var operation = AnalysisOperationContexts.create(operationId, command, view);
-        var stream = new StreamRequirementAnalysisCommand(businessText, provider, LocaleContextHolder.getLocale(), scope, reasonLength);
+        var stream = new StreamRequirementAnalysisCommand(businessText, provider, LocaleContextHolder.getLocale(), scope, reasonLength, language);
         var emitter = new SseEmitter(0L);
         var completed = new AtomicBoolean();
         var disconnected = new AtomicBoolean();
@@ -486,6 +502,7 @@ public class AnalysisApiController {
                         sequence.set(snapshot.revision());
                         var payload = durablePayload(snapshot, scope);
                         payload.put("analysisReasonLength", reasonLength);
+                        payload.put("analysisLanguage", language);
                         boolean terminal = snapshot.state().terminal();
                         if (terminal) completed.set(true);
                         String name = terminal ? ("SUCCESS".equals(snapshot.result().getStatus()) ? "complete" : "error") : "phase";
@@ -553,6 +570,10 @@ public class AnalysisApiController {
         return scope;
     }
 
+    private AnalysisLanguage resolveLanguage(AnalysisLanguage requested) {
+        return com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(requested);
+    }
+
     private AnalysisReasonLength resolveReasonLength(AnalysisReasonLength requested) {
         return com.taxonomy.analysis.service.AnalysisReasonContext.resolve(requested, analysisRuntimeSettings);
     }
@@ -566,25 +587,32 @@ public class AnalysisApiController {
             @RequestParam String businessText,
             @RequestParam(defaultValue = "100") double parentScore,
             @RequestParam(required = false) String provider,
-            @RequestParam(required = false) String operationId) {
+            @RequestParam(required = false) String operationId,
+            @RequestParam(required = false) String analysisLanguage) {
         ResponseEntity<AnalyzeNodeChildrenResult> guard = checkInitialized();
         if (guard != null) return guard;
         try {
+            var requestedLanguage = AnalysisLanguage.fromValue(analysisLanguage);
             if (followUpProviders != null && (operationId == null || operationId.isBlank())) {
                 String owner = workspaceResolver.resolveCurrentUsername();
                 WorkspaceContext workspace = resolveWorkspaceContext(owner);
                 String id = UUID.randomUUID().toString();
-                String pin = followUpProviders.remember(id, provider, businessText, owner, workspace, resolveReasonLength(null));
+                String pin = followUpProviders.remember(id, provider, businessText, owner, workspace, resolveReasonLength(null), resolveLanguage(requestedLanguage));
                 var result = followUpProviders.execute(id, null, businessText, owner, workspace,
                         () -> analyzeNodeChildrenUseCase.analyze(new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore)));
                 return ResponseEntity.ok(result.withFollowUpContext(id, pin));
             }
-            return ResponseEntity.ok(withFollowUpProvider(operationId, provider, businessText,
+            return ResponseEntity.ok(withFollowUpProvider(operationId, provider, businessText, requestedLanguage,
                     () -> analyzeNodeChildrenUseCase.analyze(
                             new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore))));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    public ResponseEntity<AnalyzeNodeChildrenResult> analyzeNode(String parentCode, String businessText, double parentScore,
+                                                               String provider, String operationId) {
+        return analyzeNode(parentCode, businessText, parentScore, provider, operationId, null);
     }
 
     public ResponseEntity<AnalyzeNodeChildrenResult> analyzeNode(String parentCode, String businessText, double parentScore) {
@@ -597,22 +625,32 @@ public class AnalysisApiController {
             Map<String, Double> scores,
             Map<String, String> reasons,
             String provider,
-            String operationId) {
+            String operationId,
+            AnalysisLanguage analysisLanguage) {
+        public JustifyLeafRequest(String nodeCode, String businessText, Map<String, Double> scores, Map<String, String> reasons,
+                                 String provider, String operationId) {
+            this(nodeCode, businessText, scores, reasons, provider, operationId, null);
+        }
         public JustifyLeafRequest(String nodeCode, String businessText, Map<String, Double> scores, Map<String, String> reasons) {
             this(nodeCode, businessText, scores, reasons, null, null);
         }
     }
 
-    private <T> T withFollowUpProvider(String operationId, String provider, String text, java.util.function.Supplier<T> work) {
+    private <T> T withFollowUpProvider(String operationId, String provider, String text,
+                                     AnalysisLanguage requestedLanguage, java.util.function.Supplier<T> work) {
+        try (var admissionLanguage = operationId == null || operationId.isBlank()
+                ? com.taxonomy.analysis.service.AnalysisLanguageContext.open(resolveLanguage(requestedLanguage)) : null) {
         if (followUpProviders == null) {
             if ((operationId != null && !operationId.isBlank()) || (provider != null && !provider.isBlank()))
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Analysis provider binding is unavailable");
-            try (var reasons = com.taxonomy.analysis.service.AnalysisReasonContext.open(resolveReasonLength(null))) {
+            try (var reasons = com.taxonomy.analysis.service.AnalysisReasonContext.open(resolveReasonLength(null));
+                 var language = com.taxonomy.analysis.service.AnalysisLanguageContext.open(resolveLanguage(null))) {
                 return work.get();
             }
         }
         String owner = workspaceResolver.resolveCurrentUsername();
         return followUpProviders.execute(operationId, provider, text, owner, resolveWorkspaceContext(owner), work);
+        }
     }
 
     @Operation(summary = "Generate leaf justification",
@@ -626,7 +664,7 @@ public class AnalysisApiController {
         ResponseEntity<JustifyLeafResult> guard = checkInitialized();
         if (guard != null) return guard;
         try {
-            JustifyLeafResult result = withFollowUpProvider(request.operationId(), request.provider(), request.businessText(),
+            JustifyLeafResult result = withFollowUpProvider(request.operationId(), request.provider(), request.businessText(), request.analysisLanguage(),
                     () -> justifyLeafUseCase.justify(new JustifyLeafCommand(
                             request.nodeCode(), request.businessText(), request.scores(), request.reasons())));
             return ResponseEntity.ok(result);

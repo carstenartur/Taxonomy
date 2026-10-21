@@ -108,6 +108,46 @@ class ClusterAnalysisBackupRestoreTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource(value = {
+            "GERMAN, ENGLISH, false",
+            "GERMAN, <null>, false",
+            "<null>, ENGLISH, false",
+            "GERMAN, GERMAN, true",
+            "<null>, <null>, true"
+    }, nullValues = "<null>")
+    void restorePreservesExactNullableLanguageBeforeWriting(com.taxonomy.dto.AnalysisLanguage captured,
+                                                               com.taxonomy.dto.AnalysisLanguage requested,
+                                                               boolean accepted) throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("language-source");
+            source.store.admit(original, command("requirement").withAnalysisLanguage(captured), null,
+                    Map.of(CP, "{\"root\":\"CP\"}", IP, "{\"root\":\"IP\"}"));
+            source.store.accept(source.complete(source.task(CP), result("CP", 70)));
+            source.store.start(source.task(IP));
+            var archive = exportedArchive(source);
+            var restored = targetContext("language-restored");
+            var requestedCommand = targetCommand().withAnalysisLanguage(requested);
+            var restorer = new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON);
+
+            if (accepted) {
+                restorer.restore(archive, restored, requestedCommand);
+                var result = target.store.snapshot(restored).result();
+                assertEquals(captured, target.store.command(restored).analysisLanguage());
+                assertEquals(captured, result.getAnalysisLanguage(),
+                        "Restored committed evidence must retain the recorded value, including legacy absence");
+                assertEquals(Map.of("CP", 70d), result.getRawScores());
+                assertEquals(ClusterAnalysisState.CANCELLED, target.store.snapshot(restored).state());
+            } else {
+                var failure = assertThrows(IllegalArgumentException.class,
+                        () -> restorer.restore(archive, restored, requestedCommand));
+                assertEquals("Restore cannot change the captured analysis request", failure.getMessage());
+                assertRestoredClosureEmpty(target);
+            }
+            assertNoOperationalState(target);
+        }
+    }
+
     @Test void exportedLiveCoverageRemainsObservableAfterInterruptedRestoreWithoutAWorkerClaim() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("live-progress-source"); source.admitFrozen(original);

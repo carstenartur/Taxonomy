@@ -30,6 +30,34 @@ class ReportApiControllerCompositionTest {
     private final ReportApiController controller = new ReportApiController(reports, renderers, repositories, workspaces);
     private final ReportApiController.ReportRequest request = new ReportApiController.ReportRequest(Map.of("A", 50d), "business", 17);
 
+    @Test
+    void reportLanguageUsesExplicitChoiceThenRecordedAnalysisThenLegacyRequestLocale() {
+        var renderer = mock(ReportRendererExtension.class);
+        when(reports.generateReport(any(), any(), anyInt())).thenReturn(new ArchitectureReport());
+        when(renderers.getRequired("docx")).thenReturn(renderer);
+        when(renderer.descriptor()).thenReturn(new ReportFormatDescriptor("docx", "DOCX", "docx", "application/octet-stream", true));
+        when(renderer.render(any())).thenReturn(new ReportRenderResult(new byte[]{1}));
+        var reasons = Map.of("A", "Original English explanation that must remain unchanged.");
+        try {
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
+            controller.exportDocx(new ReportApiController.ReportRequest(request.scores(), "business", 17,
+                    reasons, com.taxonomy.dto.AnalysisLanguage.GERMAN, null));
+            controller.exportDocx(new ReportApiController.ReportRequest(request.scores(), "business", 17,
+                    reasons, com.taxonomy.dto.AnalysisLanguage.GERMAN, "en"));
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.GERMAN);
+            controller.exportDocx(new ReportApiController.ReportRequest(request.scores(), "business", 17,
+                    reasons, null, null));
+            var contexts = org.mockito.ArgumentCaptor.forClass(ReportRenderContext.class);
+            verify(renderer, times(3)).render(contexts.capture());
+            assertThat(contexts.getAllValues()).extracting(context -> context.options().get("language"))
+                    .containsExactly("de", "en", "de");
+            assertThat(contexts.getAllValues()).allSatisfy(context ->
+                    assertThat(context.options().get("nodeReasons")).isEqualTo(reasons));
+        } finally {
+            org.springframework.context.i18n.LocaleContextHolder.resetLocaleContext();
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"markdown", "html", "docx", "json"})
     void invalidRequestsRemainBadRequestsBeforeAnyBackendAccess(String format) {

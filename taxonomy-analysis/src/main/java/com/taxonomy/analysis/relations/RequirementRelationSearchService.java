@@ -171,11 +171,14 @@ public class RequirementRelationSearchService {
         // stable when a background worker restores that scope after admission.
         // Execution resources can be raised without discarding validated answers.
         // Depth and packing still shape questions and retain semantic authority.
-        return "relation-downwalk-v9/source-call-reservation=half/relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/" + enabled
+        String fingerprint = "relation-downwalk-v9/source-call-reservation=half/relation-semantics-v2/relation-source-context-v1/provider-profiles/taxonomy-cohorts/custom-defaults=3,16000/" + enabled
                 + "/max-depth=" + maxDepth + "/standard-batch=" + (batchSize == null ? 10 : batchSize)
                 + "/standard-prompt=" + (maxPromptCharacters == null ? 120_000 : maxPromptCharacters)
                 + "/batch-override=" + batchSize + "/prompt-override=" + maxPromptCharacters
                 + "/" + PromptTemplateService.FUNCTIONAL_SCOPE_POLICY;
+        var language = com.taxonomy.analysis.service.AnalysisLanguageContext.current();
+        return language == null ? fingerprint : fingerprint + "/"
+                + com.taxonomy.analysis.service.AnalysisLanguageContext.POLICY + "/" + language.value();
     }
 
     public String scoringPolicyFingerprint(String provider) { return llm.recoveryPolicyFingerprint(provider); }

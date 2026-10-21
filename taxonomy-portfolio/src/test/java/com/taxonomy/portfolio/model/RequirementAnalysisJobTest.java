@@ -75,4 +75,16 @@ class RequirementAnalysisJobTest {
                 1,
                 createdAt);
     }
+    @Test
+    void languageIsImmutableAcrossRetryAndAbsentOnHistoricalJobs() {
+        var job = job(Instant.parse("2026-10-17T09:00:00Z"));
+        assertThat(job.getAnalysisLanguage()).isNull();
+        job.recordAnalysisLanguage(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+        job.markRunning(Instant.parse("2026-10-17T09:01:00Z"));
+        job.markPending();
+        assertThat(job.getAnalysisLanguage()).isEqualTo(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> job.recordAnalysisLanguage(com.taxonomy.dto.AnalysisLanguage.ENGLISH))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("immutable");
+    }
+
 }

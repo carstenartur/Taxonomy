@@ -2,6 +2,11 @@ package com.taxonomy.dto;
 
 public class AnalysisRequest {
 
+    /** Recorded content language; absent historical values stay unknown. */
+    private AnalysisLanguage analysisLanguage;
+    public AnalysisLanguage getAnalysisLanguage() { return analysisLanguage; }
+    public void setAnalysisLanguage(AnalysisLanguage value) { analysisLanguage = value; }
+
     /** Omitted on a new request: capture the runtime preference once at admission. */
     private AnalysisReasonLength analysisReasonLength;
     public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }

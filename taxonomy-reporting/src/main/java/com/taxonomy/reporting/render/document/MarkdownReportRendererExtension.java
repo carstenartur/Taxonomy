@@ -27,7 +27,9 @@ public class MarkdownReportRendererExtension implements ReportRendererExtension 
 
     @Override
     public ReportRenderResult render(ReportRenderContext context) {
-        String markdown = reportService.renderMarkdown(context.report());
+        String markdown = reportService.renderMarkdown(context.report(),
+                com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererLanguage(context),
+                com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererReasons(context));
         return new ReportRenderResult(markdown.getBytes(StandardCharsets.UTF_8));
     }
 }

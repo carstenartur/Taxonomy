@@ -27,7 +27,9 @@ public class HtmlReportRendererExtension implements ReportRendererExtension {
 
     @Override
     public ReportRenderResult render(ReportRenderContext context) {
-        String html = reportService.renderHtml(context.report());
+        String html = reportService.renderHtml(context.report(),
+                com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererLanguage(context),
+                com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererReasons(context));
         return new ReportRenderResult(html.getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -9,6 +9,11 @@ import java.util.Objects;
 public class AnalysisResult {
 
     /** Frozen generation preference; null for historical or otherwise unrecorded evidence. */
+    /** Recorded content language; absent historical values stay unknown. */
+    private AnalysisLanguage analysisLanguage;
+    public AnalysisLanguage getAnalysisLanguage() { return analysisLanguage; }
+    public void setAnalysisLanguage(AnalysisLanguage value) { analysisLanguage = value; }
+
     private AnalysisReasonLength analysisReasonLength;
     public AnalysisReasonLength getAnalysisReasonLength() { return analysisReasonLength; }
     public void setAnalysisReasonLength(AnalysisReasonLength value) { analysisReasonLength = value; }

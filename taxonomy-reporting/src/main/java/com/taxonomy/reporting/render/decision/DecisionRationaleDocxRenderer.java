@@ -191,7 +191,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         if (options.includes(DecisionReportOptions.Section.TREE)) {
             if (options.treeLayout() == DecisionReportOptions.TreeLayout.TABLE)
                 new DecisionTreeWordSectionRenderer().write(document, report.scope().decisionTree(), report.languageTag(), options.includes(DecisionReportOptions.Section.CHAPTERS), evidence.linkedReasonCodes());
-            else new DecisionTreeLandscapeSection().write(document, report, !shortCompact || architecture, evidence.includesFullReasons());
+            else new DecisionTreeLandscapeSection().write(document, report,
+                    !shortCompact || architecture || !evidence.linkedReasonCodes().isEmpty(), evidence.includesFullReasons());
         }
         if (options.includes(DecisionReportOptions.Section.CHAPTERS)) renderChapters(document, report, labels, evidence);
         evidence.writeReasons(document, labels);

@@ -23,7 +23,9 @@ class SnapshotWordReportServiceTest {
     static final WorkspaceContext CONTEXT =
             new WorkspaceContext("auditor", "workspace-a", "main", "repository-a");
 
-    static DecisionRationaleReport decision() {
+    static DecisionRationaleReport decision() { return decision("en"); }
+
+    static DecisionRationaleReport decision(String language) {
         var m =
                 new DecisionRationaleReport.ReportMetadata(
                         Instant.EPOCH,
@@ -65,7 +67,7 @@ class SnapshotWordReportServiceTest {
                         100);
         return new DecisionRationaleReport(
                 "Saved title",
-                "en",
+                language,
                 "Saved requirement",
                 DecisionRationaleReport.ReportStatus.FINAL,
                 m,
@@ -137,6 +139,93 @@ class SnapshotWordReportServiceTest {
                 .containsExactly("A", "B");
         assertThat(first.architecture().relations()).extracting(e -> e.id()).containsExactly("R1");
         assertThat(first.architecture().evidence().graphSha256()).matches("[a-f0-9]{64}");
+    }
+
+    @Test
+    void standaloneFrozenArchitectureWordRetainsTheOriginalNodeRationale() throws Exception {
+        var decisions = mock(DecisionRationaleSnapshotReportService.class);
+        var workbench = mock(ArchitectureWorkbenchService.class);
+        String reason = "Die gespeicherte Begründung bleibt vollständig lesbar. ".repeat(70)
+                + "FROZEN-NODE-REASON-END-7319";
+        var p = projection("Saved", "commit-a");
+        var node = new ElementMetadata("A", "Saved A", "CP", 100, 1, .9, "AI", "CP/A", reason,
+                false, null, null, null, null, null, null);
+        var source = new Projection(p.projectId(), p.projectKey(), p.projectTitle(), p.requirementId(), p.requirementKey(),
+                p.requirementTitle(), p.requirementText(), p.snapshotId(), p.snapshotStatus(), p.snapshotCreatedAt(), p.provider(),
+                p.modelName(), p.workspaceId(), p.branchName(), p.commitSha(), p.diagram(), p.scene(),
+                Map.of("A", node), p.relations(), p.warnings(), p.exportProvenance());
+        when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH)).thenReturn(decision());
+        when(workbench.load(41L, "snapshot-1", "auditor", CONTEXT)).thenReturn(source);
+        var report = new SnapshotWordReportService(decisions, workbench)
+                .load(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH).architecture();
+        byte[] bytes = new com.taxonomy.reporting.render.document.ArchitectureReportDocxRenderer().render(report);
+        try (var document = new org.apache.poi.xwpf.usermodel.XWPFDocument(new java.io.ByteArrayInputStream(bytes))) {
+            assertThat(new org.apache.poi.xwpf.extractor.XWPFWordExtractor(document).getText()).contains(reason);
+        }
+    }
+
+    @Test
+    void legacyRelationMappingReasonsRemainVisibleWithinSelectedFrozenGraph() throws Exception {
+        var decisions = mock(DecisionRationaleSnapshotReportService.class);
+        var workbench = mock(ArchitectureWorkbenchService.class);
+        String reason = "The saved mapping explains why this relationship was selected. ".repeat(70)
+                + "LEGACY-SELECTION-REASON-END-5831";
+        String comment = "The reviewer independently recorded this complete assessment. ".repeat(70)
+                + "LEGACY-REVIEW-COMMENT-END-5831";
+        String excluded = "OUTSIDE-SELECTED-RELATION-EVIDENCE-5831";
+        var p = projection("Saved", "commit-a");
+        var nodes = new ArrayList<>(p.diagram().nodes());
+        nodes.add(new DiagramNode("C", "Outside C", "Capability", .6, false, 0));
+        nodes.add(new DiagramNode("D", "Outside D", "Service", .4, false, 1));
+        var graph = new DiagramModel(p.diagram().title(), nodes,
+                List.of(p.diagram().edges().getFirst(), new DiagramEdge("R2", "C", "D", "serves", .4)), p.diagram().layout());
+        assertThat(graph.edges()).allSatisfy(edge -> assertThat(edge.metadata()).isNull());
+        var kept = new RelationMetadata("A", "B", "serves", null, null, .5, .7, reason,
+                null, null, null, comment);
+        var omitted = new RelationMetadata("C", "D", "serves", null, null, .4, .6, excluded,
+                null, null, null, excluded);
+        var source = new Projection(p.projectId(), p.projectKey(), p.projectTitle(), p.requirementId(), p.requirementKey(),
+                p.requirementTitle(), p.requirementText(), p.snapshotId(), p.snapshotStatus(), p.snapshotCreatedAt(), p.provider(),
+                p.modelName(), p.workspaceId(), p.branchName(), p.commitSha(), graph,
+                new LayeredDiagramLayoutService().layout(graph), p.elements(),
+                Map.of(kept.signature(), kept, omitted.signature(), omitted), p.warnings(), p.exportProvenance());
+        var options = new DecisionReportOptions(DecisionReportOptions.Profile.STANDARD, Set.of("A"), null, null, null);
+        var base = decision("de");
+        var selected = base.withScope(new DecisionReportScope(null, null, List.of(), Set.of("A"), Set.of("A"),
+                base.scope().decisionTree(), options, true, true));
+        when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.GERMAN, options)).thenReturn(selected);
+        when(workbench.loadIfPresent(41L, "snapshot-1", "auditor", CONTEXT)).thenReturn(Optional.of(source));
+        var report = new SnapshotWordReportService(decisions, workbench)
+                .load(41L, "snapshot-1", "auditor", CONTEXT, Locale.GERMAN, options);
+        assertThat(report.architecture().scope()).contains("SHA-256 des Quellgraphen:").doesNotContain("Source graph SHA-256");
+        assertThat(report.architecture().diagram().edges()).extracting(DiagramEdge::id).containsExactly("R1");
+        assertThat(report.architecture().diagram().edges().getFirst().metadata()).isNull();
+        assertThat(report.architecture().relationReasons()).containsOnlyKeys("R1");
+        assertThatThrownBy(() -> report.architecture().relationReasons().put("R2", Map.of()))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> report.architecture().relationReasons().get("R1").put("presenceReason", "changed"))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThat(report.architecture().evidence().graphSha256()).isEqualTo(
+                com.taxonomy.reporting.api.document.ArchitectureReportDocument.graphSha256(report.architecture().diagram()));
+        byte[] bytes = new com.taxonomy.reporting.render.document.ArchitectureReportDocxRenderer().render(report.architecture());
+        String word;
+        try (var document = new org.apache.poi.xwpf.usermodel.XWPFDocument(new java.io.ByteArrayInputStream(bytes));
+                var extractor = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(document)) {
+            word = extractor.getText();
+        }
+        String html = new com.taxonomy.reporting.render.decision.DecisionRationaleHtmlRenderer(
+                new com.taxonomy.reporting.render.decision.DecisionChapterDiagramRenderer()).render(report.decision());
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertThat(word).contains(reason, comment, "Gespeicherte Auswahlbegründung", "Gespeicherter Prüfkommentar")
+                        .doesNotContain(excluded),
+                () -> assertThat(html).contains(reason, comment, "Gespeicherte Auswahlbegründung", "Gespeicherter Prüfkommentar")
+                        .doesNotContain(excluded));
+        String fixtures = System.getProperty("decision.export.fixtures");
+        if (fixtures != null) {
+            var output = java.nio.file.Path.of(fixtures, "frozen-legacy-relation-reasons.docx");
+            java.nio.file.Files.createDirectories(output.getParent());
+            java.nio.file.Files.write(output, bytes);
+        }
     }
 
     @Test

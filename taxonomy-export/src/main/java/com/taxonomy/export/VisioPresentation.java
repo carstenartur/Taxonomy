@@ -51,6 +51,8 @@ final class VisioPresentation {
         }
         if (unplaced > 0) document.getLosses().add(new VisioLoss("document", "", "overviewCaptions", "OMITTED",
                 unplaced + " overview captions could not be placed without collision. Native connectors/data remain; consult relationship details."));
+        // Mandatory readable evidence reserves page capacity before optional diagram details.
+        VisioEvidencePages.append(document, overview);
         if (dense || unplaced > 0 || shortenedOverviewType) addDetails(document, overview, nodes);
     }
 
@@ -67,7 +69,7 @@ final class VisioPresentation {
     }
 
     private static void addDetails(VisioDocument document, VisioPage overview, Map<String, VisioShape> nodes) {
-        int shapes = document.getPages().stream().mapToInt(p -> p.getShapes().size()).sum();
+        int shapes = document.getPages().stream().mapToInt(p -> p.getShapes().size() + (p.getLegend() == null ? 0 : 1)).sum();
         int connectors = document.getPages().stream().mapToInt(p -> p.getConnects().size()).sum();
         int covered = 0;
         while (covered < overview.getConnects().size() && document.getPages().size() < 32) {

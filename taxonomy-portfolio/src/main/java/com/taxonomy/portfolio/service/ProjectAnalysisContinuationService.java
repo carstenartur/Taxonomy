@@ -122,6 +122,7 @@ public class ProjectAnalysisContinuationService {
         request.setIncludeArchitectureView(true);
         request.setMaxArchitectureNodes(job.maxArchitectureNodes());
         request.setProvider(job.provider());
+        request.setAnalysisLanguage(job.analysisLanguage());
         request.setAnalysisReasonLength(job.analysisReasonLength() == null
                 ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength());
         request.setResumable(true);

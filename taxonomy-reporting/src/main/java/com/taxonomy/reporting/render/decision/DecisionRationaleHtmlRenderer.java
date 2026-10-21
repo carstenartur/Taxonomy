@@ -75,6 +75,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .append("</span><span class=\"page-counter\"></span></footer>");
 
         var options = report.scope().options();
+        var nodeEvidence = new DecisionNodeEvidence(report);
         if (options.includes(DecisionReportOptions.Section.TITLE_PAGE)) renderTitlePage(html, report, labels);
         html.append("<section class=\"source-notice\"><h1>").append(text(report.title())).append("</h1><p>")
                 .append(text(report.requirement())).append("</p>");
@@ -86,6 +87,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         if (options.includes(DecisionReportOptions.Section.ARCHITECTURE) && report.architecture() != null) navigation.put("architecture_figures", labels.architectureOverview());
         if (options.includes(DecisionReportOptions.Section.CHAPTERS)) navigation.put("decision_chapters", labels.decisionChapters());
         if (options.includes(DecisionReportOptions.Section.EVIDENCE)) navigation.put("decision_evidence", labels.appendix());
+        if (!nodeEvidence.linkedReasonCodes().isEmpty()) navigation.put("decision_node_reasons", labels.recordedNodeReasons());
         if (options.contents() != DecisionReportOptions.Contents.NONE) {
             html.append("<nav aria-label=\"").append(attr(labels.contents())).append("\"><h2>").append(text(labels.contents())).append("</h2><ul>");
             navigation.forEach((id, title) -> html.append("<li><a href=\"#").append(id).append("\">").append(text(title)).append("</a></li>"));
@@ -109,12 +111,48 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
             report.architecture().elements().forEach(e -> html.append("<tr><td>").append(text(e.id())).append("</td><td>").append(text(e.title())).append("</td></tr>"));
             html.append("</table><ul>");
             report.architecture().relations().forEach(e -> html.append("<li>").append(text(e.sourceId())).append(" → ").append(text(e.targetId())).append(" · ").append(text(e.type())).append("</li>"));
-            html.append("</ul></section>");
+            html.append("</ul>");
+            if (!report.architecture().nodeReasons().isEmpty()) {
+                html.append("<div class=\"recorded-reasons\"><h3>").append(text(labels.recordedNodeReasons())).append("</h3>");
+                report.architecture().nodeReasons().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
+                        .forEach(entry -> html.append("<h4>").append(text(entry.getKey())).append("</h4><p>")
+                                .append(text(entry.getValue())).append("</p>"));
+                html.append("</div>");
+            }
+            if (!report.architecture().diagram().edges().isEmpty()) {
+                html.append("<div class=\"recorded-reasons\"><h3>").append(text(labels.relationshipProvenance())).append("</h3>");
+                report.architecture().diagram().edges().forEach(edge -> {
+                    html.append("<h4>").append(text(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId()))
+                            .append("</h4>");
+                    com.taxonomy.export.DiagramPresentation.relationshipDetails(edge.metadata(), labels.german())
+                            .forEach(detail -> html.append("<p>").append(text(detail)).append("</p>"));
+                    com.taxonomy.export.DiagramPresentation.relationshipEvidenceDetails(
+                            report.architecture().relationReasons().get(edge.id()), labels.german())
+                            .forEach(detail -> html.append("<p>").append(text(detail)).append("</p>"));
+                });
+                html.append("</div>");
+            }
+            html.append("</section>");
         }
         if (options.includes(DecisionReportOptions.Section.CHAPTERS)) { html.append("<div id=\"decision_chapters\">"); renderChapters(html, report, labels); html.append("</div>"); }
+        renderRecordedReasons(html, nodeEvidence, labels);
         if (options.includes(DecisionReportOptions.Section.EVIDENCE)) { html.append("<div id=\"decision_evidence\">"); renderAppendix(html, report, labels); html.append("</div>"); }
         html.append("</body></html>");
         return html.toString();
+    }
+
+    private void renderRecordedReasons(StringBuilder html, DecisionNodeEvidence evidence, DecisionReportLabels labels) {
+        if (evidence.linkedReasonCodes().isEmpty()) return;
+        html.append("<section class=\"report-section recorded-reasons\" id=\"decision_node_reasons\"><h2>")
+                .append(text(labels.recordedNodeReasons())).append("</h2>");
+        evidence.linkedReasonCodes().stream().sorted().forEach(code -> {
+            var node = evidence.node(code);
+            html.append("<h3 id=\"").append(DecisionNodeEvidence.reasonBookmark(code)).append("\">")
+                    .append(text(code + " · " + node.row().title())).append("</h3><p class=\"muted\">")
+                    .append(text(DecisionNodeEvidence.source(node.evidence(), labels))).append("</p><p>")
+                    .append(text(node.evidence().text())).append("</p>");
+        });
+        html.append("</section>");
     }
 
     private void renderTree(StringBuilder html, DecisionRationaleReport report, DecisionReportLabels labels) {
@@ -137,7 +175,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         DecisionRationaleReport.ReportMetadata metadata = report.metadata();
         html.append("<section class=\"title-page\">")
                 .append("<div class=\"brand-rule\"></div>")
-                .append("<div class=\"eyebrow\">TAXONOMY · DECISION EVIDENCE</div>")
+                .append("<div class=\"eyebrow\">").append(text(labels.evidenceEyebrow())).append("</div>")
                 .append("<h1>").append(text(report.title())).append("</h1>")
                 .append("<p class=\"subtitle\">").append(text(labels.subtitle())).append("</p>")
                 .append("<div class=\"status status-")
@@ -370,6 +408,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
                 .warning-box{background:var(--warning);border-left:5px solid var(--warning-border);padding:14px 18px;margin:22px 0}.warning-box h3{margin-top:0}.warning-box.compact{font-size:13px}.chapter-number{color:var(--teal);font-weight:800;font-size:14px}.chapter-heading{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid var(--navy);padding-bottom:12px}.chapter-heading h2{margin:4px 0 0;color:var(--navy);font-size:29px}.parent-score{background:var(--teal);color:#fff;padding:10px 16px;border-radius:6px;font-weight:800;font-size:24px;white-space:nowrap}.parent-description{color:var(--muted)}
                 .decision-diagram{margin:24px 0;page-break-inside:avoid}.decision-diagram svg{width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.decision-diagram figcaption{font-size:11px;color:var(--muted);text-align:right}.rationale-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:22px}.rationale-grid>div{background:#f6f8fa;padding:14px 18px;border-top:4px solid var(--teal)}.rationale-grid h3{margin-top:0}.row-leading{background:var(--teal-light)!important}.row-rejected{color:var(--muted)}.row-missing{font-style:italic;color:var(--muted)}
                 .evidence-list{display:grid;grid-template-columns:210px 1fr;border-top:1px solid var(--line)}.evidence-list dt,.evidence-list dd{margin:0;padding:8px;border-bottom:1px solid var(--line)}.evidence-list dt{font-weight:700;color:var(--navy)}.evidence-list dd{overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f6f8fa;padding:12px;border:1px solid var(--line)}
+                .recorded-reasons p{white-space:pre-wrap;overflow-wrap:anywhere;break-inside:auto}.recorded-reasons h3,.recorded-reasons h4{break-after:avoid}td{overflow-wrap:anywhere}
                 @media(max-width:760px){body{box-shadow:none}.title-page,.report-section{padding:28px 20px}.metadata-grid,.rationale-grid{grid-template-columns:1fr}.chapter-heading{display:block}.parent-score{display:inline-block;margin-top:12px}.running-footer{display:none}}
                 @media print{html,body{background:#fff;box-shadow:none;max-width:none}.running-footer{position:fixed}.page-counter:after{content:PAGE_COUNTER}@page{size:A4;margin:14mm 12mm 18mm}.title-page,.report-section{padding:12mm 10mm 18mm}.title-page{min-height:255mm}.classification-note{left:10mm;right:10mm;bottom:16mm}}
                 </style>

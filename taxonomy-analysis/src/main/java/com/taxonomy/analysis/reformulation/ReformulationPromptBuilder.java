@@ -49,7 +49,7 @@ public class ReformulationPromptBuilder {
         String encoded = data.has("discoveryContextTable") ? json.writeValueAsString(data) : inline;
         boolean useTable = data.has("discoveryContextTable")
                 && DiscoveryContextTable.improvesBudget(encoded, inline, CONTEXT_DICTIONARY_INSTRUCTION);
-        return frozen + (inherited==null?"":INHERITED_INSTRUCTION)
+        return frozen + input.baseline().frozenContext().getOrDefault("analysisLanguageContract", "") + (inherited==null?"":INHERITED_INSTRUCTION)
             + (useTable ? CONTEXT_DICTIONARY_INSTRUCTION : "")
             + "\nINPUT_DATA_JSON\n" + (useTable ? encoded : inline)
             + (errors == null ? "" : "\nVALIDATION_ERRORS (repair the same input once): " + json.writeValueAsString(errors));

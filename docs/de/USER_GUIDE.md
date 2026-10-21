@@ -279,6 +279,14 @@ Tipps für gute Anforderungen:
 
 ![Business Requirement Analysis Karte](../images/04-analysis-panel-empty.png)
 
+### Sprache der KI-Begründungen und Dokumente
+
+Mit **KI-Antwortsprache** wählen Sie **Wie Oberfläche**, **Deutsch** oder **Englisch**. Die Voreinstellung folgt der Oberfläche. Die Auswahl gilt für neue Analysen und wird beim Start festgehalten; laufende, pausierte oder fortgesetzte Analysen behalten ihre Sprache. Sie können daher beispielsweise eine englische Oberfläche mit deutschen Begründungen verwenden.
+
+**Dokumentsprache** ist unabhängig davon: **Wie Analyse** (Voreinstellung), **Wie Oberfläche**, **Deutsch** oder **Englisch**. Die Auswahl steht auch im Entscheidungsbericht-Dialog sowie als **Sprache für Word-Berichte** im Exportbereich der Architecture Workbench. Beide persönlichen Einstellungen werden für Ihren Account in diesem Browser gespeichert.
+
+Die Dokumentsprache steuert generierte Überschriften und Beschriftungen in Word-, HTML- und Markdown-Berichten. Gespeicherte Begründungen behalten ihren Originaltext; SVG-, PDF- und Visio-Diagramme behalten ihre bisherigen Diagrammbeschriftungen. Für neue vollständig deutsche Berichte wählen Sie vor der Analyse **Deutsch** als KI-Antwortsprache und beim Export **Wie Analyse**. Bei älteren Ergebnissen ohne aufgezeichnete Sprache folgen Dokumentüberschriften der Oberfläche; die ursprüngliche Sprache wird nicht nachträglich behauptet.
+
 ### Standardanalyse
 
 1. Geben Sie Ihre Anforderung im Textbereich ein.
@@ -443,9 +451,11 @@ Sunburst, Baum und Entscheidungskarte haben eine gemeinsame Relevanzauswahl. **A
 
 ### Baumansicht
 
+**Nur relevante Knoten (> 0)** ist direkt in der Diagrammleiste verfügbar und wirkt auf Ansicht und Druck. Der gemeinsame Relevanzfilter bietet zusätzlich die Unterscheidung zwischen Nullwerten und noch unbekannten Bewertungen.
+
 Die Baumansicht stellt die Taxonomie als interaktives Knoten-Verbindungs-Diagramm dar. Verwenden Sie das **Taxonomy root selector**-Dropdown, um auszuwählen, welcher Stamm angezeigt werden soll, wenn es mehrere Taxonomiestämme gibt.
 
-**Diagramm drucken** druckt die vollständige ausgewählte Teiltaxonomie mit dem aktuellen Relevanzfilter, einschließlich zugeklappter und außerhalb des Bildschirms liegender Zweige. Unter **Drucklayout** stehen **A4-Seiten** und **Ein großes Blatt** zur Wahl. Auch große, als Canvas dargestellte Bäume werden als vollständiger Vektorbaum gedruckt.
+**Alles ausklappen** öffnet sämtliche Zweige der ausgewählten Teiltaxonomie auf einmal. **Begründung** zeigt den vollständigen gespeicherten Text des ausgewählten Knotens. **Diagramm drucken** enthält die vollständige ausgewählte Teiltaxonomie mit dem aktuellen Relevanzfilter, einschließlich zugeklappter und außerhalb des Bildschirms liegender Zweige. Prozentzahlen bleiben sichtbar; nummerierte Verweise führen zu den vollständigen Begründungen im Druck. Unter **Drucklayout** stehen **A4-Seiten** und **Ein großes Blatt** zur Wahl. Auch große, als Canvas dargestellte Bäume werden als vollständige Vektorgrafiken gedruckt.
 
 ![Baumansicht](../images/07-tree-view.png)
 
@@ -455,7 +465,7 @@ Die Entscheidungskarten-Ansicht zeigt die Taxonomie als Entscheidungsbaum-Layout
 
 Die Teiltaxonomien stehen in getrennten Bereichen. Der Abstand berücksichtigt die vollständigen umgebrochenen Knotenbezeichnungen und bleibt beim Auf- und Zuklappen erhalten. Über **Begründung** am Knoten öffnen Sie die gespeicherte Analysebegründung und die getrennt beschriftete Katalogbeschreibung. Die Aktion funktioniert auch per Tastatur und auf Touchscreens; **Schließen** oder Escape führt zum Knoten zurück.
 
-Mit **Diagramm drucken** öffnen Sie eine eigene Druckansicht. Sie enthält alle relevanten Zweige mit dem gewählten Relevanzfilter, unabhängig von Zoom und zugeklappten Bildschirmzweigen. **A4-Seiten** verteilt große Bereiche auf Seiten im Querformat; Überschriften und Verweise auf fortgesetzte Verbindungen erhalten die Orientierung. **Ein großes Blatt** platziert das vollständige Diagramm auf einer Seite, deren Größe sich nach dem Inhalt richtet. Wählen Sie im Browser einen Drucker oder **Als PDF speichern**. Falls der Browser das Druckfenster blockiert, erlauben Sie Pop-ups für diese Anwendung und wählen Sie **Diagramm drucken** erneut.
+Mit **Diagramm drucken** öffnen Sie eine eigene Druckansicht. Sie enthält alle relevanten Zweige mit dem gewählten Relevanzfilter, unabhängig von Zoom und zugeklappten Bildschirmzweigen. **A4-Seiten** verteilt große Bereiche auf Seiten im Querformat; Überschriften und Verweise auf fortgesetzte Verbindungen erhalten die Orientierung. **Ein großes Blatt** ordnet zusammengehörige, nummerierte Abschnitte ausgewogen auf einem Blatt an. Dadurch wird ein hoher, schmaler Baum nicht zu einem dünnen Druckstreifen verkleinert. Übergeordnete Knoten und Fortsetzungen bleiben über Abschnittsverweise zugeordnet. Beide Drucklayouts enthalten Prozentwerte und die vollständigen gespeicherten Begründungen. Wählen Sie im Browser einen Drucker oder **Als PDF speichern**. Falls der Browser das Druckfenster blockiert, erlauben Sie Pop-ups für diese Anwendung und wählen Sie **Diagramm drucken** erneut.
 
 ![Entscheidungskarten-Ansicht (bewertet)](../images/69-decision-map-scored.png)
 
@@ -765,6 +775,8 @@ Die erste Seite enthält den vollständigen ausgewählten Graphen; eine zweite S
 
 Dichte Diagramme erhalten native Beziehungsdetailseiten mit höchstens sechs Endpunkten und sechs Beziehungen pro Seite. Kompakte `R…`-Beziehungs- und `N…`-Knotenschlüssel verweisen über Shape-Daten auf die kanonischen IDs; jede Detailbeschriftung nennt Quelle → Ziel und den Typ, soweit dieser in das begrenzte Textfeld passt. Beschriftungen stehen aufrecht, und deckende Knoten verdecken kreuzende Linien. Lange Anzeigenamen werden umbrochen oder mit Auslassungszeichen gekürzt; der vollständige gespeicherte Name bleibt in `taxonomy.label`, Kürzungen werden ausgewiesen. Bei ausgeschöpftem Seiten-, Knoten-, Konnektor- oder Paketbytebudget nennt das Manifest Detailanzahl und abgedeckten Schlüsselbereich. Die vollständige Übersicht bleibt erhalten; weitere Beziehungen sind über native Shape-Daten oder das Berichtsinventar zugänglich. Detailseiten und Konnektoren bleiben editierbar.
 
+Vollständige gespeicherte Knoten- und Beziehungsbegründungen stehen zusätzlich auf sichtbaren Nachweisseiten. Die `N…`-/`R…`-Schlüssel verbinden die kompakten Diagramme mit diesen umgebrochenen Originaltexten. Erforderliche Begründungen werden bei einem überschrittenen Exportlimit nicht stillschweigend weggelassen.
+
 VSDX ist eine experimentelle visuelle Übergabe. ArchiMate Exchange zusammen mit kanonischen JSON-Nachweisen dient dem gesonderten semantischen Austausch; dessen unabhängige Werkzeugabnahme bleibt in #967 offen. Änderungen an der VSDX-Datei aktualisieren Taxonomy nicht. Siehe [VSDX-Profil und Abnahmeverfahren](../dev/VISIO_HANDOFF_PROFILE.md) sowie [Versionshinweise 1.4.1](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/de/RELEASE_NOTES_1_4_1.md).
 
 > **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
@@ -859,7 +871,7 @@ Jeder Bericht enthält:
 #### Einen Word-Bericht mit Übersicht und Begründungen erstellen
 
 1. Öffnen Sie das gewünschte Analyseergebnis und anschließend **Entscheidungsbericht …**.
-2. Behalten Sie **Word (.docx)** und den voreingestellten Umfang **Standard** bei. Für eine kürzere Übersicht können Sie **Kompakt** wählen.
+2. Behalten Sie **Word (.docx)** und den voreingestellten Umfang **Standard** bei. Für eine kürzere Übersicht können Sie **Kompakt** wählen. Prüfen Sie außerdem **Dokumentsprache**; **Wie Analyse** übernimmt die aufgezeichnete Analysesprache.
 3. Markieren Sie unter **Taxonomien im Bericht** die benötigte Teil-Taxonomie, beispielsweise **CP**. Für eine kleine Auswahl können Sie mehrere Taxonomien markieren. Mindestens eine muss ausgewählt bleiben.
 4. Prüfen Sie die Quellenangabe und den **aufgezeichneten Analyseumfang**. Taxonomien außerhalb dieses Umfangs sind nicht auswählbar.
 5. Öffnen Sie bei Bedarf **Weitere Optionen**. Wählen Sie **Kurz – Hauptabschnitte** oder **Keines** für das Inhaltsverzeichnis und **Automatisch (Querformat)** für den Entscheidungsbaum.
@@ -873,7 +885,7 @@ Die folgenden Abbildungen zeigen die aktuelle Dialogkomponente mit gekennzeichne
 
 | Umfang | Voreingestellte Inhalte |
 |---|---|
-| **Kompakt** | Kurze Zusammenfassung mit wesentlichen gespeicherten Begründungen je ausgewählter Taxonomie und vollständiger gespeicherter Entscheidungsbaum; ohne Deckblatt und ausführlichen Nachweisanhang |
+| **Kompakt** | Kurze Zusammenfassung mit wesentlichen gespeicherten Begründungen je ausgewählter Taxonomie und vollständiger gespeicherter Entscheidungsbaum; ohne Deckblatt; vollständige Originalbegründungen bleiben über die Knotenschlüssel zugänglich |
 | **Standard** | Zusätzlich Entscheidungsbegründungen und verfügbare gespeicherte Architektur |
 | **Vollständig** | Zusätzlich Deckblatt und ausführliche Nachweise |
 

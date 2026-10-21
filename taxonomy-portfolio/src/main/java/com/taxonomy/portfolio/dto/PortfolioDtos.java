@@ -163,7 +163,12 @@ public final class PortfolioDtos {
             boolean analyzeAfterImport,
             String provider,
             Integer maxArchitectureNodes,
-            String idempotencyKey) {
+            String idempotencyKey,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+        public ImportRequirementsRequest(List<ImportRequirementCandidate> requirements, boolean analyzeAfterImport,
+                                    String provider, Integer maxArchitectureNodes, String idempotencyKey) {
+            this(requirements, analyzeAfterImport, provider, maxArchitectureNodes, idempotencyKey, null);
+        }
     }
 
     public record ImportRequirementsResult(
@@ -182,7 +187,13 @@ public final class PortfolioDtos {
             Boolean all,
             String provider,
             Integer maxArchitectureNodes,
-            String idempotencyKey) {
+            String idempotencyKey,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+
+        public AnalyzeProjectRequest(List<Long> requirementIds, Boolean all, String provider,
+                                     Integer maxArchitectureNodes, String idempotencyKey) {
+            this(requirementIds, all, provider, maxArchitectureNodes, idempotencyKey, null);
+        }
 
         /** @return {@code true} only when the client explicitly requested a full-project analysis. */
         public boolean analyzeAll() {
@@ -238,7 +249,18 @@ public final class PortfolioDtos {
             String errorSummary,
             List<AnalysisJobItemView> items,
             com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
-            com.taxonomy.dto.AnalysisReasonLength analysisReasonLength) {
+            com.taxonomy.dto.AnalysisReasonLength analysisReasonLength,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+        public AnalysisJobView(String id, Long projectId, AnalysisStatus status, String idempotencyKey,
+                String provider, int maxArchitectureNodes, String requestedBy, String workspaceId,
+                Instant createdAt, Instant startedAt, Instant completedAt, int totalItems, int successfulItems,
+                int partialItems, int failedItems, String errorSummary, List<AnalysisJobItemView> items,
+                com.taxonomy.extension.api.plugin.PluginInvocation providerBinding,
+                com.taxonomy.dto.AnalysisReasonLength analysisReasonLength) {
+            this(id, projectId, status, idempotencyKey, provider, maxArchitectureNodes, requestedBy, workspaceId,
+                    createdAt, startedAt, completedAt, totalItems, successfulItems, partialItems, failedItems,
+                    errorSummary, items, providerBinding, analysisReasonLength, null);
+        }
         public AnalysisJobView(String id, Long projectId, AnalysisStatus status, String idempotencyKey,
                 String provider, int maxArchitectureNodes, String requestedBy, String workspaceId,
                 Instant createdAt, Instant startedAt, Instant completedAt, int totalItems, int successfulItems,

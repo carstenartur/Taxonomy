@@ -3,21 +3,36 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const context = {window: {}, document: {}, TaxonomyI18n: {t: key => key}};
+const context = {window: {}, document: {readyState:'loading',addEventListener(){}}, TaxonomyI18n: {t: (key,...args) => key+(args.length?': '+args.join(' / '):'')}};
 vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), context);
+const utils = process.argv[5] || require('node:path').resolve(require('node:path').dirname(process.argv[2]), '../shared/taxonomy-utils.js');
+vm.runInNewContext(fs.readFileSync(utils, 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8').replace('window.TaxonomyViews = {',
     'window.treeContract = {collapse: typeof collapseInitialTree === "function" ? collapseInitialTree : null,'
+    + 'expand: typeof expandDiagramTree === "function" ? expandDiagramTree : null,'
+    + 'print: typeof printTreeDiagram === "function" ? printTreeDiagram : null,'
     + 'layout: typeof layoutTaxonomyTree === "function" ? layoutTaxonomyTree : null,'
     + 'endpoints: typeof treeLinkEndpoints === "function" ? treeLinkEndpoints : null}; window.TaxonomyViews = {'), context);
 const api = context.window.treeContract;
 assert.equal(typeof api.collapse, 'function', 'Every initial hidden descendant needs a collapsed state');
 assert.equal(typeof api.layout, 'function', 'SVG, Canvas and export need shared occupied-bounds layout');
 const measure = (text, font) => String(text).length * (font && font.includes('10px') ? 6 : 7);
-if (process.argv[4] === 'expansion') {
+if (process.argv[4] === 'expansion' || process.argv[4] === 'expand-all') {
     const data = {code: '__root__', children: [{code: 'one', children: [{code: 'two', children: [
         {code: 'three', children: [{code: 'four', children: [{code: 'five'}]}]}]}]}]};
     const before = JSON.stringify(data), root = context.d3.hierarchy(data);
     api.collapse(root);
+    if (process.argv[4] === 'expand-all') {
+        assert.equal(typeof api.expand, 'function', 'Tree needs one action that restores every hidden descendant');
+        context.document.getElementById = () => null;
+        let updates = 0;
+        api.expand(root, () => updates++);
+        assert.deepEqual(Array.from(root.descendants(), n => n.data.code), ['__root__', 'one', 'two', 'three', 'four', 'five']);
+        assert.ok(root.descendants().every(n => !n._children), 'Expand all must also clear nested hidden branches');
+        assert.equal(updates, 1, 'One complete expansion produces one layout update');
+        assert.equal(JSON.stringify(data), before, 'Expansion must never alter the source catalogue');
+        process.exit(0);
+    }
     assert.deepEqual(Array.from(root.descendants(), n => n.data.code), ['__root__', 'one', 'two', 'three']);
     const branch = root.descendants().find(n => n.data.code === 'three');
     branch.children = branch._children; branch._children = null;
@@ -66,16 +81,85 @@ if (process.argv[4] === 'expansion') {
         }
     }
     assert.equal(JSON.stringify(data), before);
-} else if (process.argv[4] === 'contrast') {
+} else if (process.argv[4] === 'contrast' || process.argv[4] === 'evidence') {
     // Only the native DOM boundary is substituted; execute the actual export and D3 layout.
-    const element = tag => ({tag, attributes: {}, children: [], textContent: '',
+    const element = tag => ({tag, tagName: tag, attributes: {}, children: [], style: {}, textContent: '',
         setAttribute(name, value) { this.attributes[name] = String(value); },
-        appendChild(child) { this.children.push(child); return child; }});
+        getAttribute(name) { return this.attributes[name] ?? null; },
+        replaceChildren(...children) { this.children=[]; children.forEach(child=>this.appendChild(child)); },
+        getContext: tag==='canvas'?()=>({measureText:text=>({width:measure(text)})}):undefined,
+        appendChild(child) { if (child.parentNode) child.parentNode.children = child.parentNode.children.filter(c => c !== child);
+            this.children.push(child); child.parentNode = this; return child; }});
     context.document.createElement = element;
     context.document.createElementNS = (_, tag) => element(tag);
     const data = [{code: 'one', children: [{code: 'two', children: [
         {code: 'three', children: [{code: 'four'}]}]}]}];
     const descendants = node => [node, ...node.children.flatMap(descendants)];
+    function printTree(selected,scores,mode){
+        const printDoc={documentElement:{lang:'en'},head:element('head'),body:element('body'),createElement:element,createElementNS:(_,tag)=>element(tag)};
+        context.document.documentElement={lang:'en'};let printCalls=0;
+        context.window.open=()=>({document:printDoc,addEventListener(){},focus(){},requestAnimationFrame(callback){callback();},print(){printCalls++;},close(){}});
+        api.print(selected,scores,{querySelector(){return null;}},mode);
+        assert.equal(printCalls,1);
+        return descendants(printDoc.body);
+    }
+    if (process.argv[4] === 'evidence') {
+        const ending = 'FULL EXPLANATION END — <not markup> & retained';
+        context.window.TaxonomyState = {currentReasons: {one: 'Root justification', four: 'Complete detailed evidence. '.repeat(250) + ending,
+            excluded: 'EXCLUDED REASON MUST NOT APPEAR'}};
+        const scores = {one: 87.5, four: 0.75};
+        const before = JSON.stringify({data, scores, reasons: context.window.TaxonomyState.currentReasons});
+        const collapsed = context.window.TaxonomyViews.buildExportSVG(data, scores, {});
+        assert.ok(descendants(collapsed).some(node => node.textContent === 'Root justification'), 'SVG has visible complete saved explanations');
+        assert.ok(!descendants(collapsed).some(node => node.textContent.includes(ending)), 'Collapsed export keeps its original node selection');
+        const full = context.window.TaxonomyViews.buildExportSVG(data, scores, {expandAll: true});
+        const text = descendants(full).filter(node => node.getAttribute('data-evidence-node') === 'four').map(node => node.textContent).join('').replace(/\s+/g, '');
+        assert.ok(text.includes(context.window.TaxonomyState.currentReasons.four.replace(/\s+/g, '')), 'SVG retains every saved explanation character through its final line');
+        assert.ok(text.includes('0.75%'), 'Fractional percentage evidence keeps its original units');
+        assert.ok(!descendants(full).some(node => node.textContent.includes('EXCLUDED')));
+        assert.ok(descendants(full).some(node => node.getAttribute('href') === '#diagram-evidence-1'), 'Compact labels link to visible full explanations');
+        assert.equal(JSON.stringify({data, scores, reasons: context.window.TaxonomyState.currentReasons}), before);
+        for(const mode of ['pages','single']){
+            const printed=printTree(data,scores,mode);
+            assert.equal(printed.filter(node=>node.getAttribute('data-evidence-node')==='one'&&node.getAttribute('id')).length,1,'Ordinary roots shared by captions and content have one node explanation');
+            assert.ok(!printed.some(node=>node.getAttribute('data-evidence-area')==='one'),'Ordinary root evidence is not reclassified as an area');
+        }
+        const selectedAreas=[{code:'BP',name:'Processes',taxonomyContainer:true,children:data},
+            {code:'BR',name:'Roles',taxonomyContainer:true,children:[]}];
+        Object.assign(context.window.TaxonomyState.currentReasons,{BP:'Saved process area justification. BP-AREA-REASON-END',
+            BR:'Saved caption-only area justification. BR-AREA-ONLY-REASON-END',CR:'EXCLUDED-AREA-REASON-MUST-NOT-LEAK'});
+        const areaScores={...scores,BP:90,BR:85,CR:99};
+        const areaBefore=JSON.stringify({selectedAreas,areaScores,reasons:context.window.TaxonomyState.currentReasons});
+        for(const areaOnly of [false,true]){
+            const selected=areaOnly?[selectedAreas[1]]:selectedAreas;
+            const svg=context.window.TaxonomyViews.buildExportSVG(selected,areaScores,{expandAll:true});
+            const output=descendants(svg).map(node=>node.textContent).join(' ');
+            assert.ok(output.includes('BR-AREA-ONLY-REASON-END'),'Caption-only area reason survives generated client SVG');
+            assert.ok(!output.includes('EXCLUDED-AREA-REASON-MUST-NOT-LEAK'));
+            assert.ok(descendants(svg).some(node=>node.getAttribute('data-evidence-area')==='BR'));
+            const areaHeading=descendants(svg).find(node=>node.getAttribute('data-taxonomy-container')==='BR');
+            const areaReference=areaHeading.parentNode.getAttribute('href');
+            assert.ok(areaReference?.startsWith('#diagram-evidence-'),'Area captions link to their complete explanation');
+            assert.equal(descendants(svg).filter(node=>node.getAttribute('data-evidence-area')==='BR'&&node.getAttribute('id')===areaReference.slice(1)).length,1);
+            assert.ok(!descendants(svg).some(node=>['BP','BR'].includes(node.getAttribute('data-export-node'))),'Area captions never become ordinary export nodes');
+            if(areaOnly){assert.ok(!output.includes('BP-AREA-REASON-END'));}
+            else{
+                assert.ok(output.includes('BP-AREA-REASON-END'));
+                assert.ok(output.includes('Root justification'));
+            }
+            for(const mode of ['pages','single']){
+                const printed=printTree(selected,areaScores,mode),printText=printed.map(node=>node.textContent).join(' ');
+                assert.ok(printText.includes('BR-AREA-ONLY-REASON-END'),'Caption-only area reason survives Tree print in '+mode+' mode');
+                assert.ok(!printText.includes('EXCLUDED-AREA-REASON-MUST-NOT-LEAK'));
+                assert.equal(printed.filter(node=>node.getAttribute('data-print-node')).length,areaOnly?0:4,'Area-only output does not fabricate content nodes');
+                assert.ok(printed.some(node=>node.getAttribute('data-evidence-area')==='BR'));
+                if(areaOnly){assert.ok(!printText.includes('BP-AREA-REASON-END'));}
+                else for(const code of ['BP','BR','one'])assert.equal(printed.filter(node=>node.getAttribute('data-evidence-code')===code&&node.getAttribute('id')).length,1,'Evidence is deduplicated by selected code');
+            }
+        }
+        assert.equal(JSON.stringify({selectedAreas,areaScores,reasons:context.window.TaxonomyState.currentReasons}),areaBefore);
+        process.exit(0);
+    }
     for (const score of [1, 50, 100]) {
         const svg = context.window.TaxonomyViews.buildExportSVG(data, {three: score}, {});
         const markers = descendants(svg).filter(node => node.tag === 'text' && node.textContent === '+');

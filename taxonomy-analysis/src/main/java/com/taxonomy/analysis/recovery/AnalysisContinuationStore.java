@@ -83,6 +83,7 @@ public class AnalysisContinuationStore {
                             || Objects.equals(retained.getAnalysisProviderId(), request.getProvider()))
                         || original.getContinuationAuthority() != null
                         && !Objects.equals(original.getContinuationAuthority(), request.getContinuationAuthority())
+                        || !Objects.equals(original.getAnalysisLanguage(), request.getAnalysisLanguage())
                         || !Objects.equals(original.getMaxArchitectureNodes(), request.getMaxArchitectureNodes())
                         || !original.getAnalysisScope().taxonomyRoots().equals(request.getAnalysisScope().taxonomyRoots())
                         || !request.getAnalysisScope().includesRelations()
@@ -94,6 +95,7 @@ public class AnalysisContinuationStore {
             var seed = retained == null ? new AnalysisResult(Map.of(), tree) : retained;
             seed.setAnalysisScope(request.getAnalysisScope());
             seed.setAnalysisReasonLength(request.getAnalysisReasonLength());
+            seed.setAnalysisLanguage(request.getAnalysisLanguage());
             if (retained == null) seed.setStatus("IN_PROGRESS");
             seed.setProvider(request.getProvider());
             run.requestJson = mapper.writeValueAsString(request);
@@ -228,7 +230,8 @@ public class AnalysisContinuationStore {
                 || !Objects.equals(request.getMaxArchitectureNodes(), command.maxArchitectureNodes())
                 || !Objects.equals(request.getAnalysisScope(), command.analysisScope())
                 || com.taxonomy.analysis.service.AnalysisReasonContext.effective(request.getAnalysisReasonLength())
-                    != com.taxonomy.analysis.service.AnalysisReasonContext.effective(command.analysisReasonLength()))
+                    != com.taxonomy.analysis.service.AnalysisReasonContext.effective(command.analysisReasonLength())
+                || request.getAnalysisLanguage() != command.analysisLanguage())
             throw conflict("Distributed command differs from the saved requirement");
         var retained = readResult(run);
         if (request.getRelationSourceContinuationId() != null
@@ -659,6 +662,7 @@ public class AnalysisContinuationStore {
         AnalysisScope analysisScope = frozenRequest.getAnalysisScope();
         result.setAnalysisScope(analysisScope);
         result.setAnalysisReasonLength(frozenRequest.getAnalysisReasonLength());
+        result.setAnalysisLanguage(frozenRequest.getAnalysisLanguage());
         if (previous != null && result.getRelationSearchReport() == null)
             result.setRelationSearchReport(previous.getRelationSearchReport());
         retainRelationBudget(run, result);
@@ -832,6 +836,7 @@ public class AnalysisContinuationStore {
                     throw conflict("The original catalogue snapshot is unavailable; restore its matching context before deciding");
                 result = new AnalysisResult(Map.of(), fallbackTree);
                 result.setAnalysisReasonLength(mapper.readValue(run.requestJson, AnalysisRequest.class).getAnalysisReasonLength());
+                result.setAnalysisLanguage(mapper.readValue(run.requestJson, AnalysisRequest.class).getAnalysisLanguage());
             }
             var raw = new LinkedHashMap<>(result.getRawScores());
             var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());

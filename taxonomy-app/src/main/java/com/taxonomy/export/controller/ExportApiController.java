@@ -234,7 +234,7 @@ public class ExportApiController {
                     .body(Map.of("error", "A valid architecture view within export capacity is required."));
         }
         try {
-            byte[] bytes = currentDiagramPdf.renderWorkingView(currentDiagramLayout.layout(diagram));
+            byte[] bytes = currentDiagramPdf.renderWorkingView(currentDiagramLayout.layout(diagram), elementReasons(view));
             if (bytes == null || bytes.length == 0) throw new IllegalStateException("Empty architecture PDF");
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF).cacheControl(CacheControl.noStore())
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"requirement-architecture.pdf\"")
@@ -263,7 +263,7 @@ public class ExportApiController {
             DiagramModel diagram = exportFacade.buildCurrentDiagram(view);
             ExportFormatExtension extension = extensionOpt.get();
             ExportFormatDescriptor descriptor = extension.descriptor();
-            ExportResult result = extension.export(new ExportContext(diagram, Map.of()));
+            ExportResult result = extension.export(new ExportContext(diagram, Map.of("elementReasons", elementReasons(view))));
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=\"requirement-architecture." + descriptor.fileExtension() + "\"")
@@ -276,6 +276,20 @@ public class ExportApiController {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "The architecture file could not be created. The working state was not changed."));
         }
+    }
+
+    /** Captured node explanations are presentation evidence, independent of neutral diagram identity. */
+    private static Map<String, String> elementReasons(RequirementArchitectureView view) {
+        var reasons = new LinkedHashMap<String, String>();
+        for (var element : view.getIncludedElements()) {
+            var recorded = new java.util.LinkedHashSet<String>();
+            recorded.add(element.getPresenceReason());
+            recorded.add(element.getIncludedBecause());
+            recorded.removeIf(value -> value == null || value.isBlank());
+            if (element.getNodeCode() != null && !recorded.isEmpty())
+                reasons.put(element.getNodeCode(), String.join("\n\n", recorded));
+        }
+        return reasons;
     }
 
     @Operation(summary = "Export analysis scores as JSON",
@@ -310,6 +324,14 @@ public class ExportApiController {
             try {
                 exported.setAnalysisReasonLength(recoveryObjectMapper.convertValue(body.get("analysisReasonLength"),
                         com.taxonomy.dto.AnalysisReasonLength.class));
+            } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
+        if (body.get("analysisLanguage") != null) {
+            try {
+                exported.setAnalysisLanguage(recoveryObjectMapper.convertValue(body.get("analysisLanguage"),
+                        com.taxonomy.dto.AnalysisLanguage.class));
             } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) {
                 return ResponseEntity.badRequest().build();
             }
@@ -381,6 +403,7 @@ public class ExportApiController {
             result.put("analysisCoverage", saved.getAnalysisCoverage());
             result.put("analysisScope", saved.getAnalysisScope());
             result.put("analysisReasonLength", saved.getAnalysisReasonLength());
+            result.put("analysisLanguage", saved.getAnalysisLanguage());
             result.put("rawScores", saved.getRawScores());
             result.put("analysisStatus", saved.getAnalysisCoverage() != null && saved.getAnalysisCoverage().hasOpenEvaluations()
                     ? "PARTIAL" : saved.getAnalysisStatus());

@@ -9,6 +9,8 @@ import com.taxonomy.export.spi.ExportResult;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /** Deterministic full-model SVG export using the neutral diagram scene. */
 @Component
@@ -35,7 +37,15 @@ public class SvgExportExtension implements ExportFormatExtension {
 
     @Override
     public ExportResult export(ExportContext context) {
-        String svg = renderer.render(layoutService.layout(context.diagram()));
+        var nodeReasons = new LinkedHashMap<String, String>();
+        if (context.options().get("elementReasons") instanceof Map<?, ?> reasons) {
+            reasons.forEach((key, value) -> {
+                if (key instanceof String id && value instanceof String reason && !reason.isBlank()) {
+                    nodeReasons.put(id, reason);
+                }
+            });
+        }
+        String svg = renderer.render(layoutService.layout(context.diagram()), nodeReasons);
         return new ExportResult(svg.getBytes(StandardCharsets.UTF_8));
     }
 }

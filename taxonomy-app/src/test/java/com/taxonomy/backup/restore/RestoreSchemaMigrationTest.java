@@ -28,8 +28,9 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "analysis_cluster_call", "analysis_cluster_attempt"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(11);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(12);
         assertReasonLengthColumn(target);
+        assertLanguageColumn(target);
         assertRelationLedgerColumns(target);
         assertThat(source.queryForObject("select id from active_marker", Integer.class)).isEqualTo(42);
         assertThat(tableNames(active)).containsExactly("ACTIVE_MARKER");
@@ -81,6 +82,22 @@ class RestoreSchemaMigrationTest {
             assertThat(rows.queryForObject("select analysis_reason_length from req_analysis_job where id = 'legacy-job'", String.class))
                     .isNull();
         }
+        var beforeLanguage = rows.queryForMap("select * from req_analysis_job where id = 'legacy-job'");
+        migrateBusinessSchema(target, "12");
+        assertLanguageColumn(target);
+        var afterLanguage = rows.queryForMap("select * from req_analysis_job where id = 'legacy-job'");
+        assertThat(afterLanguage).containsEntry("ANALYSIS_LANGUAGE", null);
+        afterLanguage.remove("ANALYSIS_LANGUAGE");
+        assertThat(afterLanguage).isEqualTo(beforeLanguage);
+        for (String language : List.of("GERMAN", "ENGLISH")) {
+            rows.update("update req_analysis_job set analysis_language = ? where id = 'legacy-job'", language);
+            assertThat(rows.queryForObject("select analysis_language from req_analysis_job where id = 'legacy-job'", String.class))
+                    .isEqualTo(language);
+        }
+        rows.update("update req_analysis_job set analysis_language = null where id = 'legacy-job'");
+        for (String invalid : List.of("fr", "de", "UNKNOWN", ""))
+            assertThatThrownBy(() -> rows.update("update req_analysis_job set analysis_language = ? where id = 'legacy-job'", invalid))
+                    .isInstanceOf(DataIntegrityViolationException.class);
     }
     @Test void relationLedgerMigrationPreservesLegacyEvidenceAndUnknownAccounting() throws Exception {
         var target = database();
@@ -170,6 +187,18 @@ class RestoreSchemaMigrationTest {
         try (var connection = database.getConnection();
              var columns = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(),
                      "REQ_ANALYSIS_JOB", "ANALYSIS_REASON_LENGTH")) {
+            assertThat(columns.next()).isTrue();
+            assertThat(columns.getInt("DATA_TYPE")).isEqualTo(java.sql.Types.VARCHAR);
+            assertThat(columns.getInt("COLUMN_SIZE")).isEqualTo(16);
+            assertThat(columns.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNullable);
+            assertThat(columns.getString("COLUMN_DEF")).isNull();
+            assertThat(columns.next()).isFalse();
+        }
+    }
+    private static void assertLanguageColumn(javax.sql.DataSource database) throws Exception {
+        try (var connection = database.getConnection();
+             var columns = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(),
+                     "REQ_ANALYSIS_JOB", "ANALYSIS_LANGUAGE")) {
             assertThat(columns.next()).isTrue();
             assertThat(columns.getInt("DATA_TYPE")).isEqualTo(java.sql.Types.VARCHAR);
             assertThat(columns.getInt("COLUMN_SIZE")).isEqualTo(16);

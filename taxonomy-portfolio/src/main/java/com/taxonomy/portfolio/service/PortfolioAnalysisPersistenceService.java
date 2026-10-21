@@ -119,6 +119,14 @@ public class PortfolioAnalysisPersistenceService {
                                             String idempotencyKey,
                                             String username,
                                             WorkspaceContext context) {
+        return createOrReuseJob(projectId, requirementIds, provider, maxArchitectureNodes, idempotencyKey,
+                username, context, com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null));
+    }
+
+    @Transactional
+    public AnalysisJobView createOrReuseJob(Long projectId, List<Long> requirementIds, String provider,
+                                            int maxArchitectureNodes, String idempotencyKey, String username,
+                                            WorkspaceContext context, com.taxonomy.dto.AnalysisLanguage requestedLanguage) {
         String scopeKey = PortfolioScope.key(username, context);
         ArchitectureProject project = projectRepository
                 .findByIdAndScopeKey(projectId, scopeKey)
@@ -163,6 +171,8 @@ public class PortfolioAnalysisPersistenceService {
                 PortfolioScope.workspaceId(context),
                 requirements.size(),
                 now);
+        var language = com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(requestedLanguage);
+        if (language != null) job.recordAnalysisLanguage(language);
         job.recordAnalysisReasonLength(analysisSettings == null ? AnalysisReasonLength.STANDARD
                 : AnalysisReasonLength.fromValue(analysisSettings.getString("analysis.reason-length", "standard")));
         var bound = providerBinding.admittedProvider(projectId, targets(requirements), provider, username, context);
@@ -695,7 +705,7 @@ public class PortfolioAnalysisPersistenceService {
                 job.provider(), job.maxArchitectureNodes(), job.requestedBy(), job.workspaceId(),
                 job.createdAt(), job.startedAt(), job.completedAt(), job.totalItems(), job.successfulItems(),
                 job.partialItems(), job.failedItems(), job.errorSummary(), items,
-                providerBinding(job), job.analysisReasonLength());
+                providerBinding(job), job.analysisReasonLength(), job.analysisLanguage());
     }
 
     private static com.taxonomy.extension.api.plugin.PluginInvocation providerBinding(AnalysisJobReadRow job) {

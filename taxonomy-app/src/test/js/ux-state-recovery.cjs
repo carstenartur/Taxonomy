@@ -194,10 +194,35 @@ function installReportCapabilities(window) {
 function decisionFixture() {
     const d = dom(), window = {};
     installReportCapabilities(window);
-    vm.runInNewContext(source('shared/decision-export-dialog.js'), {window, document: d.document,
-        URLSearchParams, URL: d.urls, setTimeout() {}, AbortController, DOMException});
+    const context = vm.createContext({window, document: d.document,
+        URLSearchParams, URL: d.urls, setTimeout() {}, AbortController, DOMException,
+        CustomEvent: class {constructor(type, init) {this.type = type; this.detail = init.detail;}}});
+    vm.runInContext(source('shared/content-language.js'), context);
+    vm.runInContext(source('shared/decision-export-dialog.js'), context);
     return {...d, api: window.TaxonomyDecisionExport};
 }
+
+test('decision document language follows recorded analysis or an independent explicit selection', async () => {
+    for (const [recorded, choice, expected] of [
+        ['en', 'analysis', 'en'], ['en', 'de', 'de'], ['en', 'ui', 'de'],
+        ['de', 'en', 'en'], [null, 'analysis', null]
+    ]) {
+        const f = decisionFixture(); let submitted;
+        const dialog = f.api.openSaved({projectId: 1, snapshotId: 'snapshot', language: 'de', api: {
+            decisionReportOptions: async (project, snapshot, language) => {
+                assert.equal(language, null, 'UI locale must not override recorded document language');
+                return {roots: [{code: 'CP'}], analysisLanguage: recorded};
+            }
+        }, submit: async selection => {submitted = selection;}});
+        await tick();
+        const language = dialog.querySelectorAll('select').find(n => n.attributes.name === 'language');
+        assert.ok(language, 'report dialog exposes the independent document language');
+        language.value = choice;
+        await dialog.querySelector('form').fire('submit');
+        assert.equal(submitted.language, expected);
+        assert.equal(submitted.options.language, undefined, 'language is a transport option, not report sections');
+    }
+});
 
 test('decision export stays cancellable and cancelled work cannot download after response arrives', async () => {
     const f = decisionFixture(), gate = deferred(); let signal;
@@ -253,6 +278,22 @@ test('portfolio report adapter forwards cancellation to fetch', async () => {
         document: {querySelector: () => null}, fetch: async (url, init) => {seen = init; return {ok: true};}});
     await window.TaxonomyPortfolioApi.downloadDecisionReport(1, 'snap', 'html', 'de', {}, {signal: controller.signal});
     assert.equal(seen.signal, controller.signal);
+});
+
+test('new requirement writes capture AI language for automatic analysis without leaking it across origins', async () => {
+    const f = dom(), requests = [];
+    const window = {location: {href: 'http://localhost/app/', origin: 'http://localhost', pathname: '/app/'},
+        TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        TaxonomyContentLanguage: {analysis: () => 'de'},
+        fetch: async (url, init) => {requests.push({url, headers: new Headers(init?.headers)}); return new Response('{}');}};
+    vm.runInNewContext(source('api/taxonomy-api-client.js'), {window, document: f.document, URL, Request, Response,
+        Headers, AbortController, setTimeout, clearTimeout});
+    await window.TaxonomyApiClient.sendJson('/api/projects/1/requirements', {text: 'Source'});
+    await window.fetch('/app/api/projects/1/requirements/2/versions', {method: 'POST'});
+    await window.fetch('/api/projects/1/requirements', {method: 'GET'});
+    await window.fetch('https://external.example/api/projects/1/requirements', {method: 'POST'});
+    await window.fetch('/api/projects/1/requirements', {method: 'POST', headers: {'X-Taxonomy-Analysis-Language': 'en'}});
+    assert.deepEqual(requests.map(request => request.headers.get('X-Taxonomy-Analysis-Language')), ['de', 'de', null, null, 'en']);
 });
 
 test('live-analysis export cancellation reaches the real API client transport', async () => {

@@ -36,6 +36,7 @@ class TaxonomyDecisionDiagramUiIT {
     static HttpServer server;
     static BrowserSession session;
     static RemoteWebDriver browser;
+    static final java.util.Properties LABELS = loadLabels();
     @BeforeAll static void start() throws Exception {
         server=HttpServer.create(new InetSocketAddress("0.0.0.0",0),0);
         server.createContext("/", TaxonomyDecisionDiagramUiIT::serve); server.start();
@@ -113,23 +114,49 @@ class TaxonomyDecisionDiagramUiIT {
         assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains("SAVED EXPLANATION");
         browser.findElement(By.cssSelector("#decisionReasonDialog button")).click();
         browser.executeScript("document.querySelector(\"[data-diagram-node='fixture-second'] + .dm-reason-action\").dispatchEvent(new MouseEvent('click',{bubbles:true}))");
-        assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains("views.diagram.reasonMissing");
+        assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains(LABELS.getProperty("views.diagram.reasonMissing"));
     }
     @Test void printUsesCompleteReadablePagesAndPreservesZoomCollapseAndStoredResults() throws Exception {
         browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent']")).click(); settle();
         browser.executeScript("document.querySelector('.tax-diagram-controls button').click(); window.beforePrintState=JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons,svg:document.querySelector('#decision-map-svg').outerHTML}); window.printFrame=document.createElement('iframe'); document.body.append(printFrame); window.printCalls=0; window.open=()=>({document:printFrame.contentDocument,closed:false,focus(){},addEventListener(name,fn){window.afterPrint=fn},close(){window.closedPreview=true},requestAnimationFrame(fn){fn()},print(){window.printCalls++}});");
-        browser.findElement(By.xpath("//button[text()='Print']")).click();
+        clickPrint();
         assertThat(browser.executeScript("return printCalls")).isEqualTo(1L);
+        assertThat(browser.executeScript(PRINT_IDENTITIES)).isEqualTo("");
         assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('[data-print-node]').length")).isEqualTo(26L);
         assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('.decision-print-page').length>2")).isEqualTo(true);
         assertThat(browser.executeScript(PRINT_GEOMETRY)).isEqualTo("");
+        assertThat((String)browser.executeScript("return printFrame.contentDocument.body.textContent")).doesNotContain("views.diagram.");
         assertThat(browser.executeScript("return printFrame.contentDocument.body.textContent.includes('75%') && printFrame.contentDocument.body.textContent.includes('fixture-deep')")).isEqualTo(true);
+        assertThat(browser.executeScript("return printFrame.contentDocument.body.textContent.includes('Final saved line.') && printFrame.contentDocument.querySelector('a[href=\"#diagram-evidence-1\"]')!==null && printFrame.contentDocument.getElementById('diagram-evidence-1')!==null")).isEqualTo(true);
         assertThat(browser.executeScript("return beforePrintState===JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons,svg:document.querySelector('#decision-map-svg').outerHTML})")).isEqualTo(true);
         capturePrint();
         browser.executeScript("afterPrint()");
         assertThat(browser.executeScript("return !!closedPreview")).isEqualTo(true);
-        browser.executeScript("window.open=()=>null"); browser.findElement(By.xpath("//button[text()='Print']")).click();
-        assertThat(browser.findElement(By.cssSelector(".decision-print-status")).getText()).contains("views.diagram.printBlocked");
+        browser.executeScript("window.open=()=>null"); clickPrint();
+        assertThat(browser.findElement(By.cssSelector(".decision-print-status")).getText()).contains(LABELS.getProperty("views.diagram.printBlocked"));
+    }
+    @Test void relevantOnlyIsAvailableInTheDiagramToolbarAndUsesTheSharedProjection() {
+        browser.executeScript("""
+            const select=document.createElement('select');select.id='diagramRelevanceFilter';
+            select.innerHTML='<option value="all">All</option><option value="positive">Positive</option>';
+            document.body.prepend(select);
+            fixtureData=[{code:'BP',name:'Processes',taxonomyContainer:true,children:[
+                {code:'fixture-context',name:'Context',children:[{code:'fixture-positive',name:'Positive'},
+                    {code:'fixture-zero',name:'Zero'},{code:'fixture-missing',name:'Unknown'}]}]}];
+            fixtureScores={'fixture-context':0,'fixture-positive':0.75,'fixture-zero':0};
+            window.beforeFilter=JSON.stringify({data:fixtureData,scores:fixtureScores});
+            select.addEventListener('change',()=>TaxonomyViews.renderDecisionMap(document.querySelector('#diagram'),
+                TaxonomyViews.filterRelevance(fixtureData,fixtureScores,{},select.value),fixtureScores));
+            TaxonomyViews.renderDecisionMap(document.querySelector('#diagram'),fixtureData,fixtureScores);
+            """); settle();
+        browser.findElement(By.cssSelector(".tax-diagram-relevance input")).click(); settle();
+        assertThat(browser.executeScript("return document.getElementById('diagramRelevanceFilter').value")).isEqualTo("positive");
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-context']"))).hasSize(1);
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-positive']"))).hasSize(1);
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-zero'],[data-diagram-node='fixture-missing']"))).isEmpty();
+        browser.findElement(By.cssSelector(".tax-diagram-relevance input")).click(); settle();
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node='fixture-zero'],[data-diagram-node='fixture-missing']"))).hasSize(2);
+        assertThat(browser.executeScript("return JSON.stringify({data:fixtureData,scores:fixtureScores})===beforeFilter")).isEqualTo(true);
     }
     @ParameterizedTest
     @CsvSource({
@@ -189,12 +216,16 @@ class TaxonomyDecisionDiagramUiIT {
         preparePrint();
         new org.openqa.selenium.support.ui.Select(browser.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue("single");
         clickPrint();
+        assertThat(browser.executeScript(PRINT_IDENTITIES)).isEqualTo("");
         assertThat(browser.executeScript("""
             const doc=printFrame.contentDocument,svg=doc.querySelector('svg'),vb=svg.viewBox.baseVal;
             if(doc.querySelectorAll('.decision-print-page').length!==1)return 'More than one sheet';
             if(doc.querySelectorAll('[data-print-node]').length!==26)return 'Incomplete hierarchy';
             if(svg.querySelectorAll('path').length!==24)return 'Incomplete connectors';
             if(vb.height<=620)return 'Large diagram was scaled to A4';
+            if(vb.width/vb.height<0.5||vb.width/vb.height>2.5)return 'Narrow single-sheet stripe';
+            if(!doc.body.textContent.includes('Final saved line.'))return 'Missing complete saved explanation';
+            if(doc.body.textContent.includes('views.diagram.'))return 'Untranslated print labels';
             for(const node of svg.querySelectorAll('[data-print-node]')){
                 const b=node.getBBox();if(b.x<0||b.y<0||b.x+b.width>vb.width||b.y+b.height>vb.height)return 'Clipped '+node.dataset.printNode;
             }
@@ -212,7 +243,7 @@ class TaxonomyDecisionDiagramUiIT {
             try(var pdf=Loader.loadPDF(bytes)) {
                 assertThat(pdf.getNumberOfPages()).isEqualTo(1);
                 assertThat(pdf.getPage(0).getMediaBox().getHeight()).isGreaterThan(842f);
-                assertThat(new PDFTextStripper().getText(pdf)).contains("fixture-deeper", "fixture-second", "75%");
+                assertThat(new PDFTextStripper().getText(pdf)).contains("fixture-deeper", "fixture-second", "75%", "Final saved line.");
             }
         } finally {browser.close();browser.switchTo().window(source);}
     }
@@ -309,7 +340,7 @@ class TaxonomyDecisionDiagramUiIT {
     void preparePrint() {
         browser.executeScript("window.printFrame=document.createElement('iframe');document.body.append(printFrame);window.open=()=>({document:printFrame.contentDocument,closed:false,focus(){},addEventListener(){},requestAnimationFrame(fn){fn()},print(){}});");
     }
-    void clickPrint() {browser.findElement(By.xpath("//button[text()='Print']")).click();}
+    void clickPrint() {browser.findElement(By.cssSelector(".tax-diagram-print-button")).click();}
     void capture(String name) throws Exception {
         Path directory=Path.of("target/decision-diagram-evidence"); Files.createDirectories(directory);
         Files.write(directory.resolve(name),browser.getScreenshotAs(OutputType.BYTES));
@@ -348,17 +379,38 @@ class TaxonomyDecisionDiagramUiIT {
           for(const node of svg.querySelectorAll('[data-print-fragment]')){const b=node.getBBox();if(b.x<0||b.y<0||b.x+b.width>vb.width||b.y+b.height>vb.height)return 'clipped '+node.dataset.printFragment+' at '+b.x+','+b.y+' in '+vb.width+'x'+vb.height;}
         }return '';
         """;
+    private static final String PRINT_IDENTITIES="""
+        const expected=[];
+        function collect(node){if(!node.taxonomyContainer)expected.push(node.code);(node.children||[]).forEach(collect);}
+        fixtureData.forEach(collect);
+        const nodes=[...printFrame.contentDocument.querySelectorAll('[data-print-node]')];
+        const actual=nodes.map(node=>node.dataset.printNode);
+        if(actual.some(code=>!code))return 'Continuation fragment has an empty node identity';
+        if(new Set(actual).size!==actual.length)return 'Duplicate printed node identity';
+        return JSON.stringify(actual.sort())===JSON.stringify(expected.sort())?'':'Printed identities differ from the selected source hierarchy';
+        """;
+    private static java.util.Properties loadLabels() {
+        var labels = new java.util.Properties();
+        try (var input = new ClassPathResource("i18n/messages.properties").getInputStream();
+             var reader = new java.io.InputStreamReader(input, StandardCharsets.UTF_8)) {
+            labels.load(reader);
+        } catch (java.io.IOException error) {
+            throw new java.io.UncheckedIOException(error);
+        }
+        return labels;
+    }
     static void serve(HttpExchange exchange) throws java.io.IOException {
         String path=exchange.getRequestURI().getPath();byte[] bytes;
         if(path.equals("/fixture")){bytes=HTML.getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type","text/html; charset=UTF-8");}
+        else if(path.equals("/labels.js")){bytes=("window.fixtureLabels="+new tools.jackson.databind.ObjectMapper().writeValueAsString(LABELS)+";").getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type","application/javascript; charset=UTF-8");}
         else if(path.equals("/views.js")){try(var input=new ClassPathResource("static/js/core/taxonomy-views.js").getInputStream()){bytes=input.readAllBytes();}exchange.getResponseHeaders().set("Content-Type","application/javascript");}
         else if(path.equals("/d3.js")){bytes=new ClassPathResource("META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js").getInputStream().readAllBytes();exchange.getResponseHeaders().set("Content-Type","application/javascript");}
         else {exchange.sendResponseHeaders(404,-1);exchange.close();return;}
         exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
     }
     static final String HTML="""
-        <!doctype html><html><head><meta charset="UTF-8"><style>body{margin:16px;font-family:Arial}#diagram{width:1000px}.decision-tree-wrapper{overflow:auto}.tax-diagram-controls{display:flex;gap:8px;align-items:center}.tax-reason-dialog{max-width:650px;max-height:80vh}.tax-reason-text{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body><div id="diagram"></div><script src="/d3.js"></script><script>
-        window.TaxonomyI18n={t:(key,...args)=>key==='views.diagram.print'?'Print':key==='views.diagram.rationale'?'View rationale':key+' '+args.join(' / ')};
+        <!doctype html><html lang="en"><head><meta charset="UTF-8"><style>body{margin:16px;font-family:Arial}#diagram{width:1000px}.decision-tree-wrapper{overflow:auto}.tax-diagram-controls{display:flex;gap:8px;align-items:center}.tax-reason-dialog{max-width:650px;max-height:80vh}.tax-reason-text{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body><div id="diagram"></div><script src="/d3.js"></script><script src="/labels.js"></script><script>
+        window.TaxonomyI18n={t:(key,...args)=>(fixtureLabels[key]||key).replace(/\\{(\\d+)\\}/g,(_,index)=>args[Number(index)]??'{'+index+'}')};
         window.TaxonomyUtils={isTaxonomyContainer:n=>!!n.taxonomyContainer,contentRoots:items=>items.flatMap(n=>n.taxonomyContainer?n.children:[n])};
         window.TaxonomyState={currentReasons:{'fixture-parent':'SAVED EXPLANATION '+('Full reason. '.repeat(100))+'\\nFinal saved line.'}};
         window.fixtureData=[{code:'CP',name:'Capability area '+('long area name '.repeat(18)),taxonomyContainer:true,children:[{code:'fixture-parent',name:'Long parent label '+('multiline words '.repeat(20)),description:'CATALOGUE ONLY',children:Array.from({length:22},(_,i)=>({code:'fixture-child-'+i,name:'Detailed child label '+('complete name '.repeat(12)),children:i===0?[{code:'fixture-deep',name:'Deep branch',children:[{code:'fixture-deeper',name:'Final deep node'}]}]:[]}))}]},{code:'BR',name:'Roles area',taxonomyContainer:true,children:[{code:'fixture-second',name:'Second taxonomy '+('long words '.repeat(22))}]}];

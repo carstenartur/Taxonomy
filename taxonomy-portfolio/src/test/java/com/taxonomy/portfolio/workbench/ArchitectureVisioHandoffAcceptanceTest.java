@@ -50,7 +50,7 @@ class ArchitectureVisioHandoffAcceptanceTest {
         assertTrue(data.contains("CONFIRMED"));
         assertTrue(data.contains("Reviewed rationale"));
         assertTrue(data.contains("Approved evidence reference"));
-        assertFalse(data.contains("PRIVATE_PROVIDER_SENTINEL"));
+        assertTrue(data.contains("ORIGINAL_PROVIDER_REASON_SENTINEL"));
         assertFalse(data.contains("PRIVATE_REQUIREMENT_SENTINEL"));
         assertFalse(data.contains("PRIVATE_WARNING_SENTINEL"));
         assertEquals(1, source.loads);
@@ -111,8 +111,7 @@ class ArchitectureVisioHandoffAcceptanceTest {
                             && loss.path("rationale").asText().contains("scoped relationship evidence");
                 }
             }
-            assertEquals(manifest == visioManifest, elementOmission,
-                    "ArchiMate retains the recorded element reason; Visio reports its omission");
+            assertFalse(elementOmission, "Both formats retain recorded element explanations");
             assertTrue(rawEvidencePolicy, "Raw model evidence must remain distinguished from retained scoped relationship evidence");
         }
     }
@@ -170,10 +169,10 @@ class ArchitectureVisioHandoffAcceptanceTest {
                 new DiagramNode("CS-1", "Same name", "Core Services", .6, false, 1, 2, false, null, false)),
                 List.of(new DiagramEdge("r-1", "CP-1", "CS-1", "SUPPORTS", .7, "trace")), new DiagramLayout("LR", false));
         var element = new ElementMetadata("CP-1", "Same name", "CP", 90, .9, .8, "HUMAN", "CP/CP-1",
-                "PRIVATE_PROVIDER_SENTINEL", true, ReviewStatus.CONFIRMED, ActionStatus.REUSE,
+                "ORIGINAL_PROVIDER_REASON_SENTINEL", true, ReviewStatus.CONFIRMED, ActionStatus.REUSE,
                 "Approved evidence reference", "alice", CREATED, "Reviewed rationale");
         var relation = new RelationMetadata("CP-1", "CS-1", "SUPPORTS", "HUMAN", "trace", .7, .9,
-                "PRIVATE_PROVIDER_SENTINEL", ReviewStatus.CONFIRMED, "alice", CREATED, "Reviewed relationship");
+                "ORIGINAL_PROVIDER_REASON_SENTINEL", ReviewStatus.CONFIRMED, "alice", CREATED, "Reviewed relationship");
         return new Projection(42L, "P42", "Project", 90L, "R90", "Requirement", "PRIVATE_REQUIREMENT_SENTINEL",
                 "snapshot-965", AnalysisStatus.SUCCESS, CREATED, "provider", "model", "workspace-a", "reviewed",
                 "abcdef1234567890", graph, null, Map.of("CP-1", element), Map.of(relation.signature(), relation),

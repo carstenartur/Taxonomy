@@ -19,6 +19,23 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class DecisionCompactReportTest {
+    @Test void compactTreeKeepsTheCompleteSavedReasonInVisibleLinkedEvidence() throws Exception {
+        var base = report(DecisionReportOptions.TreeLayout.AUTO, 4);
+        String reason = "Die vollständige Begründung erläutert den fachlichen Zusammenhang. ".repeat(70)
+                + "WORD-ORIGINAL-REASON-END-7319";
+        var report = base.withScope(base.scope().withRecordedReasons(Map.of("CP", reason)));
+        assertThat(new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(report))
+                .contains(reason, "id=\"decision_node_reasons\"", DecisionNodeEvidence.reasonBookmark("CP"));
+        saveFixture("compact-long-reasons.docx", new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()).render(report));
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(
+                new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()).render(report)))) {
+            String text = new XWPFWordExtractor(doc).getText();
+            assertThat(text).contains(reason, "Recorded node reasons");
+            assertThat(doc.getDocument().xmlText()).contains(DecisionNodeEvidence.reasonBookmark("CP"));
+            assertThat(doc.getDocument().getBody().getSectPr().getPgSz().getOrient().toString()).isEqualTo("portrait");
+        }
+    }
+
     @Test void compactHasSourceAndTreeWithoutCoverChaptersOrAppendix() throws Exception {
         var report = report(DecisionReportOptions.TreeLayout.AUTO, 4);
         byte[] bytes = new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()).render(report);

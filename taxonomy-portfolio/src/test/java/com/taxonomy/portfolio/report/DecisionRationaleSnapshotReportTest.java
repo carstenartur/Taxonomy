@@ -70,6 +70,55 @@ class DecisionRationaleSnapshotReportTest {
     }
 
     @Test
+    void defaultReportLanguageFollowsRecordedAnalysisAndLegacyUsesRequestLocale() {
+        var repository = mock(RequirementAnalysisSnapshotRepository.class);
+        var codec = mock(PortfolioJsonCodec.class);
+        var reports = mock(DecisionRationaleReportService.class);
+        var service = new DecisionRationaleSnapshotReportService(repository, codec, reports);
+        var snapshot = snapshot("MOCK", "model-a", "taxonomy-sha", "prompt-sha", "main", "commit-a", AnalysisStatus.SUCCESS);
+        var analysis = reportableAnalysis();
+        analysis.setAnalysisLanguage(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+        analysis.setReasons(Map.of("CP", "Unveränderte gespeicherte Begründung. ORIGINAL-END-7319"));
+        when(repository.findByIdAndProjectIdAndScopeKey(eq("snapshot-1"), eq(41L), anyString())).thenReturn(Optional.of(snapshot));
+        when(codec.read("analysis-json", AnalysisResult.class)).thenReturn(analysis);
+        when(reports.generate(any(), eq(CONTEXT), any(), any())).thenReturn(report(7));
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
+
+        service.generate(41L, "snapshot-1", "auditor", CONTEXT, null);
+        var captured = ArgumentCaptor.forClass(DecisionAnalysisInput.class);
+        verify(reports).generate(captured.capture(), eq(CONTEXT), any(), eq(Locale.GERMAN));
+        assertThat(captured.getValue().recordedReasons()).containsEntry("CP", analysis.getReasons().get("CP"));
+
+        service.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH);
+        verify(reports).generate(any(), eq(CONTEXT), any(), eq(Locale.ENGLISH));
+
+        org.mockito.Mockito.clearInvocations(reports);
+        analysis.setAnalysisLanguage(null);
+        LocaleContextHolder.setLocale(Locale.GERMAN);
+        service.generate(41L, "snapshot-1", "auditor", CONTEXT, null);
+        verify(reports).generate(any(), eq(CONTEXT), any(), eq(Locale.GERMAN));
+    }
+
+    @Test
+    void optionsExposeRecordedAndResolvedLanguageSeparately() {
+        var reports = mock(DecisionRationaleSnapshotReportService.class);
+        var resolver = mock(WorkspaceResolver.class);
+        when(resolver.resolveCurrentContext()).thenReturn(CONTEXT);
+        when(resolver.resolveCurrentUsername()).thenReturn("auditor");
+        when(reports.generate(eq(41L), eq("snapshot-1"), eq("auditor"), eq(CONTEXT),
+                eq(Locale.ENGLISH), any(DecisionReportOptions.class))).thenReturn(report(7));
+        when(reports.recordedAnalysisLanguage(41L, "snapshot-1", "auditor", CONTEXT))
+                .thenReturn(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+        var controller = new DecisionRationaleSnapshotReportController(reports,
+                new ReportRendererRegistry(List.of()), resolver);
+        var options = controller.options(41L, "snapshot-1", "en").getBody();
+        assertThat(options.analysisLanguage()).isEqualTo("de");
+        assertThat(options.language()).isEqualTo("en");
+        when(reports.recordedAnalysisLanguage(41L, "snapshot-1", "auditor", CONTEXT)).thenReturn(null);
+        assertThat(controller.options(41L, "snapshot-1", "en").getBody().analysisLanguage()).isNull();
+    }
+
+    @Test
     void snapshotServiceReplaysFrozenEvidenceAndMatchingHistoricalView() {
         RequirementAnalysisSnapshotRepository repository =
                 mock(RequirementAnalysisSnapshotRepository.class);
@@ -397,7 +446,7 @@ class DecisionRationaleSnapshotReportTest {
     }
 
     @Test
-    void snapshotControllerRejectsUnknownFormatsAndFallsBackToRequestLocale() {
+    void snapshotControllerRejectsUnknownFormatsAndDefersDefaultLanguageToTheFrozenSource() {
         DecisionRationaleSnapshotReportService reportService =
                 mock(DecisionRationaleSnapshotReportService.class);
         WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
@@ -417,7 +466,7 @@ class DecisionRationaleSnapshotReportTest {
         when(workspaceResolver.resolveCurrentContext()).thenReturn(CONTEXT);
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("auditor");
         when(reportService.generate(
-                41L, "snapshot-1", "auditor", CONTEXT, Locale.GERMAN))
+                41L, "snapshot-1", "auditor", CONTEXT, null))
                 .thenReturn(report(null));
 
         var response = controller.export(41L, "snapshot-1", "json", "%%% ");
@@ -425,11 +474,11 @@ class DecisionRationaleSnapshotReportTest {
         assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
                 .isEqualTo("attachment; filename=\"taxonomy-decision-rationale-report-vunknown.json\"");
         verify(reportService).generate(
-                41L, "snapshot-1", "auditor", CONTEXT, Locale.GERMAN);
+                41L, "snapshot-1", "auditor", CONTEXT, null);
 
         controller.export(41L, "snapshot-1", "json", null);
         verify(reportService, org.mockito.Mockito.times(2)).generate(
-                41L, "snapshot-1", "auditor", CONTEXT, Locale.GERMAN);
+                41L, "snapshot-1", "auditor", CONTEXT, null);
     }
 
     private RequirementAnalysisSnapshot snapshot(

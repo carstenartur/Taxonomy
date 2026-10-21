@@ -158,6 +158,8 @@
         S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
         S.lastAnalysisReasonLength = null;
+        S.lastAnalysisLanguage = null;
+        S.activeAnalysisLanguage = null;
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
         S.currentArchView = null;

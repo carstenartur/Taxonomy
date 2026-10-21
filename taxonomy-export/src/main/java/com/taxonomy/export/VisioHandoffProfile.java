@@ -34,7 +34,7 @@ public final class VisioHandoffProfile {
             List<Object> shapes = new ArrayList<>();
             for (var shape : page.getShapes()) {
                 shapes.add(Map.of("shapeId", shape.getId(), "label", shape.getText(), "properties", shape.getProperties()));
-                if (!shape.getProperties().containsKey("taxonomy.id")) losses.add(new VisioLoss("shape", page.getId() + ":" + shape.getId(),
+                if (!shape.getProperties().containsKey("taxonomy.id") && !shape.getProperties().containsKey("taxonomy.presentationOnly")) losses.add(new VisioLoss("shape", page.getId() + ":" + shape.getId(),
                         "semanticIdentity", "OMITTED", "Direct Visio model contains no original Taxonomy identity."));
             }
             List<Object> relationships = new ArrayList<>();

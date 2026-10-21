@@ -58,10 +58,18 @@ public class ReformulationService {
                 .orElseThrow(()->PortfolioException.notFound("Snapshot not found in project"));
         if(!snapshot.getRequirementId().equals(requirementId) || !snapshot.getRequirementVersionId().equals(version.getId()))
             throw PortfolioException.conflict("Snapshot must match the selected requirement version");
-        String language=request.language()==null?"de":request.language();
-        if(!language.equals("de") && !language.equals("en")) throw PortfolioException.validation("language must be de or en");
         var detail=analysis.getSnapshot(projectId,snapshot.getId(),actor,context);
+        var recordedLanguage=detail.analysis()==null ? null : detail.analysis().getAnalysisLanguage();
+        String language=request.language()!=null ? request.language()
+                : recordedLanguage!=null ? recordedLanguage.value()
+                : java.util.Objects.requireNonNullElse(
+                        com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null),
+                        com.taxonomy.dto.AnalysisLanguage.ENGLISH).value();
+        if(!language.equals("de") && !language.equals("en")) throw PortfolioException.validation("language must be de or en");
         var content=new TreeMap<>(contextPort.freeze(detail,actor,context));
+        content.put("analysisLanguagePolicy", com.taxonomy.analysis.service.AnalysisLanguageContext.POLICY);
+        content.put("analysisLanguageContract", com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract(
+                com.taxonomy.dto.AnalysisLanguage.fromValue(language)));
         content.put("project",json.write(projects.getProject(projectId,actor,context)));
         content.put("sourceVersion",json.write(projects.toVersionView(version)));
         var lineage=evidence.freezeSource(requirement.getScopeKey(), requirementId, version.getId(),

@@ -37,10 +37,12 @@ public class StreamRequirementAnalysisUseCase {
             throw new IllegalStateException("Cluster streaming requires an exact workspace operation context");
         }
         long startedNanos = System.nanoTime();
-        Locale previousLocale = LocaleContextHolder.getLocale();
+        var previousLocale = LocaleContextHolder.getLocaleContext();
         var reasonLength = command.analysisReasonLength() != null ? command.analysisReasonLength()
                 : llmService.resolveAnalysisReasonLength(null);
+        var language = com.taxonomy.analysis.service.AnalysisLanguageContext.resolve(command.analysisLanguage(), command.requestLocale());
         try (var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(reasonLength);
+             var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(language);
              var mockScope = "MOCK".equalsIgnoreCase(command.provider())
                 ? llmService.withProviderBinding("MOCK", null) : null) {
             applyRequestLocale(command.requestLocale());
@@ -100,7 +102,7 @@ public class StreamRequirementAnalysisUseCase {
             try {
                 llmService.clearRequestProvider();
             } finally {
-                LocaleContextHolder.setLocale(previousLocale);
+                LocaleContextHolder.setLocaleContext(previousLocale);
             }
         }
     }
@@ -115,21 +117,27 @@ public class StreamRequirementAnalysisUseCase {
                 || !java.util.Objects.equals(command.provider(), analyzeCommand.provider())
                 || !command.analysisScope().equals(analyzeCommand.analysisScope())
                 || command.analysisReasonLength() != null && analyzeCommand.analysisReasonLength() != null
-                    && command.analysisReasonLength() != analyzeCommand.analysisReasonLength()) {
+                    && command.analysisReasonLength() != analyzeCommand.analysisReasonLength()
+                || command.analysisLanguage() != null && (analyzeCommand.analysisLanguage() != null
+                    || analyzeCommand.continuationBinding() != null || analyzeCommand.provenance() != null)
+                    && command.analysisLanguage() != analyzeCommand.analysisLanguage()) {
             throw new IllegalArgumentException("Streaming request does not match durable analysis input");
         }
         var reasonLength = analyzeCommand.analysisReasonLength() != null ? analyzeCommand.analysisReasonLength()
                 : command.analysisReasonLength() != null ? command.analysisReasonLength()
                 : com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null));
-        var admitted = analyzeCommand.withAnalysisReasonLength(reasonLength);
-        Locale previousLocale = LocaleContextHolder.getLocale();
+        var language = analyzeCommand.analysisLanguage() != null ? analyzeCommand.analysisLanguage()
+                : analyzeCommand.continuationBinding() != null || analyzeCommand.provenance() != null ? null
+                : com.taxonomy.analysis.service.AnalysisLanguageContext.resolve(command.analysisLanguage(), command.requestLocale());
+        var admitted = analyzeCommand.withAnalysisReasonLength(reasonLength).withAnalysisLanguage(language);
+        var previousLocale = LocaleContextHolder.getLocaleContext();
         try {
             applyRequestLocale(command.requestLocale());
             promptBudgetPolicy.requireWithinBudget(command.businessText(), command.provider());
             clusterExecution.execute(context, admitted, view,
                     snapshot -> handler.handle(new AnalysisStreamEvent.DurableSnapshot(snapshot)));
         } finally {
-            LocaleContextHolder.setLocale(previousLocale);
+            LocaleContextHolder.setLocaleContext(previousLocale);
         }
     }
 

@@ -2,6 +2,7 @@
 <html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
 <head>
     <meta charset="UTF-8"/>
+    <meta name="taxonomy-user" th:content="${#authentication != null ? #authentication.name : ''}"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
     <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
@@ -76,6 +77,9 @@
             </div>
 
             <div id="projectWorkspace" class="d-none">
+                <div class="card card-body mb-3">
+                    <div th:replace="~{fragments/content-language-controls :: controls}"></div>
+                </div>
                 <section class="card shadow-sm mb-3">
                     <div class="card-body">
                         <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
@@ -477,6 +481,7 @@
 
 <script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script>
 <script th:src="@{/js/taxonomy-i18n.js}"></script>
+<script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}"></script>
 <script th:src="@{/js/api/portfolio-api.js}"></script>

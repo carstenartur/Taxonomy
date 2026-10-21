@@ -20,7 +20,6 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -70,19 +69,23 @@ public class DecisionRationaleSnapshotReportController {
                 DecisionRationaleReportPlugin.REPORT_TYPE_ID);
     }
 
-    public record AvailableOptions(String snapshotId, AnalysisScope analysisScope, List<DecisionReportScope.Root> roots) {}
+    public record AvailableOptions(String snapshotId, AnalysisScope analysisScope, List<DecisionReportScope.Root> roots,
+            String analysisLanguage, String language) {}
 
     @GetMapping("/options")
     @Operation(summary = "Read export options for a frozen decision report",
             description = "Derives available taxonomy roots and the original analysis scope from the authorized immutable snapshot. Optional language selects report labels. Reading options neither reruns analysis nor changes the saved result.")
     @ApiResponse(responseCode = "200", description = "Operation completed")
     public ResponseEntity<AvailableOptions> options(@Parameter(description = "Project containing the scoped resource") @PathVariable Long projectId, @Parameter(description = "Immutable analysis snapshot identifier") @PathVariable String snapshotId,
-            @Parameter(description = "Optional BCP-47 report language; otherwise the current locale") @RequestParam(required = false) String language) {
+            @Parameter(description = "Optional BCP-47 report language; otherwise the recorded analysis language, then the current locale for legacy snapshots") @RequestParam(required = false) String language) {
         var context = workspaceResolver.resolveCurrentContext();
-        var report = snapshotReportService.generate(projectId, snapshotId, workspaceResolver.resolveCurrentUsername(), context,
+        String username = workspaceResolver.resolveCurrentUsername();
+        var report = snapshotReportService.generate(projectId, snapshotId, username, context,
                 resolveLocale(language), new DecisionReportOptions(DecisionReportOptions.Profile.COMPACT, null, null, null, null));
+        var recorded = snapshotReportService.recordedAnalysisLanguage(projectId, snapshotId, username, context);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new AvailableOptions(
-                report.metadata().analysisSnapshotId(), report.scope().analysisScope(), report.scope().availableRoots()));
+                report.metadata().analysisSnapshotId(), report.scope().analysisScope(), report.scope().availableRoots(),
+                recorded == null ? null : recorded.value(), report.languageTag()));
     }
 
     /** Existing Java callers and unconfigured links retain their established full-report behavior. */
@@ -146,12 +149,7 @@ public class DecisionRationaleSnapshotReportController {
     }
 
     private Locale resolveLocale(String language) {
-        if (language == null || language.isBlank()) {
-            return LocaleContextHolder.getLocale();
-        }
-        Locale locale = Locale.forLanguageTag(language.strip());
-        return locale.getLanguage().isBlank()
-                ? LocaleContextHolder.getLocale() : locale;
+        return com.taxonomy.reporting.render.decision.DecisionReportLanguage.optionalOverride(language);
     }
 
     private String valueOrUnknown(Object value) {

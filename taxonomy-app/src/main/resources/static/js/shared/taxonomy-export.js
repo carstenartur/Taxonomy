@@ -272,6 +272,7 @@
             analysisCoverage: window.TaxonomyState?.analysisCoverage || null,
             analysisScope: window.TaxonomyState?.lastAnalysisScope || null,
             analysisReasonLength: window.TaxonomyState?.lastAnalysisReasonLength || null,
+            analysisLanguage: window.TaxonomyState?.lastAnalysisLanguage || null,
             rawScores: window.TaxonomyState?.currentRawScores || null,
             analysisOperationId: window.TaxonomyState?.analysisOperationId || null,
             analysisProviderId: window.TaxonomyState?.analysisProviderId || null
@@ -485,6 +486,14 @@
         try {
             // Freeze exactly the current view at the click, not a later mutable state.
             var exportView = Object.assign({}, state.currentArchView);
+            exportView.includedElements = exportView.includedElements.map(function (element) {
+                var reason = state.currentReasons?.[element.nodeCode];
+                if (typeof reason !== 'string' || !reason.trim()
+                        || reason === element.includedBecause || reason === element.presenceReason) return element;
+                return Object.assign({}, element, {
+                    includedBecause: [element.includedBecause, reason].filter(Boolean).join('\n\n')
+                });
+            });
             if (state.lastAnalysisStatus && exportView.analysisStatus !== 'PARTIAL') {
                 exportView.analysisStatus = state.lastAnalysisStatus;
             }

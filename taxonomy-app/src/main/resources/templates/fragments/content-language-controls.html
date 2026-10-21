@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="controls" class="mt-2">
+    <div class="row g-2">
+        <div class="col-sm-6">
+            <label for="analysisLanguageChoice" class="form-label small mb-1" th:text="#{language.ai}">AI answer language</label>
+            <select id="analysisLanguageChoice" data-content-language="analysis" class="form-select form-select-sm" aria-describedby="contentLanguageHint">
+                <option value="ui" th:text="#{language.follow.ui}">Follow interface</option>
+                <option value="de" th:text="#{language.german}">German</option>
+                <option value="en" th:text="#{language.english}">English</option>
+            </select>
+        </div>
+        <div class="col-sm-6">
+            <label for="documentLanguageChoice" class="form-label small mb-1" th:text="#{language.document}">Document language</label>
+            <select id="documentLanguageChoice" data-content-language="document" class="form-select form-select-sm" aria-describedby="contentLanguageHint">
+                <option value="analysis" th:text="#{language.follow.analysis}">Follow analysis</option>
+                <option value="ui" th:text="#{language.follow.ui}">Follow interface</option>
+                <option value="de" th:text="#{language.german}">German</option>
+                <option value="en" th:text="#{language.english}">English</option>
+            </select>
+        </div>
+    </div>
+    <p id="contentLanguageHint" class="form-text mb-0" th:text="#{language.content.hint}">Personal choices for new analyses and exports. Existing explanations retain their original language.</p>
+</div>
+</body>
+</html>

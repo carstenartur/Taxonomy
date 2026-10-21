@@ -648,6 +648,7 @@
                     method: 'POST',
                     body: {
                         provider: null,
+                        analysisLanguage: window.TaxonomyContentLanguage?.analysis(),
                         maxArchitectureNodes: 25,
                         idempotencyKey: 'ui:req:' + requirementId + ':' + Date.now()
                     }
@@ -678,6 +679,7 @@
                 method: 'POST',
                 body: {
                     requirementIds: requirementIds,
+                    analysisLanguage: window.TaxonomyContentLanguage?.analysis(),
                     provider: null,
                     maxArchitectureNodes: 25,
                     idempotencyKey: 'ui:project:' + state.selectedProjectId + ':' + Date.now()

@@ -48,6 +48,8 @@ class StreamRequirementAnalysisUseCaseTest {
 
         doAnswer(invocation -> {
             assertThat(LocaleContextHolder.getLocale()).isEqualTo(Locale.GERMAN);
+            assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current())
+                    .isEqualTo(com.taxonomy.dto.AnalysisLanguage.GERMAN);
             com.taxonomy.analysis.service.AnalysisEventCallback callback = invocation.getArgument(1);
             callback.onPhase("Working", 12);
             callback.onScores(Map.of("CP", 80d), Map.of("CP", "reason"), "Capabilities scored 80/100", detail);
@@ -59,13 +61,13 @@ class StreamRequirementAnalysisUseCaseTest {
         }).when(llmService).analyzeStreaming(eq(command.businessText()), any());
 
         List<AnalysisStreamEvent> events = new ArrayList<>();
-        Locale previousLocale = LocaleContextHolder.getLocale();
+        var previousLocale = LocaleContextHolder.getLocaleContext();
         LocaleContextHolder.setLocale(Locale.ENGLISH);
         try {
             useCase.stream(command, events::add);
             assertThat(LocaleContextHolder.getLocale()).isEqualTo(Locale.ENGLISH);
         } finally {
-            LocaleContextHolder.setLocale(previousLocale);
+            LocaleContextHolder.setLocaleContext(previousLocale);
         }
 
         assertThat(events).hasSize(4);
@@ -146,4 +148,29 @@ class StreamRequirementAnalysisUseCaseTest {
         verify(llmService).requireProviderAdmissible(org.mockito.ArgumentMatchers.any(), eq(false));
         verifyNoMoreInteractions(llmService);
     }
+    @Test
+    void explicitLanguageWinsOverWorkerLocaleAndItsScopeIsRestoredAfterFailure() {
+        var command = new StreamRequirementAnalysisCommand("original requirement", null, Locale.GERMAN,
+                com.taxonomy.dto.AnalysisScope.full(), com.taxonomy.dto.AnalysisReasonLength.STANDARD,
+                com.taxonomy.dto.AnalysisLanguage.ENGLISH);
+        doAnswer(call -> {
+            assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current())
+                    .isEqualTo(com.taxonomy.dto.AnalysisLanguage.ENGLISH);
+            assertThat(LocaleContextHolder.getLocale()).isEqualTo(Locale.GERMAN);
+            throw new IllegalStateException("transport failed");
+        }).when(llmService).analyzeStreaming(eq(command.businessText()), any());
+        var previousLocale = LocaleContextHolder.getLocaleContext();
+        LocaleContextHolder.resetLocaleContext();
+        try {
+            assertThatThrownBy(() -> useCase.stream(command, ignored -> { })).hasMessage("transport failed");
+            assertThat(LocaleContextHolder.getLocaleContext()).isNull();
+            assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null))
+                    .isEqualTo(com.taxonomy.dto.AnalysisLanguage.ENGLISH);
+        } finally {
+            LocaleContextHolder.setLocaleContext(previousLocale);
+        }
+        assertThat(com.taxonomy.analysis.service.AnalysisLanguageContext.current()).isNull();
+        verify(llmService).clearRequestProvider();
+    }
+
 }

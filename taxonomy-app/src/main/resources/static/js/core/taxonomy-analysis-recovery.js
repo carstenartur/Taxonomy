@@ -264,6 +264,8 @@
         S.analysisCoverage = result.analysisCoverage || null;
         S.lastAnalysisScope = result.analysisScope || context.request.analysisScope || null;
         S.lastAnalysisReasonLength = result.analysisReasonLength || null;
+        S.lastAnalysisLanguage = result.analysisLanguage || null;
+        S.activeAnalysisLanguage = S.lastAnalysisLanguage;
         window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
         if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
         S.currentRawScores = result.rawScores || {};
@@ -766,7 +768,7 @@
         catch (invalidScope) { window.TaxonomyBrowse?.showStatus('warning', invalidScope.message); return; }
         generation = C.runtime.analysisGeneration || 0;
         S.recoveryContext = { id: crypto.randomUUID(), workspaceId: ready.workspaceId, noFollowups: Boolean(manual),
-            request: { businessText: input(), includeArchitectureView: scope?.mode !== 'TAXONOMIES_ONLY', analysisScope: scope,
+            request: { businessText: input(), analysisLanguage: window.TaxonomyContentLanguage?.analysis(), includeArchitectureView: scope?.mode !== 'TAXONOMIES_ONLY', analysisScope: scope,
                 provider: document.getElementById('providerSelect')?.value || null }, followups: {} };
         S.currentRelationSearchReport = null;
         S.analysisRecovery = { id: current().id, version: 0, state: 'NEW', completedCalls: 0, openQuestions: [] };

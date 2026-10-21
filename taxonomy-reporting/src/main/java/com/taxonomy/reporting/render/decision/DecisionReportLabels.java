@@ -117,6 +117,7 @@ public final class DecisionReportLabels {
     public String identifier() { return german ? "Kennung" : "Identifier"; }
     public String titleLabel() { return german ? "Titel" : "Title"; }
     public String graphDigest() { return german ? "SHA-256 des Architekturgraphen" : "Architecture graph SHA-256"; }
+    public String sourceGraphDigest() { return german ? "SHA-256 des Quellgraphen" : "Source graph SHA-256"; }
     public String unknown() { return german ? "Unbekannt" : "Unknown"; }
     public String noneRecorded() { return german ? "Keine im Snapshot dokumentiert" : "None recorded in snapshot"; }
     public String frozenScope() { return german ? "Gespeicherte Architektur und Entscheidungsevidenz der ausgewählten Anforderungsversion." : "Saved architecture and decision evidence for the selected requirement version."; }
@@ -130,6 +131,42 @@ public final class DecisionReportLabels {
     public String requirementId() { return german ? "Anforderungskennung" : "Requirement ID"; }
     public String evidenceEyebrow() { return german ? "TAXONOMY · ENTSCHEIDUNGSNACHWEIS" : "TAXONOMY · DECISION EVIDENCE"; }
     public String analysisDuration() { return german() ? "Analysedauer" : "Analysis duration"; }
+    public String architectureAnalysisTitle() { return german ? "Architekturbericht" : "Architecture Analysis Report"; }
+    public String liveReportNotice() { return german ? "Ad-hoc-Bericht aus der bereitgestellten aktuellen Analyse; es wird kein unveränderlicher Snapshot ausgewiesen." : "Ad-hoc report from the supplied live analysis; no frozen snapshot identity is asserted."; }
+    public String architectureSummary() { return german ? "Architekturübersicht" : "Architecture Summary"; }
+    public String metric() { return german ? "Kennzahl" : "Metric"; }
+    public String value() { return german ? "Wert" : "Value"; }
+    public String anchors() { return german ? "Anker" : "Anchors"; }
+    public String elementCount() { return german ? "Elemente" : "Elements"; }
+    public String relationshipCount() { return german ? "Beziehungen" : "Relationships"; }
+    public String maxHopDistance() { return german ? "Maximale Beziehungsdistanz" : "Max Hop Distance"; }
+    public String anchorNodes() { return german ? "Ankerknoten" : "Anchor Nodes"; }
+    public String includedRelationships() { return german ? "Enthaltene Beziehungen" : "Included Relationships"; }
+    public String gapAnalysis() { return german ? "Lückenanalyse" : "Gap Analysis"; }
+    public String totalGaps() { return german ? "Lücken insgesamt" : "Total Gaps"; }
+    public String missingRelations() { return german ? "Fehlende Beziehungen" : "Missing Relations"; }
+    public String expectedType() { return german ? "Erwarteter Typ" : "Expected Type"; }
+    public String expectedTargetRoot() { return german ? "Erwarteter Zielbereich" : "Expected Target Root"; }
+    public String description() { return german ? "Beschreibung" : "Description"; }
+    public String incompletePatterns() { return german ? "Unvollständige Muster" : "Incomplete Patterns"; }
+    public String pattern() { return german ? "Muster" : "Pattern"; }
+    public String missing() { return german ? "Fehlend" : "Missing"; }
+    public String detectedPatterns() { return german ? "Erkannte Muster" : "Detected patterns"; }
+    public String patternCoverage() { return german ? "Musterabdeckung" : "Pattern Coverage"; }
+    public String matchedPatterns() { return german ? "Passende Muster" : "Matched Patterns"; }
+    public String complete() { return german ? "vollständig" : "complete"; }
+    public String completeMissing() { return german ? "vollständig, fehlend: " : "complete, missing: "; }
+    public String confidence() { return german ? "Konfidenz" : "Confidence"; }
+    public String matchedElements() { return german ? "Passende Elemente" : "Matched Elements"; }
+    public String matchedElementNotice() { return german ? "Treffer mit hoher Relevanz; eine menschliche Freigabe ist nicht dokumentiert." : "High-score matches; human approval is not recorded."; }
+    public String proposedElements() { return german ? "Vorgeschlagene Elemente" : "Proposed Elements"; }
+    public String suggestedRelations() { return german ? "Vorgeschlagene Beziehungen" : "Suggested Relations"; }
+    public String pendingRelationProposals() { return german ? "Offene Beziehungsvorschläge" : "Pending Relation Proposals"; }
+    public String status() { return "Status"; }
+    public String architectureDiagram() { return german ? "Architekturdiagramm" : "Architecture Diagram"; }
+    public String explanation() { return german ? "Erläuterung" : "Explanation"; }
+    public String recordedNodeReasons() { return german ? "Gespeicherte Knotenbegründungen" : "Recorded node reasons"; }
+    public String relationshipProvenance() { return german ? "Beziehungsherkunft" : "Relationship provenance"; }
 
     public String durationMillis(Long millis) {
         if (millis == null) return german() ? "Nicht aufgezeichnet" : "Not recorded";

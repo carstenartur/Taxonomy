@@ -419,6 +419,6 @@ class CopilotOperationConsistencyTest {
                 0,
                 0,
                 null,
-                List.of(item));
+                List.of(item), null, null, com.taxonomy.dto.AnalysisLanguage.ENGLISH);
     }
 }

@@ -225,7 +225,8 @@ class AnalysisRecordsExportIT {
                 String workspace = owner.equals("alice") ? "private-a" : "private-b";
                 fixture.draft("repo-a", workspace, owner, "{\"businessText\":\"CURRENT-" + owner
                         + "\",\"lastAnalyzedText\":\"CURRENT-" + owner + "\",\"storedBusinessText\":\"CURRENT-" + owner
-                        + "\",\"scores\":{\"N1\":80},\"analysisOptions\":{\"maxNodes\":20},\"history\":[\"OLD-DRAFT-" + owner + "\"]}");
+                        + "\",\"scores\":{\"N1\":80},\"analysisLanguage\":\"de\",\"analysisReasonLength\":\"detailed\","
+                        + "\"activeAnalysisLanguage\":\"en\",\"analysisOptions\":{\"maxNodes\":20},\"history\":[\"OLD-DRAFT-" + owner + "\"]}");
                 String old = run(fixture, "repo-a", workspace, "draft", owner, 10, "OLD-RUN-" + owner);
                 String current = run(fixture, "repo-a", workspace, "draft", owner, 20, "CURRENT-" + owner);
                 question(fixture, old, "OLD-QUESTION-" + owner); question(fixture, current, "CURRENT-QUESTION-" + owner);
@@ -234,6 +235,11 @@ class AnalysisRecordsExportIT {
             var output = new Contents();
             new AnalysisBackupContributor(fixture.database, "alice").write(selected(profile), output);
             assertCompleteAnalysisDatasets(output, profile);
+            assertThat(records(output, "drafts")).allSatisfy(draft -> {
+                assertThat(draft.path("payload").path("analysisLanguage").asText()).isEqualTo("de");
+                assertThat(draft.path("payload").path("analysisReasonLength").asText()).isEqualTo("detailed");
+                assertThat(draft.path("payload").has("activeAnalysisLanguage")).isFalse();
+            });
             for (String dataset : List.of("cluster-calls", "cluster-attempts")) {
                 assertThat(records(output, dataset)).as("No diagnostics exist in this continuation-only fixture: %s", dataset).isEmpty();
             }

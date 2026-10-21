@@ -289,8 +289,18 @@ class TaxonomySchemaPostgresMigrationIT {
                 Flyway.configure().dataSource(dataSource).load().getConfiguration());
 
         assertAnalysisReasonLengthSchema(dataSource);
+        assertThat(singleString(dataSource, "select analysis_language from req_analysis_job where id = 'job-before-reason-length'")).isNull();
+        for (String language : List.of("GERMAN", "ENGLISH")) {
+            execute(dataSource, "update req_analysis_job set analysis_language = '" + language + "' where id = 'job-before-reason-length'");
+            assertThat(singleString(dataSource, "select analysis_language from req_analysis_job where id = 'job-before-reason-length'")).isEqualTo(language);
+        }
+        execute(dataSource, "update req_analysis_job set analysis_language = null where id = 'job-before-reason-length'");
+        for (String invalid : List.of("de", "fr", "UNKNOWN", ""))
+            assertThatThrownBy(() -> execute(dataSource, "update req_analysis_job set analysis_language = '" + invalid + "' where id = 'job-before-reason-length'"))
+                    .isInstanceOfSatisfying(SQLException.class, exception -> assertThat(exception.getSQLState()).isEqualTo("23514"))
+                    .hasMessageContaining("ck_req_analysis_language");
         assertThat(singleString(dataSource, """
-                select (to_jsonb(job) - 'analysis_reason_length')::text from req_analysis_job job
+                select (to_jsonb(job) - 'analysis_reason_length' - 'analysis_language')::text from req_analysis_job job
                 where id = 'job-before-reason-length'
                 """)).isEqualTo(legacyJob);
         assertThat(singleString(dataSource, """

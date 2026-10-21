@@ -96,7 +96,8 @@ public class CopilotAutomationService {
                 requirementId,
                 policy.manual(request),
                 username,
-                context);
+                context,
+                com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(request == null ? null : request.analysisLanguage()));
     }
 
     public Optional<CopilotOperationView> tryAutopilot(
@@ -104,13 +105,23 @@ public class CopilotAutomationService {
             Long requirementId,
             String username,
             WorkspaceContext context) {
+        return tryAutopilot(projectId, requirementId, username, context, null);
+    }
+
+    public Optional<CopilotOperationView> tryAutopilot(
+            Long projectId,
+            Long requirementId,
+            String username,
+            WorkspaceContext context,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
         if (!policy.autopilotReady()) return Optional.empty();
         return Optional.of(enqueue(
                 projectId,
                 requirementId,
                 policy.autopilot(),
                 username,
-                context));
+                context,
+                com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(analysisLanguage)));
     }
 
     public Optional<CopilotOperationView> latestOperation(
@@ -248,7 +259,8 @@ public class CopilotAutomationService {
             Long requirementId,
             AiAutomationPolicy.RunSettings settings,
             String username,
-            WorkspaceContext context) {
+            WorkspaceContext context,
+            com.taxonomy.dto.AnalysisLanguage language) {
         RequirementView requirement = projectService.getRequirement(
                 projectId, requirementId, username, context);
         RequirementVersionView version = requirement.currentVersion();
@@ -257,7 +269,7 @@ public class CopilotAutomationService {
                     "Requirement has no immutable current version to analyze");
         }
         String operationId = operationId(
-                projectId, requirement, settings, username, context);
+                projectId, requirement, settings, username, context, language);
         OperationDefinition definition = new OperationDefinition(
                 settings.autopilot(),
                 operationId,
@@ -268,7 +280,7 @@ public class CopilotAutomationService {
                 settings.maxArchitectureNodes(),
                 settings.verificationPasses(),
                 settings.proposeSolutions(),
-                settings.proposeProducts());
+                settings.proposeProducts(), language);
 
         enqueuePass(definition, 1, username, context);
         schedule(definition, username, context);
@@ -353,6 +365,7 @@ public class CopilotAutomationService {
             String username,
             WorkspaceContext context) {
         CopilotOperationKey key = definition.key(pass);
+        try (var language = com.taxonomy.analysis.service.AnalysisLanguageContext.open(definition.analysisLanguage())) {
         return analysisService.enqueueRequirement(
                 definition.projectId(),
                 definition.requirementId(),
@@ -361,6 +374,7 @@ public class CopilotAutomationService {
                 key.value(),
                 username,
                 context);
+        }
     }
 
     private AnalysisJobView awaitTerminal(
@@ -520,7 +534,7 @@ public class CopilotAutomationService {
                 first.job().maxArchitectureNodes(),
                 key.totalPasses(),
                 key.proposeSolutions(),
-                key.proposeProducts());
+                key.proposeProducts(), first.job().analysisLanguage());
         Set<Integer> passes = new HashSet<>();
 
         for (JobWithKey entry : jobs) {
@@ -536,7 +550,8 @@ public class CopilotAutomationService {
                     && Objects.equals(job.projectId(), expected.projectId())
                     && Objects.equals(item.requirementId(), expected.requirementId())
                     && Objects.equals(job.provider(), expected.provider())
-                    && job.maxArchitectureNodes() == expected.maxArchitectureNodes();
+                    && job.maxArchitectureNodes() == expected.maxArchitectureNodes()
+                    && job.analysisLanguage() == expected.analysisLanguage();
             if (!consistent) {
                 throw PortfolioException.conflict(
                         "Copilot operation metadata is inconsistent across analysis jobs");
@@ -567,7 +582,8 @@ public class CopilotAutomationService {
             RequirementView requirement,
             AiAutomationPolicy.RunSettings settings,
             String username,
-            WorkspaceContext context) {
+            WorkspaceContext context,
+            com.taxonomy.dto.AnalysisLanguage language) {
         RequirementVersionView version = requirement.currentVersion();
         String material = String.join("\n",
                 PortfolioScope.key(username, context),
@@ -584,6 +600,7 @@ public class CopilotAutomationService {
                 String.valueOf(settings.proposeSolutions()),
                 String.valueOf(settings.proposeProducts()),
                 settings.force() ? UUID.randomUUID().toString() : "stable");
+        if (language != null) material += "\n" + com.taxonomy.analysis.service.AnalysisLanguageContext.POLICY + "\n" + language.value();
         try {
             return HexFormat.of().formatHex(
                     MessageDigest.getInstance("SHA-256")
@@ -669,7 +686,8 @@ public class CopilotAutomationService {
             int maxArchitectureNodes,
             int totalPasses,
             boolean proposeSolutions,
-            boolean proposeProducts) {
+            boolean proposeProducts,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
 
         CopilotOperationKey key(int pass) {
             return new CopilotOperationKey(

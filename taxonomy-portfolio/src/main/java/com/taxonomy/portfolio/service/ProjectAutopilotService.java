@@ -85,11 +85,10 @@ public class ProjectAutopilotService {
         List<String> operationIds = new ArrayList<>(selected.size());
         boolean complete = true;
         for (RequirementView requirement : selected) {
-            Optional<CopilotOperationView> operation = automationService.tryAutopilot(
-                    projectId,
-                    requirement.id(),
-                    username,
-                    context);
+            Optional<CopilotOperationView> operation = request != null && request.analysisLanguage() != null
+                    ? automationService.tryAutopilot(projectId, requirement.id(), username,
+                            context, request.analysisLanguage())
+                    : automationService.tryAutopilot(projectId, requirement.id(), username, context);
             String operationId = operation
                     .map(CopilotOperationView::operationId)
                     .orElse(null);

@@ -136,7 +136,8 @@ class RootScoringFlowTest {
         catalogue.root.setDescriptionEn("C3 Taxonomy – Business Processes");
         String sourceDescription = "Full original top-level catalogue description.";
         catalogue.child.setDescriptionEn(sourceDescription);
-        try (var ignored = frozenCatalogue ? frozen(List.of(catalogue.root, catalogue.child), null) : null) {
+        try (var ignored = frozenCatalogue ? frozen(List.of(catalogue.root, catalogue.child), null) : null;
+             var language = AnalysisLanguageContext.open(com.taxonomy.dto.AnalysisLanguage.ENGLISH)) {
             if (frozenCatalogue) catalogue.child.setDescriptionEn("Current catalogue changed after admission");
             var gateway = new Gateway("{\"BP\":0}", "{\"BP\":0}");
             var llm = service(LlmProvider.OPENAI, catalogue, gateway, null);
@@ -339,4 +340,22 @@ class RootScoringFlowTest {
             fail(message);
         }
     }
+    @Test
+    void languagePolicySeparatesNewCheckpointIdentitiesWithoutChangingLegacyIdentity() {
+        var llm = service(LlmProvider.OPENAI, false, new Gateway(), null);
+        String legacy = llm.recoveryPolicyFingerprint("OPENAI");
+        String german;
+        try (var scope = AnalysisLanguageContext.open(com.taxonomy.dto.AnalysisLanguage.GERMAN)) {
+            german = llm.recoveryPolicyFingerprint("OPENAI");
+            assertNotEquals(legacy, german);
+        }
+        try (var scope = AnalysisLanguageContext.open(com.taxonomy.dto.AnalysisLanguage.ENGLISH)) {
+            assertNotEquals(german, llm.recoveryPolicyFingerprint("OPENAI"));
+            assertNotEquals(legacy, llm.recoveryPolicyFingerprint("OPENAI"));
+        }
+        try (var legacyScope = AnalysisLanguageContext.open(null)) {
+            assertEquals(legacy, llm.recoveryPolicyFingerprint("OPENAI"));
+        }
+    }
+
 }

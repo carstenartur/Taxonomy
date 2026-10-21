@@ -69,7 +69,11 @@ public class ProjectAnalysisController {
         RequestScope scope = scope();
         AnalyzeProjectRequest effective = request != null
                 ? request : new AnalyzeProjectRequest(List.of(requirementId), false, null, null, null);
-        AnalysisJobView job = analysisService.enqueueRequirement(
+        AnalysisJobView job = effective.analysisLanguage() != null
+                ? analysisService.enqueueRequirement(projectId, requirementId, effective.provider(),
+                        effective.maxArchitectureNodes(), effective.idempotencyKey(), scope.username(), scope.context(),
+                        effective.analysisLanguage())
+                : analysisService.enqueueRequirement(
                 projectId,
                 requirementId,
                 effective.provider(),

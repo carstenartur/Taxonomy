@@ -276,6 +276,14 @@ Tips for good requirements:
 
 ![Business Requirement Analysis card](../images/04-analysis-panel-empty.png)
 
+### AI explanation and document languages
+
+**AI response language** offers **Follow interface**, **German** and **English**. The default follows the interface. The choice is captured when a new analysis starts; running, paused and resumed analyses retain that language. For example, an English interface can generate German explanations.
+
+**Document language** is separate: **Follow analysis** (default), **Follow interface**, **German** or **English**. The decision-report dialog also exposes this selection; the architecture workbench offers it as **Word report language** in its export area. Both personal preferences are saved for your account in this browser.
+
+Document language controls generated headings and labels in Word, HTML and Markdown reports. Saved explanations retain their original wording; SVG, PDF and Visio diagrams keep their existing diagram labels. For new reports entirely in German, choose German AI output before analysis and follow the analysis language when exporting. For older results without recorded language, document headings follow the interface; the original language is not inferred or backfilled.
+
 ### Standard Analysis
 
 1. Type your requirement in the textarea.
@@ -439,9 +447,11 @@ Sunburst, Tree and Decision share a relevance selector. **All nodes** shows the 
 
 ### Tree View
 
+**Only relevant nodes (> 0)** is available directly in the diagram toolbar and applies to the view and printout. The shared relevance selector additionally distinguishes measured zeroes from unknown scores.
+
 The Tree view renders the taxonomy as an interactive node-link diagram. Use the **Taxonomy root selector** dropdown to choose which root to display when there are multiple taxonomy roots.
 
-**Print diagram** prints the complete selected taxonomy with the current relevance filter, including collapsed and offscreen branches. **Print layout** offers **A4 pages** and **One large sheet**. Both SVG and large Canvas trees use the complete vector tree for printing.
+**Expand all** opens every branch of the selected taxonomy in one action. **View rationale** shows the selected node’s complete saved explanation. **Print diagram** includes the complete selected taxonomy with the current relevance filter, including collapsed and offscreen branches. Numeric percentages remain visible; numbered references lead to full explanations in the printout. **Print layout** offers **A4 pages** and **One large sheet**. Both SVG and large Canvas trees use complete vector graphics for printing.
 
 ![Tree view](../images/07-tree-view.png)
 
@@ -451,7 +461,7 @@ The Decision Map view shows the taxonomy as a decision-tree style layout optimis
 
 Taxonomies occupy separate areas. Spacing accounts for complete wrapped node names and remains clear when branches expand or collapse. **Reason** at a node opens its saved analysis reason and a separately labelled catalogue description. The action also works with a keyboard or touchscreen; **Close** or Escape returns focus to the node.
 
-Use **Print diagram** in the diagram toolbar to open a separate print view. It includes every relevant branch with the selected relevance filter, independently of zoom and collapsed screen branches. **A4 pages** distributes large areas across landscape pages, retaining headings and references to continued connections. **One large sheet** places the complete diagram on one page sized to its contents. Choose a printer or **Save as PDF** in the browser. If the browser blocks the print window, allow pop-ups for this application and select **Print diagram** again.
+Use **Print diagram** in the diagram toolbar to open a separate print view. It includes every relevant branch with the selected relevance filter, independently of zoom and collapsed screen branches. **A4 pages** distributes large areas across landscape pages, retaining headings and references to continued connections. **One large sheet** arranges related, numbered sections across a balanced sheet instead of shrinking a tall narrow tree into a thin strip. Section references retain parent and continuation context. Both print layouts include percentages and complete recorded explanations. Choose a printer or **Save as PDF** in the browser. If the browser blocks the print window, allow pop-ups for this application and select **Print diagram** again.
 
 ![Decision Map view (scored)](../images/69-decision-map-scored.png)
 
@@ -759,6 +769,8 @@ The primary page contains the complete selected graph; a second page shows a non
 
 Dense diagrams add native relationship detail pages with at most six endpoints and six relationships each. Compact `R…` relationship and `N…` node keys map back to canonical IDs in Shape Data; each detail caption identifies source → target and the full type where it fits. Captions stay upright, and opaque nodes cover crossing strokes. Long display labels may wrap or end with an ellipsis; the complete saved label remains in `taxonomy.label` and truncation is recorded. The manifest reports detail counts and covered key ranges if page, shape, connector or package-byte capacity is exhausted. The complete overview remains available; use native Shape Data or the report inventory for remaining relationships. Detail pages and connectors remain editable.
 
+Complete recorded node and relationship explanations also appear on visible evidence pages. The `N…`/`R…` keys connect compact diagram shapes to these wrapped original texts. Required explanations are never silently dropped when an export limit is exceeded.
+
 VSDX is an experimental visual handoff. ArchiMate Exchange with canonical JSON evidence serves the separate semantic interchange use case; its own independent-tool acceptance remains tracked in #967. Editing a VSDX does not update Taxonomy. See the [VSDX profile and acceptance procedure](../dev/VISIO_HANDOFF_PROFILE.md) and [1.4.1 release notes](https://github.com/carstenartur/Taxonomy/blob/v1.4.1/docs/en/RELEASE_NOTES_1_4_1.md).
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
@@ -852,7 +864,7 @@ Open **Decision report …** under **Decision Evidence** in the Export tab, on a
 #### Create a Word report with an overview and reasons
 
 1. Open the required analysis result, then **Decision report …**.
-2. Keep **Word (.docx)** and the default **Standard** content. Choose **Compact** when you only need a shorter overview.
+2. Keep **Word (.docx)** and the default **Standard** content. Choose **Compact** when you only need a shorter overview. Also check **Document language**; **Follow analysis** uses the recorded analysis language.
 3. Under **Taxonomies in this report**, select the required taxonomy, such as **CP**. Select several for a small collection. At least one must remain selected.
 4. Check the source reference and **recorded analysis** scope. Taxonomies outside that scope cannot be selected.
 5. Open **More options** if needed. Choose **Short — main sections** or **None** for contents, and **Automatic (landscape)** for the decision tree.
@@ -866,7 +878,7 @@ The following illustrations show the current dialog component with labelled exam
 
 | Content | Default sections |
 |---|---|
-| **Compact** | Short summary with essential recorded reasons for each selected taxonomy and its complete saved decision tree; no cover or detailed evidence appendix |
+| **Compact** | Short summary with essential recorded reasons for each selected taxonomy and its complete saved decision tree; no cover; complete original reasons remain accessible through the node keys |
 | **Standard** | Adds decision reasoning and available saved architecture |
 | **Full** | Also includes a cover and detailed evidence |
 

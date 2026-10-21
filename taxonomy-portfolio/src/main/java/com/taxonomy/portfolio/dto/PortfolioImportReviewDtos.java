@@ -36,7 +36,12 @@ public final class PortfolioImportReviewDtos {
             boolean analyzeAfterImport,
             String provider,
             Integer maxArchitectureNodes,
-            String idempotencyKey) {
+            String idempotencyKey,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+        public ReviewedImportRequest(List<ReviewedImportItem> items, boolean analyzeAfterImport,
+                                    String provider, Integer maxArchitectureNodes, String idempotencyKey) {
+            this(items, analyzeAfterImport, provider, maxArchitectureNodes, idempotencyKey, null);
+        }
     }
 
     public record ReviewedImportResult(

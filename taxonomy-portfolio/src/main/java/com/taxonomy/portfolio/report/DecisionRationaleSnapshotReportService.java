@@ -7,6 +7,8 @@ import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.AnalysisSnapshotProvenance;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisLanguage;
+import com.taxonomy.reporting.render.decision.DecisionReportLanguage;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
@@ -75,19 +77,7 @@ public class DecisionRationaleSnapshotReportService {
     @Transactional(readOnly = true)
     public DecisionRationaleReport generate(Long projectId, String snapshotId, String username,
             WorkspaceContext workspaceContext, Locale locale, DecisionReportOptions options) {
-        if (projectId == null) {
-            throw PortfolioException.validation("projectId is required");
-        }
-        if (snapshotId == null || snapshotId.isBlank()) {
-            throw PortfolioException.validation("snapshotId is required");
-        }
-        Objects.requireNonNull(workspaceContext, "workspaceContext must not be null");
-
-        String scopeKey = PortfolioScope.key(username, workspaceContext);
-        RequirementAnalysisSnapshot snapshot = snapshotRepository
-                .findByIdAndProjectIdAndScopeKey(snapshotId.strip(), projectId, scopeKey)
-                .orElseThrow(() -> PortfolioException.notFound(
-                        "Analysis snapshot not found: " + snapshotId));
+        RequirementAnalysisSnapshot snapshot = loadSnapshot(projectId, snapshotId, username, workspaceContext);
         AnalysisResult analysis = jsonCodec.read(
                 snapshot.getAnalysisPayload(), AnalysisResult.class);
         if (analysis == null || analysis.getScores() == null || analysis.getScores().isEmpty()) {
@@ -99,7 +89,7 @@ public class DecisionRationaleSnapshotReportService {
                     "The analysis snapshot predates frozen taxonomy-hierarchy evidence and cannot be rendered reproducibly");
         }
 
-        Locale effectiveLocale = locale == null ? Locale.ENGLISH : locale;
+        Locale effectiveLocale = DecisionReportLanguage.resolve(locale, analysis.getAnalysisLanguage());
         Map<String, AnalysisScoreDetail> scoreDetails = analysis.getScoreDetails();
         ViewContext historicalViewContext = historicalViewContext(snapshot, analysis);
         AnalysisSnapshotProvenance provenance = new AnalysisSnapshotProvenance(
@@ -131,6 +121,23 @@ public class DecisionRationaleSnapshotReportService {
                 ? reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale)
                 : reportService.generate(input, workspaceContext, historicalViewContext, effectiveLocale, options);
         return scoreSemanticsAdapter.adapt(report, scoreDetails, effectiveLocale);
+    }
+
+    /** Optional provenance for the export dialog; historical absence remains unknown. */
+    @Transactional(readOnly = true)
+    public AnalysisLanguage recordedAnalysisLanguage(Long projectId, String snapshotId, String username,
+            WorkspaceContext context) {
+        var snapshot = loadSnapshot(projectId, snapshotId, username, context);
+        return jsonCodec.readField(snapshot.getAnalysisPayload(), "analysisLanguage", AnalysisLanguage.class);
+    }
+
+    private RequirementAnalysisSnapshot loadSnapshot(Long projectId, String snapshotId, String username,
+            WorkspaceContext context) {
+        if (projectId == null) throw PortfolioException.validation("projectId is required");
+        if (snapshotId == null || snapshotId.isBlank()) throw PortfolioException.validation("snapshotId is required");
+        Objects.requireNonNull(context, "workspaceContext must not be null");
+        return snapshotRepository.findByIdAndProjectIdAndScopeKey(snapshotId.strip(), projectId, PortfolioScope.key(username, context))
+                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found: " + snapshotId));
     }
 
     private ViewContext historicalViewContext(

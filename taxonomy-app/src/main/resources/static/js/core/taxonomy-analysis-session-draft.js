@@ -347,6 +347,8 @@
         S.analysisCoverage = null;
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;
+        S.lastAnalysisLanguage = null;
+        S.activeAnalysisLanguage = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.analysisRecovery = null;
         S.recoveryContext = null;
@@ -407,6 +409,9 @@
             S.analysisCoverage = payload.analysisCoverage || null;
             S.lastAnalysisScope = payload.analysisScope || null;
             S.lastAnalysisReasonLength = payload.analysisReasonLength || null;
+            S.lastAnalysisLanguage = payload.analysisLanguage || null;
+            S.activeAnalysisLanguage = ['de', 'en'].includes(payload.activeAnalysisLanguage)
+                ? payload.activeAnalysisLanguage : S.lastAnalysisLanguage;
             S.analysisRecovery = payload.analysisRecovery || null;
             S.recoveryContext = payload.recoveryContext || null;
             S.lastAnalysisProvider = payload.lastAnalysisProvider || null;

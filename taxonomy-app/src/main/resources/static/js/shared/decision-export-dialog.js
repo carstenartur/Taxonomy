@@ -76,6 +76,29 @@
             control.value = initial; wrapper.append(control); parent.append(wrapper); return control;
         }
         const format = select(t('Format', 'Format'), 'format', [], '');
+        let analysisLanguage = ['de', 'en'].includes(config.analysisLanguage) ? config.analysisLanguage : null;
+        const language = select(t('Document language', 'Dokumentsprache'), 'language', [
+            ['analysis', t('Follow analysis', 'Wie Analyse')], ['ui', t('Follow interface', 'Wie Oberfläche')],
+            ['de', 'Deutsch'], ['en', 'English']
+        ], window.TaxonomyContentLanguage?.preference('document') || 'analysis');
+        language.setAttribute('data-content-language', 'document');
+        const languageNote = el('p'); fieldset.append(languageNote);
+        function selectedLanguage() {
+            if (window.TaxonomyContentLanguage) return window.TaxonomyContentLanguage.documentLanguage(analysisLanguage, language.value);
+            return language.value === 'analysis' ? analysisLanguage : language.value === 'ui' ? (de ? 'de' : 'en') : language.value;
+        }
+        function updateLanguageNote() {
+            languageNote.textContent = language.value === 'analysis' && !analysisLanguage
+                ? t('The original analysis language was not recorded; document headings follow the interface. Saved explanations retain their original wording.',
+                    'Die ursprüngliche Analysesprache wurde nicht aufgezeichnet; Dokumentüberschriften folgen der Oberfläche. Gespeicherte Begründungen behalten ihren Originaltext.')
+                : t('This selects the language of document headings and labels. Saved explanations retain their original wording; choose the AI language before starting a new analysis.',
+                    'Diese Auswahl bestimmt die Sprache der Dokumentüberschriften und Beschriftungen. Gespeicherte Begründungen behalten ihren Originaltext; wählen Sie die KI-Sprache vor einer neuen Analyse.');
+        }
+        language.addEventListener('change', () => {
+            window.TaxonomyContentLanguage?.setPreference('document', language.value);
+            updateLanguageNote();
+        });
+        updateLanguageNote();
         const presentation = el('div'); fieldset.append(presentation);
         const profile = select(t('Content', 'Umfang'), 'profile', [['COMPACT',t('Compact','Kompakt')],['STANDARD',t('Standard','Standard')],['FULL',t('Full','Vollständig')]], 'STANDARD', presentation);
         const profileNote = el('p'); presentation.append(profileNote);
@@ -118,6 +141,8 @@
                     : availableFormats.some(item => item.id === 'docx') ? 'docx' : (availableFormats[0]?.id || '');
                 updateFormat();
                 if (!availableFormats.length) throw new Error(t('No decision-report format is installed.', 'Kein Format für Entscheidungsberichte ist installiert.'));
+                analysisLanguage = ['de', 'en'].includes(data.analysisLanguage) ? data.analysisLanguage : null;
+                updateLanguageNote();
                 roots = data.roots || [];
                 const scope = data.analysisScope;
                 sections.filter(input => input.value === 'ARCHITECTURE').forEach(input => {
@@ -159,7 +184,8 @@
             busy=true;fieldset.disabled=true;submit.disabled=true;error.textContent='';
             submit.textContent=t('Generating…','Wird erstellt …');dialog.setAttribute('aria-busy','true');
             try {
-                await config.submit({format:format.value,descriptor:availableFormats.find(item => item.id === format.value),options,signal:controller.signal});
+                window.TaxonomyContentLanguage?.setPreference('document', language.value);
+                await config.submit({format:format.value,descriptor:availableFormats.find(item => item.id === format.value),options,language:selectedLanguage(),signal:controller.signal});
                 if(dialog.open&&!controller.signal.aborted)dialog.close();
             }
             catch(err){if(dialog.open&&!controller.signal.aborted){error.textContent=t('Export failed: ','Export fehlgeschlagen: ')+err.message;error.scrollIntoView({block:'nearest'});}}
@@ -175,8 +201,8 @@
     function openSaved(config) {
         const projectId=String(config.projectId), snapshotId=String(config.snapshotId);
         return open({...config,saved:true,source:config.source || ('Snapshot: '+snapshotId),
-            load:()=>config.api.decisionReportOptions(projectId,snapshotId,config.language),
-            submit:config.submit || (async ({format,descriptor,options,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,config.language,options,{signal}),format,snapshotId,signal,undefined,descriptor))});
+            load:()=>config.api.decisionReportOptions(projectId,snapshotId,window.TaxonomyContentLanguage?.documentLanguage(null) || null),
+            submit:config.submit || (async ({format,descriptor,options,language,signal})=>download(await config.api.downloadDecisionReport(projectId,snapshotId,format,language,options,{signal}),format,snapshotId,signal,undefined,descriptor))});
     }
     window.TaxonomyDecisionExport={open,openSaved,selection,query,download};
 }());

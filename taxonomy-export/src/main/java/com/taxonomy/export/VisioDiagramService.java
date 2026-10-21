@@ -78,7 +78,7 @@ public class VisioDiagramService {
 
                 VisioShape shape = new VisioShape(
                         shapeId,
-                        VisioPresentation.display(node.id(), 24, 1) + "\n" + VisioPresentation.display(node.label(), 24, 3) + "\nDepth " + node.depth(),
+                        VisioPresentation.display("N" + shapeId + " | " + node.id(), 24, 1) + "\n" + VisioPresentation.display(node.label(), 24, 3) + "\nDepth " + node.depth(),
                         x, y,
                         SHAPE_WIDTH, SHAPE_HEIGHT,
                         node.type(),

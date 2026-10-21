@@ -62,6 +62,7 @@ class PortfolioRecordsExportIT {
             new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.CURRENT_STATE,
                     new BackupScope.Workspace("repo-a", "private-a")), contents);
             assertThat(one(contents, "analysis-job").path("analysisReasonLength").isNull()).isTrue();
+            assertThat(one(contents, "analysis-job").path("analysisLanguage").isNull()).isTrue();
         }
     }
 
@@ -379,4 +380,16 @@ class PortfolioRecordsExportIT {
                     UUID.randomUUID().toString(), runId, "WORKER-OWNER", UUID.randomUUID().toString(), "LOCAL", "HTTP", Timestamp.from(NOW), Timestamp.from(NOW));
         }
     }
+    @ParameterizedTest @EnumSource(com.taxonomy.dto.AnalysisLanguage.class)
+    void portableJobPreservesItsRecordedContentLanguage(com.taxonomy.dto.AnalysisLanguage language) throws Exception {
+        try (var fixture = new Fixture()) {
+            graph(fixture, "repo-a", "private-a", "ALICE");
+            fixture.jdbc.update("update req_analysis_job set analysis_language=?", language.name());
+            var contents = new Contents();
+            new PortfolioBackupContributor(fixture.database).write(snapshot(BackupProfile.CURRENT_STATE,
+                    new BackupScope.Workspace("repo-a", "private-a")), contents);
+            assertThat(one(contents, "analysis-job").path("analysisLanguage").asText()).isEqualTo(language.value());
+        }
+    }
+
 }

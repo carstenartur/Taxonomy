@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.controller;
 
+import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ImportRequirementsResult;
@@ -35,6 +36,7 @@ public class AutopilotRequirementResponseAdvice implements ResponseBodyAdvice<Ob
             "/api/projects/(\\d+)/requirements(?:/(\\d+)(?:/versions)?)?(?:/import)?$");
     private static final String OPERATION_HEADER = "X-Taxonomy-Autopilot-Operation";
     private static final String OPERATION_COUNT_HEADER = "X-Taxonomy-Autopilot-Operation-Count";
+    private static final String ANALYSIS_LANGUAGE_HEADER = "X-Taxonomy-Analysis-Language";
 
     private final CopilotAutomationService automationService;
     private final WorkspaceResolver workspaceResolver;
@@ -72,24 +74,26 @@ public class AutopilotRequirementResponseAdvice implements ResponseBodyAdvice<Ob
         try {
             RequestIdentity identity = identity(request.getURI().getPath());
             if (identity == null) return body;
+            AnalysisLanguage analysisLanguage = AnalysisLanguage.fromValue(
+                    request.getHeaders().getFirst(ANALYSIS_LANGUAGE_HEADER));
             String username = workspaceResolver.resolveCurrentUsername();
             WorkspaceContext context = workspaceResolver.resolveCurrentContext();
             DispatchSummary dispatch = new DispatchSummary();
 
             if (body instanceof RequirementView requirement) {
                 dispatch.record(enqueue(
-                        identity.projectId(), requirement.id(), username, context));
+                        identity.projectId(), requirement.id(), username, context, analysisLanguage));
             } else if (body instanceof RequirementVersionView) {
                 if (identity.requirementId() != null) {
                     dispatch.record(enqueue(
-                            identity.projectId(), identity.requirementId(), username, context));
+                            identity.projectId(), identity.requirementId(), username, context, analysisLanguage));
                 }
             } else if (body instanceof ImportRequirementsResult imported
                     && imported.analysisJob() == null
                     && imported.requirements() != null) {
                 for (RequirementView requirement : imported.requirements()) {
                     dispatch.record(enqueue(
-                            identity.projectId(), requirement.id(), username, context));
+                            identity.projectId(), requirement.id(), username, context, analysisLanguage));
                 }
             }
 
@@ -111,10 +115,12 @@ public class AutopilotRequirementResponseAdvice implements ResponseBodyAdvice<Ob
             Long projectId,
             Long requirementId,
             String username,
-            WorkspaceContext context) {
-        return automationService.tryAutopilot(
-                        projectId, requirementId, username, context)
-                .map(CopilotOperationView::operationId);
+            WorkspaceContext context,
+            AnalysisLanguage analysisLanguage) {
+        Optional<CopilotOperationView> operation = analysisLanguage != null
+                ? automationService.tryAutopilot(projectId, requirementId, username, context, analysisLanguage)
+                : automationService.tryAutopilot(projectId, requirementId, username, context);
+        return operation.map(CopilotOperationView::operationId);
     }
 
     private static RequestIdentity identity(String path) {

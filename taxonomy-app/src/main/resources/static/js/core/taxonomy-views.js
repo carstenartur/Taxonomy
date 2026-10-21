@@ -139,7 +139,58 @@
         controls.appendChild(hint);
         surface.setAttribute('aria-describedby', hint.id);
         container.insertBefore(controls, container.children[0]);
+        installDiagramRelevanceControl(container);
         return controls;
+    }
+
+    /** Reuse the browse projection policy, including when the selected subset is empty. */
+    function installDiagramRelevanceControl(container) {
+        var source = document.getElementById && document.getElementById('diagramRelevanceFilter');
+        if (!source) { return; }
+        var toolbar = container.querySelector('.tax-diagram-controls');
+        if (!toolbar) {
+            toolbar = document.createElement('div'); toolbar.className = 'tax-diagram-controls';
+            toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', t('views.diagram.controls'));
+            container.insertBefore(toolbar, container.children[0]);
+        }
+        if (toolbar.querySelector('.tax-diagram-relevance')) { return; }
+        var label = document.createElement('label'); label.className = 'tax-diagram-relevance form-check d-flex align-items-center gap-2 mb-0';
+        var checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'form-check-input';
+        checkbox.checked = source.value === 'positive';
+        checkbox.addEventListener('change', function () {
+            source.value = checkbox.checked ? 'positive' : 'all';
+            source.dispatchEvent(new Event('change', {bubbles: true}));
+        });
+        var caption = document.createElement('span'); caption.textContent = t('views.diagram.relevantOnly');
+        label.append(checkbox, caption); label.title = t('view.relevance.hint');
+        toolbar.insertBefore(label, toolbar.querySelector('.tax-diagram-hint'));
+    }
+
+    function expandDiagramTree(root, update) {
+        function expand(node) {
+            if (node._children) { node.children = node._children; node._children = null; }
+            (node.children || []).forEach(expand);
+        }
+        expand(root);
+        hideTooltip();
+        update(root);
+    }
+
+    function installTreeActions(container, root, update, navigation, scores) {
+        var toolbar = container.querySelector('.tax-diagram-controls');
+        [
+            {key: 'views.diagram.expandAll', className: 'tax-diagram-expand-all', run: function () { expandDiagramTree(root, update); }},
+            {key: 'views.diagram.rationale', className: 'tax-diagram-rationale', run: function () {
+                var selected = navigation.current();
+                if (selected) { showDecisionReason(selected.data, scores, this); }
+            }}
+        ].forEach(function (action) {
+            var button = document.createElement('button'); button.type = 'button';
+            button.className = 'btn btn-sm btn-outline-secondary ' + action.className;
+            button.textContent = t(action.key); button.addEventListener('click', action.run);
+            if (action.className === 'tax-diagram-rationale') { button.setAttribute('aria-haspopup', 'dialog'); }
+            toolbar.insertBefore(button, toolbar.querySelector('.tax-diagram-hint'));
+        });
     }
 
     function installDiagramZoomControls(container, surface, selection, zoom, bounds, canvas) {
@@ -277,7 +328,8 @@
     }
 
     function treeLabel(node) {
-        return node.data.name ? node.data.code + ' \u2013 ' + node.data.name : node.data.code;
+        var label = node.data.name ? node.data.code + ' \u2013 ' + node.data.name : node.data.code;
+        return label + (node._treeEvidenceNumber ? ' [' + node._treeEvidenceNumber + ']' : '');
     }
 
     /** Shared screen/export geometry: complete text and badges occupy space, too. */
@@ -680,6 +732,7 @@
         var treeNavigation = createDiagramNavigation(container, svg.node(), {
             scores: scores, activate: function (node) { toggleDiagramBranch(node, update); }
         });
+        installTreeActions(container, root, update, treeNavigation, scores);
 
         // Content group – repositioned inside update() to keep all nodes visible
         var g = zoomLayer.append('g');
@@ -870,6 +923,32 @@
         return function (value) { return context.measureText(value).width; };
     }
 
+    /** Stable references only for recorded explanations in the selected diagram. */
+    function diagramEvidence(nodes, scores, captionAreas) {
+        var reasons = window.TaxonomyState && window.TaxonomyState.currentReasons || {};
+        var selected = new Map();
+        nodes.forEach(function (node) {
+            if (node.data.code !== '__root__' && !selected.has(node.data.code)) {
+                selected.set(node.data.code, {node: node, data: node.data, area: false});
+            }
+        });
+        // Area containers remain captions outside D3, but their saved reasons belong
+        // to this same selected output. Ordinary roots may already be present above.
+        (captionAreas || []).forEach(function (area) {
+            if (area.code !== '__root__' && !selected.has(area.code)) {
+                selected.set(area.code, {data: area, area: true});
+            }
+        });
+        return Array.from(selected.values()).filter(function (entry) {
+            return typeof reasons[entry.data.code] === 'string' && reasons[entry.data.code].trim();
+        }).sort(function (a, b) { return a.data.code.localeCompare(b.data.code); }).map(function (entry, index) {
+            entry.number = index + 1; entry.reason = reasons[entry.data.code];
+            entry.score = scores && Number.isFinite(scores[entry.data.code])
+                ? entry.area ? t('browse.container.relevance', scores[entry.data.code]) : scoreText(entry.data.code, scores[entry.data.code]) : '';
+            return entry;
+        });
+    }
+
     /**
      * The hierarchy remains unchanged. Each subtree reserves all occupied node/label/action
      * bounds; area captions and their wrapped lines occupy their own band above the subtree.
@@ -897,6 +976,9 @@
             var order = captionAreas.map(function (area) { return area.code; });
             panels.sort(function (a, b) { return order.indexOf(a.area.code) - order.indexOf(b.area.code); });
         }
+        var selectedAreas = panels.map(function (panel) { return panel.area; });
+        var evidenceByCode = {};
+        diagramEvidence(root.descendants(), scores, selectedAreas).forEach(function (entry) { evidenceByCode[entry.data.code] = entry.number; });
         panels.forEach(function (panel) {
             panel.top = cursor;
             panel.lines = decisionLines(containerLabel(panel.area, scores), measure, 900);
@@ -908,7 +990,12 @@
                 node.lines = decisionLines(label, measure, textWidth);
                 // Bold measurement conservatively bounds regular labels; action and stroke get their own padding.
                 node.contextHeight = node.parent && node.parent.data.code !== '__root__'
-                    ? Math.max(36, decisionLines(t('views.diagram.printParent', node.parent.data.code, 999999), measure, textWidth).length * 20 + 16) : 36;
+                    ? Math.max(36, Math.max(
+                        decisionLines(t('views.diagram.printParent', node.parent.data.code, 999999), measure, textWidth).length,
+                        decisionLines(t('views.diagram.printSectionParent', node.parent.data.code, 999999), measure, textWidth).length) * 20 + 16) : 36;
+                node.evidenceNumber = evidenceByCode[node.data.code];
+                node.evidenceLines = node.evidenceNumber ? decisionLines(t('views.diagram.evidenceReference', node.evidenceNumber), measure, textWidth) : [];
+                node.contextHeight += node.evidenceLines.length * 20;
                 node.nodeHeight = Math.max(48, node.lines.length * 20 + node.contextHeight);
                 node.subtreeHeight = Math.max(node.nodeHeight, (node.children || []).reduce(function (sum, child) { return sum + size(child) + 16; }, 0) - (node.children ? 16 : 0));
                 return node.subtreeHeight;
@@ -933,7 +1020,7 @@
         var rankMap = {};
         Object.keys(scores).filter(function (code) { return knownCodes.has(code) && Number.isFinite(scores[code]) && scores[code] > 0; })
             .sort(function (a, b) { return scores[b] - scores[a]; }).slice(0, 3).forEach(function (code, index) { rankMap[code] = index + 1; });
-        return {panels: panels, nodes: nodes, width: width, height: cursor, scores: scores, rankMap: rankMap, measure: measure, textWidth: textWidth, columnsPerPage: metrics.columnsPerPage || 3};
+        return {panels: panels, nodes: nodes, captionAreas: selectedAreas, width: width, height: cursor, scores: scores, rankMap: rankMap, measure: measure, textWidth: textWidth, columnsPerPage: metrics.columnsPerPage || 3};
     }
 
     function showDecisionReason(node, scores, trigger) {
@@ -974,12 +1061,13 @@
     /** Each node fits one landscape page at 14px type, with its parent code as continuation context. */
     function buildDecisionPrintPages(layout, doc) {
         var pages = [];
+        var continuationKey = layout.singleSheet ? 'views.diagram.printSection' : 'views.diagram.printContinue';
         layout.panels.forEach(function (panel) {
             var batches = [];
             var headerLines = panel.lines;
             var rootLines = [];
             panel.roots.forEach(function (root) {
-                rootLines = rootLines.concat(decisionLines(t('views.diagram.printRoots', root.data.code) + ' · ' + t('views.diagram.printContinue', 999999, 999999), layout.measure, 900));
+                rootLines = rootLines.concat(decisionLines(t('views.diagram.printRoots', root.data.code) + ' · ' + t(continuationKey, 999999, 999999), layout.measure, 900));
             });
             // A short overview belongs in the page header; only extensive root lists
             // need dedicated overview continuation sheets.
@@ -1035,13 +1123,13 @@
             batches.forEach(function (batch, index) { batch.nodes.forEach(function (node) { if (!nodePage[node.data.code]) { nodePage[node.data.code] = prefixPages + index + 1; } }); });
             rootLines = [];
             panel.roots.forEach(function (root) {
-                rootLines = rootLines.concat(decisionLines(t('views.diagram.printRoots', root.data.code) + ' · ' + t('views.diagram.printContinue', nodePage[root.data.code], totalPages), layout.measure, 900));
+                rootLines = rootLines.concat(decisionLines(t('views.diagram.printRoots', root.data.code) + ' · ' + t(continuationKey, nodePage[root.data.code], totalPages), layout.measure, 900));
             });
             for (var overview = 0; overview < overviewCount; overview++) {
                 var overviewPage = doc.createElement('section'); overviewPage.className = 'diagram-print-page decision-print-page';
                 overviewPage.setAttribute('data-taxonomy-panel', panel.area.code);
                 var overviewHeading = doc.createElement('h2');
-                overviewHeading.textContent = panel.area.code + ' · ' + t('views.diagram.printOverview') + ' · ' + t('views.diagram.printContinue', overview + 1, totalPages);
+                overviewHeading.textContent = panel.area.code + ' · ' + t('views.diagram.printOverview') + ' · ' + t(continuationKey, overview + 1, totalPages);
                 overviewPage.appendChild(overviewHeading);
                 var overviewSvg = decisionSvgElement(doc, overviewPage, 'svg', {viewBox: '0 0 960 600', width: 960, height: 600});
                 rootLines.slice(overview * 28, (overview + 1) * 28).forEach(function (line, index) {
@@ -1053,7 +1141,7 @@
                 for (var captionLine = 0; captionLine < headerLines.length; captionLine += 28) {
                     var captionPage = doc.createElement('section'); captionPage.className = 'diagram-print-page decision-print-page';
                     captionPage.setAttribute('data-taxonomy-panel', panel.area.code);
-                    var captionTitle = doc.createElement('h2'); captionTitle.textContent = panel.area.code + ' · ' + t('views.diagram.printContinue', overviewCount + Math.floor(captionLine / 28) + 1, totalPages);
+                    var captionTitle = doc.createElement('h2'); captionTitle.textContent = panel.area.code + ' · ' + t(continuationKey, overviewCount + Math.floor(captionLine / 28) + 1, totalPages);
                     captionPage.appendChild(captionTitle);
                     var captionSvg = decisionSvgElement(doc, captionPage, 'svg', {viewBox: '0 0 960 600', width: 960, height: 600});
                     headerLines.slice(captionLine, captionLine + 28).forEach(function (line, index) {
@@ -1069,7 +1157,7 @@
                 // Very long area headings wrap in a bounded header, rather than consuming the diagram page.
                 heading.style.cssText = 'font-size:14px;line-height:20px;max-width:900px;margin:0 0 6px;overflow-wrap:anywhere';
                 page.appendChild(heading);
-                var continuation = doc.createElement('p'); continuation.textContent = t('views.diagram.printContinue', prefixPages + index + 1, totalPages) + (batch.nodes.length ? ' · ' + t('views.diagram.printContext') : '');
+                var continuation = doc.createElement('p'); continuation.textContent = t(continuationKey, prefixPages + index + 1, totalPages) + (batch.nodes.length ? ' · ' + t('views.diagram.printContext') : '');
                 continuation.style.cssText = 'font-size:14px;line-height:20px;margin:0 0 8px'; page.appendChild(continuation);
                 if (inlineOverview) {
                     var rootOverview = doc.createElement('p');
@@ -1104,7 +1192,10 @@
         });
         nodes.forEach(function (node) {
             var box = {left: node.box.left + offsetX, right: node.box.right + offsetX, top: node.box.top + offsetY, bottom: node.box.bottom + offsetY};
-            var group = decisionSvgElement(doc, svg, 'g', {'data-print-node': node.fragment ? '' : node.data.code, 'data-print-fragment': node.data.code, 'data-occupied-bounds': JSON.stringify(box)});
+            var attributes = {'data-print-fragment': node.data.code, 'data-occupied-bounds': JSON.stringify(box)};
+            // A continued label is another fragment of the same node, not another node identity.
+            if (!node.fragment) { attributes['data-print-node'] = node.data.code; }
+            var group = decisionSvgElement(doc, svg, 'g', attributes);
             decisionSvgElement(doc, group, 'rect', {class: 'decision-print-card', x: box.left + 1, y: box.top + 1,
                 width: box.right - box.left - 2, height: box.bottom - box.top - 2, rx: 6, fill: '#FFFFFF', stroke: '#334155', 'stroke-width': 2});
             decisionSvgElement(doc, group, 'circle', {cx: node.y + offsetX, cy: node.x + offsetY, r: 7, fill: '#fff', stroke: '#334155', 'stroke-width': 1.5});
@@ -1112,28 +1203,116 @@
                 decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.top + 16 + lineIndex * 20, fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
             });
             if (nodePage && node.parent && node.parent.data.code !== '__root__') {
-                decisionLines(t('views.diagram.printParent', node.parent.data.code, nodePage[node.parent.data.code]), layout.measure, layout.textWidth).forEach(function (line, index) {
+                decisionLines(t(layout.singleSheet ? 'views.diagram.printSectionParent' : 'views.diagram.printParent', node.parent.data.code, nodePage[node.parent.data.code]), layout.measure, layout.textWidth).forEach(function (line, index) {
                     decisionSvgElement(doc, group, 'text', {x: node.y + offsetX + 12, y: box.bottom - node.contextHeight + 20 + index * 20, fill: '#334155', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+                });
+            }
+            if (node.evidenceNumber) {
+                var reference = decisionSvgElement(doc, group, 'a', {href: '#diagram-evidence-' + node.evidenceNumber});
+                node.evidenceLines.forEach(function (line, index) {
+                    decisionSvgElement(doc, reference, 'text', {x: node.y + offsetX + 12,
+                        y: box.bottom - 12 - (node.evidenceLines.length - index - 1) * 20,
+                        fill: '#1d4ed8', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif', 'text-decoration': 'underline'}, line);
                 });
             }
         });
     }
 
-    function buildDecisionPrintSheet(layout, doc) {
-        var page = doc.createElement('section'); page.className = 'diagram-print-page decision-print-page';
-        var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg',
-            width: layout.width, height: layout.height, viewBox: '0 0 ' + layout.width + ' ' + layout.height,
-            role: 'img', 'aria-label': t('views.diagram.printTitle')});
-        layout.panels.forEach(function (panel) {
-            var group = decisionSvgElement(doc, svg, 'g', {'data-taxonomy-panel': panel.area.code});
-            panel.lines.forEach(function (line, index) {
-                decisionSvgElement(doc, group, 'text', {x: 16, y: panel.top + 16 + index * 20,
-                    fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+    function detachedPrintDocument(doc) {
+        return {body: doc.createElement('div'), createElement: doc.createElement.bind(doc), createElementNS: doc.createElementNS.bind(doc)};
+    }
+
+    /** Visible text, with no ellipsis or tooltip dependency; long reasons continue on the next section. */
+    function buildDiagramEvidencePages(nodes, scores, doc, measure, captionAreas) {
+        var pages = [], lines = [], lineLimit = 27;
+        function flush() {
+            if (!lines.length) { return; }
+            var page = doc.createElement('section'); page.className = 'diagram-print-page diagram-evidence-page';
+            var heading = doc.createElement('h2'); heading.textContent = t('views.diagram.evidenceTitle');
+            heading.style.cssText = 'font-size:14px;line-height:20px;margin:0 0 8px'; page.appendChild(heading);
+            var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg', width: 1000, height: lines.length * 20 + 24,
+                viewBox: '0 0 1000 ' + (lines.length * 20 + 24), role: 'img', 'aria-label': heading.textContent});
+            lines.forEach(function (line, index) {
+                var attributes = {x: 12, y: 20 + index * 20, fill: '#111827', 'font-size': 14, 'font-family': 'Arial, Helvetica, sans-serif',
+                    style: 'font-size:14px', 'data-evidence-code': line.code};
+                attributes[line.area ? 'data-evidence-area' : 'data-evidence-node'] = line.code;
+                if (line.first) { attributes.id = 'diagram-evidence-' + line.number; }
+                if (line.heading) { attributes['font-weight'] = 'bold'; }
+                decisionSvgElement(doc, svg, 'text', attributes, line.text);
             });
-            drawDecisionPrintNodes(doc, group, panel.nodes, layout, 0, 0);
+            doc.body.appendChild(page); pages.push(page); lines = [];
+        }
+        diagramEvidence(nodes, scores, captionAreas).forEach(function (entry) {
+            var node = entry.data;
+            var label = t('views.diagram.evidenceReference', entry.number) + ' · ' + node.code + (node.name ? ' – ' + node.name : '')
+                + (entry.score ? ' · ' + entry.score : '');
+            var heading = decisionLines(label, measure, 976);
+            if (lines.length && lines.length + Math.min(heading.length + 2, lineLimit) > lineLimit) { flush(); }
+            var entryLines = heading.map(function (line, index) { return {text: line, heading: true, first: index === 0}; });
+            String(entry.reason).split(/\r?\n/).forEach(function (paragraph) {
+                decisionLines(paragraph, measure, 976).forEach(function (line) { entryLines.push({text: line}); });
+            });
+            entryLines.forEach(function (line) {
+                if (lines.length === lineLimit) { flush(); }
+                line.code = node.code; line.area = entry.area; line.number = entry.number; lines.push(line);
+            });
+            if (lines.length < lineLimit) { lines.push({text: '', code: node.code, area: entry.area}); }
+        });
+        flush();
+        return pages;
+    }
+
+    /** Pack readable sections into a balanced large sheet without reducing font size. */
+    function arrangePrintSheet(pages, doc, measure, className) {
+        var tiles = pages.map(function (page) {
+            var height = 12, width = 1000, blocks = [];
+            Array.from(page.children).forEach(function (child) {
+                if (String(child.tagName).toLowerCase() === 'svg') {
+                    blocks.push({svg: child, y: height});
+                    width = Math.max(width, Number(child.getAttribute('width')));
+                    height += Number(child.getAttribute('height')) + 12;
+                } else {
+                    String(child.textContent || '').split(/\r?\n/).forEach(function (paragraph) {
+                        decisionLines(paragraph, measure, 976).forEach(function (line) {
+                            blocks.push({text: line, y: height + 16}); height += 20;
+                        });
+                    });
+                    height += 8;
+                }
+            });
+            return {width: width + 24, height: height, blocks: blocks, panel: page.getAttribute('data-taxonomy-panel')};
+        });
+        var tileWidth = Math.max.apply(null, [1040].concat(tiles.map(function (tile) { return tile.width; })));
+        var tileHeight = Math.max.apply(null, [640].concat(tiles.map(function (tile) { return tile.height; })));
+        var columns = Math.max(1, Math.round(Math.sqrt(tiles.length * Math.SQRT2 * tileHeight / tileWidth)));
+        var rows = Math.max(1, Math.ceil(tiles.length / columns));
+        var width = columns * (tileWidth + 24) + 8, height = rows * (tileHeight + 24) + 8;
+        var page = doc.createElement('section'); page.className = 'diagram-print-page ' + (className || 'decision-print-page');
+        var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg', width: width, height: height,
+            viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': t('views.diagram.printTitle')});
+        tiles.forEach(function (tile, index) {
+            var group = decisionSvgElement(doc, svg, 'g', {'data-print-section': index + 1,
+                transform: 'translate(' + (16 + index % columns * (tileWidth + 24)) + ',' + (16 + Math.floor(index / columns) * (tileHeight + 24)) + ')'});
+            if (tile.panel) { group.setAttribute('data-taxonomy-panel', tile.panel); }
+            decisionSvgElement(doc, group, 'rect', {x: 0, y: 0, width: tileWidth, height: tileHeight, fill: '#fff', stroke: '#cbd5e1'});
+            tile.blocks.forEach(function (block) {
+                if (block.svg) {
+                    block.svg.setAttribute('x', 12); block.svg.setAttribute('y', block.y); group.appendChild(block.svg);
+                } else {
+                    decisionSvgElement(doc, group, 'text', {x: 12, y: block.y, fill: '#111827', 'font-size': 14,
+                        'font-family': 'Arial, Helvetica, sans-serif', style: 'font-size:14px'}, block.text);
+                }
+            });
         });
         doc.body.appendChild(page);
-        return {width: layout.width, height: layout.height};
+        return {width: width, height: height, svg: svg};
+    }
+
+    function buildDecisionPrintSheet(layout, doc, className) {
+        var staged = detachedPrintDocument(doc);
+        var pages = buildDecisionPrintPages(Object.assign({}, layout, {singleSheet: true}), staged);
+        pages = pages.concat(buildDiagramEvidencePages(layout.nodes, layout.scores, staged, layout.measure, layout.captionAreas));
+        return arrangePrintSheet(pages, doc, layout.measure, className);
     }
 
     function decisionPrintLinkWidth(node, scores, rankMap) {
@@ -1192,31 +1371,26 @@
 
     function printDecisionDiagram(layout, container, mode) {
         printDiagram(container, mode, 'views.diagram.printTitle', function (doc, single) {
-            return single ? buildDecisionPrintSheet(layout, doc) : buildDecisionPrintPages(layout, doc);
+            return single ? buildDecisionPrintSheet(layout, doc)
+                : buildDecisionPrintPages(layout, doc).concat(buildDiagramEvidencePages(layout.nodes, layout.scores, doc, layout.measure, layout.captionAreas));
         });
     }
 
     function printTreeDiagram(data, scores, container, mode) {
         printDiagram(container, mode, 'views.diagram.printTreeTitle', function (doc, single) {
-            var exported = doc.importNode(buildExportSVG(data, scores, {expandAll: true}), true);
-            var width = Number(exported.getAttribute('width')), height = Number(exported.getAttribute('height'));
-            exported.id = 'taxonomy-print-tree';
-            for (var y = 0; y < height; y += single ? height : 620) {
-                for (var x = 0; x < width; x += single ? width : 1040) {
-                    var page = doc.createElement('section'); page.className = 'diagram-print-page tree-print-page';
-                    if (single) { page.appendChild(exported); }
-                    else {
-                        var tileWidth = Math.min(1040, width - x), tileHeight = Math.min(620, height - y);
-                        var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg', width: tileWidth, height: tileHeight,
-                            viewBox: x + ' ' + y + ' ' + tileWidth + ' ' + tileHeight});
-                        // Keep one vector source for all A4 tiles, including very large Canvas taxonomies.
-                        if (!x && !y) { decisionSvgElement(doc, svg, 'defs', {}).appendChild(exported); }
-                        decisionSvgElement(doc, svg, 'use', {href: '#taxonomy-print-tree'});
-                    }
-                    doc.body.appendChild(page);
-                }
-            }
-            return {width: width, height: height};
+            var root = d3.hierarchy({code: '__root__', children: contentRoots(data)}), areas = {};
+            data.forEach(function (area) {
+                if (isTaxonomyContainer(area)) { (area.children || []).forEach(function (branch) { areas[branch.code] = area; }); }
+                else { areas[area.code] = area; }
+            });
+            // Reflow complete names and percentages into measured cards, so page boundaries
+            // never slice a label or a glyph. The live SVG/Canvas hierarchy stays untouched.
+            var layout = layoutDecisionPanels(root, scores || {}, areas, decisionMeasure(), data,
+                {textWidth: 174, cardWidth: 210, columnPitch: 240, columnsPerPage: 4});
+            if (single) { return buildDecisionPrintSheet(layout, doc, 'tree-print-page'); }
+            var pages = buildDecisionPrintPages(layout, doc);
+            pages.forEach(function (page) { page.className = 'diagram-print-page tree-print-page'; });
+            return pages.concat(buildDiagramEvidencePages(layout.nodes, layout.scores, doc, layout.measure, layout.captionAreas));
         });
     }
 
@@ -1464,7 +1638,7 @@
                 .style('font-size', '13px')
                 .style('pointer-events', 'none');
 
-            nodeEnter.filter(function (d) { return Number.isFinite(scores[d.data.code]); })
+            nodeEnter.filter(function (d) { return Number.isFinite(scores[d.data.code]) || d.evidenceNumber; })
                 .append('g').attr('class', 'dm-reason-action').attr('role', 'button').attr('tabindex', '0')
                 .attr('aria-haspopup', 'dialog')
                 .attr('aria-label', function (d) { return t('views.diagram.rationaleFor', d.data.code + ' ' + (d.data.name || '')); })
@@ -1961,6 +2135,7 @@
             return {x: 0, y: 0, width: canvas.width / dpr, height: canvas.height / dpr};
         }, true);
         installDiagramPrintControls(container, function (mode) { printTreeDiagram(data, scores, container, mode); });
+        installTreeActions(container, root, performLayout, canvasNavigation, scores);
 
         // Initial layout and draw
         root.x0 = 0;
@@ -2008,11 +2183,20 @@
             collapseInitialTree(root);
         }
 
+        var evidence = diagramEvidence(root.descendants(), scores, areas), areaEvidence = {};
+        evidence.forEach(function (entry) {
+            if (entry.node) { entry.node._treeEvidenceNumber = entry.number; }
+            else { areaEvidence[entry.data.code] = entry.number; }
+        });
+        function areaLabel(area) {
+            return containerLabel(area, scores) + (areaEvidence[area.code] ? ' [' + areaEvidence[area.code] + ']' : '');
+        }
+
         var layout = layoutTaxonomyTree(root, scores, measure);
         var nodes = layout.nodes;
         var links = layout.links;
         var headingWidth = areas.reduce(function (width, area) {
-            return Math.max(width, measure(containerLabel(area, scores), 'bold ' + TREE_LABEL_FONT));
+            return Math.max(width, measure(areaLabel(area), 'bold ' + TREE_LABEL_FONT));
         }, 0);
         var svgW = Math.max(800, Math.max(layout.width, headingWidth) + marginLeft + marginRight);
         var svgH = Math.max(400, layout.height + marginTop + marginBottom);
@@ -2046,8 +2230,10 @@
             heading.setAttribute('x', marginLeft);
             heading.setAttribute('y', 20 + index * 28);
             heading.setAttribute('font-weight', 'bold');
-            heading.textContent = containerLabel(area, scores);
-            svg.appendChild(heading);
+            heading.textContent = areaLabel(area);
+            if (areaEvidence[area.code]) {
+                decisionSvgElement(document, svg, 'a', {href: '#diagram-evidence-' + areaEvidence[area.code]}).appendChild(heading);
+            } else { svg.appendChild(heading); }
         });
 
         var g = document.createElementNS(svgNS, 'g');
@@ -2067,6 +2253,7 @@
             if (d.data.code === '__root__') { return; }
             var nodeG = document.createElementNS(svgNS, 'g');
             nodeG.setAttribute('transform', 'translate(' + d.y + ',' + d.x + ')');
+            nodeG.setAttribute('data-export-node', d.data.code);
 
             var circle = document.createElementNS(svgNS, 'circle');
             circle.setAttribute('r', '7');
@@ -2096,7 +2283,10 @@
             text.textContent = label;
             text.setAttribute('x', '10');
             text.setAttribute('text-anchor', 'start');
-            nodeG.appendChild(text);
+            if (d._treeEvidenceNumber) {
+                text.setAttribute('text-decoration', 'underline');
+                decisionSvgElement(document, nodeG, 'a', {href: '#diagram-evidence-' + d._treeEvidenceNumber}).appendChild(text);
+            } else { nodeG.appendChild(text); }
 
             // Score badge
             if (hasScoreLabel(d.data.code, scores)) {
@@ -2112,6 +2302,20 @@
 
             g.appendChild(nodeG);
         });
+
+        if (evidence.length) {
+            var staged = detachedPrintDocument(document);
+            var evidenceMeasure = function (value) { return measure(value, 'bold 14px Arial, Helvetica, sans-serif'); };
+            var evidencePages = buildDiagramEvidencePages(nodes, scores, staged, evidenceMeasure, areas);
+            var appendix = arrangePrintSheet(evidencePages, staged, evidenceMeasure, 'diagram-evidence-page');
+            var below = {width: Math.max(svgW, appendix.width + 40), height: svgH + appendix.height + 24, x: 20, y: svgH + 12};
+            var beside = {width: svgW + appendix.width + 24, height: Math.max(svgH, appendix.height + 40), x: svgW + 12, y: 20};
+            var combined = Math.abs(Math.log(beside.width / beside.height / Math.SQRT2)) < Math.abs(Math.log(below.width / below.height / Math.SQRT2)) ? beside : below;
+            appendix.svg.setAttribute('x', combined.x); appendix.svg.setAttribute('y', combined.y); svg.appendChild(appendix.svg);
+            svg.setAttribute('width', combined.width); svg.setAttribute('height', combined.height);
+            svg.setAttribute('viewBox', '0 0 ' + combined.width + ' ' + combined.height);
+            bg.setAttribute('width', combined.width); bg.setAttribute('height', combined.height);
+        }
 
         return svg;
     }
@@ -2229,6 +2433,7 @@
         renderSunburst: renderSunburst,
         filterRelevance: filterRelevance,
         filterZeroRelevance: filterZeroRelevance,
+        installDiagramRelevanceControl: installDiagramRelevanceControl,
         renderTreeDiagram: renderTreeDiagram,
         renderTreeCanvas: renderTreeCanvas,
         renderDecisionMap: renderDecisionMap,

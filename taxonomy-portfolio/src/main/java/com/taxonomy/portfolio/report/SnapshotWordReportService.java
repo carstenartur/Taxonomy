@@ -68,9 +68,9 @@ public class SnapshotWordReportService {
         if (snapshotId == null || snapshotId.isBlank())
             throw PortfolioException.validation("snapshotId is required");
         String id = snapshotId.strip();
-        Locale language = locale == null ? Locale.ENGLISH : locale;
-        var decision = options == null ? decisions.generate(projectId, id, username, context, language)
-                : decisions.generate(projectId, id, username, context, language, options);
+        var decision = options == null ? decisions.generate(projectId, id, username, context, locale)
+                : decisions.generate(projectId, id, username, context, locale, options);
+        Locale language = locale == null ? Locale.forLanguageTag(decision.languageTag()) : locale;
         if (options != null && !options.includes(DecisionReportOptions.Section.ARCHITECTURE)) return new Source(decision, null);
         if (decision.scope().analysisScope() != null && !decision.scope().analysisScope().includesRelations())
             return new Source(decision, null);
@@ -157,7 +157,7 @@ public class SnapshotWordReportService {
                     + String.join(", ", decision.scope().reportRoots())
                     + " · " + (german ? "Kontext außerhalb der Auswahl: " : "Boundary context: ")
                     + String.join(", ", selection.boundaryCodes())
-                    + " · Source graph SHA-256: " + selection.sourceGraphSha256();
+                    + " · " + labels.sourceGraphDigest() + ": " + selection.sourceGraphSha256();
         }
         var gaps = new LinkedHashSet<String>();
         gaps.addAll(decision.warnings());
@@ -193,6 +193,23 @@ public class SnapshotWordReportService {
                         scene,
                         decision.scope().decisionTree(),
                         evidence);
+        var nodeReasons = new LinkedHashMap<String, String>();
+        for (var node : graph.nodes()) {
+            var reasons = new LinkedHashSet<String>();
+            String captured = p.nodeReasons().get(node.id());
+            if (captured != null && !captured.isBlank()) reasons.add(captured);
+            String recorded = decision.scope().recordedReasons().get(node.id());
+            if (recorded != null && !recorded.isBlank() && (captured == null || !captured.contains(recorded)))
+                reasons.add(recorded);
+            if (!reasons.isEmpty()) nodeReasons.put(node.id(), String.join("\n\n", reasons));
+        }
+        var relationReasons = new LinkedHashMap<String, Map<String, String>>();
+        var recordedRelationReasons = p.relationReasons();
+        for (var edge : graph.edges()) {
+            var captured = recordedRelationReasons.get(edge.id());
+            if (captured != null) relationReasons.put(edge.id(), captured);
+        }
+        document = document.withNodeReasons(nodeReasons).withRelationReasons(relationReasons);
         // Enforce the complete document ceiling before allocating any PNG or DOCX buffers.
         if (wordLayout) new ArchitectureFigurePlanner().plan(graph, scene);
         return document;

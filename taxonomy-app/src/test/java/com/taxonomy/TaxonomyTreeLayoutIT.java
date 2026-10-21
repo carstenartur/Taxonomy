@@ -82,6 +82,32 @@ class TaxonomyTreeLayoutIT {
 
     @ParameterizedTest
     @ValueSource(strings = {"renderTreeDiagram", "renderTreeCanvas"})
+    void expandAllOpensTheCompleteSelectedTreeAndMakesItsSavedReasonAvailable(String renderer) {
+        driver.executeScript("""
+                window.data=[{code:'fixture-1',children:[{code:'fixture-2',children:[
+                  {code:'fixture-3',children:[{code:'fixture-4',children:[{code:'fixture-5'}]}]}]}]}];
+                window.TaxonomyState={currentReasons:{'fixture-5':'Complete saved reason. '.repeat(100)+'FINAL TREE REASON'}};
+                window.original=JSON.stringify(data);
+                TaxonomyViews[arguments[0]](document.getElementById('tree'),data,{'fixture-5':0.75});
+                """, renderer);
+        if (renderer.equals("renderTreeDiagram")) settled();
+        driver.findElement(By.cssSelector(".tax-diagram-expand-all")).click();
+        if (renderer.equals("renderTreeDiagram")) {
+            settled();
+            assertThat(driver.findElements(By.cssSelector("[data-diagram-node]"))).hasSize(5);
+            driver.findElement(By.cssSelector("[data-diagram-node='fixture-1']")).sendKeys(Keys.END);
+        } else {
+            var canvas = driver.findElement(By.cssSelector("canvas"));
+            canvas.sendKeys(Keys.END);
+            assertThat(canvas.getAttribute("data-diagram-node")).isEqualTo("fixture-5");
+        }
+        driver.findElement(By.cssSelector(".tax-diagram-rationale")).click();
+        assertThat(driver.findElement(By.id("decisionReasonDialog")).getText()).contains("FINAL TREE REASON", "0.75%");
+        assertThat(driver.executeScript("return JSON.stringify(data)===original")).isEqualTo(true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"renderTreeDiagram", "renderTreeCanvas"})
     void openingAnInitiallyCollapsedBranchRevealsOneLevel(String renderer) {
         driver.executeScript("""
                 window.data=[{code:'fixture-1',children:[{code:'fixture-2',children:[
@@ -174,8 +200,10 @@ class TaxonomyTreeLayoutIT {
                 window.data=[{code:'fixture-1',children:[{code:'fixture-2',children:[
                   {code:'fixture-3',name:'Printable branch label '.repeat(12),children:[{code:'fixture-4',children:[{code:'fixture-5'}]}]}]},
                   {code:'fixture-zero'}]}];
-                window.scores={'fixture-1':0,'fixture-2':0,'fixture-3':0,'fixture-4':0,'fixture-5':75,'fixture-zero':0};
-                window.savedBefore=JSON.stringify({data,scores});
+                window.scores={'fixture-1':0,'fixture-2':0,'fixture-3':0,'fixture-4':0,'fixture-5':0.75,'fixture-zero':0};
+                window.TaxonomyState={currentReasons:{'fixture-5':'Complete saved rationale. '.repeat(200)+'FINAL TREE EXPLANATION',
+                    'fixture-zero':'EXCLUDED ZERO REASON'}};
+                window.savedBefore=JSON.stringify({data,scores,reasons:TaxonomyState.currentReasons});
                 TaxonomyViews[arguments[0]](document.getElementById('tree'),TaxonomyViews.filterZeroRelevance(data,scores,{}),scores);
                 """, renderer);
         if (renderer.equals("renderTreeDiagram")) settled();
@@ -192,30 +220,27 @@ class TaxonomyTreeLayoutIT {
             driver.findElement(By.cssSelector(".tax-diagram-print-button")).click();
             assertThat(driver.executeScript("""
                     const doc=printFrame.contentDocument;
-                    return ['fixture-1','fixture-2','fixture-3','fixture-4','fixture-5','75%'].every(text=>doc.body.textContent.includes(text))
-                        && !doc.body.textContent.includes('fixture-zero')
+                    return ['fixture-1','fixture-2','fixture-3','fixture-4','fixture-5','0.75%','FINAL TREE EXPLANATION'].every(text=>doc.body.textContent.includes(text))
+                        && !doc.body.textContent.includes('fixture-zero') && !doc.body.textContent.includes('EXCLUDED ZERO REASON')
                         && doc.querySelectorAll('svg').length>0 && doc.querySelectorAll('canvas').length===0
                         && document.querySelector('#tree').innerHTML===screenBefore
                         && document.querySelector('canvas')?.toDataURL()===canvasBefore
-                        && JSON.stringify({data,scores})===savedBefore;
+                        && JSON.stringify({data,scores,reasons:TaxonomyState.currentReasons})===savedBefore;
                     """)).as(renderer+" complete filtered vector print in "+mode).isEqualTo(true);
-            int plannedPages=((Number)driver.executeScript("return printFrame.contentDocument.querySelectorAll('.tree-print-page').length")).intValue();
+            int plannedPages=((Number)driver.executeScript("return printFrame.contentDocument.querySelectorAll('.diagram-print-page').length")).intValue();
             if (mode.equals("single")) assertThat(plannedPages).isEqualTo(1);
             else {
                 assertThat(plannedPages).isGreaterThan(1);
                 assertThat(driver.executeScript("""
-                        const doc=printFrame.contentDocument, source=doc.getElementById('taxonomy-print-tree').viewBox.baseVal;
-                        const tiles=[...doc.querySelectorAll('.tree-print-page > svg')].map(svg=>svg.viewBox.baseVal);
-                        const inside=tiles.every(tile=>tile.width>0 && tile.height>0 && tile.x>=source.x && tile.y>=source.y
-                            && tile.x+tile.width<=source.x+source.width && tile.y+tile.height<=source.y+source.height);
-                        const separate=tiles.every((a,i)=>tiles.slice(i+1).every(b=>a.x+a.width<=b.x || b.x+b.width<=a.x
-                            || a.y+a.height<=b.y || b.y+b.height<=a.y));
-                        const covered=tiles.reduce((area,tile)=>area+tile.width*tile.height,0);
-                        return inside && separate && Math.abs(covered-source.width*source.height)<0.01
-                            && tiles.length===doc.querySelectorAll('.tree-print-page').length
-                            && [...doc.querySelectorAll('.tree-print-page > svg > use')].length===tiles.length
-                            && [...doc.querySelectorAll('use')].every(node=>node.getBBox().width>0);
-                        """)).as(renderer+" A4 tiles cover the complete tree without gaps or overlaps").isEqualTo(true);
+                        const doc=printFrame.contentDocument;
+                        const diagrams=[...doc.querySelectorAll('.tree-print-page > svg')];
+                        const intact=diagrams.every(svg=>{const vb=svg.viewBox.baseVal;
+                            return vb.width<=1040 && vb.height<=620 && [...svg.querySelectorAll('[data-print-fragment]')].every(node=>{
+                                const b=node.getBBox();return b.x>=0 && b.y>=0 && b.x+b.width<=vb.width && b.y+b.height<=vb.height;});});
+                        return intact && ['fixture-1','fixture-2','fixture-3','fixture-4','fixture-5'].every(code=>
+                            doc.querySelectorAll('[data-print-node="'+code+'"]').length===1)
+                            && doc.querySelectorAll('.diagram-evidence-page').length>0;
+                        """)).as(renderer+" A4 pages retain complete labels, scores, and linked full evidence").isEqualTo(true);
             }
             String html=(String)driver.executeScript("return printFrame.contentDocument.documentElement.outerHTML");
             String source=driver.getWindowHandle();driver.switchTo().newWindow(WindowType.TAB);
@@ -229,13 +254,12 @@ class TaxonomyTreeLayoutIT {
                 try(var pdf=Loader.loadPDF(bytes)) {
                     var stripper=new PDFTextStripper();
                     String pdfText=stripper.getText(pdf);
-                    assertThat(pdfText).as(renderer+" PDF filter in "+mode).doesNotContain("fixture-zero");
+                    assertThat(pdfText).as(renderer+" PDF filter in "+mode).doesNotContain("fixture-zero", "EXCLUDED ZERO REASON");
+                    assertThat(pdfText).contains("0.75%", "FINAL TREE EXPLANATION");
                     assertThat(pdf.getNumberOfPages()).as(renderer+" PDF has exactly the planned pages in "+mode).isEqualTo(plannedPages);
                     if(mode.equals("single")) {
-                        // A4 tile edges can split a glyph, which PDFBox then reports on both pages.
-                        // Require intact labels on the continuous sheet; A4 coverage is checked above.
                         assertThat(pdfText).as(renderer+" complete single-sheet PDF content")
-                            .contains("fixture-1","fixture-2","fixture-3","fixture-4","fixture-5","75%");
+                            .contains("fixture-1","fixture-2","fixture-3","fixture-4","fixture-5","0.75%");
                         assertThat(pdf.getNumberOfPages()).isEqualTo(1);
                         var box=pdf.getPage(0).getMediaBox();
                         assertThat(Math.max(box.getWidth(),box.getHeight())).isGreaterThan(842f);
@@ -252,7 +276,7 @@ class TaxonomyTreeLayoutIT {
                 }
             } finally {driver.close();driver.switchTo().window(source);}
         }
-        assertThat(driver.executeScript("return document.querySelector('#tree').innerHTML===screenBefore && document.querySelector('canvas')?.toDataURL()===canvasBefore && JSON.stringify({data,scores})===savedBefore")).isEqualTo(true);
+        assertThat(driver.executeScript("return document.querySelector('#tree').innerHTML===screenBefore && document.querySelector('canvas')?.toDataURL()===canvasBefore && JSON.stringify({data,scores,reasons:TaxonomyState.currentReasons})===savedBefore")).isEqualTo(true);
         assertThat(driver.executeScript("return printCalls")).isEqualTo(2L);
         driver.executeScript("window.open=()=>null");
         driver.findElement(By.cssSelector(".tax-diagram-print-button")).click();

@@ -49,18 +49,24 @@ public final class ArchitectureReportDocxRenderer {
     }
 
     public byte[] render(ArchitectureReport report) {
+        return render(report, "en");
+    }
+
+    public byte[] render(ArchitectureReport report, String language) {
+        return render(report, language, Map.of());
+    }
+
+    public byte[] render(ArchitectureReport report, String language, Map<String, String> nodeReasons) {
         try (var document = new XWPFDocument();
                 var output = new ByteArrayOutputStream()) {
             page(document);
-            var labels = new DecisionReportLabels("en");
+            var labels = new DecisionReportLabels(language);
             var w = new WordDocumentWriter(document, labels);
             runningIdentity(document, labels, labels.architectureTitle());
             w.heading(labels.architectureTitle(), 0, null);
             w.heading(labels.requirement(), 1, null);
             w.paragraph(report.getBusinessText());
-            w.paragraph(
-                    "Ad-hoc report from the supplied live analysis; no frozen snapshot identity is"
-                            + " asserted.");
+            w.paragraph(labels.liveReportNotice());
             w.heading(labels.score(), 1, null);
             w.table(
                     List.of(labels.node(), labels.score()),
@@ -86,7 +92,7 @@ public final class ArchitectureReportDocxRenderer {
                 panels.add(plan.overview());
                 panels.addAll(plan.details());
                 for (var panel : panels) {
-                    var figure = renderer.render(panel, "en");
+                    var figure = renderer.render(panel, language);
                     w.picture(
                             figure.png(),
                             figure.id(),
@@ -108,11 +114,18 @@ public final class ArchitectureReportDocxRenderer {
                                 .map(
                                         e ->
                                                 List.of(
-                                                        value(e.getNodeCode()),
-                                                        value(e.getTitle()),
+                                                        value(e.getNodeCode(), labels),
+                                                        value(e.getTitle(), labels),
                                                         percent(e.getRelevance()),
-                                                        value(e.getIncludedBecause())))
+                                                        value(e.getIncludedBecause(), labels)))
                                 .toList());
+            }
+            if (nodeReasons != null && !nodeReasons.isEmpty()) {
+                w.heading(labels.recordedNodeReasons(), 1, null);
+                nodeReasons.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+                    w.heading(entry.getKey(), 2, null);
+                    w.paragraph(entry.getValue());
+                });
             }
             if (view != null && !view.getIncludedRelationships().isEmpty()) {
                 w.heading(labels.relations(), 1, null);
@@ -121,10 +134,10 @@ public final class ArchitectureReportDocxRenderer {
                                 labels.category(), labels.rationale()),
                         view.getIncludedRelationships().stream()
                                 .map(e -> List.of(
-                                        e.getRelationId() == null ? "Unknown" : e.getRelationId().toString(),
-                                        value(e.getSourceCode()), value(e.getTargetCode()),
-                                        value(e.getRelationType()), value(e.getRelationCategory()),
-                                        ArchitectureReportTextRenderer.relationshipReasons(e)))
+                                        e.getRelationId() == null ? labels.unknown() : e.getRelationId().toString(),
+                                        value(e.getSourceCode(), labels), value(e.getTargetCode(), labels),
+                                        value(e.getRelationType(), labels), value(e.getRelationCategory(), labels),
+                                        ArchitectureReportTextRenderer.relationshipReasons(e, labels)))
                                 .toList());
             }
             var gaps = report.getGapAnalysis();
@@ -140,10 +153,10 @@ public final class ArchitectureReportDocxRenderer {
                                 .map(
                                         e ->
                                                 List.of(
-                                                        value(e.getSourceNodeCode()),
-                                                        value(e.getExpectedRelationType()),
-                                                        value(e.getExpectedTargetRoot()),
-                                                        value(e.getDescription())))
+                                                        value(e.getSourceNodeCode(), labels),
+                                                        value(e.getExpectedRelationType(), labels),
+                                                        value(e.getExpectedTargetRoot(), labels),
+                                                        value(e.getDescription(), labels)))
                                 .toList());
                 w.table(
                         List.of(labels.node(), labels.titleLabel(), labels.gaps()),
@@ -151,16 +164,16 @@ public final class ArchitectureReportDocxRenderer {
                                 .map(
                                         e ->
                                                 List.of(
-                                                        value(e.getNodeCode()),
-                                                        value(e.getPatternDescription()),
-                                                        value(e.getMissingElement())))
+                                                        value(e.getNodeCode(), labels),
+                                                        value(e.getPatternDescription(), labels),
+                                                        value(e.getMissingElement(), labels)))
                                 .toList());
                 gaps.getNotes().forEach(w::paragraph);
             }
             var patterns = report.getPatternDetection();
             if (patterns != null) {
-                w.heading("Detected patterns", 1, null);
-                w.paragraph("Pattern Coverage: " + String.format(Locale.ROOT, "%.1f%%",
+                w.heading(labels.detectedPatterns(), 1, null);
+                w.paragraph(labels.patternCoverage() + ": " + String.format(Locale.ROOT, "%.1f%%",
                         boundedPatternPercentage(patterns.getPatternCoverage())));
                 var all = new ArrayList<DetectedPattern>(patterns.getMatchedPatterns());
                 all.addAll(patterns.getIncompletePatterns());
@@ -170,7 +183,7 @@ public final class ArchitectureReportDocxRenderer {
                                 .map(
                                         e ->
                                                 List.of(
-                                                        value(e.getPatternName()),
+                                                        value(e.getPatternName(), labels),
                                                         String.format(
                                                                 Locale.ROOT,
                                                                 "%.0f%%",
@@ -182,49 +195,49 @@ public final class ArchitectureReportDocxRenderer {
             if (recommendation != null) {
                 w.heading(labels.recommendation(), 1, null);
                 recommendation.getReasoning().forEach(w::paragraph);
-                w.paragraph("Confidence: " + String.format(Locale.ROOT, "%.1f%%", recommendation.getConfidence()));
+                w.paragraph(labels.confidence() + ": " + String.format(Locale.ROOT, "%.1f%%", recommendation.getConfidence()));
                 if (!recommendation.getConfirmedElements().isEmpty()) {
-                    w.heading("Matched Elements", 2, null);
-                    w.paragraph("High-score matches; human approval is not recorded.");
+                    w.heading(labels.matchedElements(), 2, null);
+                    w.paragraph(labels.matchedElementNotice());
                     recommendationElements(w, labels, recommendation.getConfirmedElements());
                 }
                 if (!recommendation.getProposedElements().isEmpty()) {
-                    w.heading("Proposed Elements", 2, null);
+                    w.heading(labels.proposedElements(), 2, null);
                     recommendationElements(w, labels, recommendation.getProposedElements());
                 }
                 if (!recommendation.getSuggestedRelations().isEmpty()) {
-                    w.heading("Suggested Relations", 2, null);
+                    w.heading(labels.suggestedRelations(), 2, null);
                     w.table(
                             List.of(labels.source(), labels.target(), labels.type(), labels.rationale()),
                             recommendation.getSuggestedRelations().stream()
-                                    .map(e -> List.of(value(e.getSourceCode()), value(e.getTargetCode()),
-                                            value(e.getRelationType()), value(e.getReasoning())))
+                                    .map(e -> List.of(value(e.getSourceCode(), labels), value(e.getTargetCode(), labels),
+                                            value(e.getRelationType(), labels), value(e.getReasoning(), labels)))
                                     .toList());
                 }
                 recommendation.getNotes().forEach(w::paragraph);
             }
             if (report.getPendingProposals() != null && !report.getPendingProposals().isEmpty()) {
-                w.heading("Pending relation proposals", 1, null);
+                w.heading(labels.pendingRelationProposals(), 1, null);
                 w.table(
                         List.of(
                                 labels.identifier(),
                                 labels.source(),
                                 labels.target(),
                                 labels.type(),
-                                "Confidence",
-                                "Status",
+                                labels.confidence(),
+                                labels.status(),
                                 labels.rationale()),
                         report.getPendingProposals().stream()
                                 .map(
                                         e ->
                                                 List.of(
-                                                        e.getId() == null ? "Unknown" : e.getId().toString(),
-                                                        value(e.getSourceCode()),
-                                                        value(e.getTargetCode()),
-                                                        value(e.getRelationType()),
+                                                        e.getId() == null ? labels.unknown() : e.getId().toString(),
+                                                        value(e.getSourceCode(), labels),
+                                                        value(e.getTargetCode(), labels),
+                                                        value(e.getRelationType(), labels),
                                                         percent(e.getConfidence()),
-                                                        value(e.getStatus()),
-                                                        ArchitectureReportTextRenderer.proposalReasons(e)))
+                                                        value(e.getStatus(), labels),
+                                                        ArchitectureReportTextRenderer.proposalReasons(e, labels)))
                                 .toList());
             }
             w.heading(labels.provenance(), 1, null);
@@ -247,9 +260,9 @@ public final class ArchitectureReportDocxRenderer {
     private static void recommendationElements(WordDocumentWriter writer, DecisionReportLabels labels,
             List<RecommendedElement> elements) {
         writer.table(
-                List.of(labels.node(), labels.titleLabel(), "Root", labels.score(), labels.rationale()),
-                elements.stream().map(e -> List.of(value(e.getNodeCode()), value(e.getTitle()),
-                        value(e.getTaxonomyRoot()), e.getScore() + "%", value(e.getReasoning()))).toList());
+                List.of(labels.node(), labels.titleLabel(), labels.taxonomyRoot(), labels.score(), labels.rationale()),
+                elements.stream().map(e -> List.of(value(e.getNodeCode(), labels), value(e.getTitle(), labels),
+                        value(e.getTaxonomyRoot(), labels), e.getScore() + "%", value(e.getReasoning(), labels))).toList());
     }
 
     /** Pattern DTO percentages already use the 0–100 scale, unlike element relevance. */
@@ -257,8 +270,8 @@ public final class ArchitectureReportDocxRenderer {
         return Double.isFinite(value) ? Math.max(0.0, Math.min(100.0, value)) : 0.0;
     }
 
-    private static String value(String text) {
-        return text == null ? "Unknown" : text;
+    private static String value(String text, DecisionReportLabels labels) {
+        return text == null ? labels.unknown() : text;
     }
 
     private static String percent(double value) {

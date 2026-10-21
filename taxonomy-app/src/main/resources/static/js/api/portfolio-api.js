@@ -50,12 +50,14 @@ window.TaxonomyPortfolioApi = (function () {
     }
 
     async function sendJsonResponse(url, method, body) {
+        const language = /\/api\/projects\/\d+\/requirements(?:\/|$)/.test(url)
+            ? window.TaxonomyContentLanguage?.analysis() : null;
         return requireOk(await fetch(url, {
             method: method,
             headers: Object.assign({
                 Accept: 'application/json',
                 'Content-Type': 'application/json'
-            }, csrfHeaders()),
+            }, language ? {'X-Taxonomy-Analysis-Language': language} : {}, csrfHeaders()),
             credentials: 'same-origin',
             body: JSON.stringify(body === undefined ? {} : body)
         }));
@@ -275,7 +277,7 @@ window.TaxonomyPortfolioApi = (function () {
         },
         analyzeRequirement: function (projectId, requirementId, body) {
             return sendJsonResponse(
-                requirementPath(projectId, requirementId) + '/analyses', 'POST', body);
+                requirementPath(projectId, requirementId) + '/analyses', 'POST', Object.assign({analysisLanguage: window.TaxonomyContentLanguage?.analysis()}, body));
         },
 
         // ── Guided document import ────────────────────────────────────────────

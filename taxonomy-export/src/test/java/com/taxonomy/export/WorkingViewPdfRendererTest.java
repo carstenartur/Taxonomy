@@ -10,6 +10,43 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class WorkingViewPdfRendererTest {
+    @Test void originalNodeReasonsUseTheCompleteReadablePaginatedInventory() throws Exception {
+        String reason = java.util.stream.IntStream.range(0, 120)
+                .mapToObj(index -> "Original evidence for this selected node remains visible in the exported document. PARAGRAPH-" + index + "-END.")
+                .collect(java.util.stream.Collectors.joining("\n")) + " ORIGINAL-NODE-REASON-END";
+        byte[] bytes = new ArchitecturePdfRenderer().renderWorkingView(scene(2), Map.of(
+                "NODE-0", reason, "EXCLUDED-NODE", "EXCLUDED-REASON-MUST-NOT-LEAK"), Map.of(
+                "EDGE-END", Map.of(
+                        "presenceReason", "The original mapping explains this selection. ".repeat(70) + "SUPPLEMENTAL-SELECTION-END",
+                        "decisionComment", "The original reviewer recorded this assessment. ".repeat(70) + "SUPPLEMENTAL-REVIEW-END"),
+                "EXCLUDED-EDGE", Map.of("presenceReason", "EXCLUDED-RELATION-REASON-MUST-NOT-LEAK")));
+        try (var pdf = Loader.loadPDF(bytes)) {
+            var positions = new ArrayList<org.apache.pdfbox.text.TextPosition>();
+            var stripper = new PDFTextStripper() {
+                @Override protected void writeString(String value, List<org.apache.pdfbox.text.TextPosition> textPositions)
+                        throws java.io.IOException {
+                    positions.addAll(textPositions);
+                    super.writeString(value, textPositions);
+                }
+            };
+            stripper.setStartPage(2); // The compact two-node diagram occupies the first page.
+            String text = stripper.getText(pdf);
+            assertThat(pdf.getNumberOfPages()).isGreaterThan(2);
+            assertThat(text).contains("NODE-0", "NODE-1", "80%", "Explanation:", "ORIGINAL-NODE-REASON-END", "QUESTION-END")
+                    .contains("Recorded selection reason", "Recorded review comment", "SUPPLEMENTAL-SELECTION-END", "SUPPLEMENTAL-REVIEW-END")
+                    .doesNotContain("EXCLUDED-REASON-MUST-NOT-LEAK", "EXCLUDED-RELATION-REASON-MUST-NOT-LEAK");
+            for (int index = 0; index < 120; index++) assertThat(text).contains("PARAGRAPH-" + index + "-END");
+            assertThat(positions).isNotEmpty().allSatisfy(position -> {
+                assertThat(position.getFontSizeInPt()).isGreaterThanOrEqualTo(9);
+                assertThat(position.getXDirAdj()).isGreaterThanOrEqualTo(32);
+                assertThat(position.getXDirAdj() + position.getWidthDirAdj())
+                        .isLessThanOrEqualTo(org.apache.pdfbox.pdmodel.common.PDRectangle.A4.getWidth() - 31.9f);
+                assertThat(position.getYDirAdj()).isBetween(32f,
+                        org.apache.pdfbox.pdmodel.common.PDRectangle.A4.getHeight() - 32);
+            });
+        }
+    }
+
     @Test void workingViewDoesNotClaimGitOrPersistedSnapshotAuthority() throws Exception {
         var scene = scene(2);
         try (var pdf = Loader.loadPDF(renderWorkingView(scene))) {

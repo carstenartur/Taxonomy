@@ -177,6 +177,8 @@
         C.S.lastAnalysisDurationMillis = null;
         C.S.lastAnalysisProvider = 'MANUAL';
         C.S.lastAnalysisReasonLength = null;
+        C.S.lastAnalysisLanguage = null;
+        C.S.activeAnalysisLanguage = null;
         C.S.lastAnalysisStatus = 'SUCCESS';
         document.dispatchEvent(new CustomEvent('taxonomy:analysis-evidence-imported'));
     });

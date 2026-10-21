@@ -78,6 +78,25 @@ final class CurrentDiagramExportRegression {
                 "Model export leaked browser viewport markup");
     }
 
+    static void visioKeepsWorkingNodeReasonsVisibleWithoutAnalysis() throws Exception {
+        var view = view(2);
+        view.getIncludedElements().getFirst().setIncludedBecause("An unchanged node reason. ".repeat(80) + "CURRENT-NODE-REASON-END-7319");
+        var response = controller().exportCurrentDiagram("visio", view);
+        check(response.getStatusCode().value() == 200, "Visio reason export status");
+        StringBuilder visible = new StringBuilder();
+        try (var zip = new ZipInputStream(new ByteArrayInputStream((byte[]) response.getBody()))) {
+            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                byte[] content = zip.readAllBytes();
+                if (!entry.getName().matches("visio/pages/page[0-9]+\\.xml")) continue;
+                var xml = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                        .parse(new ByteArrayInputStream(content));
+                var texts = xml.getElementsByTagName("Text");
+                for (int i = 0; i < texts.getLength(); i++) visible.append(texts.item(i).getTextContent()).append('\n');
+            }
+        }
+        check(visible.toString().contains("CURRENT-NODE-REASON-END-7319"), "Original node reason is missing from visible Visio content");
+    }
+
     static void exportsSparxWorkingViewWithoutScoringOrSyncMutation() throws Exception {
         var view = view(3);
         var nodes = new ArrayList<>(view.getIncludedElements());

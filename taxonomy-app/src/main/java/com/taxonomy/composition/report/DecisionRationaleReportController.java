@@ -26,7 +26,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -119,7 +118,20 @@ public class DecisionRationaleReportController {
             Long analysisDurationMillis,
             com.taxonomy.dto.AnalysisCoverage analysisCoverage,
             AnalysisScope analysisScope, DecisionReportOptions exportOptions,
-            com.taxonomy.dto.AnalysisReasonLength analysisReasonLength) {
+            com.taxonomy.dto.AnalysisReasonLength analysisReasonLength,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+        public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
+                Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
+                Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
+                Map<String, String> reasons, String businessText, String provider, String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                String language, Long analysisDurationMillis, com.taxonomy.dto.AnalysisCoverage analysisCoverage,
+                AnalysisScope analysisScope, DecisionReportOptions exportOptions,
+                com.taxonomy.dto.AnalysisReasonLength analysisReasonLength) {
+            this(scores, rawScores, effectiveScores, scoreDetails, productSuitabilityScores, scoreSemanticsVersion,
+                    reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language,
+                    analysisDurationMillis, analysisCoverage, analysisScope, exportOptions, analysisReasonLength, null);
+        }
         public DecisionReportRequest(Map<String, Double> scores, Map<String, Double> rawScores,
                 Map<String, Double> effectiveScores, Map<String, AnalysisScoreDetail> scoreDetails,
                 Map<String, Double> productSuitabilityScores, Integer scoreSemanticsVersion,
@@ -269,7 +281,9 @@ public class DecisionRationaleReportController {
         String branch = repositoryStateService.resolveWorkspaceBranch(context.username());
         ViewContext viewContext = repositoryStateService.getViewContext(
                 context.username(), branch, context);
-        Locale locale = resolveLocale(request.language());
+        Locale locale = com.taxonomy.reporting.render.decision.DecisionReportLanguage.resolve(
+                com.taxonomy.reporting.render.decision.DecisionReportLanguage.optionalOverride(request.language()),
+                request.analysisLanguage());
         AnalysisScoreSemantics.Derived scoreSemantics = resolveScoreSemantics(request);
         Map<String, AnalysisScoreDetail> scoreDetails = scoreSemantics.scoreDetails();
         Map<String, Double> effectiveScores = scoreSemantics.effectiveScores();
@@ -307,15 +321,6 @@ public class DecisionRationaleReportController {
         return AnalysisScoreSemantics.derive(
                 authoritativeRaw,
                 taxonomyService == null ? List.of() : taxonomyService.getFingerprintTree());
-    }
-
-    private Locale resolveLocale(String language) {
-        if (language == null || language.isBlank()) {
-            return LocaleContextHolder.getLocale();
-        }
-        Locale locale = Locale.forLanguageTag(language.strip());
-        return locale.getLanguage().isBlank()
-                ? LocaleContextHolder.getLocale() : locale;
     }
 
     private boolean isValid(DecisionReportRequest request) {

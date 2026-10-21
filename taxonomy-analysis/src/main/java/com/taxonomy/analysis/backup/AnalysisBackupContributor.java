@@ -159,10 +159,14 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
     private static DraftPayload draft(JsonNode node) throws IOException {
         String current=value(node,"businessText");
         boolean analyzed=current!=null && current.equals(value(node,"lastAnalyzedText"));
+        try {
         return new DraftPayload(1,value(node,"draftState"),current,value(node,"currentView"),node.get("analysisOptions"),
                 analyzed?current:null,Objects.equals(current,value(node,"storedBusinessText"))?current:null,
                 analyzed?node.get("scores"):null,analyzed?node.get("reasons"):null,analyzed?node.get("discrepancies"):null,
-                analyzed?node.get("architectureView"):null,analyzed?node.get("provisionalRelations"):null,analyzed?node.get("evaluatedNodes"):null);
+                analyzed?node.get("architectureView"):null,analyzed?node.get("provisionalRelations"):null,analyzed?node.get("evaluatedNodes"):null,
+                analyzed?com.taxonomy.dto.AnalysisLanguage.fromValue(value(node,"analysisLanguage")):null,
+                analyzed?com.taxonomy.dto.AnalysisReasonLength.fromRecordedValue(value(node,"analysisReasonLength")):null);
+        } catch (IllegalArgumentException invalid) { throw new IOException("Invalid recorded analysis generation contract", invalid); }
     }
     private static String textHash(String value) {
         if (value == null) return null;
@@ -173,7 +177,16 @@ public final class AnalysisBackupContributor implements BackupDataContributor {
     public enum ResumePolicy { REVIEW_REQUIRED }
     public record DraftPayload(int schemaVersion,String draftState,String businessText,String currentView,JsonNode analysisOptions,
                                String lastAnalyzedText,String storedBusinessText,JsonNode scores,JsonNode reasons,JsonNode discrepancies,
-                               JsonNode architectureView,JsonNode provisionalRelations,JsonNode evaluatedNodes) { }
+                               JsonNode architectureView,JsonNode provisionalRelations,JsonNode evaluatedNodes,
+                               com.taxonomy.dto.AnalysisLanguage analysisLanguage,
+                               com.taxonomy.dto.AnalysisReasonLength analysisReasonLength) {
+        public DraftPayload(int schemaVersion,String draftState,String businessText,String currentView,JsonNode analysisOptions,
+                            String lastAnalyzedText,String storedBusinessText,JsonNode scores,JsonNode reasons,JsonNode discrepancies,
+                            JsonNode architectureView,JsonNode provisionalRelations,JsonNode evaluatedNodes) {
+            this(schemaVersion,draftState,businessText,currentView,analysisOptions,lastAnalyzedText,storedBusinessText,scores,reasons,
+                    discrepancies,architectureView,provisionalRelations,evaluatedNodes,null,null);
+        }
+    }
     public record DraftRecord(SourceRecordId sourceId,String tenant,String workspaceId,String principalScope,DraftPayload payload,String historicalPayload,String createdAt,String updatedAt) { }
     public record ContinuationRecord(SourceRecordId sourceId,String principalScope,String repositoryId,String workspaceId,String branch,String inputHash,
                                      String requestJson,String resultJson,String sourceState,ResumePolicy resumePolicy,long updatedAtEpochMillis,String currentNode,

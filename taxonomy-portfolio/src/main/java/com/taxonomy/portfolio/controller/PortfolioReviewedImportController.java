@@ -64,7 +64,7 @@ public class PortfolioReviewedImportController {
                                 false,
                                 request.provider(),
                                 request.maxArchitectureNodes(),
-                                request.idempotencyKey()),
+                                request.idempotencyKey(), request.analysisLanguage()),
                         username,
                         context)
                 : null;

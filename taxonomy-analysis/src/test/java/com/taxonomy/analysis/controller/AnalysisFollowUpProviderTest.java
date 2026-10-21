@@ -245,4 +245,25 @@ class AnalysisFollowUpProviderTest {
                 .param("provider", "LOCAL_ONNX"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.error", containsString("LOCAL_ONNX")));
     }
+    @Test void followUpKeepsExplicitLanguageAfterUiLocaleChanges() throws Exception {
+        when(analyze.analyze(any(AnalyzeRequirementCommand.class))).thenAnswer(call -> {
+            org.junit.jupiter.api.Assertions.assertEquals(com.taxonomy.dto.AnalysisLanguage.ENGLISH,
+                    call.getArgument(0, AnalyzeRequirementCommand.class).analysisLanguage());
+            return new AnalyzeRequirementResult(new com.taxonomy.dto.AnalysisResult(java.util.Map.of(), List.of()));
+        });
+        var response = mvc.perform(post("/api/analyze").locale(java.util.Locale.GERMAN).contentType("application/json")
+                .content("{\"businessText\":\"original\",\"provider\":\"MOCK\",\"analysisLanguage\":\"en\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.analysisLanguage").value("en"))
+                .andReturn().getResponse();
+        mvc.perform(get("/api/analyze-node").locale(java.util.Locale.GERMAN)
+                .param("parentCode", "BP").param("businessText", "original")
+                .param("operationId", response.getHeader("X-Analysis-Operation-Id")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.analysisLanguage").value("en"));
+        mvc.perform(get("/api/analyze-node").locale(java.util.Locale.GERMAN)
+                .param("parentCode", "BP").param("businessText", "original").param("provider", "MOCK"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.analysisLanguage").value("de"));
+        org.junit.jupiter.api.Assertions.assertNull(AnalysisLanguageContext.current());
+        verifyNoInteractions(transport);
+    }
+
 }

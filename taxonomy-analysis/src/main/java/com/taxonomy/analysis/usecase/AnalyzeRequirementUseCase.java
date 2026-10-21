@@ -77,7 +77,7 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
-        command = freezeReasonLength(command);
+        command = freezeGenerationContract(command);
         if (clusterExecution != null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()) {
             ViewContext view = resolveViewContext(command);
             return analyze(command, operationContext(command, view), view);
@@ -98,7 +98,7 @@ public class AnalyzeRequirementUseCase {
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command, AnalysisOperationContext context,
                                              ViewContext view) {
         if (clusterExecution == null) throw new IllegalStateException("Cluster execution is not configured");
-        command = freezeReasonLength(command);
+        command = freezeGenerationContract(command);
         llmService.requireProviderAdmissible(command.provider(), command.provenance() != null);
         promptBudgetPolicy.requireWithinBudget(command.businessText(), command.provider());
         // Root scoring, relation work and rendering have already been persisted when this returns.
@@ -111,6 +111,7 @@ public class AnalyzeRequirementUseCase {
         InProcessAnalysisOperation operation = null;
         com.taxonomy.catalog.snapshot.FrozenCatalogueContext.Scope catalogueScope = null;
         try (var reasonScope = com.taxonomy.analysis.service.AnalysisReasonContext.open(command.analysisReasonLength());
+             var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(command.analysisLanguage());
              var mockScope = command.retainedAnalysis() != null || command.providerBinding() != null || "MOCK".equalsIgnoreCase(command.provider())
                 ? llmService.withProviderBinding(command.provider(), command.providerBinding()) : null) {
             llmService.requireProviderAdmissible(command.provider(), command.provenance() != null);
@@ -136,6 +137,7 @@ public class AnalyzeRequirementUseCase {
                     : llmService.analyzeWithBudget(command.businessText(), command.analysisScope());
             result.setAnalysisScope(command.analysisScope());
             result.setAnalysisReasonLength(command.analysisReasonLength());
+            result.setAnalysisLanguage(command.analysisLanguage());
             if (command.retainedAnalysis() != null) {
                 AnalysisRunControl.planNodes(command.analysisScope().selectedTree(result.getTree()));
                 var retainedEvidence = new com.taxonomy.dto.LlmCallDetail();
@@ -178,9 +180,14 @@ public class AnalyzeRequirementUseCase {
         }
     }
 
-    private AnalyzeRequirementCommand freezeReasonLength(AnalyzeRequirementCommand command) {
-        return command.analysisReasonLength() != null ? command : command.withAnalysisReasonLength(
+    private AnalyzeRequirementCommand freezeGenerationContract(AnalyzeRequirementCommand command) {
+        if (command.analysisReasonLength() == null) command = command.withAnalysisReasonLength(
                 com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null)));
+        if (command.analysisLanguage() == null && command.continuationBinding() == null && command.provenance() == null
+                && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active()) {
+            command = command.withAnalysisLanguage(com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null));
+        }
+        return command;
     }
 
     private com.taxonomy.catalog.snapshot.FrozenCatalogueContext.Scope bindRetainedCatalogue(

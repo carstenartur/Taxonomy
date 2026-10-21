@@ -2,6 +2,7 @@
 <html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
 <head>
     <meta charset="UTF-8"/>
+    <meta name="taxonomy-user" th:content="${#authentication != null ? #authentication.name : ''}"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
     <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
@@ -30,6 +31,13 @@
         <details id="architectureExportOptions" class="workbench-export-options">
             <summary class="btn btn-sm btn-outline-light" th:text="#{workbench.ui.exportMenu}">Export</summary>
             <div class="workbench-export-content">
+                <label for="workbenchDocumentLanguage" class="small" th:text="#{language.word.document}">Word report language</label>
+                <select id="workbenchDocumentLanguage" class="form-select form-select-sm" data-content-language="document">
+                    <option value="analysis" th:text="#{language.follow.analysis}">Follow analysis</option>
+                    <option value="ui" th:text="#{language.follow.ui}">Follow interface</option>
+                    <option value="de" th:text="#{language.german}">German</option>
+                    <option value="en" th:text="#{language.english}">English</option>
+                </select>
                 <button id="downloadArchitectureSvg" class="btn btn-sm btn-outline-light" type="button" th:text="#{workbench.ui.svg}">Download SVG</button>
                 <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button" th:text="#{workbench.ui.pdf}">Download PDF</button>
                 <button id="downloadArchitectureWord" class="btn btn-sm btn-outline-light" type="button"
@@ -173,6 +181,7 @@
         src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
 <script th:src="@{/js/taxonomy-i18n.js}"
         src="/js/taxonomy-i18n.js"></script>
+<script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
 <script th:src="@{/js/api/architecture-workbench-api.js}"
         src="/js/api/architecture-workbench-api.js"></script>

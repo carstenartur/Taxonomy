@@ -27,6 +27,20 @@ class FullModelBrowserExportTest {
         var request = new JsonMapper().readTree(result.path("requests").get(0).path("body").asText());
         assertThat(request.path("analysisOperationId").asText()).isEqualTo("accepted-operation");
         assertThat(request.path("analysisProviderId").asText()).isEqualTo("LOCAL_ONNX");
+        assertThat(request.path("analysisLanguage").asText()).isEqualTo("de");
+    }
+
+    @Test
+    void diagramExportPreservesSavedAssessmentAndInclusionReasonsWithoutChangingTheSource() throws Exception {
+        var result = probe("pdf-evidence");
+        assertCompleteModelPdf(result);
+        var view = new JsonMapper().readTree(result.path("requests").get(0).path("body").asText());
+        var node = view.path("includedElements").get(0);
+        assertThat(node.path("includedBecause").asText()).contains("Existing inclusion explanation",
+                "Complete saved explanation.", "ORIGINAL-REASON-END").doesNotContain("UNSELECTED-REASON");
+        assertThat(node.path("presenceReason").asText()).isEqualTo("Existing presence explanation");
+        assertThat(result.path("sourceView").path("includedElements").get(0).path("includedBecause").asText())
+                .isEqualTo("Existing inclusion explanation");
     }
 
     @Test

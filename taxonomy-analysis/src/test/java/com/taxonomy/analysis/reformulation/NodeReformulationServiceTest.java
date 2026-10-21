@@ -54,4 +54,26 @@ class NodeReformulationServiceTest {
         when(config.isProviderConfigured(LlmProvider.OPENAI.id())).thenReturn(false);
         assertThatThrownBy(()->service.synthesize(ReformulationResponseParserTest.input())).hasMessageContaining("PROVIDER_NOT_CONFIGURED");
     }
+    @Test void newBaselineFreezesLanguageContractForQuestionsAndReconciliationWhileLegacyPromptsStayUnchanged() {
+        var json = new ObjectMapper();
+        var old = ReformulationResponseParserTest.input();
+        assertThat(new ReformulationPromptBuilder(json).build(old, null)).doesNotContain(AnalysisLanguageContext.POLICY);
+        for (var language : com.taxonomy.dto.AnalysisLanguage.values()) {
+            var prior = old.baseline(); var context = new TreeMap<>(prior.frozenContext());
+            String contract = AnalysisLanguageContext.promptContract(language);
+            context.put("analysisLanguageContract", contract);
+            context.put("analysisLanguagePolicy", AnalysisLanguageContext.POLICY);
+            context.putAll(ReconcilePromptBuilder.freeze(context));
+            var baseline = new ReformulationBaseline(prior.scope(), prior.sourceVersionId(), prior.originalText(),
+                    prior.originalTextHash(), prior.snapshotId(), prior.snapshotPayload(), context, language.value(), prior.algorithmVersion());
+            var node = new NodeSynthesisInput(baseline, old.nodeId(), old.parentId(), old.nodeDescription(), old.sourceAnchors(),
+                    old.directContributions(), old.children(), old.boundaryEdges(), old.answers(), old.openDecisions(), old.preservationContract());
+            String prompt = new ReformulationPromptBuilder(json).build(node, null);
+            String reconcile = new ReconcilePromptBuilder(json).build(new ReconciliationInput(baseline, 1,
+                    List.of(), List.of(), List.of(), List.of(), Map.of(), Map.of(), List.of()), null);
+            assertThat(prompt).contains(contract, prior.originalText());
+            assertThat(reconcile).contains(contract, prior.originalText());
+        }
+    }
+
 }

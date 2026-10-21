@@ -155,6 +155,19 @@ public class ArchitectureWorkbenchService {
             relations.put(metadata.signature(), metadata);
         }
 
+        // Keep the frozen scoring rationale alongside inclusion evidence without changing either source.
+        Map<String, String> nodeReasons = new LinkedHashMap<>();
+        for (var element : architectureView.getIncludedElements()) {
+            var reasons = new LinkedHashSet<String>();
+            if (analysis.getReasons() != null) reasons.add(analysis.getReasons().get(element.getNodeCode()));
+            reasons.add(element.getPresenceReason());
+            reasons.add(element.getIncludedBecause());
+            var mapping = elements.get(element.getNodeCode());
+            if (mapping != null) reasons.add(mapping.presenceReason());
+            reasons.removeIf(value -> value == null || value.isBlank());
+            if (!reasons.isEmpty()) nodeReasons.put(element.getNodeCode(), String.join("\n\n", reasons));
+        }
+
         Set<String> warnings = new LinkedHashSet<>();
         if (analysis.getWarnings() != null) warnings.addAll(analysis.getWarnings());
         if (architectureView.getNotes() != null) warnings.addAll(architectureView.getNotes());
@@ -169,7 +182,7 @@ public class ArchitectureWorkbenchService {
                 snapshot.summary().commitSha(), diagram, scene, elements, relations,
                 new ArrayList<>(warnings), new ArchitectureWorkbenchDtos.SnapshotProvenance(
                         snapshot.summary().requirementVersionId(), snapshot.summary().taxonomyFingerprint(),
-                        context.repositoryId()), policyTitleKey, persistedTitle);
+                        context.repositoryId()), policyTitleKey, persistedTitle, nodeReasons);
     }
 
     @Transactional(readOnly = true)
@@ -177,7 +190,8 @@ public class ArchitectureWorkbenchService {
                             String snapshotId,
                             String username,
                             WorkspaceContext context) {
-        return svgRenderer.render(load(projectId, snapshotId, username, context).scene());
+        var projection = load(projectId, snapshotId, username, context);
+        return svgRenderer.render(projection.scene(), projection.nodeReasons(), projection.relationReasons());
     }
 
     @Transactional(readOnly = true)
