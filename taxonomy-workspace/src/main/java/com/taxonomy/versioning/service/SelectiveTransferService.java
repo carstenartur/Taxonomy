@@ -162,9 +162,11 @@ public class SelectiveTransferService {
 
         String targetBranch = contextNavigationService.getCurrentContext(
                 workspaceResolver.resolveCurrentUsername()).branch();
-        var sourceEvidence = CommitProvenance.capture("selective-transfer", repo, ctx.repositoryId(),
+        String repositoryId = ctx.workspaceId() == null
+                ? ctx.repositoryId() : "workspace:" + ctx.workspaceId();
+        var sourceEvidence = CommitProvenance.capture("selective-transfer", repo, repositoryId,
                 "detached", selection.sourceContextId(), selection.targetContextId());
-        var targetEvidence = CommitProvenance.capture("selective-transfer", repo, ctx.repositoryId(),
+        var targetEvidence = CommitProvenance.capture("selective-transfer", repo, repositoryId,
                 "detached", selection.targetContextId(), null);
         var provenance = new CommitProvenance(1, "selective-transfer", List.of(
                 sourceEvidence.sources().getFirst(), targetEvidence.sources().getFirst()));

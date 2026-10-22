@@ -4,18 +4,28 @@ import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
+import com.taxonomy.workspace.signing.SignatureStatus;
+import com.taxonomy.workspace.signing.SigningTestKeys;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.transport.Daemon;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
+import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.resolver.FileResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -344,6 +354,174 @@ class ExternalGitSyncServiceIT {
         assertEquals(com.taxonomy.workspace.signing.SignatureStatus.UNSIGNED,
                 systemDslRepository.verifyCommit(acceptedUnsignedBase).status());
         assertEquals(integrated, systemRepository.getLastFetchCommit());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void deletingRejectedRemoteBranchAllowsFetchAndFullSyncRecovery(boolean fullSync) throws Exception {
+        String acceptedHead = systemDslRepository.getHeadCommit(BRANCH);
+        String rejectedBranch = "rejected-feature";
+        var trusted = SigningTestKeys.createService(temporaryDirectory.resolve("recovery-trusted"));
+        var untrusted = SigningTestKeys.createIndependentService(temporaryDirectory.resolve("recovery-untrusted"),
+                "Untrusted operator <untrusted@example.test>");
+        requireTrustedIncomingSignatures();
+        try (Git git = Git.cloneRepository().setURI(remoteUri).setBranch(Constants.R_HEADS + BRANCH)
+                .setDirectory(temporaryDirectory.resolve("recovery-work").toFile()).call()) {
+            ObjectId rejected = commitRemoteBranch(git, rejectedBranch, ObjectId.fromString(acceptedHead), untrusted);
+
+            assertThrows(IOException.class, () -> service.fetchFromExternal());
+            assertEquals(SignatureStatus.UNTRUSTED, systemDslRepository.verifyCommit(rejected.name()).status());
+            assertNotNull(systemDslRepository.getGitRepository().exactRef("refs/remotes/origin/" + rejectedBranch));
+            assertEquals(acceptedHead, systemDslRepository.getHeadCommit(BRANCH));
+            assertNull(systemRepository.getLastFetchAt());
+
+            for (var result : git.push().setRefSpecs(new RefSpec(":" + Constants.R_HEADS + rejectedBranch)).call()) {
+                for (var update : result.getRemoteUpdates()) assertEquals(RemoteRefUpdate.Status.OK, update.getStatus());
+            }
+            ObjectId incoming = commitRemoteBranch(git, BRANCH, ObjectId.fromString(acceptedHead), trusted);
+
+            if (fullSync) assertEquals(incoming.name(), service.fullSync("alice"));
+            else service.fetchFromExternal();
+
+            assertNull(systemDslRepository.getGitRepository().exactRef("refs/remotes/origin/" + rejectedBranch));
+            assertEquals(incoming.name(), systemRepository.getLastFetchCommit());
+            assertNotNull(systemRepository.getLastFetchAt());
+            assertEquals(fullSync ? incoming.name() : acceptedHead, systemDslRepository.getHeadCommit(BRANCH));
+        }
+    }
+
+    @Test
+    void strictFetchAcceptsSignedNewBranchFromLegacyHistoryAcceptedOnAnotherBranch() throws Exception {
+        String sharedHead = systemDslRepository.getHeadCommit(BRANCH);
+        systemDslRepository.createBranch("legacy-local", BRANCH);
+        String acceptedLegacyHead = systemDslRepository.commitDsl("legacy-local", BASE_DSL,
+                "alice", "Previously accepted unsigned branch checkpoint");
+        service.pushToExternal("legacy-local");
+        var signer = SigningTestKeys.createService(temporaryDirectory.resolve("feature-signer"));
+        ObjectId featureHead;
+        try (Git git = Git.cloneRepository().setURI(remoteUri).setBranch(Constants.R_HEADS + BRANCH)
+                .setDirectory(temporaryDirectory.resolve("signed-feature-work").toFile()).call()) {
+            featureHead = commitRemoteBranch(git, "new-feature", ObjectId.fromString(acceptedLegacyHead), signer);
+        }
+        requireTrustedIncomingSignatures();
+
+        service.fetchFromExternal();
+
+        assertEquals(featureHead, systemDslRepository.getGitRepository().resolve("refs/remotes/origin/new-feature"));
+        assertEquals(SignatureStatus.VERIFIED, systemDslRepository.verifyCommit(featureHead.name()).status());
+        assertEquals(SignatureStatus.UNSIGNED, systemDslRepository.verifyCommit(acceptedLegacyHead).status());
+        assertNull(systemDslRepository.getHeadCommit("new-feature"));
+        assertEquals(sharedHead, service.fullSync("alice"));
+        assertEquals(sharedHead, systemDslRepository.getHeadCommit(BRANCH));
+        assertEquals(acceptedLegacyHead, systemDslRepository.getHeadCommit("legacy-local"));
+    }
+
+    @Test
+    void strictFullSyncMergesIncomingHistoryAlreadyAcceptedOnAnotherLocalBranch() throws Exception {
+        String baseDsl = "architecture {\n  description \"base\"\n\n  // middle one\n  // middle two\n\n  // footer base\n}\n";
+        systemDslRepository.commitDsl(BRANCH, baseDsl, "alice", "Shared legacy base");
+        service.pushToExternal(BRANCH);
+        systemDslRepository.createBranch("legacy-local", BRANCH);
+        String legacyHead = systemDslRepository.commitDsl("legacy-local",
+                baseDsl.replace("footer base", "footer legacy"), "alice", "Accepted unsigned side branch");
+        service.pushToExternal("legacy-local");
+
+        var properties = SigningTestKeys.signingProperties(temporaryDirectory.resolve("merge-signing"));
+        properties.setRequireSignatures(true);
+        var signer = new GitCommitSignatureService(properties);
+        systemDslRepository.withSignatureService(signer, "external-test");
+        String localHead = systemDslRepository.commitDsl(BRANCH,
+                baseDsl.replace("description \"base\"", "description \"local\""), "alice", "Signed local change");
+        ObjectId incoming;
+        try (Git git = Git.cloneRepository().setURI(remoteUri).setBranch(Constants.R_HEADS + BRANCH)
+                .setDirectory(temporaryDirectory.resolve("accepted-ancestry-merge-work").toFile()).call()) {
+            incoming = commitRemoteBranch(git, BRANCH, ObjectId.fromString(legacyHead), signer);
+        }
+
+        String merged = service.fullSync("alice");
+
+        assertEquals(baseDsl.replace("description \"base\"", "description \"local\"")
+                .replace("footer base", "footer legacy"), systemDslRepository.getDslAtHead(BRANCH));
+        assertEquals(SignatureStatus.VERIFIED, systemDslRepository.verifyCommit(merged).status());
+        assertEquals(SignatureStatus.UNSIGNED, systemDslRepository.verifyCommit(legacyHead).status());
+        try (var walk = new RevWalk(systemDslRepository.getGitRepository())) {
+            var commit = walk.parseCommit(ObjectId.fromString(merged));
+            assertEquals(2, commit.getParentCount());
+            assertEquals(localHead, commit.getParent(0).name());
+            assertEquals(incoming.name(), commit.getParent(1).name());
+        }
+        assertEquals(java.util.Set.of(BRANCH, "legacy-local"), java.util.Set.copyOf(systemDslRepository.getBranchNames()));
+        assertEquals(incoming.name(), systemRepository.getLastFetchCommit());
+    }
+
+    @Test
+    void strictFetchStillRejectsNewUnsignedCommitsOnBranchFromAcceptedLegacyHistory() throws Exception {
+        String acceptedLegacyHead = systemDslRepository.getHeadCommit(BRANCH);
+        try (Git git = Git.cloneRepository().setURI(remoteUri).setBranch(Constants.R_HEADS + BRANCH)
+                .setDirectory(temporaryDirectory.resolve("unsigned-feature-work").toFile()).call()) {
+            commitRemoteBranch(git, "new-feature", ObjectId.fromString(acceptedLegacyHead), null);
+        }
+        requireTrustedIncomingSignatures();
+
+        IOException rejection = assertThrows(IOException.class, () -> service.fetchFromExternal());
+
+        assertTrue(rejection.getMessage().contains("UNSIGNED"));
+        assertEquals(acceptedLegacyHead, systemDslRepository.getHeadCommit(BRANCH));
+        assertNull(systemDslRepository.getHeadCommit("new-feature"));
+        assertNull(systemRepository.getLastFetchAt());
+    }
+
+    @Test
+    void strictSyncDoesNotTrustRejectedObjectsRetainedByCrashLeftoverStagingRefs() throws Exception {
+        String acceptedHead = systemDslRepository.getHeadCommit(BRANCH);
+        ObjectId rejected = commitToRemote("architecture { description \"unaccepted\" }",
+                "Unsigned incoming checkpoint", "crash-leftover-work");
+        requireTrustedIncomingSignatures();
+        assertThrows(IOException.class, () -> service.fetchFromExternal());
+        String stagingBranch = "__external_sync__/crash-leftover";
+        RefUpdate staging = systemDslRepository.getGitRepository().updateRef(Constants.R_HEADS + stagingBranch);
+        staging.setExpectedOldObjectId(ObjectId.zeroId());
+        staging.setNewObjectId(rejected);
+        assertEquals(RefUpdate.Result.NEW, staging.update());
+
+        IOException rejection = assertThrows(IOException.class, () -> service.fullSync("alice"));
+
+        assertTrue(rejection.getMessage().contains("UNSIGNED"));
+        assertEquals(acceptedHead, systemDslRepository.getHeadCommit(BRANCH));
+        assertEquals(rejected.name(), systemDslRepository.getHeadCommit(stagingBranch));
+        assertNull(systemRepository.getLastFetchAt());
+    }
+
+    private void requireTrustedIncomingSignatures() throws Exception {
+        var properties = SigningTestKeys.verifierProperties(temporaryDirectory.resolve("strict-incoming-trust"));
+        properties.setRequireSignatures(true);
+        systemDslRepository.withSignatureService(new GitCommitSignatureService(properties), "external-test");
+    }
+
+    private ObjectId commitRemoteBranch(Git git, String branch, ObjectId parent,
+                                        GitCommitSignatureService signer) throws Exception {
+        var repository = git.getRepository();
+        ObjectId head;
+        try (var walk = new RevWalk(repository); var inserter = repository.newObjectInserter()) {
+            var commit = new CommitBuilder();
+            commit.setParentId(parent);
+            commit.setTreeId(walk.parseCommit(parent).getTree());
+            commit.setAuthor(new PersonIdent("External operator", "external@example.test"));
+            commit.setCommitter(commit.getAuthor());
+            commit.setMessage("Remote branch checkpoint: " + branch);
+            if (signer != null) signer.sign(commit, "external-test", branch);
+            head = inserter.insert(commit);
+            inserter.flush();
+            ObjectId previous = repository.resolve(Constants.R_HEADS + branch);
+            RefUpdate update = repository.updateRef(Constants.R_HEADS + branch);
+            update.setExpectedOldObjectId(previous == null ? ObjectId.zeroId() : previous);
+            update.setNewObjectId(head);
+            assertEquals(previous == null ? RefUpdate.Result.NEW : RefUpdate.Result.FAST_FORWARD, update.update());
+        }
+        for (var result : git.push().add(branch).call()) {
+            for (var update : result.getRemoteUpdates()) assertEquals(RemoteRefUpdate.Status.OK, update.getStatus());
+        }
+        return head;
     }
 
     @Test

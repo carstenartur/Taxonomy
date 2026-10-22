@@ -251,6 +251,50 @@ class SelectiveTransferServiceTest {
     }
 
     @Test
+    void personalTransferRecordsWorkspaceIdentityForBothSourceProofs() throws Exception {
+        WorkspaceContext context = new WorkspaceContext(
+                "testuser", "personal-workspace", "target", "central-source");
+        DslGitRepository workspace = factory.openWorkspaceRepository("personal-workspace");
+
+        assertTransferRepositoryIdentity(context, workspace, "workspace:personal-workspace");
+
+        assertNull(factory.getCentralRepository("central-source").getHeadCommit("target"));
+    }
+
+    @Test
+    void centralTransferRetainsCatalogIdentityForBothSourceProofs() throws Exception {
+        WorkspaceContext context = new WorkspaceContext(
+                "testuser", null, "target", "selected-central");
+
+        assertTransferRepositoryIdentity(context,
+                factory.getCentralRepository("selected-central"), "selected-central");
+
+        assertNull(factory.getSystemRepository().getHeadCommit("target"));
+    }
+
+    private void assertTransferRepositoryIdentity(WorkspaceContext context,
+                                                   DslGitRepository repository,
+                                                   String expectedRepositoryId) throws Exception {
+        repository.withSignatureService(SigningTestKeys.createService(signingKeys), expectedRepositoryId);
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
+        String source = repository.commitDsl("source", DSL_SOURCE, "tester", "source");
+        String target = repository.commitDsl("target", DSL_TARGET, "tester", "target");
+        TransferSelection selection = new TransferSelection(
+                source, target, Set.of("CP-1024"), Set.of(), TransferSelection.TransferMode.COPY);
+
+        String result = transferService.applyTransfer(selection);
+
+        assertEquals(result, repository.getHeadCommit("target"));
+        assertEquals(SignatureStatus.VERIFIED, repository.verifyCommit(result).status());
+        var evidence = repository.getProvenance(result);
+        assertEquals(List.of(source, target), evidence.sources().stream()
+                .map(com.taxonomy.workspace.storage.CommitProvenance.Source::commitId).toList());
+        assertEquals(List.of(expectedRepositoryId, expectedRepositoryId), evidence.sources().stream()
+                .map(com.taxonomy.workspace.storage.CommitProvenance.Source::repositoryId).toList());
+        assertTrue(repository.getDslAtHead("target").contains("CP-1024"));
+    }
+
+    @Test
     void cannotLaunderARejectedIncomingObjectThroughSelectiveTransfer() throws Exception {
         gitRepo.withSignatureService(SigningTestKeys.createService(signingKeys), "central");
         String source = gitRepo.commitDsl("source", DSL_SOURCE, "tester", "source");

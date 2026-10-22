@@ -103,7 +103,11 @@ public class DslGitRepositoryFactory implements AutoCloseable {
         String repoName = workspaceRepositoryName(workspaceId);
         return cache.computeIfAbsent(repoName, name -> {
             DslGitRepository repository = createRepository(name);
-            seedFromCentral(repository, getSystemRepository(), "draft", "system repository");
+            String sourceRepositoryId = systemRepositoryService == null
+                    ? WorkspaceContext.LEGACY_REPOSITORY_ID
+                    : systemRepositoryService.getPrimaryRepository().getRepositoryId();
+            seedFromCentral(repository, getSystemRepository(), sourceRepositoryId,
+                    "draft", "system repository");
             return repository;
         });
     }
@@ -124,12 +128,13 @@ public class DslGitRepositoryFactory implements AutoCloseable {
             String sourceRepositoryId,
             String sourceBranch) {
         String repoName = workspaceRepositoryName(workspaceId);
-        DslGitRepository source = getCentralRepository(sourceRepositoryId);
+        String sourceId = requireText(sourceRepositoryId, "sourceRepositoryId");
+        DslGitRepository source = getCentralRepository(sourceId);
         String branch = requireText(sourceBranch, "sourceBranch");
         return cache.computeIfAbsent(repoName, name -> {
             DslGitRepository repository = createRepository(name);
-            seedFromCentral(repository, source, branch,
-                    "central repository " + sourceRepositoryId);
+            seedFromCentral(repository, source, sourceId, branch,
+                    "central repository " + sourceId);
             return repository;
         });
     }
@@ -216,6 +221,7 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     private void seedFromCentral(
             DslGitRepository workspace,
             DslGitRepository source,
+            String sourceRepositoryId,
             String sourceBranch,
             String sourceDescription) {
         try {
@@ -227,7 +233,7 @@ public class DslGitRepositoryFactory implements AutoCloseable {
             String sourceHead = source.getHeadCommit(sourceBranch);
             String dsl = sourceHead == null ? null : source.getDslAtCommit(sourceHead);
             if (dsl != null && !dsl.isBlank()) {
-                var provenance = CommitProvenance.capture("fork", source, sourceDescription,
+                var provenance = CommitProvenance.capture("fork", source, sourceRepositoryId,
                         sourceBranch, sourceHead, null);
                 workspace.commitDsl("draft", dsl, "system",
                         "Initial working copy from " + sourceDescription + "/" + sourceBranch, provenance);

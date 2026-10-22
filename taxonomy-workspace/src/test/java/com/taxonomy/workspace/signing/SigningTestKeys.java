@@ -36,6 +36,11 @@ public final class SigningTestKeys {
         return new GitCommitSignatureService(signingProperties(directory));
     }
 
+    /** A separate runtime identity for cross-operator trust and rejection tests. */
+    public static GitCommitSignatureService createIndependentService(Path directory, String userId) throws Exception {
+        return new GitCommitSignatureService(properties(directory, generateKeys(userId), true));
+    }
+
     public static GitSigningProperties signingProperties(Path directory) throws Exception {
         return properties(directory, DefaultKeys.RING, true);
     }

@@ -1,10 +1,14 @@
 package com.taxonomy.workspace.storage;
 
+import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 
@@ -12,6 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /** Unit tests for {@link DslGitRepositoryFactory}. */
 class DslGitRepositoryFactoryTest {
@@ -101,18 +107,58 @@ class DslGitRepositoryFactoryTest {
                 "Explicit context must not seed an unknown workspace from the primary repository");
     }
 
-    @Test
-    void createWorkspaceRepositorySeedsFromSelectedCentralRepository() throws IOException {
+    @ParameterizedTest
+    @ValueSource(strings = {"repo-a", " repo-a "})
+    void createWorkspaceRepositorySeedsFromSelectedCentralRepository(String sourceRepositoryId) throws IOException {
         String dsl = "meta { language: \"selected\"; }";
-        factory.getCentralRepository("repo-a")
+        String sourceCommit = factory.getCentralRepository("repo-a")
                 .commitDsl("main", dsl, "alice", "source");
         factory.getCentralRepository("repo-b")
                 .commitDsl("main", "meta { language: \"other\"; }", "bob", "other");
 
         DslGitRepository workspace =
-                factory.createWorkspaceRepository("working-copy", "repo-a", "main");
+                factory.createWorkspaceRepository("working-copy", sourceRepositoryId, "main");
 
         assertEquals(dsl, workspace.getDslAtHead("draft"));
+        CommitProvenance.Source source = workspace.getProvenance(
+                workspace.getHeadCommit("draft")).sources().getFirst();
+        assertEquals("repo-a", source.repositoryId());
+        assertEquals("main", source.branch());
+        assertEquals(sourceCommit, source.commitId());
+    }
+
+    @Test
+    void legacyWorkspaceSeedRecordsPrimaryCatalogIdRatherThanDisplayDescription() throws IOException {
+        SystemRepository primary = new SystemRepository();
+        primary.setRepositoryId("primary-catalog-id");
+        SystemRepositoryService catalog = mock(SystemRepositoryService.class);
+        when(catalog.getPrimaryRepository()).thenReturn(primary);
+
+        try (DslGitRepositoryFactory catalogFactory = new DslGitRepositoryFactory(null, catalog)) {
+            String sourceCommit = catalogFactory.getSystemRepository().commitDsl(
+                    "draft", "meta { language: \"primary\"; }", "system", "source");
+
+            DslGitRepository workspace = catalogFactory.getWorkspaceRepository("personal");
+
+            CommitProvenance.Source source = workspace.getProvenance(
+                    workspace.getHeadCommit("draft")).sources().getFirst();
+            assertEquals("primary-catalog-id", source.repositoryId());
+            assertEquals("draft", source.branch());
+            assertEquals(sourceCommit, source.commitId());
+        }
+    }
+
+    @Test
+    void inMemoryLegacySeedUsesExplicitCompatibilityIdentity() throws IOException {
+        String sourceCommit = factory.getSystemRepository().commitDsl(
+                "draft", "meta { language: \"primary\"; }", "system", "source");
+
+        DslGitRepository workspace = factory.getWorkspaceRepository("legacy-personal");
+
+        CommitProvenance.Source source = workspace.getProvenance(
+                workspace.getHeadCommit("draft")).sources().getFirst();
+        assertEquals(WorkspaceContext.LEGACY_REPOSITORY_ID, source.repositoryId());
+        assertEquals(sourceCommit, source.commitId());
     }
 
     @Test

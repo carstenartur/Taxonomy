@@ -4,6 +4,7 @@ import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.SyncState;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -564,7 +565,14 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     /** Capture the ref before its content and reject an inconsistent observation. */
     private WorkspaceMergeState trackingState(DslGitRepository repository) throws IOException {
         String head = repository.getHeadCommit(TRACKING_BRANCH);
-        if (head != null) repository.verifySnapshot(head);
+        if (head != null) {
+            // This is accepted local bookkeeping, not a new incoming model snapshot.
+            // Keep legacy unsigned bases usable while still rejecting bad signatures.
+            SignatureStatus status = repository.verifyCommit(head).status();
+            if (status != SignatureStatus.UNSIGNED && status != SignatureStatus.VERIFIED) {
+                throw new IOException("Synchronization base rejected by signature validation: " + status);
+            }
+        }
         String dsl = valueOrEmpty(repository.getDslAtHead(TRACKING_BRANCH));
         repository.verifyExpectedHead(TRACKING_BRANCH, head);
         return new WorkspaceMergeState(dsl, head);

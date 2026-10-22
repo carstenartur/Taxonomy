@@ -4,12 +4,17 @@ import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.*;
 import com.taxonomy.workspace.repository.*;
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
+import com.taxonomy.workspace.signing.SignatureStatus;
+import com.taxonomy.workspace.signing.SigningTestKeys;
 import com.taxonomy.workspace.storage.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.Arguments;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -131,6 +136,81 @@ class GitNativeSyncSnapshotRaceTest {
             verify(fixture.portfolio, never()).commitPortfolio(anyString(), anyString(), anyString(), any());
             verify(fixture.portfolio, never()).materializePortfolio(anyString(), anyString(), any());
         }
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void strictIncomingPolicyAllowsAcceptedUnsignedSynchronizationBase(boolean publish, @TempDir Path keys) throws Exception {
+        try (var fixture = new Fixture()) {
+            String legacyBase = fixture.local.getHeadCommit("sync-base");
+            enableStrictSigning(fixture, keys);
+            when(fixture.merger.mergeContent(anyString(), anyString(), anyString()))
+                    .thenReturn(new TaxDslMergeResult("merged", List.of()));
+
+            fixture.sync(publish);
+
+            assertEquals("merged", fixture.local.getDslAtHead("main"));
+            if (publish) assertEquals("merged", fixture.source.getDslAtHead("draft"));
+            assertEquals("merged", fixture.local.getDslAtHead("sync-base"));
+            String updatedBase = fixture.local.getHeadCommit("sync-base");
+            assertNotEquals(legacyBase, updatedBase);
+            assertEquals(SignatureStatus.UNSIGNED, fixture.local.verifyCommit(legacyBase).status());
+            assertEquals(SignatureStatus.VERIFIED, fixture.local.verifyCommit(updatedBase).status());
+            assertEquals(SignatureStatus.VERIFIED,
+                    fixture.local.verifyCommit(fixture.local.getHeadCommit("main")).status());
+            assertNotNull(fixture.workspace.getLastIntegratedCommit());
+            verify(fixture.rows).save(fixture.workspace);
+        }
+    }
+
+    static Stream<Arguments> rejectedBaseSignatures() {
+        return Stream.of(false, true).flatMap(publish ->
+                Stream.of(false, true).map(untrusted -> Arguments.of(publish, untrusted)));
+    }
+
+    @ParameterizedTest
+    @MethodSource("rejectedBaseSignatures")
+    void rejectedSynchronizationBaseCannotMutateEitherModel(boolean publish, boolean untrusted,
+                                                            @TempDir Path keys) throws Exception {
+        try (var fixture = new Fixture()) {
+            GitCommitSignatureService trusted = enableStrictSigning(fixture, keys.resolve("trusted"));
+            if (untrusted) {
+                fixture.local.withSignatureService(SigningTestKeys.createIndependentService(
+                        keys.resolve("untrusted"), "Other operator <other@example.test>"), "workspace:workspace");
+                fixture.local.commitDsl("sync-base", "base", "other", "Untrusted synchronization base");
+                fixture.local.withSignatureService(trusted, "workspace:workspace");
+            } else {
+                insertInvalidSignature(fixture.local, "sync-base");
+            }
+            String sourceBefore = fixture.source.getHeadCommit("draft");
+            String localBefore = fixture.local.getHeadCommit("main");
+            String baseBefore = fixture.local.getHeadCommit("sync-base");
+            assertEquals(untrusted ? SignatureStatus.UNTRUSTED : SignatureStatus.INVALID,
+                    fixture.local.verifyCommit(baseBefore).status());
+            when(fixture.merger.mergeContent(anyString(), anyString(), anyString()))
+                    .thenReturn(new TaxDslMergeResult("merged", List.of()));
+
+            assertThrows(IOException.class, () -> fixture.sync(publish));
+
+            assertEquals(sourceBefore, fixture.source.getHeadCommit("draft"));
+            assertEquals(localBefore, fixture.local.getHeadCommit("main"));
+            assertEquals(baseBefore, fixture.local.getHeadCommit("sync-base"));
+            assertNull(fixture.workspace.getLastIntegratedCommit());
+            verify(fixture.rows, never()).save(any());
+            verify(fixture.portfolio, never()).commitPortfolio(anyString(), anyString(), anyString(), any());
+            verify(fixture.portfolio, never()).materializePortfolio(anyString(), anyString(), any());
+        }
+    }
+
+    private static GitCommitSignatureService enableStrictSigning(Fixture fixture, Path keys) throws Exception {
+        var properties = SigningTestKeys.signingProperties(keys);
+        properties.setRequireSignatures(true);
+        var signer = new GitCommitSignatureService(properties);
+        fixture.source.withSignatureService(signer, "source");
+        fixture.local.withSignatureService(signer, "workspace:workspace");
+        fixture.source.commitDsl("draft", "remote", "owner", "Trusted source checkpoint");
+        fixture.local.commitDsl("main", "local", "owner", "Trusted workspace checkpoint");
+        return signer;
     }
 
     private static void insertInvalidSignature(DslGitRepository repository, String branch) throws IOException {

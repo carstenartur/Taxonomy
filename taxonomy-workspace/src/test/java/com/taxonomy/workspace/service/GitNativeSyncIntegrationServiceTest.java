@@ -3,6 +3,7 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.signing.CommitSignature;
 import org.junit.jupiter.api.AfterEach;
 import org.mockito.MockedStatic;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -116,6 +117,7 @@ class GitNativeSyncIntegrationServiceTest {
         when(sourceRepository.getDslAtCommit("source-head"))
                 .thenAnswer(call -> sourceRepository.getDslAtHead(sourceMetadata.getDefaultBranch()));
         when(isolatedWorkspaceRepository.getHeadCommit(any(String.class))).thenReturn("workspace-head");
+        when(isolatedWorkspaceRepository.verifyCommit(any(String.class))).thenReturn(CommitSignature.unsigned());
         when(isolatedWorkspaceRepository.getDslAtCommit("workspace-head"))
                 .thenAnswer(call -> isolatedWorkspaceRepository.getDslAtHead(
                         workspace.getCurrentBranch()));

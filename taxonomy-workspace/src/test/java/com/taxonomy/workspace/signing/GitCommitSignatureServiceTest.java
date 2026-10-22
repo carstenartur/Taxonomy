@@ -10,6 +10,8 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -212,6 +214,341 @@ class GitCommitSignatureServiceTest {
         assertThatThrownBy(() -> new GitCommitSignatureService(properties)).isInstanceOf(IOException.class);
     }
 
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void updatedExpiryOverridesStalePublicCopyInEitherTrustFileOrder(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var signed = commit(); configured(material, true).sign(signed, "project", "main");
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var updated = updatedCertificate(material, subkey, 60,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, created.plusSeconds(70), material);
+        for (var files : trustFileOrders(material.generatePublicKeyRing(), updated)) {
+            var properties = new GitSigningProperties(); properties.setTrustedPublicKeyFiles(files);
+            var verifier = new GitCommitSignatureService(properties, new MutableClock(created.plusSeconds(90)));
+            assertThat(verifier.verify(signed.build()).status()).isEqualTo(SignatureStatus.INVALID);
+            assertThatThrownBy(() -> verifier.requireAcceptable(signed.build())).isInstanceOf(IOException.class);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void updatedUsageOverridesStalePublicCopyInEitherTrustFileOrder(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var signed = commit(); configured(material, true).sign(signed, "project", "main");
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var updated = updatedCertificate(material, subkey, 120,
+                org.bouncycastle.bcpg.sig.KeyFlags.CERTIFY_OTHER, created.plusSeconds(70), material);
+        for (var files : trustFileOrders(material.generatePublicKeyRing(), updated)) {
+            var properties = new GitSigningProperties(); properties.setTrustedPublicKeyFiles(files);
+            var verifier = new GitCommitSignatureService(properties, new MutableClock(created.plusSeconds(90)));
+            assertThat(verifier.verify(signed.build()).status()).isEqualTo(SignatureStatus.UNSUPPORTED);
+            assertThatThrownBy(() -> verifier.requireAcceptable(signed.build())).isInstanceOf(IOException.class);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void updatedExpiryDisablesMatchingLocalSecretSigningKeyInEitherOrder(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var updated = updatedCertificate(material, subkey, 60,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, created.plusSeconds(70), material);
+        for (var files : trustFileOrders(material.generatePublicKeyRing(), updated)) {
+            var properties = properties(material, true); properties.setTrustedPublicKeyFiles(files);
+            assertThatThrownBy(() -> new GitCommitSignatureService(properties,
+                    new MutableClock(created.plusSeconds(90)))).isInstanceOf(IOException.class);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void updatedUsageDisablesMatchingLocalSecretSigningKeyInEitherOrder(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var updated = updatedCertificate(material, subkey, 120,
+                org.bouncycastle.bcpg.sig.KeyFlags.CERTIFY_OTHER, created.plusSeconds(70), material);
+        for (var files : trustFileOrders(material.generatePublicKeyRing(), updated)) {
+            var properties = properties(material, true); properties.setTrustedPublicKeyFiles(files);
+            assertThatThrownBy(() -> new GitCommitSignatureService(properties,
+                    new MutableClock(created.plusSeconds(90)))).isInstanceOf(IOException.class);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void signerUsesUpdatedExpiryAtRuntime(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var updated = updatedCertificate(material, subkey, 100,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, created.plusSeconds(70), material);
+        var updatedKeys = updated.getPublicKeys();
+        var updatedKey = updatedKeys.next();
+        if (subkey) updatedKey = updatedKeys.next();
+        var afterUpdatedExpiry = updatedKey.getCreationTime().toInstant().plusSeconds(101);
+        for (var files : trustFileOrders(material.generatePublicKeyRing(), updated)) {
+            var properties = properties(material, true); properties.setTrustedPublicKeyFiles(files);
+            var clock = new MutableClock(created.plusSeconds(90));
+            var signer = new GitCommitSignatureService(properties, clock);
+            var beforeExpiry = commit(); signer.sign(beforeExpiry, "project", "main");
+            assertThat(signer.verify(beforeExpiry.build()).status()).isEqualTo(SignatureStatus.VERIFIED);
+            clock.now = afterUpdatedExpiry;
+            var afterExpiry = commit();
+            assertThatThrownBy(() -> signer.sign(afterExpiry, "project", "main")).isInstanceOf(IOException.class);
+            assertThat(afterExpiry.getGpgSignature()).isNull();
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void newerAuthenticatedUpdateCanRestoreExpiryAndSigningPermission(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var restricted = updatedCertificate(material, subkey, 60,
+                org.bouncycastle.bcpg.sig.KeyFlags.CERTIFY_OTHER, created.plusSeconds(70), material);
+        var renewed = updatedCertificate(material, subkey, 120,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, created.plusSeconds(80), material);
+        for (var files : trustFileOrders(restricted, renewed)) {
+            var properties = properties(material, true); properties.setTrustedPublicKeyFiles(files);
+            var service = new GitCommitSignatureService(properties, new MutableClock(created.plusSeconds(90)));
+            var signed = commit(); service.sign(signed, "project", "main");
+            assertThat(service.verify(signed.build()).status()).isEqualTo(SignatureStatus.VERIFIED);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void unauthenticatedMetadataCannotOverrideTrustedCertificate(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var signed = commit(); configured(material, true).sign(signed, "project", "main");
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var forged = updatedCertificate(material, subkey, 1,
+                org.bouncycastle.bcpg.sig.KeyFlags.CERTIFY_OTHER, created.plusSeconds(80), otherKeys);
+        for (var files : trustFileOrders(material.generatePublicKeyRing(), forged)) {
+            var properties = properties(material, true); properties.setTrustedPublicKeyFiles(files);
+            var service = new GitCommitSignatureService(properties, new MutableClock(created.plusSeconds(90)));
+            assertThat(service.verify(signed.build()).status()).isEqualTo(SignatureStatus.VERIFIED);
+            var fresh = commit(); service.sign(fresh, "project", "main");
+            assertThat(service.verify(fresh.build()).status()).isEqualTo(SignatureStatus.VERIFIED);
+        }
+    }
+
+    @Test void unauthenticatedRevocationCannotDisableTrustedKey() throws Exception {
+        var signed = commit(); configured(keys, true).sign(signed, "project", "main");
+        var forged = revokedRing(keys, otherKeys);
+        for (var files : trustFileOrders(keys.generatePublicKeyRing(), forged)) {
+            var properties = properties(keys, true); properties.setTrustedPublicKeyFiles(files);
+            var service = new GitCommitSignatureService(properties);
+            assertThat(service.verify(signed.build()).status()).isEqualTo(SignatureStatus.VERIFIED);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void unauthenticatedRenewalCannotRestoreExpiredSigningKey(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var signed = commit(); configured(material, true).sign(signed, "project", "main");
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var expired = updatedCertificate(material, subkey, 60,
+                org.bouncycastle.bcpg.sig.KeyFlags.CERTIFY_OTHER, created.plusSeconds(70), material);
+        var forgedRenewal = updatedCertificate(material, subkey, 120,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, created.plusSeconds(80), otherKeys);
+        for (var files : trustFileOrders(expired, forgedRenewal)) {
+            var verification = new GitSigningProperties(); verification.setTrustedPublicKeyFiles(files);
+            var verifier = new GitCommitSignatureService(verification, new MutableClock(created.plusSeconds(90)));
+            assertThat(verifier.verify(signed.build()).status()).isEqualTo(SignatureStatus.INVALID);
+            var signing = properties(material, true); signing.setTrustedPublicKeyFiles(files);
+            assertThatThrownBy(() -> new GitCommitSignatureService(signing,
+                    new MutableClock(created.plusSeconds(90)))).isInstanceOf(IOException.class);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void futureCertificateCannotRestoreExpiredKeyBeforeItsCreation(boolean subkey) throws Exception {
+        var material = subkey ? signingSubkeyKeys() : keys;
+        var signed = commit(); configured(material, true).sign(signed, "project", "main");
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var expired = updatedCertificate(material, subkey, 60,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, created.plusSeconds(70), material);
+        var future = updatedCertificate(material, subkey, 240,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, created.plusSeconds(100), material);
+        for (var files : trustFileOrders(expired, future)) {
+            var properties = new GitSigningProperties(); properties.setTrustedPublicKeyFiles(files);
+            var clock = new MutableClock(created.plusSeconds(90));
+            var verifier = new GitCommitSignatureService(properties, clock);
+            assertThat(verifier.verify(signed.build()).status()).isEqualTo(SignatureStatus.INVALID);
+            var signing = properties(material, true); signing.setTrustedPublicKeyFiles(files);
+            assertThatThrownBy(() -> new GitCommitSignatureService(signing, clock)).isInstanceOf(IOException.class);
+            clock.now = created.plusSeconds(110);
+            assertThat(verifier.verify(signed.build()).status()).isEqualTo(SignatureStatus.VERIFIED);
+            var signer = new GitCommitSignatureService(signing, clock);
+            var fresh = commit(); signer.sign(fresh, "project", "main");
+            assertThat(signer.verify(fresh.build()).status()).isEqualTo(SignatureStatus.VERIFIED);
+        }
+    }
+
+    @Test void signerAppliesFutureUsageRestrictionOnlyWhenEffective() throws Exception {
+        var created = keys.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var future = updatedCertificate(keys, false, 240,
+                org.bouncycastle.bcpg.sig.KeyFlags.CERTIFY_OTHER, created.plusSeconds(100), keys);
+        for (var files : trustFileOrders(keys.generatePublicKeyRing(), future)) {
+            var properties = properties(keys, true); properties.setTrustedPublicKeyFiles(files);
+            var clock = new MutableClock(created.plusSeconds(90));
+            var signer = new GitCommitSignatureService(properties, clock);
+            var before = commit(); signer.sign(before, "project", "main");
+            assertThat(signer.verify(before.build()).status()).isEqualTo(SignatureStatus.VERIFIED);
+            clock.now = created.plusSeconds(110);
+            var after = commit();
+            assertThatThrownBy(() -> signer.sign(after, "project", "main")).isInstanceOf(IOException.class);
+            assertThat(after.getGpgSignature()).isNull();
+            assertThat(signer.verify(before.build()).status()).isEqualTo(SignatureStatus.UNSUPPORTED);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void subkeyRequiresAnAuthenticatedPrimaryBinding(boolean forgedBinding) throws Exception {
+        var material = signingSubkeyKeys();
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var bindingTime = created.plusSeconds(70);
+        var ring = forgedBinding ? updatedCertificate(material, true, 120,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, bindingTime, otherKeys) : material.generatePublicKeyRing();
+        ring = retainOnlySubkeyBinding(ring, forgedBinding ? bindingTime : null);
+        assertSubkeyCertificateRejected(material, ring, created.plusSeconds(90));
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void signingSubkeyRequiresItsOwnAuthenticatedBacksignature(boolean forgedBacksignature) throws Exception {
+        var material = signingSubkeyKeys();
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var bindingTime = created.plusSeconds(70);
+        var ring = updatedCertificate(material, true, 120,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, bindingTime, material,
+                0, forgedBacksignature ? otherKeys : null);
+        assertSubkeyCertificateRejected(material, ring, created.plusSeconds(90));
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void expiredBindingFallsBackOnlyToAnOlderLiveBinding(boolean retainOlderBinding) throws Exception {
+        var material = signingSubkeyKeys();
+        var signed = commit(); configured(material, true).sign(signed, "project", "main");
+        var created = material.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var bindingTime = created.plusSeconds(70);
+        var ring = updatedCertificate(material, true, 120,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, bindingTime, material, 10, material);
+        if (!retainOlderBinding) ring = retainOnlySubkeyBinding(ring, bindingTime);
+        var file = directory.resolve("expired-binding.asc"); Files.write(file, armor(ring.getEncoded()));
+        var properties = new GitSigningProperties(); properties.setTrustedPublicKeyFiles(List.of(file.toString()));
+        var verifier = new GitCommitSignatureService(properties, new MutableClock(created.plusSeconds(90)));
+        assertThat(verifier.verify(signed.build()).status()).isEqualTo(
+                retainOlderBinding ? SignatureStatus.VERIFIED : SignatureStatus.INVALID);
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void equalTimeConflictingUpdatesUseRestrictivePolicyInEitherOrder(boolean expireKey) throws Exception {
+        var signed = commit(); configured(keys, true).sign(signed, "project", "main");
+        var created = keys.generatePublicKeyRing().getPublicKey().getCreationTime().toInstant();
+        var restrictive = updatedCertificate(keys, false, expireKey ? 60 : 240,
+                org.bouncycastle.bcpg.sig.KeyFlags.CERTIFY_OTHER, created.plusSeconds(70), keys);
+        var permissive = updatedCertificate(keys, false, 240,
+                org.bouncycastle.bcpg.sig.KeyFlags.SIGN_DATA, created.plusSeconds(70), keys);
+        for (var files : trustFileOrders(restrictive, permissive)) {
+            var properties = new GitSigningProperties(); properties.setTrustedPublicKeyFiles(files);
+            var verifier = new GitCommitSignatureService(properties, new MutableClock(created.plusSeconds(90)));
+            assertThat(verifier.verify(signed.build()).status()).isEqualTo(
+                    expireKey ? SignatureStatus.INVALID : SignatureStatus.UNSUPPORTED);
+        }
+    }
+
+    private void assertSubkeyCertificateRejected(PGPKeyRingGenerator material, PGPPublicKeyRing invalid, Instant now)
+            throws Exception {
+        var signed = commit(); configured(material, true).sign(signed, "project", "main");
+        var file = directory.resolve("invalid-subkey.asc"); Files.write(file, armor(invalid.getEncoded()));
+        var properties = new GitSigningProperties(); properties.setTrustedPublicKeyFiles(List.of(file.toString()));
+        var clock = new MutableClock(now);
+        var verifier = new GitCommitSignatureService(properties, clock);
+        assertThat(verifier.verify(signed.build()).status()).isEqualTo(SignatureStatus.INVALID);
+        assertThatThrownBy(() -> verifier.requireAcceptable(signed.build())).isInstanceOf(IOException.class);
+        var signing = properties(material, true);
+        Files.write(Path.of(signing.getSecretKeyFile()), armor(
+                PGPSecretKeyRing.replacePublicKeys(material.generateSecretKeyRing(), invalid).getEncoded()));
+        assertThatThrownBy(() -> new GitCommitSignatureService(signing, clock)).isInstanceOf(IOException.class);
+    }
+
+    private static PGPPublicKeyRing retainOnlySubkeyBinding(PGPPublicKeyRing ring, Instant keep) {
+        var keys = ring.getPublicKeys(); keys.next();
+        var subkey = keys.next();
+        for (var signatures = subkey.getSignatures(); signatures.hasNext();) {
+            var signature = signatures.next();
+            if (signature.getSignatureType() == PGPSignature.SUBKEY_BINDING
+                    && (keep == null || !signature.getCreationTime().toInstant().equals(keep))) {
+                subkey = PGPPublicKey.removeCertification(subkey, signature);
+            }
+        }
+        return PGPPublicKeyRing.insertPublicKey(ring, subkey);
+    }
+
+    private List<List<String>> trustFileOrders(PGPPublicKeyRing stale, PGPPublicKeyRing updated) throws Exception {
+        var oldFile = directory.resolve("stale-copy.asc");
+        var newFile = directory.resolve("updated-copy.asc");
+        Files.write(oldFile, armor(stale.getEncoded()));
+        Files.write(newFile, armor(updated.getEncoded()));
+        return List.of(List.of(oldFile.toString(), newFile.toString()), List.of(newFile.toString(), oldFile.toString()));
+    }
+
+    private static PGPPublicKeyRing updatedCertificate(PGPKeyRingGenerator material, boolean subkey,
+            long validSeconds, int flags, Instant updatedAt, PGPKeyRingGenerator certifier) throws Exception {
+        return updatedCertificate(material, subkey, validSeconds, flags, updatedAt, certifier, 0, material);
+    }
+
+    private static PGPPublicKeyRing updatedCertificate(PGPKeyRingGenerator material, boolean subkey,
+            long validSeconds, int flags, Instant updatedAt, PGPKeyRingGenerator certifier,
+            long signatureLifetime, PGPKeyRingGenerator subkeyCertifier) throws Exception {
+        var ring = material.generatePublicKeyRing();
+        var primary = ring.getPublicKey();
+        var iterator = ring.getPublicKeys();
+        var key = iterator.next();
+        if (subkey) key = iterator.next();
+        var privateKey = certifier.generateSecretKeyRing().getSecretKey().extractPrivateKey(
+                new JcePBESecretKeyDecryptorBuilder().setProvider(new BouncyCastleProvider()).build("test-only".toCharArray()));
+        var generator = new PGPSignatureGenerator(new JcaPGPContentSignerBuilder(primary.getAlgorithm(),
+                HashAlgorithmTags.SHA256).setProvider(new BouncyCastleProvider()), primary);
+        generator.init(subkey ? PGPSignature.SUBKEY_BINDING : PGPSignature.POSITIVE_CERTIFICATION, privateKey);
+        var hashed = new PGPSignatureSubpacketGenerator();
+        hashed.setIssuerFingerprint(false, primary);
+        hashed.setSignatureCreationTime(false, java.util.Date.from(updatedAt));
+        hashed.setKeyExpirationTime(false, validSeconds);
+        hashed.setKeyFlags(false, flags);
+        if (signatureLifetime > 0) hashed.setSignatureExpirationTime(false, signatureLifetime);
+        if (subkey && subkeyCertifier != null) {
+            var backSecret = subkeyCertifier == material ? material.generateSecretKeyRing().getSecretKey(key.getKeyID())
+                    : subkeyCertifier.generateSecretKeyRing().getSecretKey();
+            var backPrivate = backSecret.extractPrivateKey(new JcePBESecretKeyDecryptorBuilder()
+                    .setProvider(new BouncyCastleProvider()).build("test-only".toCharArray()));
+            var backSignature = new PGPSignatureGenerator(new JcaPGPContentSignerBuilder(key.getAlgorithm(),
+                    HashAlgorithmTags.SHA256).setProvider(new BouncyCastleProvider()), key);
+            backSignature.init(PGPSignature.PRIMARYKEY_BINDING, backPrivate);
+            var backPackets = new PGPSignatureSubpacketGenerator();
+            backPackets.setSignatureCreationTime(false, java.util.Date.from(updatedAt));
+            backSignature.setHashedSubpackets(backPackets.generate());
+            hashed.addEmbeddedSignature(false, backSignature.generateCertification(primary, key));
+        }
+        generator.setHashedSubpackets(hashed.generate());
+        var unhashed = new PGPSignatureSubpacketGenerator();
+        unhashed.setIssuerKeyID(false, primary.getKeyID());
+        generator.setUnhashedSubpackets(unhashed.generate());
+        PGPPublicKey updated;
+        if (subkey) {
+            var signature = roundTripSignature(generator.generateCertification(primary, key));
+            assertThat(signature.getKeyID()).isEqualTo(primary.getKeyID());
+            updated = PGPPublicKey.addCertification(key, signature);
+        } else {
+            var userId = primary.getUserIDs().next();
+            var signature = roundTripSignature(generator.generateCertification(userId, primary));
+            assertThat(signature.getKeyID()).isEqualTo(primary.getKeyID());
+            updated = PGPPublicKey.addCertification(primary, userId, signature);
+        }
+        return PGPPublicKeyRing.insertPublicKey(ring, updated);
+    }
+
+    private static PGPSignature roundTripSignature(PGPSignature signature) throws Exception {
+        // A generated signature caches the real private-key ID. Imported certificates
+        // instead obtain the claimed issuer ID from their serialized subpackets.
+        var objects = new PGPObjectFactory(new java.io.ByteArrayInputStream(signature.getEncoded()),
+                new JcaKeyFingerprintCalculator());
+        return ((PGPSignatureList) objects.nextObject()).get(0);
+    }
+
     @Test void primaryRevocationDominatesStaleSigningSubkeyTrust() throws Exception {
         var subkeyKeys = signingSubkeyKeys();
         var signer = configured(subkeyKeys, true);
@@ -255,15 +592,23 @@ class GitCommitSignatureServiceTest {
     }
 
     private static PGPPublicKeyRing revokedRing(PGPKeyRingGenerator generator) throws Exception {
+        return revokedRing(generator, generator);
+    }
+
+    private static PGPPublicKeyRing revokedRing(PGPKeyRingGenerator generator, PGPKeyRingGenerator certifier) throws Exception {
         var ring = generator.generatePublicKeyRing();
         var primary = ring.getPublicKey();
-        var privateKey = generator.generateSecretKeyRing().getSecretKey().extractPrivateKey(
+        var privateKey = certifier.generateSecretKeyRing().getSecretKey().extractPrivateKey(
                 new JcePBESecretKeyDecryptorBuilder().setProvider(new BouncyCastleProvider()).build("test-only".toCharArray()));
         var revocation = new PGPSignatureGenerator(new JcaPGPContentSignerBuilder(primary.getAlgorithm(),
                 HashAlgorithmTags.SHA256).setProvider(new BouncyCastleProvider()), primary);
         revocation.init(PGPSignature.KEY_REVOCATION, privateKey);
-        return PGPPublicKeyRing.insertPublicKey(ring,
-                PGPPublicKey.addCertification(primary, revocation.generateCertification(primary)));
+        var unhashed = new PGPSignatureSubpacketGenerator();
+        unhashed.setIssuerKeyID(false, primary.getKeyID());
+        revocation.setUnhashedSubpackets(unhashed.generate());
+        var signature = roundTripSignature(revocation.generateCertification(primary));
+        assertThat(signature.getKeyID()).isEqualTo(primary.getKeyID());
+        return PGPPublicKeyRing.insertPublicKey(ring, PGPPublicKey.addCertification(primary, signature));
     }
 
     private static final class MutableClock extends java.time.Clock {

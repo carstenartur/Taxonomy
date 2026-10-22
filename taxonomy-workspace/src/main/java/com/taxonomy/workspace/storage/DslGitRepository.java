@@ -12,7 +12,10 @@ import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheBuildIterator;
+import org.eclipse.jgit.dircache.DirCacheEditor;
+import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
 import org.eclipse.jgit.lib.CommitBuilder;
@@ -27,7 +30,6 @@ import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.TreeFormatter;
 import org.eclipse.jgit.merge.MergeAttributes;
-import org.eclipse.jgit.merge.MergeStrategy;
 import org.eclipse.jgit.merge.RecursiveMerger;
 import org.eclipse.jgit.merge.ThreeWayMerger;
 import org.eclipse.jgit.revwalk.RevCommit;
@@ -45,6 +47,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -177,11 +180,19 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Check all newly introduced ancestry, including both sides of merges. */
     public void verifyIncoming(String head, String acceptedBase) throws IOException {
+        verifyIncomingFromAcceptedHeads(head, acceptedBase == null ? List.of() : List.of(acceptedBase));
+    }
+
+    /** Check incoming history against local acceptance boundaries captured before a transport operation. */
+    public void verifyIncomingFromAcceptedHeads(String head, Collection<String> acceptedHeads) throws IOException {
         if (head == null) return;
+        Objects.requireNonNull(acceptedHeads, "acceptedHeads");
         try (RevWalk walk = new RevWalk(gitRepo)) {
             walk.markStart(walk.parseCommit(ObjectId.fromString(head)));
-            if (acceptedBase != null) {
-                walk.markUninteresting(walk.parseCommit(ObjectId.fromString(acceptedBase)));
+            for (String acceptedHead : acceptedHeads) {
+                if (acceptedHead != null) {
+                    walk.markUninteresting(walk.parseCommit(ObjectId.fromString(acceptedHead)));
+                }
             }
             for (RevCommit commit : walk) {
                 verifySnapshot(commit.name());
@@ -434,16 +445,18 @@ public class DslGitRepository implements AutoCloseable {
 
             RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());
             verifyIncoming(commitId, targetHead.name());
-            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
+            ThreeWayMerger merger = new ModelHistoryMerger(gitRepo);
             if (!merger.merge(targetHead, pickCommit)) {
                 log.warn("Cherry-pick merge conflict for {} onto '{}'", commitId, targetBranch);
                 return null;
             }
 
             PersonIdent committer = systemIdent();
+            var provenance = CommitProvenance.capture("cherry-pick", this, storageName,
+                    "detached", commitId, null);
             try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
                 CommitBuilder newCommit = new CommitBuilder();
-                newCommit.setTreeId(merger.getResultTreeId());
+                newCommit.setTreeId(insertProvenanceTree(inserter, merger.getResultTreeId(), provenance));
                 newCommit.setParentId(targetHead);
                 newCommit.setAuthor(pickCommit.getAuthorIdent());
                 newCommit.setCommitter(committer);
@@ -474,6 +487,17 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Supply final merge metadata before signing and publishing the single new object. */
     public String merge(String fromBranch, String intoBranch, String author, String message) throws IOException {
+        return merge(fromBranch, intoBranch, author, message, null);
+    }
+
+    /** Merge transport history using only the locally accepted heads captured before fetching. */
+    public String mergeFromAcceptedHeads(String fromBranch, String intoBranch,
+                                         Collection<String> acceptedHeads) throws IOException {
+        return merge(fromBranch, intoBranch, null, null, List.copyOf(acceptedHeads));
+    }
+
+    private String merge(String fromBranch, String intoBranch, String author, String message,
+                         Collection<String> acceptedHeads) throws IOException {
         String fromRefName = Constants.R_HEADS + fromBranch;
         String intoRefName = Constants.R_HEADS + intoBranch;
         Ref fromRef = gitRepo.getRefDatabase().exactRef(fromRefName);
@@ -488,7 +512,11 @@ public class DslGitRepository implements AutoCloseable {
             RevCommit intoCommit = walk.parseCommit(intoRef.getObjectId());
             PersonIdent actor = author == null || author.isBlank() ? systemIdent() : personIdent(author);
 
-            verifyIncoming(fromCommit.name(), intoCommit.name());
+            if (acceptedHeads == null) {
+                verifyIncoming(fromCommit.name(), intoCommit.name());
+            } else {
+                verifyIncomingFromAcceptedHeads(fromCommit.name(), acceptedHeads);
+            }
 
             if (walk.isMergedInto(fromCommit, intoCommit)) {
                 log.info("Already merged: '{}' is ancestor of '{}'", fromBranch, intoBranch);
@@ -540,7 +568,7 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
-    /** Two-parent merges retain transfer evidence in their original signed parents. */
+    /** Model-content merges exclude the reserved, transfer-specific metadata path. */
     private static final class ModelHistoryMerger extends RecursiveMerger {
         ModelHistoryMerger(Repository repository) {
             super(repository, true);
@@ -558,6 +586,26 @@ public class DslGitRepository implements AutoCloseable {
                 return true;
             }
             return super.processEntry(base, ours, theirs, index, work, ignoreConflicts, attributes);
+        }
+    }
+
+    /** Single-parent operations need fresh source evidence while retaining every other merged path. */
+    private ObjectId insertProvenanceTree(ObjectInserter inserter, ObjectId mergedTree,
+                                         CommitProvenance provenance) throws IOException {
+        provenance.verify(signatures);
+        ObjectId proof = inserter.insert(Constants.OBJ_BLOB, provenance.toBytes());
+        try (var reader = gitRepo.newObjectReader()) {
+            DirCache index = DirCache.read(reader, mergedTree);
+            DirCacheEditor editor = index.editor();
+            editor.add(new DirCacheEditor.PathEdit(CommitProvenance.FILENAME) {
+                @Override
+                public void apply(DirCacheEntry entry) {
+                    entry.setFileMode(FileMode.REGULAR_FILE);
+                    entry.setObjectId(proof);
+                }
+            });
+            editor.finish();
+            return index.writeTree(inserter);
         }
     }
 
@@ -583,7 +631,8 @@ public class DslGitRepository implements AutoCloseable {
 
             RevCommit branchHead = walk.parseCommit(branchRef.getObjectId());
             RevCommit parentCommit = walk.parseCommit(revertCommit.getParent(0));
-            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
+            verifySnapshot(parentCommit.name());
+            ThreeWayMerger merger = new ModelHistoryMerger(gitRepo);
             merger.setBase(revertCommit);
             if (!merger.merge(branchHead, parentCommit)) {
                 log.warn("Revert conflict for {} on '{}'", commitId, branch);
@@ -591,9 +640,11 @@ public class DslGitRepository implements AutoCloseable {
             }
 
             PersonIdent actor = systemIdent();
+            var provenance = CommitProvenance.capture("revert", this, storageName,
+                    "detached", parentCommit.name(), commitId);
             try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
                 CommitBuilder newCommit = new CommitBuilder();
-                newCommit.setTreeId(merger.getResultTreeId());
+                newCommit.setTreeId(insertProvenanceTree(inserter, merger.getResultTreeId(), provenance));
                 newCommit.setParentId(branchHead);
                 newCommit.setAuthor(actor);
                 newCommit.setCommitter(actor);

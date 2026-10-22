@@ -40,6 +40,14 @@ Schlüsselwechsel. Sie werden auch bei ausgeschalteter lokaler Signierung zur
 Prüfung geladen. Vertrauen entsteht durch explizite Konfiguration, nicht durch
 Autorenname, E-Mail-Adresse oder Remote-URL.
 
+Kopien desselben Zertifikats werden anhand des vollständigen Fingerabdrucks
+zusammengeführt. Die neueste authentifizierte und aktuell wirksame
+Selbstzertifizierung oder Unterschlüssel-Bindung bestimmt Ablaufzeit und Signierberechtigung für Signierung
+und Prüfung; ein authentifizierter Widerruf bleibt wirksam. Eine ältere öffentliche
+Kopie, auch im privaten Schlüsselbund, kann diese Aktualisierungen nicht aufheben.
+Starten Sie die Anwendung nach Änderungen an Schlüsseldateien neu, damit sie die
+aktualisierten Zertifikate lädt.
+
 Private Schlüssel und Passphrasen gehören außerhalb sämtlicher Modell- und
 Quellcode-Repositories, Provenienzdaten, HTTP-Antworten, Protokolle, Testdaten und
 Anwendungssicherungsexporte. Sichern Sie Geheimnisse separat nach dem
@@ -56,6 +64,14 @@ geprüft. Prüfen Sie vor dem Einschalten der strikten Richtlinie die öffentlic
 Schlüssel aller beteiligten Betreiber, auch für ältere Commits in eingehenden
 Historien. Signierung und Annahmerichtlinie sind getrennte Einstellungen und
 sollten zusammen geplant werden.
+
+Bei externem Fetch und externer Synchronisierung bleibt Historie, die vor dem Fetch
+bereits über akzeptierte lokale Branches erreichbar war, auch bei eingeschalteter
+strikter Annahmerichtlinie akzeptiert. Remote-Tracking-Refs und
+temporäre Sync-Refs gelten nicht als Annahmegrenzen. Fetch entfernt gelöschte
+Remote-Tracking-Refs vor der Prüfung. Eine vorhandene unsignierte lokale
+Synchronisierungsbasis bleibt verwendbar; ungültige oder nicht vertrauenswürdige
+Signaturen dieser Basis werden weiterhin abgelehnt.
 
 Normales externes Git-Fetch/-Push überträgt unveränderte Git-Objekte und erhält
 deren Signaturen. Repository-bezogene externe Synchronisierung akzeptiert ein
@@ -87,6 +103,13 @@ in den ursprünglichen Eltern-Commits. Der neue signierte Merge verweist auf bei
 Eltern und enthält keinen eigenen Transfernachweis. Die reservierte Nachweisdatei
 wird dabei nicht textuell zusammengeführt; Konflikte in anderen Dateien bleiben
 unverändert wirksam.
+
+Cherry-Picks und Reverts schließen die reservierte Datei ebenfalls von der
+inhaltlichen Zusammenführung aus. Ihre neuen Commits mit jeweils einem Elternstand
+erhalten jedoch frische Quellnachweise: Cherry-Picks nennen den ausgewählten
+Quell-Commit; Reverts prüfen und dokumentieren den für den umgekehrten Merge
+verwendeten Elternstand und nennen den rückgängig gemachten Commit als Basis. Andere Dateien und echte
+Modellkonflikte behalten ihr übliches Merge-Verhalten.
 
 ## Historie lesen
 

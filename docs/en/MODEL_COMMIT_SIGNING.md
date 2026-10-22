@@ -36,6 +36,13 @@ public key files support external operators and rotation; verification also load
 these files when local signing is disabled. Trust is explicit configuration, not a
 claim inferred from an email address, remote URL or Git author name.
 
+Copies of the same certificate are reconciled by full fingerprint. The newest
+authenticated, currently effective self-certification or subkey binding determines
+expiry and signing permission for both signing and verification; an authenticated revocation remains
+effective. An older public copy, including the one in the secret-key file, cannot
+override these updates. Restart the application after changing key files to load
+the updated certificates.
+
 Keep private keys and passphrases outside all model and source repositories,
 tracked provenance, HTTP responses, logs, test fixtures and application backup
 exports. Back up secret material separately using the deployment's secret recovery
@@ -50,6 +57,13 @@ before integration into the active branch. Check all participating operators'
 public keys before enabling the strict policy, including keys that signed older
 commits in incoming ancestry. Signing and acceptance policy are separate settings;
 choose them together for the deployment.
+
+For external fetch and synchronization, history already reachable from accepted
+local branches before fetching remains accepted when the strict incoming policy
+is enabled. Remote-tracking refs and temporary sync refs are not acceptance
+boundaries. Fetch prunes deleted remote-tracking refs before
+validation. An existing unsigned local synchronization base remains usable;
+invalid or untrusted signatures on that base are still rejected.
 
 Normal external Git fetch/push transports unchanged Git objects and therefore
 preserves their signatures. Repository-aware external sync accepts an optional
@@ -78,6 +92,12 @@ When branches in the same Git history are merged, transfer evidence remains in
 the original parent commits. The new signed merge references both parents and
 contains no transfer evidence of its own. The reserved evidence file is excluded
 from textual merging; conflicts in other files retain their normal behavior.
+
+Cherry-picks and reverts also exclude the reserved file from content merging, but
+their new single-parent commits carry fresh source evidence. Cherry-picks record
+the selected source commit; reverts verify and record the parent snapshot used by
+the reverse merge and identify the reverted commit as the base. Other files and genuine model
+conflicts retain their normal merge behavior.
 
 ## Reading the history
 

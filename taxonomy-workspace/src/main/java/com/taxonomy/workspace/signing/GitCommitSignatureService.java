@@ -40,13 +40,22 @@ public final class GitCommitSignatureService {
     private final boolean enabled;
     private final boolean requireSignatures;
     private final PGPPrivateKey privateKey;
-    private final PGPPublicKey signingKey;
-    private final PGPPublicKey signingPrimaryKey;
-    // Full fingerprints prevent stale duplicate ring copies from bypassing revocation.
+    private final TrustedKey signingIdentity;
     private final Set<String> revokedFingerprints = new HashSet<>();
     private final Map<Long, List<TrustedKey>> trustedKeys = new HashMap<>();
 
-    private record TrustedKey(PGPPublicKey key, PGPPublicKey primary, String signer) { }
+    private record SignatureLifetime(Instant created, Instant expires) {
+        boolean contains(Instant now) {
+            return !created.isAfter(now) && (expires == null || expires.isAfter(now));
+        }
+    }
+    private record CertificateMetadata(SignatureLifetime lifetime, long validSeconds, boolean canSign,
+                                       List<SignatureLifetime> backsignatures) { }
+    private record CertificatePolicy(boolean primaryKey, long legacyValidity, boolean supportsSigning,
+                                     List<CertificateMetadata> metadata, boolean revoked) { }
+    private record EffectivePolicy(long validSeconds, boolean canSign, boolean valid) { }
+    private record TrustedKey(PGPPublicKey key, PGPPublicKey primary, String signer,
+                              CertificatePolicy keyPolicy, CertificatePolicy primaryPolicy) { }
     private record ParsedCommit(byte[] payload, byte[] signature, SignatureStatus error) { }
 
     /** Construct an isolated verifier/signer. No process-global provider or GPG home changes. */
@@ -59,38 +68,23 @@ public final class GitCommitSignatureService {
         enabled = properties.isEnabled();
         requireSignatures = properties.isRequireSignatures();
         PGPPrivateKey loadedPrivate = null;
-        PGPPublicKey loadedPublic = null;
-        PGPPublicKey loadedPrimary = null;
+        TrustedKey loadedIdentity = null;
         try {
+            var certificates = new LinkedHashMap<String, Map<String, PGPPublicKey>>();
+            PGPSecretKeyRingCollection secretRings = null;
             if (enabled) {
                 if (properties.getSecretKeyFile() == null || properties.getSecretKeyFile().isBlank()) {
                     throw new IOException("Git commit signing is enabled but no secret key file is configured");
                 }
-                var collection = new PGPSecretKeyRingCollection(
+                secretRings = new PGPSecretKeyRingCollection(
                         PGPUtil.getDecoderStream(new ByteArrayInputStream(readKeyFile(Path.of(properties.getSecretKeyFile())))),
                         new JcaKeyFingerprintCalculator());
-                for (var rings = collection.getKeyRings(); rings.hasNext();) {
+                for (var rings = secretRings.getKeyRings(); rings.hasNext();) {
                     var ring = rings.next();
-                    var primary = ring.getPublicKey();
-                    for (var keys = ring.getSecretKeys(); keys.hasNext();) {
-                        var candidate = keys.next();
-                        if (candidate.isPrivateKeyEmpty() || !candidate.isSigningKey()
-                                || !permittedSigningKey(candidate.getPublicKey(), primary)
-                                || !usable(candidate.getPublicKey()) || !usable(primary)) continue;
-                        if (loadedPrivate != null) continue; // deterministic first usable signing key
-                        char[] passphrase = Objects.toString(properties.getPassphrase(), "").toCharArray();
-                        try {
-                            loadedPrivate = candidate.extractPrivateKey(new JcePBESecretKeyDecryptorBuilder()
-                                    .setProvider(BC).build(passphrase));
-                            loadedPublic = candidate.getPublicKey();
-                            loadedPrimary = primary;
-                        } finally { Arrays.fill(passphrase, '\0'); }
-                    }
                     var publicKeys = new ArrayList<PGPPublicKey>();
                     ring.getPublicKeys().forEachRemaining(publicKeys::add);
-                    addTrustedRing(new PGPPublicKeyRing(publicKeys));
+                    addTrustedRing(certificates, new PGPPublicKeyRing(publicKeys));
                 }
-                if (loadedPrivate == null) throw new IOException("Git commit signing requires a usable signing key");
             }
             var publicFiles = new ArrayList<Path>();
             if (properties.getTrustedPublicKeyFiles() != null) {
@@ -108,19 +102,41 @@ public final class GitCommitSignatureService {
                 var rings = new PGPPublicKeyRingCollection(PGPUtil.getDecoderStream(
                         new ByteArrayInputStream(readKeyFile(file))), new JcaKeyFingerprintCalculator());
                 if (rings.size() == 0) throw new IOException("Git trust file contains no public keys");
-                for (var iterator = rings.getKeyRings(); iterator.hasNext();) addTrustedRing(iterator.next());
+                for (var iterator = rings.getKeyRings(); iterator.hasNext();) addTrustedRing(certificates, iterator.next());
             }
-            // Public revocations also override the earlier auto-trusted secret-key ring.
-            if (enabled && (!usable(loadedPublic) || !usable(loadedPrimary))) {
-                throw new IOException("Git signing identity is expired or revoked");
+            loadTrustedCertificates(certificates);
+            // Select private material only after public updates and the auto-trusted
+            // secret certificates have been reconciled into the same identity policy.
+            if (enabled) {
+                var now = clock.instant();
+                for (var rings = secretRings.getKeyRings(); rings.hasNext();) {
+                    var ring = rings.next();
+                    for (var keys = ring.getSecretKeys(); keys.hasNext();) {
+                        var candidate = keys.next();
+                        if (candidate.isPrivateKeyEmpty() || !candidate.isSigningKey() || loadedPrivate != null) continue;
+                        var identity = trustedKeys.getOrDefault(candidate.getKeyID(), List.of()).stream()
+                                .filter(trusted -> Arrays.equals(trusted.key().getFingerprint(), candidate.getPublicKey().getFingerprint())
+                                        && Arrays.equals(trusted.primary().getFingerprint(), ring.getPublicKey().getFingerprint()))
+                                .findFirst().orElse(null);
+                        if (identity == null) continue;
+                        var policy = effectivePolicy(identity.keyPolicy(), now);
+                        if (!usable(identity, policy, now) || !policy.canSign()) continue;
+                        char[] passphrase = Objects.toString(properties.getPassphrase(), "").toCharArray();
+                        try {
+                            loadedPrivate = candidate.extractPrivateKey(new JcePBESecretKeyDecryptorBuilder()
+                                    .setProvider(BC).build(passphrase));
+                            loadedIdentity = identity;
+                        } finally { Arrays.fill(passphrase, '\0'); }
+                    }
+                }
+                if (loadedPrivate == null) throw new IOException("Git commit signing requires a usable signing key");
             }
         } catch (PGPException | IOException | RuntimeException e) {
             // Do not include parser/decryptor messages or causes: these may expose secret input.
             throw new IOException("Cannot initialize Git commit signing or public key trust configuration");
         }
         privateKey = loadedPrivate;
-        signingKey = loadedPublic;
-        signingPrimaryKey = loadedPrimary;
+        signingIdentity = loadedIdentity;
     }
 
     /** Legacy repositories still inspect signatures and reject signed objects without a trusted key. */
@@ -134,11 +150,14 @@ public final class GitCommitSignatureService {
     /** Sign the exact object bytes before insertion. An IOException must prevent the ref update. */
     public void sign(CommitBuilder commit, String repositoryName, String branch) throws IOException {
         if (!enabled) return;
-        if (!usable(signingKey) || !usable(signingPrimaryKey)) {
+        var now = clock.instant();
+        var policy = effectivePolicy(signingIdentity.keyPolicy(), now);
+        if (!usable(signingIdentity, policy, now) || !policy.canSign()) {
             throw new IOException("Git signing key or primary key is expired or revoked");
         }
         if (commit.getGpgSignature() != null) throw new IOException("Commit already has a signature");
         try {
+            var signingKey = signingIdentity.key();
             var generator = new PGPSignatureGenerator(new JcaPGPContentSignerBuilder(
                     signingKey.getAlgorithm(), HashAlgorithmTags.SHA256).setProvider(BC), signingKey);
             generator.init(PGPSignature.BINARY_DOCUMENT, privateKey);
@@ -168,6 +187,7 @@ public final class GitCommitSignatureService {
     }
 
     public CommitSignature verify(byte[] rawCommit) throws IOException {
+        var now = clock.instant();
         var parsed = parse(rawCommit);
         if (parsed.error() != null) return status(parsed.error(), "Malformed or unsupported Git commit signature");
         if (parsed.signature() == null) return CommitSignature.unsigned();
@@ -192,21 +212,22 @@ public final class GitCommitSignatureService {
             }
             var packets = signature.getHashedSubPackets();
             long expiration = packets == null ? 0 : packets.getSignatureExpirationTime();
-            if (expiration > 0 && !signature.getCreationTime().toInstant().plusSeconds(expiration).isAfter(clock.instant())) {
+            if (expiration > 0 && !signature.getCreationTime().toInstant().plusSeconds(expiration).isAfter(now)) {
                 return status(SignatureStatus.INVALID, "OpenPGP signature has expired");
             }
             var candidates = trustedKeys.get(signature.getKeyID());
             if (candidates == null || candidates.isEmpty()) return status(SignatureStatus.UNTRUSTED, "Signing key is not trusted");
             for (var trusted : candidates) {
-                if (!usable(trusted.key()) || !usable(trusted.primary())) continue;
-                if (!permittedSigningKey(trusted.key(), trusted.primary())) {
-                    return status(SignatureStatus.UNSUPPORTED, "OpenPGP key is not permitted to sign commits");
-                }
+                var policy = effectivePolicy(trusted.keyPolicy(), now);
+                if (!usable(trusted, policy, now)) continue;
                 signature.init(new JcaPGPContentVerifierBuilderProvider().setProvider(BC), trusted.key());
                 signature.update(parsed.payload());
                 if (signature.verify()) {
-                    boolean service = signingKey != null
-                            && Arrays.equals(signingKey.getFingerprint(), trusted.key().getFingerprint())
+                    if (!policy.canSign()) {
+                        return status(SignatureStatus.UNSUPPORTED, "OpenPGP key is not permitted to sign commits");
+                    }
+                    boolean service = signingIdentity != null
+                            && Arrays.equals(signingIdentity.key().getFingerprint(), trusted.key().getFingerprint())
                             && signature.getHashedSubPackets() != null
                             && Arrays.stream(signature.getHashedSubPackets().getNotationDataOccurrences(SERVICE_NOTATION))
                             .anyMatch(notation -> notation.isHumanReadable() && "v1".equals(notation.getNotationValue()));
@@ -229,14 +250,29 @@ public final class GitCommitSignatureService {
         throw new IOException("Incoming Git commit rejected by signature policy: " + result.status());
     }
 
-    private void addTrustedRing(PGPPublicKeyRing ring) {
-        var primary = ring.getPublicKey();
-        String signer = primary.getUserIDs().hasNext() ? primary.getUserIDs().next() : "OpenPGP signing key";
-        signer = boundedMetadata(signer);
+    private static void addTrustedRing(Map<String, Map<String, PGPPublicKey>> certificates,
+                                       PGPPublicKeyRing ring) throws PGPException {
+        var certificate = certificates.computeIfAbsent(fingerprint(ring.getPublicKey()), ignored -> new LinkedHashMap<>());
         for (var keys = ring.getPublicKeys(); keys.hasNext();) {
             var key = keys.next();
-            if (key.hasRevocation()) revokedFingerprints.add(fingerprint(key));
-            trustedKeys.computeIfAbsent(key.getKeyID(), ignored -> new ArrayList<>()).add(new TrustedKey(key, primary, signer));
+            var identity = fingerprint(key);
+            var previous = certificate.get(identity);
+            certificate.put(identity, previous == null ? key : PGPPublicKey.join(previous, key, false, false));
+        }
+    }
+
+    private void loadTrustedCertificates(Map<String, Map<String, PGPPublicKey>> certificates) {
+        for (var entry : certificates.entrySet()) {
+            var primary = entry.getValue().get(entry.getKey());
+            var primaryPolicy = certificatePolicy(primary, primary);
+            if (primaryPolicy.revoked()) revokedFingerprints.add(fingerprint(primary));
+            String signer = primary.getUserIDs().hasNext() ? primary.getUserIDs().next() : "OpenPGP signing key";
+            for (var key : entry.getValue().values()) {
+                var policy = key == primary ? primaryPolicy : certificatePolicy(key, primary);
+                if (policy.revoked()) revokedFingerprints.add(fingerprint(key));
+                trustedKeys.computeIfAbsent(key.getKeyID(), ignored -> new ArrayList<>())
+                        .add(new TrustedKey(key, primary, boundedMetadata(signer), policy, primaryPolicy));
+            }
         }
     }
 
@@ -248,12 +284,16 @@ public final class GitCommitSignatureService {
         }
     }
 
-    private boolean usable(PGPPublicKey key) {
-        if (key == null || key.hasRevocation() || revokedFingerprints.contains(fingerprint(key))) return false;
-        var now = clock.instant();
+    private boolean usable(TrustedKey identity, EffectivePolicy policy, Instant now) {
+        return usable(identity.key(), identity.keyPolicy(), policy, now)
+                && usable(identity.primary(), identity.primaryPolicy(), effectivePolicy(identity.primaryPolicy(), now), now);
+    }
+
+    private boolean usable(PGPPublicKey key, CertificatePolicy certificate, EffectivePolicy policy, Instant now) {
+        if (!policy.valid() || certificate.revoked() || revokedFingerprints.contains(fingerprint(key))) return false;
         var created = key.getCreationTime().toInstant();
-        return !created.isAfter(now) && (key.getValidSeconds() == 0
-                || created.plusSeconds(key.getValidSeconds()).isAfter(now));
+        return !created.isAfter(now) && (policy.validSeconds() == 0
+                || created.plusSeconds(policy.validSeconds()).isAfter(now));
     }
 
     private static String fingerprint(PGPPublicKey key) {
@@ -288,22 +328,143 @@ public final class GitCommitSignatureService {
         return false;
     }
 
-    /** Respect explicit operator-key usage flags; legacy keys without flags retain algorithm permissions. */
-    private static boolean permittedSigningKey(PGPPublicKey key, PGPPublicKey primary) {
-        if (!supportedKey(key)) return false;
-        PGPSignature newest = null;
-        for (var signatures = key.getSignatures(); signatures.hasNext();) {
+    /** Metadata accessors alone do not authenticate self-certifications or subkey bindings. */
+    private static CertificatePolicy certificatePolicy(PGPPublicKey key, PGPPublicKey primary) {
+        boolean primaryKey = Arrays.equals(key.getFingerprint(), primary.getFingerprint());
+        int metadataType = primaryKey ? PGPSignature.DIRECT_KEY : PGPSignature.SUBKEY_BINDING;
+        int revocationType = primaryKey ? PGPSignature.KEY_REVOCATION : PGPSignature.SUBKEY_REVOCATION;
+        boolean revoked = false;
+        var metadata = new ArrayList<CertificateMetadata>();
+        for (var signatures = key.getKeySignatures(); signatures.hasNext();) {
             var signature = signatures.next();
-            var packets = signature.getHashedSubPackets();
-            if (signature.getKeyID() != primary.getKeyID() || packets == null
-                    || !packets.hasSubpacket(SignatureSubpacketTags.KEY_FLAGS)) continue;
             int type = signature.getSignatureType();
-            if (type != PGPSignature.SUBKEY_BINDING && type != PGPSignature.DIRECT_KEY
-                    && type != PGPSignature.DEFAULT_CERTIFICATION && type != PGPSignature.NO_CERTIFICATION
-                    && type != PGPSignature.CASUAL_CERTIFICATION && type != PGPSignature.POSITIVE_CERTIFICATION) continue;
-            if (newest == null || signature.getCreationTime().after(newest.getCreationTime())) newest = signature;
+            if (type != metadataType && type != revocationType) continue;
+            if (!authenticated(signature, primary, sig -> primaryKey
+                    ? sig.verifyCertification(key) : sig.verifyCertification(primary, key))) continue;
+            if (type == revocationType) revoked = true;
+            else metadata.add(certificateMetadata(signature, key, primary, primaryKey));
         }
-        return newest == null || (newest.getHashedSubPackets().getKeyFlags() & KeyFlags.SIGN_DATA) != 0;
+        if (primaryKey) {
+            for (var ids = key.getRawUserIDs(); ids.hasNext();) {
+                var id = ids.next();
+                for (var signatures = key.getSignaturesForID(id); signatures != null && signatures.hasNext();) {
+                    var signature = signatures.next();
+                    if (signature.isCertification() && authenticated(signature, primary,
+                            sig -> sig.verifyCertification(id, key))) {
+                        metadata.add(certificateMetadata(signature, key, primary, true));
+                    }
+                }
+            }
+            for (var attributes = key.getUserAttributes(); attributes.hasNext();) {
+                var attribute = attributes.next();
+                for (var signatures = key.getSignaturesForUserAttribute(attribute); signatures != null && signatures.hasNext();) {
+                    var signature = signatures.next();
+                    if (signature.isCertification() && authenticated(signature, primary,
+                            sig -> sig.verifyCertification(attribute, key))) {
+                        metadata.add(certificateMetadata(signature, key, primary, true));
+                    }
+                }
+            }
+        }
+        return new CertificatePolicy(primaryKey, key.getVersion() <= 3 ? key.getValidSeconds() : 0,
+                supportedKey(key), List.copyOf(metadata), revoked);
+    }
+
+    private static CertificateMetadata certificateMetadata(PGPSignature signature, PGPPublicKey key,
+                                                           PGPPublicKey primary, boolean primaryKey) {
+        var packets = signature.getHashedSubPackets();
+        long validity = key.getVersion() <= 3 ? key.getValidSeconds()
+                : packets == null ? 0 : packets.getKeyExpirationTime();
+        boolean canSign = supportedKey(key) && (packets == null
+                || !packets.hasSubpacket(SignatureSubpacketTags.KEY_FLAGS)
+                || (packets.getKeyFlags() & KeyFlags.SIGN_DATA) != 0);
+        return new CertificateMetadata(signatureLifetime(signature), validity, canSign,
+                primaryKey ? List.of() : authenticatedBacksignatures(signature, primary, key));
+    }
+
+    private static List<SignatureLifetime> authenticatedBacksignatures(PGPSignature binding,
+                                                                      PGPPublicKey primary, PGPPublicKey subkey) {
+        var lifetimes = new ArrayList<SignatureLifetime>();
+        for (var packets : new PGPSignatureSubpacketVector[]{binding.getHashedSubPackets(), binding.getUnhashedSubPackets()}) {
+            if (packets == null) continue;
+            try {
+                var signatures = packets.getEmbeddedSignatures();
+                for (int i = 0; i < signatures.size(); i++) {
+                    var signature = signatures.get(i);
+                    if (signature.getSignatureType() == PGPSignature.PRIMARYKEY_BINDING
+                            && authenticated(signature, subkey, sig -> sig.verifyCertification(primary, subkey))) {
+                        lifetimes.add(signatureLifetime(signature));
+                    }
+                }
+            } catch (PGPException | RuntimeException invalidBacksignature) {
+                // An invalid embedded proof cannot discard the primary's authenticated
+                // restrictions or restore an older, more permissive binding.
+            }
+        }
+        return List.copyOf(lifetimes);
+    }
+
+    private static SignatureLifetime signatureLifetime(PGPSignature signature) {
+        var created = signature.getCreationTime().toInstant();
+        var packets = signature.getHashedSubPackets();
+        long expiration = packets == null ? 0 : packets.getSignatureExpirationTime();
+        return new SignatureLifetime(created, expiration == 0 ? null : created.plusSeconds(expiration));
+    }
+
+    /** Evaluate immutable, previously authenticated metadata without sharing mutable signature verifiers. */
+    private static EffectivePolicy effectivePolicy(CertificatePolicy certificate, Instant now) {
+        if (certificate.metadata().isEmpty()) {
+            // Explicitly trusted bare primary keys retain their legacy algorithm policy;
+            // a subkey must always carry an authenticated binding from its primary.
+            return new EffectivePolicy(certificate.legacyValidity(), certificate.supportsSigning(), certificate.primaryKey());
+        }
+        Instant newest = null;
+        long validity = certificate.legacyValidity();
+        boolean canSign = certificate.supportsSigning();
+        boolean backsignatureValid = false;
+        for (var metadata : certificate.metadata()) {
+            // A signature's own lifetime controls whether it participates in selection.
+            // Its key-expiration restriction is enforced only after selecting the newest
+            // live metadata, so an expired key never falls back to stale permissions.
+            if (!metadata.lifetime().contains(now)) continue;
+            var created = metadata.lifetime().created();
+            if (newest != null && created.isBefore(newest)) continue;
+            long candidateValidity = metadata.validSeconds();
+            boolean candidateBacksignature = metadata.backsignatures().stream().anyMatch(lifetime -> lifetime.contains(now));
+            if (newest != null && created.equals(newest)) {
+                // Equal-time conflicting certificates have no authenticated order.
+                // Choose their restrictive intersection rather than trust-file order.
+                validity = validity == 0 ? candidateValidity : candidateValidity == 0 ? validity
+                        : Math.min(validity, candidateValidity);
+                canSign &= metadata.canSign();
+                backsignatureValid &= candidateBacksignature;
+            } else {
+                newest = created;
+                validity = candidateValidity;
+                canSign = metadata.canSign();
+                backsignatureValid = candidateBacksignature;
+            }
+        }
+        // Select primary-authenticated policy before checking the subkey's proof.
+        // Removing signing permission is effective even without a backsignature.
+        boolean valid = newest != null && (certificate.primaryKey() || !canSign || backsignatureValid);
+        return new EffectivePolicy(validity, canSign, valid);
+    }
+
+    @FunctionalInterface
+    private interface CertificationVerifier {
+        boolean verify(PGPSignature signature) throws PGPException;
+    }
+
+    private static boolean authenticated(PGPSignature signature, PGPPublicKey issuer, CertificationVerifier verifier) {
+        try {
+            // Issuer IDs are metadata hints; verification must use the actual key
+            // authorized to certify this policy or prove the subkey binding.
+            signature.init(new JcaPGPContentVerifierBuilderProvider().setProvider(BC), issuer);
+            return verifier.verify(signature);
+        } catch (PGPException | RuntimeException invalidCertificate) {
+            return false;
+        }
     }
 
     private static boolean supportedHash(int algorithm) {
