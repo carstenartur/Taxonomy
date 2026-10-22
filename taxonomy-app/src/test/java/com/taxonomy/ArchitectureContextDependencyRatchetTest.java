@@ -137,7 +137,10 @@ class ArchitectureContextDependencyRatchetTest {
                 targets.add(dependency.getTargetClass().getName());
             }
         }
+        // Admission captures the request language once; workers consume the persisted value.
+        // This exact boundary does not admit gateways, prompt execution or persistence internals.
         assertThat(targets).containsExactly(
+                "com.taxonomy.analysis.service.AnalysisLanguageContext",
                 "com.taxonomy.analysis.service.AnalysisRuntimeSettings",
                 "com.taxonomy.analysis.service.LlmProviderConfig");
     }

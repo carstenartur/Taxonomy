@@ -14,7 +14,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class VisioReadableEvidenceTest {
-    @Test void representativeArchitecturePacksFullReasonsWithinTheExistingPageBudget() throws Exception {
+    @Test void representativeArchitecturePacksFullReasonsWithinIndependentPageBudgets() throws Exception {
         var nodes = new java.util.ArrayList<DiagramNode>();
         var edges = new java.util.ArrayList<DiagramEdge>();
         var reasons = new java.util.LinkedHashMap<String, Map<String, VisioProperty>>();
@@ -29,7 +29,11 @@ class VisioReadableEvidenceTest {
         }
         var graph = new DiagramModel("Representative architecture", nodes, edges, new DiagramLayout("LR", true));
         var document = new VisioDiagramService().convert(graph, new VisioExportMetadata(Map.of(), reasons, Map.of(), List.of()));
-        assertThat(document.getPages()).hasSizeLessThanOrEqualTo(32);
+        assertThat(document.getPages()).hasSizeLessThanOrEqualTo(VisioPackageValidator.MAX_PAGES);
+        assertThat(document.getPages().stream().filter(page -> !page.isEvidencePage()).count())
+                .isLessThanOrEqualTo(VisioPackageValidator.MAX_DIAGRAM_PAGES);
+        assertThat(document.getPages().stream().filter(VisioPage::isEvidencePage).count())
+                .isPositive().isLessThanOrEqualTo(VisioPackageValidator.MAX_EVIDENCE_PAGES);
         assertThat(new VisioPackageBuilder().build(document)).isNotEmpty();
         String visible = document.getPages().stream().flatMap(page -> page.getShapes().stream()).map(VisioShape::getText)
                 .collect(java.util.stream.Collectors.joining("\n"));
