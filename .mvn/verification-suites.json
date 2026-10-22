@@ -217,7 +217,6 @@
           "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
           "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
           "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
-          "com.taxonomy.ScenarioArchitectureAcceptanceTest",
           "com.taxonomy.DerivedMetadataAndSummaryTests",
           "com.taxonomy.CoreUiAcceptanceIT",
           "com.taxonomy.ui.DatabaseSetupBrowserTest",
@@ -226,6 +225,13 @@
           "com.taxonomy.SeleniumPostgresContainerIT",
           "com.taxonomy.ArchitectureWorkbenchUiIT",
           "com.taxonomy.PortfolioMatrixReviewIT"
+        ]
+      },
+      "scenario": {
+        "profile": "ci-app-test-shard-scenario",
+        "tag": "ci-app-shard-scenario",
+        "tests": [
+          "com.taxonomy.ScenarioArchitectureAcceptanceTest"
         ]
       }
     }
