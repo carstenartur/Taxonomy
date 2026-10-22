@@ -2,6 +2,7 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -91,6 +92,9 @@ public class RepositoryWorkspaceService {
             DslGitRepository sourceGit =
                     repositoryFactory.getCentralRepository(source.getRepositoryId());
             String sourceCommit = sourceGit.getHeadCommit(sourceBranch);
+            if (sourceCommit == null) throw new IOException("Source branch has no commit");
+            CommitProvenance provenance = CommitProvenance.capture("fork", sourceGit,
+                    source.getRepositoryId(), sourceBranch, sourceCommit, null);
             String sourceDsl = sourceCommit == null ? null : sourceGit.getDslAtCommit(sourceCommit);
             if (sourceDsl == null || sourceDsl.isBlank() || sourceCommit == null) {
                 throw new IllegalStateException(
@@ -101,7 +105,7 @@ public class RepositoryWorkspaceService {
             DslGitRepository workspaceGit = repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
             String workspaceCommit = workspaceGit.commitDslIfHeadMatches(
                     WORKSPACE_BRANCH, null, sourceDsl, user,
-                    "Fork from " + source.getRepositoryId() + "/" + sourceBranch);
+                    "Fork from " + source.getRepositoryId() + "/" + sourceBranch, provenance);
             workspaceGit.createBranchAtCommit(TRACKING_BRANCH, workspaceCommit);
 
             workspace.setBaseCommit(sourceCommit);

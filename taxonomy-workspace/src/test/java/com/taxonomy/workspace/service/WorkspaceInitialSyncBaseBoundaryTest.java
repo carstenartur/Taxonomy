@@ -9,6 +9,10 @@ import com.taxonomy.workspace.repository.SyncStateRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.CommitProvenance;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.MockedStatic;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -20,6 +24,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class WorkspaceInitialSyncBaseBoundaryTest {
+    private MockedStatic<CommitProvenance> provenanceCapture;
+    @BeforeEach void mockObjectEvidenceForMetadataOnlyFixtures() {
+        provenanceCapture = mockStatic(CommitProvenance.class);
+    }
+    @AfterEach void closeProvenanceCapture() { provenanceCapture.close(); }
+
     enum BaseState { MISSING_SNAPSHOT, BLANK_SNAPSHOT, EXISTING_TRACKING }
     private static final String CAPTURED = "1".repeat(40);
     private static final String LOCAL = "meta { version: \"local\"; }";

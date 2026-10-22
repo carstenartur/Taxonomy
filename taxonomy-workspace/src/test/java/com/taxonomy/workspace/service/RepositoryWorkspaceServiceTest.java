@@ -1,6 +1,9 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.CommitProvenance;
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.MockedStatic;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
@@ -56,8 +59,15 @@ class RepositoryWorkspaceServiceTest {
     private RepositoryWorkspaceService service;
     private SystemRepository source;
 
+    // Routing/lifecycle fixtures have no Git objects; real provenance is covered by snapshot tests.
+    private MockedStatic<CommitProvenance> provenanceCapture;
+
+    @AfterEach
+    void closeProvenanceCapture() { if (provenanceCapture != null) provenanceCapture.close(); }
+
     @BeforeEach
     void setUp() {
+        provenanceCapture = org.mockito.Mockito.mockStatic(CommitProvenance.class);
         service = new RepositoryWorkspaceService(
                 workspaceRepository, systemRepositoryService, repositoryFactory);
         source = new SystemRepository();
@@ -83,7 +93,7 @@ class RepositoryWorkspaceServiceTest {
         when(sourceGit.getHeadCommit("main")).thenReturn("source-commit");
         when(repositoryFactory.openWorkspaceRepository(anyString()))
                 .thenReturn(workspaceGit);
-        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn("workspace-seed-commit");
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString(), isNull())).thenReturn("workspace-seed-commit");
         when(workspaceGit.createBranchAtCommit(eq("sync-base"), anyString()))
                 .thenReturn("workspace-seed-commit");
 
@@ -101,7 +111,7 @@ class RepositoryWorkspaceServiceTest {
         assertEquals("source-commit", workspace.getLastIntegratedCommit());
         verify(workspaceGit).createBranchAtCommit("sync-base", "workspace-seed-commit");
         verify(workspaceGit).commitDslIfHeadMatches(eq("draft"), isNull(),
-                eq("meta { language: \"taxdsl\"; }\n"), eq("alice"), anyString());
+                eq("meta { language: \"taxdsl\"; }\n"), eq("alice"), anyString(), isNull());
         verify(workspaceGit, never()).commitDsl(
                 anyString(), anyString(), anyString(), anyString());
         verify(repositoryFactory, never()).deleteWorkspaceRepository(anyString());
@@ -124,7 +134,7 @@ class RepositoryWorkspaceServiceTest {
         when(sourceGit.getHeadCommit("main")).thenReturn("source-commit");
         when(repositoryFactory.openWorkspaceRepository(anyString()))
                 .thenReturn(workspaceGit);
-        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn("workspace-seed-commit");
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString(), isNull())).thenReturn("workspace-seed-commit");
         when(workspaceGit.createBranchAtCommit(eq("sync-base"), anyString()))
                 .thenThrow(new IOException("tracking ref failed"));
 
@@ -208,7 +218,7 @@ class RepositoryWorkspaceServiceTest {
         when(sourceGit.getDslAtCommit("source-head")).thenReturn("portfolio dsl");
         when(sourceGit.getHeadCommit("main")).thenReturn("source-head");
         when(repositoryFactory.openWorkspaceRepository(anyString())).thenReturn(workspaceGit);
-        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn("workspace-head");
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString(), isNull())).thenReturn("workspace-head");
         when(workspaceGit.createBranchAtCommit(eq("sync-base"), anyString())).thenReturn("workspace-head");
 
         UserWorkspace workspace = service.createWorkingCopy(
@@ -241,7 +251,7 @@ class RepositoryWorkspaceServiceTest {
     void cleanupFailureIsSuppressedOnProvisioningFailure() throws Exception {
         configureValidSourceAndWorkspace();
         when(workspaceGit.commitDslIfHeadMatches(
-                eq("draft"), isNull(), anyString(), anyString(), anyString()))
+                eq("draft"), isNull(), anyString(), anyString(), anyString(), isNull()))
                 .thenThrow(new IOException("seed CAS failed"));
         doThrow(new IllegalStateException("cleanup failed"))
                 .when(repositoryFactory).deleteWorkspaceRepository(anyString());

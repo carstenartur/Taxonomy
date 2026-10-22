@@ -30,6 +30,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Handles synchronization between the internal system repository and an
@@ -67,19 +68,41 @@ public class ExternalGitSyncService {
     }
 
     /** Fetch all external branches into {@code refs/remotes/origin/*}. */
-    public FetchResult fetchFromExternal() throws Exception {
-        SystemRepository systemRepository = systemRepositoryService.getPrimaryRepository();
-        URIish uri = validateExternalModeAndCreateUri(systemRepository);
+    public synchronized FetchResult fetchFromExternal() throws Exception {
+        return fetchFromExternal(systemRepositoryService.getPrimaryRepository(),
+                repositoryFactory.getSystemRepository(), systemRepositoryService.getSharedBranch());
+    }
 
-        Repository gitRepository = repositoryFactory.getSystemRepository().getGitRepository();
+    /** Fetch only the explicitly selected central repository; an invalid ID never selects primary. */
+    public synchronized FetchResult fetchFromExternal(String repositoryId) throws Exception {
+        SystemRepository selected = systemRepositoryService.getRepository(repositoryId);
+        return fetchFromExternal(selected, repositoryFactory.getCentralRepository(repositoryId),
+                selected.getDefaultBranch());
+    }
+
+    private FetchResult fetchFromExternal(SystemRepository systemRepository,
+                                           DslGitRepository dslRepository,
+                                           String sharedBranch) throws Exception {
+        URIish uri = validateExternalModeAndCreateUri(systemRepository);
+        validateBranchName(sharedBranch);
+        Repository gitRepository = dslRepository.getGitRepository();
         log.info("Fetching from configured external Git remote");
         try (Transport transport = Transport.open(gitRepository, uri)) {
-            credentials.configure(transport);
+            credentials.configure(transport, systemRepository.getRepositoryId(), systemRepository.isPrimaryRepo());
             FetchResult result = transport.fetch(
                     NullProgressMonitor.INSTANCE,
                     List.of(new RefSpec("+refs/heads/*:refs/remotes/origin/*")));
 
-            String sharedBranch = systemRepositoryService.getSharedBranch();
+            // Tracking refs are fetched objects, not an acceptance boundary. Verify
+            // against local accepted ancestry before recording successful import.
+            for (Ref fetched : gitRepository.getRefDatabase().getRefsByPrefix(Constants.R_REMOTES + "origin/")) {
+                if (fetched.getObjectId() != null) {
+                    String branch = fetched.getName().substring((Constants.R_REMOTES + "origin/").length());
+                    Ref accepted = gitRepository.getRefDatabase().exactRef(localRefName(branch));
+                    dslRepository.verifyIncoming(fetched.getObjectId().name(),
+                            accepted == null || accepted.getObjectId() == null ? null : accepted.getObjectId().name());
+                }
+            }
             Ref sharedRemoteRef = gitRepository.getRefDatabase()
                     .exactRef(remoteTrackingRefName(sharedBranch));
 
@@ -99,15 +122,25 @@ public class ExternalGitSyncService {
      * Push a local branch and fail when the remote rejects or does not perform
      * the requested update.
      */
-    public PushResult pushToExternal(String localBranch) throws Exception {
-        SystemRepository systemRepository = systemRepositoryService.getPrimaryRepository();
+    public synchronized PushResult pushToExternal(String localBranch) throws Exception {
+        return pushToExternal(systemRepositoryService.getPrimaryRepository(),
+                repositoryFactory.getSystemRepository(), localBranch);
+    }
+
+    public synchronized PushResult pushToExternal(String repositoryId, String localBranch) throws Exception {
+        SystemRepository selected = systemRepositoryService.getRepository(repositoryId);
+        return pushToExternal(selected, repositoryFactory.getCentralRepository(repositoryId), localBranch);
+    }
+
+    private PushResult pushToExternal(SystemRepository systemRepository,
+                                     DslGitRepository dslRepository,
+                                     String localBranch) throws Exception {
         URIish uri = validateExternalModeAndCreateUri(systemRepository);
         validateBranchName(localBranch);
-
-        Repository gitRepository = repositoryFactory.getSystemRepository().getGitRepository();
+        Repository gitRepository = dslRepository.getGitRepository();
         log.info("Pushing branch '{}' to configured external Git remote", localBranch);
         try (Transport transport = Transport.open(gitRepository, uri)) {
-            credentials.configure(transport);
+            credentials.configure(transport, systemRepository.getRepositoryId(), systemRepository.isPrimaryRepo());
             RemoteRefUpdate refUpdate = new RemoteRefUpdate(
                     gitRepository,
                     localRefName(localBranch),
@@ -131,20 +164,30 @@ public class ExternalGitSyncService {
     /**
      * Fetch and integrate the configured remote shared branch.
      *
-     * <p>The method is synchronized to prevent two in-process synchronizations
-     * from reusing the temporary merge ref concurrently. JGit expected-old
-     * object IDs still protect every durable ref update.</p>
+     * <p>Synchronization serializes in-process external operations. Each merge
+     * uses its own temporary ref, and expected-old object IDs protect creation,
+     * integration and cleanup from overwriting another writer's changes.</p>
      *
      * @return the resulting local shared-branch commit, or {@code null} when the
      *         configured remote does not contain the shared branch
      * @throws ExternalSyncConflictException when histories diverge and cannot be merged
      */
     public synchronized String fullSync(String username) throws Exception {
-        fetchFromExternal();
+        SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        return fullSync(primary, repositoryFactory.getSystemRepository(),
+                systemRepositoryService.getSharedBranch(), username);
+    }
 
-        DslGitRepository dslRepository = repositoryFactory.getSystemRepository();
+    public synchronized String fullSync(String repositoryId, String username) throws Exception {
+        SystemRepository selected = systemRepositoryService.getRepository(repositoryId);
+        return fullSync(selected, repositoryFactory.getCentralRepository(repositoryId),
+                selected.getDefaultBranch(), username);
+    }
+
+    private String fullSync(SystemRepository metadata, DslGitRepository dslRepository,
+                            String sharedBranch, String username) throws Exception {
+        fetchFromExternal(metadata, dslRepository, sharedBranch);
         Repository gitRepository = dslRepository.getGitRepository();
-        String sharedBranch = systemRepositoryService.getSharedBranch();
         validateBranchName(sharedBranch);
 
         String localRefName = localRefName(sharedBranch);
@@ -156,6 +199,8 @@ public class ExternalGitSyncService {
         }
 
         Ref localRef = gitRepository.getRefDatabase().exactRef(localRefName);
+        dslRepository.verifyIncoming(remoteRef.getObjectId().name(),
+                localRef == null || localRef.getObjectId() == null ? null : localRef.getObjectId().name());
         if (localRef == null || localRef.getObjectId() == null) {
             updateRef(
                     gitRepository,
@@ -180,20 +225,15 @@ public class ExternalGitSyncService {
             }
         }
 
-        String temporaryBranch = temporaryMergeBranch(sharedBranch);
+        String temporaryBranch = "__external_sync__/" + UUID.randomUUID();
         String temporaryRefName = localRefName(temporaryBranch);
-        Ref previousTemporaryRef = gitRepository.getRefDatabase().exactRef(temporaryRefName);
-        ObjectId expectedTemporaryHead = previousTemporaryRef != null
-                && previousTemporaryRef.getObjectId() != null
-                ? previousTemporaryRef.getObjectId()
-                : ObjectId.zeroId();
 
         updateRef(
                 gitRepository,
                 temporaryRefName,
                 remoteRef.getObjectId(),
-                expectedTemporaryHead,
-                true,
+                ObjectId.zeroId(),
+                false,
                 username,
                 "external-sync: stage fetched shared branch");
 
@@ -207,7 +247,7 @@ public class ExternalGitSyncService {
                     sharedBranch, resultingCommit);
             return resultingCommit;
         } finally {
-            deleteTemporaryRef(gitRepository, temporaryRefName);
+            deleteTemporaryRef(gitRepository, temporaryRefName, remoteRef.getObjectId());
         }
     }
 
@@ -215,16 +255,34 @@ public class ExternalGitSyncService {
     public ExternalSyncStatus getStatus() {
         try {
             SystemRepository systemRepository = systemRepositoryService.getPrimaryRepository();
-            return new ExternalSyncStatus(
-                    systemRepository.getTopologyMode() == RepositoryTopologyMode.EXTERNAL_CANONICAL,
-                    systemRepository.getExternalUrl(),
-                    credentials.isConfigured(),
-                    systemRepository.getLastFetchAt(),
-                    systemRepository.getLastPushAt(),
-                    systemRepository.getLastFetchCommit());
+            return statusFor(systemRepository);
         } catch (Exception exception) {
             log.debug("External sync status is unavailable", exception);
             return new ExternalSyncStatus(false, null, credentials.isConfigured(), null, null, null);
+        }
+    }
+
+    /** Explicit selection errors remain visible; no fallback to primary status. */
+    public ExternalSyncStatus getStatus(String repositoryId) {
+        return statusFor(systemRepositoryService.getRepository(repositoryId));
+    }
+
+    private ExternalSyncStatus statusFor(SystemRepository repository) {
+        return new ExternalSyncStatus(
+                repository.getTopologyMode() == RepositoryTopologyMode.EXTERNAL_CANONICAL,
+                sanitizedExternalUrl(repository.getExternalUrl()),
+                credentials.isConfigured(repository.getRepositoryId(), repository.isPrimaryRepo()),
+                repository.getLastFetchAt(), repository.getLastPushAt(), repository.getLastFetchCommit());
+    }
+
+    /** Render persisted legacy URLs without disclosing credential-bearing user information. */
+    private static String sanitizedExternalUrl(String externalUrl) {
+        if (externalUrl == null) return null;
+        try {
+            return new URIish(externalUrl).setPass(null).setUser(null).toString();
+        } catch (java.net.URISyntaxException | IllegalArgumentException exception) {
+            // An unparseable legacy value cannot safely be returned as a URL.
+            return null;
         }
     }
 
@@ -302,10 +360,6 @@ public class ExternalGitSyncService {
         return Constants.R_REMOTES + "origin/" + branch;
     }
 
-    private static String temporaryMergeBranch(String sharedBranch) {
-        return "__external_sync__/" + sharedBranch.replaceAll("[^A-Za-z0-9._/-]", "_");
-    }
-
     private static void updateRef(Repository repository,
                                   String refName,
                                   ObjectId newObjectId,
@@ -328,14 +382,14 @@ public class ExternalGitSyncService {
         }
     }
 
-    private static void deleteTemporaryRef(Repository repository, String refName) {
+    private static void deleteTemporaryRef(Repository repository, String refName, ObjectId stagedHead) {
         try {
             Ref existing = repository.getRefDatabase().exactRef(refName);
-            if (existing == null || existing.getObjectId() == null) {
+            if (existing == null || !stagedHead.equals(existing.getObjectId())) {
                 return;
             }
             RefUpdate delete = repository.updateRef(refName);
-            delete.setExpectedOldObjectId(existing.getObjectId());
+            delete.setExpectedOldObjectId(stagedHead);
             delete.setForceUpdate(true);
             delete.setRefLogIdent(actor("taxonomy"));
             delete.setRefLogMessage("external-sync: remove temporary merge ref", false);

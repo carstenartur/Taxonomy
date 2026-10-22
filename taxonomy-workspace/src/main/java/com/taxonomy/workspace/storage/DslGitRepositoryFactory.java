@@ -4,6 +4,7 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryDeletionResult;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
@@ -38,6 +39,7 @@ public class DslGitRepositoryFactory implements AutoCloseable {
 
     private final HibernateRepositoryFactory storageFactory;
     private final SystemRepositoryService systemRepositoryService;
+    private final GitCommitSignatureService signatures;
     private final ConcurrentMap<String, DslGitRepository> cache = new ConcurrentHashMap<>();
 
     /** Legacy/in-memory constructor retained for tests. */
@@ -49,8 +51,16 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     public DslGitRepositoryFactory(
             HibernateRepositoryFactory storageFactory,
             SystemRepositoryService systemRepositoryService) {
+        this(storageFactory, systemRepositoryService, GitCommitSignatureService.disabled());
+    }
+
+    public DslGitRepositoryFactory(
+            HibernateRepositoryFactory storageFactory,
+            SystemRepositoryService systemRepositoryService,
+            GitCommitSignatureService signatures) {
         this.storageFactory = storageFactory;
         this.systemRepositoryService = systemRepositoryService;
+        this.signatures = java.util.Objects.requireNonNull(signatures, "signatures");
     }
 
     /**
@@ -195,11 +205,12 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     protected DslGitRepository createRepository(String name) {
         if (storageFactory != null) {
             log.info("Opening database-backed DslGitRepository '{}'", name);
-            return new DslGitRepository(storageFactory, name);
+            return new DslGitRepository(storageFactory, name).withSignatureService(signatures, name);
         }
         log.info("Creating in-memory DslGitRepository '{}' (test mode)", name);
         return new DslGitRepository(
-                new InMemoryRepository(new DfsRepositoryDescription(name)), true);
+                new InMemoryRepository(new DfsRepositoryDescription(name)), true)
+                .withSignatureService(signatures, name);
     }
 
     private void seedFromCentral(
@@ -213,10 +224,13 @@ public class DslGitRepositoryFactory implements AutoCloseable {
                 return;
             }
 
-            String dsl = source.getDslAtHead(sourceBranch);
+            String sourceHead = source.getHeadCommit(sourceBranch);
+            String dsl = sourceHead == null ? null : source.getDslAtCommit(sourceHead);
             if (dsl != null && !dsl.isBlank()) {
+                var provenance = CommitProvenance.capture("fork", source, sourceDescription,
+                        sourceBranch, sourceHead, null);
                 workspace.commitDsl("draft", dsl, "system",
-                        "Initial working copy from " + sourceDescription + "/" + sourceBranch);
+                        "Initial working copy from " + sourceDescription + "/" + sourceBranch, provenance);
                 log.info("Seeded workspace repository from {}/{}",
                         sourceDescription, sourceBranch);
             } else {

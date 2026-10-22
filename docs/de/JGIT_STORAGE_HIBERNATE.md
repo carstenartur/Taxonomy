@@ -2,6 +2,9 @@
 
 Taxonomy speichert die Historien der Architecture DSL und der Einstellungen über die veröffentlichte Bibliothek [`jgit-storage-hibernate-core`](https://github.com/carstenartur/jgit-storage-hibernate) in relationalen Datenbanktabellen. Taxonomy enthält keine kopierte Implementierung der JGit-DFS-, Pack-, Reftable- oder Reflog-Speicherung.
 
+Optionale Signaturen, Vertrauensrichtlinien und Schlüsselwechsel für die
+Modellhistorie beschreibt [Signaturen für Modell-Commits](MODEL_COMMIT_SIGNING.md).
+
 ## Verantwortungsgrenze
 
 | Taxonomy verantwortet | `jgit-storage-hibernate-core` verantwortet |

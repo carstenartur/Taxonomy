@@ -5,11 +5,14 @@ import com.taxonomy.dsl.diff.ModelDiffer;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.workspace.signing.CommitSignature;
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.dircache.DirCacheBuildIterator;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
 import org.eclipse.jgit.lib.CommitBuilder;
@@ -23,12 +26,16 @@ import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.TreeFormatter;
+import org.eclipse.jgit.merge.MergeAttributes;
 import org.eclipse.jgit.merge.MergeStrategy;
+import org.eclipse.jgit.merge.RecursiveMerger;
 import org.eclipse.jgit.merge.ThreeWayMerger;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.treewalk.WorkingTreeIterator;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,6 +72,8 @@ public class DslGitRepository implements AutoCloseable {
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
     private final ModelDiffer differ = new ModelDiffer();
+    private GitCommitSignatureService signatures = GitCommitSignatureService.disabled();
+    private String storageName = DEFAULT_REPOSITORY_NAME;
 
     /** Open the shared system repository through the reusable storage library. */
     public DslGitRepository(HibernateRepositoryFactory storageFactory) {
@@ -112,6 +121,79 @@ public class DslGitRepository implements AutoCloseable {
         return storageFactory.open(new RepositoryName(repositoryName));
     }
 
+    /** Attach the operator's signing/trust policy before exposing a logical repository. */
+    public DslGitRepository withSignatureService(GitCommitSignatureService service, String repositoryName) {
+        this.signatures = Objects.requireNonNull(service, "service");
+        this.storageName = Objects.requireNonNull(repositoryName, "repositoryName");
+        return this;
+    }
+
+    /** Every newly constructed model commit must pass here before object insertion. */
+    public void signCommit(CommitBuilder commit, String branch) throws IOException {
+        signatures.sign(commit, storageName, branch);
+    }
+
+    public CommitSignature verifyCommit(String commitId) throws IOException {
+        return signatures.verify(rawCommit(commitId));
+    }
+
+    /** Validate a selected snapshot before copying its content to another repository. */
+    public void verifySnapshot(String commitId) throws IOException {
+        if (commitId == null) return;
+        signatures.requireAcceptable(rawCommit(commitId));
+        verifyProvenance(commitId);
+    }
+
+    public CommitProvenance getProvenance(String commitId) throws IOException {
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            var commit = walk.parseCommit(ObjectId.fromString(commitId));
+            try (TreeWalk tree = TreeWalk.forPath(gitRepo, CommitProvenance.FILENAME, commit.getTree())) {
+                if (tree == null) return null;
+                if (!FileMode.REGULAR_FILE.equals(tree.getFileMode(0))) {
+                    throw new IOException("Provenance must be a regular file");
+                }
+                return CommitProvenance.fromBytes(gitRepo.open(tree.getObjectId(0), Constants.OBJ_BLOB)
+                        .getBytes(CommitProvenance.MAX_DOCUMENT_BYTES));
+            }
+        }
+    }
+
+    private void verifyProvenance(String commitId) throws IOException {
+        var provenance = getProvenance(commitId);
+        if (provenance != null) provenance.verify(signatures);
+    }
+
+    ObjectId insertDslTree(ObjectInserter inserter, String dslText, CommitProvenance provenance) throws IOException {
+        TreeFormatter tree = new TreeFormatter();
+        if (provenance != null) {
+            provenance.verify(signatures);
+            tree.append(CommitProvenance.FILENAME, FileMode.REGULAR_FILE,
+                    inserter.insert(Constants.OBJ_BLOB, provenance.toBytes()));
+        }
+        tree.append(DSL_FILENAME, FileMode.REGULAR_FILE,
+                inserter.insert(Constants.OBJ_BLOB, dslText.getBytes(StandardCharsets.UTF_8)));
+        return inserter.insert(tree);
+    }
+
+    /** Check all newly introduced ancestry, including both sides of merges. */
+    public void verifyIncoming(String head, String acceptedBase) throws IOException {
+        if (head == null) return;
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            walk.markStart(walk.parseCommit(ObjectId.fromString(head)));
+            if (acceptedBase != null) {
+                walk.markUninteresting(walk.parseCommit(ObjectId.fromString(acceptedBase)));
+            }
+            for (RevCommit commit : walk) {
+                verifySnapshot(commit.name());
+            }
+        }
+    }
+
+    private byte[] rawCommit(String commitId) throws IOException {
+        return gitRepo.open(ObjectId.fromString(commitId), Constants.OBJ_COMMIT)
+                .getBytes(16 * 1024 * 1024);
+    }
+
     // ── Commit operations ───────────────────────────────────────────
 
     /**
@@ -122,18 +204,18 @@ public class DslGitRepository implements AutoCloseable {
      */
     public String commitDsl(String branch, String dslText, String author, String message)
             throws IOException {
+        return commitDsl(branch, dslText, author, message, null);
+    }
+
+    public String commitDsl(String branch, String dslText, String author, String message,
+                            CommitProvenance provenance) throws IOException {
         PersonIdent actor = personIdent(author);
         String commitMessage = message != null ? message : "DSL update";
         String refName = Constants.R_HEADS + branch;
         Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);
 
         try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
-            ObjectId blobId = inserter.insert(
-                    Constants.OBJ_BLOB, dslText.getBytes(StandardCharsets.UTF_8));
-
-            TreeFormatter tree = new TreeFormatter();
-            tree.append(DSL_FILENAME, FileMode.REGULAR_FILE, blobId);
-            ObjectId treeId = inserter.insert(tree);
+            ObjectId treeId = insertDslTree(inserter, dslText, provenance);
 
             CommitBuilder commit = new CommitBuilder();
             commit.setTreeId(treeId);
@@ -144,6 +226,7 @@ public class DslGitRepository implements AutoCloseable {
                 commit.setParentId(branchRef.getObjectId());
             }
 
+            signCommit(commit, branch);
             ObjectId commitId = inserter.insert(commit);
             inserter.flush();
 
@@ -164,8 +247,13 @@ public class DslGitRepository implements AutoCloseable {
     /** Commit only if the branch still has the exact head used to compute this content. */
     public String commitDslIfHeadMatches(String branch, String expectedHead, String dslText,
                                         String author, String message) throws IOException {
+        return commitDslIfHeadMatches(branch, expectedHead, dslText, author, message, null);
+    }
+
+    public String commitDslIfHeadMatches(String branch, String expectedHead, String dslText,
+                                        String author, String message, CommitProvenance provenance) throws IOException {
         return new ExpectedHeadDslCommitter().commit(this,
-                new ExpectedHeadDslCommitter.CommitRequest(branch, expectedHead, dslText, author, message)).commitId();
+                new ExpectedHeadDslCommitter.CommitRequest(branch, expectedHead, dslText, author, message, provenance)).commitId();
     }
 
     /** Verify a no-op or recovery without adopting a concurrent branch head. */
@@ -208,7 +296,8 @@ public class DslGitRepository implements AutoCloseable {
                         commit.name(),
                         authorIdent.getName(),
                         Instant.ofEpochSecond(commit.getCommitTime()),
-                        commit.getFullMessage()));
+                        commit.getFullMessage(),
+                        verifyCommit(commit.name())));
             }
         }
         return history;
@@ -344,6 +433,7 @@ public class DslGitRepository implements AutoCloseable {
             }
 
             RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());
+            verifyIncoming(commitId, targetHead.name());
             ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
             if (!merger.merge(targetHead, pickCommit)) {
                 log.warn("Cherry-pick merge conflict for {} onto '{}'", commitId, targetBranch);
@@ -359,6 +449,7 @@ public class DslGitRepository implements AutoCloseable {
                 newCommit.setCommitter(committer);
                 newCommit.setMessage("Cherry-pick: " + pickCommit.getShortMessage());
 
+                signCommit(newCommit, targetBranch);
                 ObjectId newCommitId = inserter.insert(newCommit);
                 inserter.flush();
                 updateRef(
@@ -378,6 +469,11 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Merge one branch into another. */
     public String merge(String fromBranch, String intoBranch) throws IOException {
+        return merge(fromBranch, intoBranch, null, null);
+    }
+
+    /** Supply final merge metadata before signing and publishing the single new object. */
+    public String merge(String fromBranch, String intoBranch, String author, String message) throws IOException {
         String fromRefName = Constants.R_HEADS + fromBranch;
         String intoRefName = Constants.R_HEADS + intoBranch;
         Ref fromRef = gitRepo.getRefDatabase().exactRef(fromRefName);
@@ -390,7 +486,9 @@ public class DslGitRepository implements AutoCloseable {
         try (RevWalk walk = new RevWalk(gitRepo)) {
             RevCommit fromCommit = walk.parseCommit(fromRef.getObjectId());
             RevCommit intoCommit = walk.parseCommit(intoRef.getObjectId());
-            PersonIdent actor = systemIdent();
+            PersonIdent actor = author == null || author.isBlank() ? systemIdent() : personIdent(author);
+
+            verifyIncoming(fromCommit.name(), intoCommit.name());
 
             if (walk.isMergedInto(fromCommit, intoCommit)) {
                 log.info("Already merged: '{}' is ancestor of '{}'", fromBranch, intoBranch);
@@ -410,7 +508,7 @@ public class DslGitRepository implements AutoCloseable {
                 return fromCommit.name();
             }
 
-            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
+            ThreeWayMerger merger = new ModelHistoryMerger(gitRepo);
             if (!merger.merge(intoCommit, fromCommit)) {
                 log.warn("Merge conflict: '{}' into '{}'", fromBranch, intoBranch);
                 return null;
@@ -422,8 +520,9 @@ public class DslGitRepository implements AutoCloseable {
                 mergeCommit.setParentIds(intoCommit, fromCommit);
                 mergeCommit.setAuthor(actor);
                 mergeCommit.setCommitter(actor);
-                mergeCommit.setMessage("Merge branch '" + fromBranch + "' into " + intoBranch);
+                mergeCommit.setMessage(message == null ? "Merge branch '" + fromBranch + "' into " + intoBranch : message);
 
+                signCommit(mergeCommit, intoBranch);
                 ObjectId mergeCommitId = inserter.insert(mergeCommit);
                 inserter.flush();
                 updateRef(
@@ -441,6 +540,27 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
+    /** Two-parent merges retain transfer evidence in their original signed parents. */
+    private static final class ModelHistoryMerger extends RecursiveMerger {
+        ModelHistoryMerger(Repository repository) {
+            super(repository, true);
+        }
+
+        @Override
+        protected boolean processEntry(CanonicalTreeParser base, CanonicalTreeParser ours,
+                                       CanonicalTreeParser theirs, DirCacheBuildIterator index,
+                                       WorkingTreeIterator work, boolean ignoreConflicts,
+                                       MergeAttributes attributes) throws IOException {
+            if (CommitProvenance.FILENAME.equals(tw.getPathString())) {
+                // Do not add the reserved transfer-specific path to the in-core
+                // index. All other paths keep JGit's recursive merge behavior.
+                enterSubtree = false;
+                return true;
+            }
+            return super.processEntry(base, ours, theirs, index, work, ignoreConflicts, attributes);
+        }
+    }
+
     // ── Revert and undo operations ──────────────────────────────────
 
     /** Revert a specific commit on a branch by creating a new commit. */
@@ -448,6 +568,7 @@ public class DslGitRepository implements AutoCloseable {
         ObjectId revertObjectId = ObjectId.fromString(commitId);
         try (RevWalk walk = new RevWalk(gitRepo)) {
             RevCommit revertCommit = walk.parseCommit(revertObjectId);
+            verifySnapshot(commitId);
             if (revertCommit.getParentCount() == 0) {
                 log.warn("Cannot revert initial commit {}", commitId);
                 return null;
@@ -478,6 +599,7 @@ public class DslGitRepository implements AutoCloseable {
                 newCommit.setCommitter(actor);
                 newCommit.setMessage("Revert: " + revertCommit.getShortMessage());
 
+                signCommit(newCommit, branch);
                 ObjectId newCommitId = inserter.insert(newCommit);
                 inserter.flush();
                 updateRef(
@@ -538,11 +660,13 @@ public class DslGitRepository implements AutoCloseable {
             log.warn("Cannot restore: commit {} has no DSL content", commitId);
             return null;
         }
+        var provenance = CommitProvenance.capture("restore", this, storageName,
+                "detached", commitId, null);
         return commitDsl(
                 branch,
                 dslText,
                 "taxonomy",
-                "Restored from version " + commitId.substring(0, 7));
+                "Restored from version " + commitId.substring(0, 7), provenance);
     }
 
     // ── State query helpers ─────────────────────────────────────────
@@ -628,7 +752,8 @@ public class DslGitRepository implements AutoCloseable {
                     commit.name(),
                     authorIdent.getName(),
                     Instant.ofEpochSecond(commit.getCommitTime()),
-                    commit.getFullMessage());
+                    commit.getFullMessage(),
+                    verifyCommit(commit.name()));
         }
     }
 

@@ -2,6 +2,9 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.CommitProvenance;
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.MockedStatic;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
@@ -52,8 +55,15 @@ class GitNativeSyncIntegrationServiceTest {
     private UserWorkspace workspace;
     private SystemRepository sourceMetadata;
 
+    // Routing/lifecycle fixtures have no Git objects; real provenance is covered by snapshot tests.
+    private MockedStatic<CommitProvenance> provenanceCapture;
+
+    @AfterEach
+    void closeProvenanceCapture() { if (provenanceCapture != null) provenanceCapture.close(); }
+
     @BeforeEach
     void setUp() throws Exception {
+        provenanceCapture = org.mockito.Mockito.mockStatic(CommitProvenance.class);
         when(repositoryFactory.getSystemRepository()).thenReturn(primaryRepository);
 
         service = new GitNativeSyncIntegrationService(

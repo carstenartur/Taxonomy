@@ -212,6 +212,156 @@ class ExternalGitSyncServiceIT {
         assertEquals(remoteCommit, systemDslRepository.getHeadCommit(BRANCH));
     }
 
+    @Test
+    void selectedRepositorySynchronizesWithoutChangingPrimaryOrItsMetadata() throws Exception {
+        String primaryHead = systemDslRepository.getHeadCommit(BRANCH);
+        Instant primaryPush = systemRepository.getLastPushAt();
+        Path secondBare = temporaryDirectory.resolve("second.git");
+        try (Git ignored = Git.init().setBare(true).setDirectory(secondBare.toFile()).call()) {
+            // A separate remote proves both source and destination routing.
+        }
+        SystemRepository selected = new SystemRepository();
+        selected.setRepositoryId("selected");
+        selected.setPrimaryRepo(false);
+        selected.setTopologyMode(RepositoryTopologyMode.EXTERNAL_CANONICAL);
+        selected.setDefaultBranch("review");
+        selected.setExternalUrl(remoteUri.replace("remote.git", "second.git"));
+        when(repositoryService.getRepository("selected")).thenReturn(selected);
+        DslGitRepository second = repositoryFactory.getCentralRepository("selected");
+        String selectedHead = second.commitDsl("review", "architecture { description \"second\" }", "bob", "second base");
+
+        service.pushToExternal("selected", "review");
+        try (Git remote = Git.open(secondBare.toFile())) {
+            assertEquals(selectedHead, remote.getRepository().resolve("refs/heads/review").name());
+            assertNull(remote.getRepository().resolve("refs/heads/" + BRANCH));
+        }
+        try (Git git = Git.cloneRepository().setURI(selected.getExternalUrl())
+                .setBranch("refs/heads/review").setDirectory(temporaryDirectory.resolve("second-work").toFile()).call()) {
+            Files.writeString(git.getRepository().getWorkTree().toPath().resolve(DSL_FILE), "architecture { description \"remote second\" }");
+            git.add().addFilepattern(DSL_FILE).call();
+            String remoteHead = git.commit().setMessage("remote second")
+                    .setAuthor("remote", "remote@example.test").call().name();
+            git.push().add("review").call();
+            assertEquals(remoteHead, service.fullSync("selected", "bob"));
+            assertEquals(remoteHead, second.getHeadCommit("review"));
+        }
+        assertEquals(primaryHead, systemDslRepository.getHeadCommit(BRANCH));
+        assertEquals(primaryPush, systemRepository.getLastPushAt());
+        assertNull(systemRepository.getLastFetchAt());
+        assertNull(second.getHeadCommit(BRANCH));
+        assertNotNull(selected.getLastFetchAt());
+    }
+
+    @Test
+    void invalidIncomingSignatureCannotChangeTheActiveSharedBranch() throws Exception {
+        String acceptedHead = systemDslRepository.getHeadCommit(BRANCH);
+        try (Git git = Git.cloneRepository().setURI(remoteUri).setBranch("refs/heads/" + BRANCH)
+                .setDirectory(temporaryDirectory.resolve("invalid-signature").toFile()).call()) {
+            var repository = git.getRepository();
+            try (var walk = new org.eclipse.jgit.revwalk.RevWalk(repository);
+                 var inserter = repository.newObjectInserter()) {
+                var builder = new org.eclipse.jgit.lib.CommitBuilder();
+                builder.setParentId(ObjectId.fromString(acceptedHead));
+                builder.setTreeId(walk.parseCommit(ObjectId.fromString(acceptedHead)).getTree());
+                builder.setAuthor(new org.eclipse.jgit.lib.PersonIdent("untrusted", "untrusted@example.test"));
+                builder.setCommitter(builder.getAuthor());
+                builder.setMessage("invalid external signature");
+                builder.setGpgSignature(new org.eclipse.jgit.lib.GpgSignature(
+                        "-----BEGIN PGP SIGNATURE-----\ninvalid\n-----END PGP SIGNATURE-----".getBytes(StandardCharsets.US_ASCII)));
+                ObjectId invalidHead = inserter.insert(builder);
+                inserter.flush();
+                RefUpdate update = repository.updateRef("refs/heads/" + BRANCH);
+                update.setNewObjectId(invalidHead);
+                assertEquals(RefUpdate.Result.FAST_FORWARD, update.update());
+                git.push().add(BRANCH).call();
+            }
+        }
+        systemDslRepository.withSignatureService(
+                new com.taxonomy.workspace.signing.GitCommitSignatureService(
+                        new com.taxonomy.workspace.signing.GitSigningProperties()), "external-test");
+
+        assertThrows(java.io.IOException.class, () -> service.fullSync("alice"));
+
+        assertEquals(acceptedHead, systemDslRepository.getHeadCommit(BRANCH));
+        assertNull(systemDslRepository.getHeadCommit("__external_sync__/" + BRANCH));
+        assertNull(systemRepository.getLastFetchAt());
+    }
+
+    @Test
+    void validSignedIncomingCommitPreservesExactObjectAndSignatureOverTransport() throws Exception {
+        String acceptedUnsignedBase = systemDslRepository.getHeadCommit(BRANCH);
+        var signer = com.taxonomy.workspace.signing.SigningTestKeys.createService(
+                temporaryDirectory.resolve("external-signing"));
+        byte[] originalRawCommit;
+        byte[] originalSignature;
+        ObjectId signedHead;
+        try (Git git = Git.cloneRepository().setURI(remoteUri).setBranch("refs/heads/" + BRANCH)
+                .setDirectory(temporaryDirectory.resolve("valid-signature").toFile()).call()) {
+            var repository = git.getRepository();
+            try (var walk = new org.eclipse.jgit.revwalk.RevWalk(repository);
+                 var inserter = repository.newObjectInserter()) {
+                var builder = new org.eclipse.jgit.lib.CommitBuilder();
+                builder.setParentId(ObjectId.fromString(acceptedUnsignedBase));
+                builder.setTreeId(walk.parseCommit(ObjectId.fromString(acceptedUnsignedBase)).getTree());
+                builder.setAuthor(new org.eclipse.jgit.lib.PersonIdent("external operator", "operator@example.test"));
+                builder.setCommitter(builder.getAuthor());
+                builder.setMessage("signed external model commit");
+                signer.sign(builder, "external-operator", BRANCH);
+                signedHead = inserter.insert(builder);
+                inserter.flush();
+                originalRawCommit = repository.open(signedHead, Constants.OBJ_COMMIT).getBytes();
+                originalSignature = org.eclipse.jgit.revwalk.RevCommit.parse(originalRawCommit).getRawGpgSignature();
+                assertNotNull(originalSignature);
+                assertTrue(new String(originalSignature, StandardCharsets.US_ASCII).contains("-----END PGP SIGNATURE-----"));
+                RefUpdate update = repository.updateRef("refs/heads/" + BRANCH);
+                update.setExpectedOldObjectId(ObjectId.fromString(acceptedUnsignedBase));
+                update.setNewObjectId(signedHead);
+                assertEquals(RefUpdate.Result.FAST_FORWARD, update.update());
+            }
+            for (var result : git.push().add(BRANCH).call()) {
+                for (var update : result.getRemoteUpdates()) {
+                    assertEquals(RemoteRefUpdate.Status.OK, update.getStatus());
+                }
+            }
+        }
+        var verificationProperties = com.taxonomy.workspace.signing.SigningTestKeys.verifierProperties(
+                temporaryDirectory.resolve("incoming-trust"));
+        verificationProperties.setRequireSignatures(true);
+        systemDslRepository.withSignatureService(
+                new com.taxonomy.workspace.signing.GitCommitSignatureService(verificationProperties), "external-test");
+
+        String integrated = service.fullSync("alice");
+
+        assertEquals(signedHead.name(), integrated);
+        byte[] transported = systemDslRepository.getGitRepository().open(signedHead, Constants.OBJ_COMMIT).getBytes();
+        org.junit.jupiter.api.Assertions.assertArrayEquals(originalRawCommit, transported);
+        try (var walk = new org.eclipse.jgit.revwalk.RevWalk(systemDslRepository.getGitRepository())) {
+            org.junit.jupiter.api.Assertions.assertArrayEquals(originalSignature,
+                    walk.parseCommit(signedHead).getRawGpgSignature());
+        }
+        assertEquals(com.taxonomy.workspace.signing.SignatureStatus.VERIFIED,
+                systemDslRepository.verifyCommit(integrated).status());
+        assertEquals(com.taxonomy.workspace.signing.SignatureStatus.UNSIGNED,
+                systemDslRepository.verifyCommit(acceptedUnsignedBase).status());
+        assertEquals(integrated, systemRepository.getLastFetchCommit());
+    }
+
+    @Test
+    void fullSyncPreservesAnExistingBranchWithTheHistoricalStagingName() throws Exception {
+        String existingBranch = "__external_sync__/" + BRANCH;
+        systemDslRepository.createBranch(existingBranch, BRANCH);
+        String existingHead = systemDslRepository.commitDsl(existingBranch,
+                "architecture { description \"user staging branch\" }", "alice", "user work");
+        ObjectId remoteCommit = commitToRemote(
+                "architecture { description \"incoming change\" }", "incoming", "existing-staging");
+
+        assertEquals(remoteCommit.name(), service.fullSync("alice"));
+
+        assertEquals(existingHead, systemDslRepository.getHeadCommit(existingBranch));
+        assertEquals(java.util.Set.of(BRANCH, existingBranch),
+                java.util.Set.copyOf(systemDslRepository.getBranchNames()));
+    }
+
     private ObjectId commitToRemote(String dsl,
                                     String message,
                                     String directoryName) throws Exception {

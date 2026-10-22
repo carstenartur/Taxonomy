@@ -103,6 +103,10 @@ The parser and source-range scanner must share delimiter recognition: braces in 
 
 Undoing a deletion also needs the original insertion boundary. Recover it from the original Git document and surviving neighbor identities; appending a missing block changes order. Preserve intervening annotations and report a conflict if both placement anchors changed.
 
+### 2026-10-22 — Signing internally constructed model commits
+
+Model-history writers insert `CommitBuilder` objects directly; Git CLI signing settings do not cover them. Sign the complete payload before insertion and the expected-head ref update, including semantic merges and durable checkpoints. A signing failure must not publish an intermediate merge. Signed checkpoint retries must recognize an already published, verified equivalent payload because signature bytes may change with keys or execution context. Keep cross-repository evidence in the signed tree and carry original commit/tree bytes only, so repeated synchronization does not recursively embed older evidence.
+
 ### 2026-09-09 — Concurrent checkpoint publication and bounded race tests
 
 With jgit-storage-hibernate 0.11.3, a checkpoint retry's pack flush can hold the object catalogue write lock while waiting for the repository database lock. A simultaneous ref update holds that database lock and waits for the catalogue read lock. Keep each checkpoint's Git insertion and ref update together under the shared live `Repository` monitor, including retries through different writer instances. The durable intent, expected-head CAS and replay checks remain authoritative across processes; never put this monitor around the ORM journal transaction. This coordinates the checkpoint consumer path; the storage library's general lock ordering still needs an upstream correction.

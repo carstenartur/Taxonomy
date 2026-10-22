@@ -177,6 +177,55 @@ class ExternalGitSyncServiceTest {
         }
     }
 
+    @Test
+    void unknownExplicitRepositoryNeverFallsBackToPrimary() {
+        when(systemRepositoryService.getRepository("unknown"))
+                .thenThrow(new IllegalArgumentException("Architecture repository not found"));
+        assertThrows(IllegalArgumentException.class,
+                () -> externalSyncService.fetchFromExternal("unknown"));
+        assertThrows(IllegalArgumentException.class,
+                () -> externalSyncService.getStatus("unknown"));
+        org.mockito.Mockito.verify(systemRepositoryService, org.mockito.Mockito.never()).getPrimaryRepository();
+    }
+
+    @Test
+    void explicitStatusUsesSelectedMetadataAndDoesNotInheritGlobalCredentials() {
+        SystemRepository selected = createSystemRepository(RepositoryTopologyMode.EXTERNAL_CANONICAL);
+        selected.setRepositoryId("selected");
+        selected.setPrimaryRepo(false);
+        selected.setExternalUrl("https://example.test/selected.git");
+        when(systemRepositoryService.getRepository("selected")).thenReturn(selected);
+        externalSyncService = new ExternalGitSyncService(factory, systemRepositoryService,
+                new ExternalGitCredentials("global", "fixture-global-token"));
+
+        var status = externalSyncService.getStatus("selected");
+
+        assertEquals(selected.getExternalUrl(), status.externalUrl());
+        assertFalse(status.credentialConfigured());
+        org.mockito.Mockito.verify(systemRepositoryService, org.mockito.Mockito.never()).getPrimaryRepository();
+    }
+
+    @Test
+    void statusRedactsUserInformationFromPersistedCredentialUrls() {
+        SystemRepository selected = createSystemRepository(RepositoryTopologyMode.EXTERNAL_CANONICAL);
+        selected.setExternalUrl("https://legacy-user:fixture-legacy-secret@example.test/team/repo.git");
+        when(systemRepositoryService.getPrimaryRepository()).thenReturn(selected);
+        when(systemRepositoryService.getRepository("selected")).thenReturn(selected);
+
+        assertEquals("https://example.test/team/repo.git", externalSyncService.getStatus().externalUrl());
+        assertEquals("https://example.test/team/repo.git", externalSyncService.getStatus("selected").externalUrl());
+        assertEquals("https://legacy-user:fixture-legacy-secret@example.test/team/repo.git", selected.getExternalUrl());
+    }
+
+    @Test
+    void statusRedactsSshUserInformationWithoutChangingTransportConfiguration() {
+        SystemRepository selected = createSystemRepository(RepositoryTopologyMode.EXTERNAL_CANONICAL);
+        selected.setExternalUrl("ssh://legacy-user:fixture-legacy-secret@example.test/team/repo.git");
+        when(systemRepositoryService.getRepository("selected")).thenReturn(selected);
+
+        assertEquals("ssh://example.test/team/repo.git", externalSyncService.getStatus("selected").externalUrl());
+    }
+
     private SystemRepository createSystemRepository(RepositoryTopologyMode mode) {
         SystemRepository systemRepository = new SystemRepository();
         systemRepository.setRepositoryId(UUID.randomUUID().toString());

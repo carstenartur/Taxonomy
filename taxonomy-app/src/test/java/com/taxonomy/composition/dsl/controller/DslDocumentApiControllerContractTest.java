@@ -6,6 +6,8 @@ import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.workspace.storage.DslCommit;
+import com.taxonomy.workspace.signing.CommitSignature;
+import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.versioning.controller.DslApiController;
 import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
@@ -107,13 +109,20 @@ class DslDocumentApiControllerContractTest {
         when(dslOps.getViewContext("alice","draft",context)).thenReturn(view);
         mvc.perform(get("/api/dsl/history")).andExpect(status().isOk()).andExpect(jsonPath("$.commits").isEmpty())
                 .andExpect(jsonPath("$.currentBranch").value("draft")).andExpect(jsonPath("$.headCommit").value("head"));
-        when(dslOps.getDslHistory("review",context)).thenReturn(List.of(new DslCommit("head","alice",Instant.EPOCH,"message"),new DslCommit("old","bob",Instant.EPOCH,"older")));
+        var signature = new CommitSignature(SignatureStatus.VERIFIED, "Operator signing service", "ABC123", true, "Trusted key");
+        when(dslOps.getDslHistory("review",context)).thenReturn(List.of(new DslCommit("head","alice",Instant.EPOCH,"message",signature),new DslCommit("old","bob",Instant.EPOCH,"older")));
         when(dslOps.getViewContext("alice","review",context)).thenReturn(view);
         when(documents.findDocumentIdByCommitId("head")).thenReturn(Optional.of(42L));
         mvc.perform(get("/api/dsl/history").param("branch","review")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.commits[0].documentId").value(42)).andExpect(jsonPath("$.commits[0].commitId").value("head"))
                 .andExpect(jsonPath("$.commits[0].author").value("alice")).andExpect(jsonPath("$.commits[0].message").value("message"))
                 .andExpect(jsonPath("$.commits[0].timestamp").exists()).andExpect(jsonPath("$.commits[0].branch").value("review"))
+                .andExpect(jsonPath("$.commits[0].signature.status").value("VERIFIED"))
+                .andExpect(jsonPath("$.commits[0].signature.signer").value("Operator signing service"))
+                .andExpect(jsonPath("$.commits[0].signature.fingerprint").value("ABC123"))
+                .andExpect(jsonPath("$.commits[0].signature.serviceSignature").value(true))
+                .andExpect(jsonPath("$.commits[0].signature.reason").value("Trusted key"))
+                .andExpect(jsonPath("$.commits[1].signature.status").value("UNSIGNED"))
                 .andExpect(jsonPath("$.commits[1].documentId").isEmpty());
         when(dslOps.getDslHistory("review",context)).thenThrow(new IOException("private content"));
         mvc.perform(get("/api/dsl/history").param("branch","review")).andExpect(status().isServiceUnavailable())

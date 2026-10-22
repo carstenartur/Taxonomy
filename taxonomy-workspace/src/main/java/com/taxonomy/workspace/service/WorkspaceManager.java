@@ -2,6 +2,7 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
@@ -522,6 +523,13 @@ public class WorkspaceManager {
             if (baseCommit == null || systemDsl == null || systemDsl.isBlank()) {
                 throw new IllegalStateException("Source repository has no readable checkpoint for " + baseBranch);
             }
+            CommitProvenance provenance = null;
+            if (repositoryFactory == null) {
+                systemGit.verifySnapshot(baseCommit);
+            } else {
+                provenance = CommitProvenance.capture("fork", systemGit,
+                        systemRepository.getRepositoryId(), baseBranch, baseCommit, null);
+            }
 
             if (repositoryFactory != null) {
                 DslGitRepository workspaceGit =
@@ -530,12 +538,13 @@ public class WorkspaceManager {
                 String allocatedCommit;
                 if (existingHead == null) {
                     allocatedCommit = workspaceGit.commitDslIfHeadMatches(
-                            targetBranch, null, systemDsl, username, "Fork from shared/" + baseBranch);
+                            targetBranch, null, systemDsl, username, "Fork from shared/" + baseBranch, provenance);
                 } else if (recordedBase != null
                         && existingHead.equals(workspace.getCurrentCommit())
                         && systemDsl.equals(workspaceGit.getDslAtCommit(existingHead))) {
                     // A failed READY save may leave the original Git seed intact.
                     // Adopt only that recorded head AND payload; never reseed user edits.
+                    workspaceGit.verifySnapshot(existingHead);
                     workspaceGit.verifyExpectedHead(targetBranch, existingHead);
                     allocatedCommit = existingHead;
                 } else {

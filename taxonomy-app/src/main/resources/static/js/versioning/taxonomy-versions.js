@@ -180,9 +180,10 @@ window.TaxonomyVersions = (function () {
         }
 
         html += '<div class="text-muted" style="font-size:0.75rem;">' +
-            ts + ' &mdash; ' + escapeHtml(author) +
-            ' <code class="ms-1">' + sha + '</code>' +
+            escapeHtml(ts) + ' &mdash; ' + escapeHtml(author) +
+            ' <code class="ms-1">' + escapeHtml(sha) + '</code>' +
             '</div>' +
+            renderSignature(commit.signature) +
             '</div>' +
             '<div class="d-flex gap-1">' +
             '<button class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:0.75rem;" ' +
@@ -205,6 +206,36 @@ window.TaxonomyVersions = (function () {
             '</div>';
 
         return html;
+    }
+
+    /** Status comes from verification of the stored object, never author/message heuristics. */
+    function renderSignature(signature) {
+        var status = signature ? signature.status : 'UNSIGNED';
+        var styles = {
+            UNSIGNED: 'bg-secondary', VERIFIED: 'bg-success', UNTRUSTED: 'bg-warning text-dark',
+            INVALID: 'bg-danger', UNSUPPORTED: 'bg-secondary'
+        };
+        if (!Object.prototype.hasOwnProperty.call(styles, status)) status = 'UNSUPPORTED';
+        var label = t('versions.signature.' + status.toLowerCase());
+        if (status === 'UNSIGNED') {
+            return '<div class="commit-signature small" data-signature-status="UNSIGNED"><span class="badge bg-secondary">' +
+                escapeHtml(label) + '</span></div>';
+        }
+        // Only verified service evidence may identify Taxonomy as the signing service.
+        var origin = t(status === 'VERIFIED' && signature.serviceSignature === true
+            ? 'versions.signature.service' : 'versions.signature.external');
+        var signer = signature.signer || t('versions.signature.unknown');
+        var fingerprint = signature.fingerprint || t('versions.signature.unknown');
+        var title = label + ' · ' + signer + ' · ' + fingerprint;
+        var html = '<details class="commit-signature small" data-signature-status="' + status + '">' +
+            '<summary title="' + escapeAttr(title) + '"><span class="badge ' + styles[status] + '">' +
+            escapeHtml(label) + '</span> ' + escapeHtml(origin) + '</summary>' +
+            '<dl class="mb-1 ms-2"><dt>' + escapeHtml(t('versions.signature.signer')) + '</dt><dd>' + escapeHtml(signer) + '</dd>' +
+            '<dt>' + escapeHtml(t('versions.signature.fingerprint')) + '</dt><dd class="text-break">' + escapeHtml(fingerprint) + '</dd>';
+        if (signature.reason) {
+            html += '<dt>' + escapeHtml(t('versions.signature.reason')) + '</dt><dd>' + escapeHtml(signature.reason) + '</dd>';
+        }
+        return html + '</dl></details>';
     }
 
     // ── Timeline actions ────────────────────────────────────────────

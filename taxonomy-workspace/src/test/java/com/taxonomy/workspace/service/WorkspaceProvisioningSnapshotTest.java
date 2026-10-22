@@ -50,6 +50,11 @@ class WorkspaceProvisioningSnapshotTest {
             assertEquals(destination.getHeadCommit(branch), ready.getCurrentCommit());
             assertEquals(List.of(branch), destination.getBranchNames(), "No implicit draft branch may be added");
             assertEquals(1, destination.getDslHistory(branch).size(), "No unreviewed seed commit may precede the snapshot");
+            var provenance = destination.getProvenance(ready.getCurrentCommit());
+            assertEquals("fork", provenance.operation());
+            assertEquals("snapshot-primary", provenance.sources().getFirst().repositoryId());
+            assertEquals("draft", provenance.sources().getFirst().branch());
+            assertEquals(capturedCommit, provenance.sources().getFirst().commitId());
         }
     }
 

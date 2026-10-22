@@ -3,6 +3,7 @@ package com.taxonomy.versioning.service;
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.dsl.merge.TaxDslSemanticMerger;
 import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.CommitProvenance;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.lib.CommitBuilder;
@@ -56,18 +57,10 @@ public class SemanticGitMergeService {
                                       String author,
                                       String message) throws IOException {
         String requestedMessage = normalizeMessage(message);
-        Repository git = repository.getGitRepository();
-        ObjectId targetHeadBefore = branchHead(git, intoBranch);
-        String ordinaryCommit = repository.merge(fromBranch, intoBranch);
+        String ordinaryCommit = repository.merge(fromBranch, intoBranch,
+                requestedMessage == null ? null : author, requestedMessage);
         if (ordinaryCommit != null) {
-            String effectiveCommit = applyRequestedMergeMessage(
-                    git,
-                    intoBranch,
-                    targetHeadBefore,
-                    ordinaryCommit,
-                    author,
-                    requestedMessage);
-            return new MergeOutcome(true, effectiveCommit, false, List.of(), null);
+            return new MergeOutcome(true, ordinaryCommit, false, List.of(), null);
         }
 
         SemanticInputs inputs = semanticInputs(repository, fromBranch, intoBranch);
@@ -82,7 +75,7 @@ public class SemanticGitMergeService {
         }
 
         MergeCommitResult committed = createMergeCommit(
-                git,
+                repository,
                 inputs.baseCommit(),
                 inputs.oursCommit(),
                 inputs.theirsCommit(),
@@ -160,61 +153,7 @@ public class SemanticGitMergeService {
         }
     }
 
-    /**
-     * The generic repository merge supplies a conventional default message.
-     * When a caller explicitly requested a message, replace only a two-parent
-     * merge commit created by this invocation. Fast-forward and already-merged
-     * results keep their existing commit identity and message.
-     */
-    private static String applyRequestedMergeMessage(Repository repository,
-                                                     String intoBranch,
-                                                     ObjectId targetHeadBefore,
-                                                     String commitId,
-                                                     String authorName,
-                                                     String requestedMessage) throws IOException {
-        if (requestedMessage == null) {
-            return commitId;
-        }
-
-        ObjectId originalId = ObjectId.fromString(commitId);
-        if (originalId.equals(targetHeadBefore)) {
-            return commitId;
-        }
-        Ref branch = repository.getRefDatabase().exactRef(Constants.R_HEADS + intoBranch);
-        if (branch == null || !originalId.equals(branch.getObjectId())) {
-            return commitId;
-        }
-
-        try (RevWalk walk = new RevWalk(repository)) {
-            RevCommit original = walk.parseCommit(originalId);
-            if (original.getParentCount() < 2) {
-                return commitId;
-            }
-
-            PersonIdent actor = actor(authorName);
-            try (ObjectInserter inserter = repository.newObjectInserter()) {
-                CommitBuilder replacement = new CommitBuilder();
-                replacement.setTreeId(original.getTree());
-                replacement.setParentIds(original.getParents());
-                replacement.setAuthor(actor);
-                replacement.setCommitter(actor);
-                replacement.setMessage(requestedMessage);
-                ObjectId replacementId = inserter.insert(replacement);
-                inserter.flush();
-
-                RefUpdate update = repository.updateRef(Constants.R_HEADS + intoBranch);
-                update.setExpectedOldObjectId(originalId);
-                update.setNewObjectId(replacementId);
-                update.setForceUpdate(true);
-                update.setRefLogIdent(actor);
-                update.setRefLogMessage("merge: " + requestedMessage, false);
-                requireUpdated(update.update(), intoBranch);
-                return replacementId.name();
-            }
-        }
-    }
-
-    private static MergeCommitResult createMergeCommit(Repository repository,
+    private static MergeCommitResult createMergeCommit(DslGitRepository source,
                                             RevCommit base,
                                             RevCommit ours,
                                             RevCommit theirs,
@@ -223,6 +162,8 @@ public class SemanticGitMergeService {
                                             String mergedDsl,
                                             String authorName,
                                             String requestedMessage) throws IOException {
+        Repository repository = source.getGitRepository();
+        source.verifyIncoming(theirs.name(), ours.name());
         PersonIdent actor = actor(authorName);
 
         try (ObjectInserter inserter = repository.newObjectInserter()) {
@@ -241,6 +182,7 @@ public class SemanticGitMergeService {
             commit.setMessage(requestedMessage != null
                     ? requestedMessage
                     : "Semantic merge branch '" + fromBranch + "' into " + intoBranch);
+            source.signCommit(commit, intoBranch);
             ObjectId commitId = inserter.insert(commit);
             inserter.flush();
 
@@ -260,8 +202,9 @@ public class SemanticGitMergeService {
                                         RevCommit ours,
                                         RevCommit theirs,
                                         ObjectId mergedDsl) throws IOException {
-        // Exclude the DSL from Git's textual merge: its semantic result is
-        // inserted only after every auxiliary path has merged successfully.
+        // Merge ordinary auxiliary files independently of the semantic DSL.
+        // Transfer evidence belongs to each original signed parent, not to the
+        // new merge object, so it must not participate in textual file merging.
         ObjectId baseTree = auxiliaryTree(repository, inserter, base);
         ObjectId ourTree = auxiliaryTree(repository, inserter, ours);
         ObjectId theirTree = auxiliaryTree(repository, inserter, theirs);
@@ -300,6 +243,7 @@ public class SemanticGitMergeService {
                                           RevCommit commit) throws IOException {
         Map<String, TreeEntry> files = readTree(repository, commit == null ? null : commit.getTree());
         files.remove(DSL_FILE);
+        files.remove(CommitProvenance.FILENAME);
         return writeTree(inserter, files);
     }
 
@@ -333,12 +277,6 @@ public class SemanticGitMergeService {
             }
         }
         return entries;
-    }
-
-    private static ObjectId branchHead(Repository repository,
-                                       String branch) throws IOException {
-        Ref ref = repository.getRefDatabase().exactRef(Constants.R_HEADS + branch);
-        return ref != null ? ref.getObjectId() : null;
     }
 
     private static PersonIdent actor(String authorName) {

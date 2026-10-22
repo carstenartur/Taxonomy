@@ -40,8 +40,8 @@ public class ArchitectureCheckpointWriter {
             new ExpectedHeadDslCommitter().verifyExpectedHead(source, branch, previous);
             return new Result(previous, false);
         }
-        // All commit bytes, including the timestamp, come from the durable intent.
-        // A retry after ref update but before journal completion recreates the same object ID.
+        // The unsigned payload comes from the durable intent. Signatures may
+        // differ after key rotation or when a background worker resumes a request.
         PersonIdent actor = new PersonIdent(request.actor(), request.actor().contains("@")
                 ? request.actor() : request.actor() + "@taxonomy.local", Instant.parse(request.occurredAt()), ZoneOffset.UTC);
         try (ObjectInserter inserter = repository.newObjectInserter()) {
@@ -58,6 +58,9 @@ public class ArchitectureCheckpointWriter {
                     + "\nSemantic-Revision: " + request.revision()
                     + "\nOperations-After: " + request.fromRevision() + "\nOperations-Through: " + request.revision()
                     + "\nRationale: " + request.rationale());
+            String recovered = findPublishedCheckpoint(source, repository, branch, commit);
+            if (recovered != null) return new Result(recovered, true);
+            source.signCommit(commit, branch);
             ObjectId id = inserter.insert(commit);
             inserter.flush();
             if (applied(repository, branch, id)) return new Result(id.name(), true);
@@ -65,7 +68,8 @@ public class ArchitectureCheckpointWriter {
                 new ExpectedHeadDslCommitter().verifyExpectedHead(source, branch, previous);
             } catch (BranchHeadConflictException conflict) {
                 // A concurrent retry of this SAME durable intent may have won between the read and CAS.
-                if (applied(repository, branch, id)) return new Result(id.name(), true);
+                recovered = findPublishedCheckpoint(source, repository, branch, commit);
+                if (recovered != null) return new Result(recovered, true);
                 throw conflict;
             }
             RefUpdate update = repository.updateRef(Constants.R_HEADS + branch);
@@ -76,9 +80,37 @@ public class ArchitectureCheckpointWriter {
             if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.FAST_FORWARD || result == RefUpdate.Result.NO_CHANGE) {
                 return new Result(id.name(), true);
             }
-            if (applied(repository, branch, id)) return new Result(id.name(), true);
+            recovered = findPublishedCheckpoint(source, repository, branch, commit);
+            if (recovered != null) return new Result(recovered, true);
             throw new IOException("Checkpoint ref update did not succeed: " + result + "; retry checkpoint " + request.commandId());
         }
+    }
+
+    /** Recover the exact durable payload without requiring deterministic signature bytes. */
+    private static String findPublishedCheckpoint(DslGitRepository source, Repository repository,
+                                                   String branch, CommitBuilder expected) throws IOException {
+        Ref current = repository.exactRef(Constants.R_HEADS + branch);
+        if (current == null || current.getObjectId() == null) return null;
+        try (RevWalk walk = new RevWalk(repository)) {
+            walk.markStart(walk.parseCommit(current.getObjectId()));
+            for (ObjectId parent : expected.getParentIds()) walk.markUninteresting(walk.parseCommit(parent));
+            for (var candidate : walk) {
+                if (!candidate.getTree().equals(expected.getTreeId())
+                        || !candidate.getAuthorIdent().equals(expected.getAuthor())
+                        || !candidate.getCommitterIdent().equals(expected.getCommitter())
+                        || !candidate.getFullMessage().equals(expected.getMessage())
+                        || candidate.getParentCount() != expected.getParentIds().length) continue;
+                boolean parentsMatch = true;
+                for (int i = 0; i < candidate.getParentCount(); i++) {
+                    if (!candidate.getParent(i).equals(expected.getParentIds()[i])) parentsMatch = false;
+                }
+                if (parentsMatch) {
+                    source.verifySnapshot(candidate.name());
+                    return candidate.name();
+                }
+            }
+        }
+        return null;
     }
 
     private static boolean applied(Repository repository, String branch, ObjectId id) throws IOException {
