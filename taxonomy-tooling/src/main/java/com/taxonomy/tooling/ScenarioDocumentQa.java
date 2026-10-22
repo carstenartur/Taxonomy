@@ -56,6 +56,18 @@ final class ScenarioDocumentQa {
                         && array(object(scope.get("decisionTree")).get("rows")).size() == 298
                         && object(scope.get("recordedReasons")).size() == 298,
                 "Reviewed complete flood corpus mismatch: graph, scoped evidence or decision inventory");
+        if (architecture.containsKey("nodeReasons")) {
+            var reasons = object(architecture.get("nodeReasons"));
+            var nodeIds = new java.util.HashSet<String>();
+            for (Object node : array(diagram.get("nodes"))) nodeIds.add(text(object(node), "id"));
+            require(reasons.keySet().equals(nodeIds)
+                            && reasons.values().stream().allMatch(value -> value instanceof String reason && !reason.isBlank()),
+                    "Reviewed complete flood corpus mismatch: recorded node evidence");
+            // Full visible node evidence is a new report payload, not renderer variance.
+            // Measured after exact relationship-reason deduplication: 175/57 pages;
+            // retain the same 3/2-page margin and require every saved reason below.
+            return new PageProfile(178, 59);
+        }
         // Complete fixture: CI LibreOffice 24.2 decision 165; local LibreOfficeDev 26.8 report 52.
         // Retain measured 3/2-page variance only for this corpus; final CI report confirmation remains required.
         return new PageProfile(168, 54);
@@ -186,6 +198,7 @@ final class ScenarioDocumentQa {
                     : name.equals("report.docx") ? List.of(text(architecture,"requirementText"),text(architecture,"snapshotId"))
                     : expectedDiagramText(architecture));
             if(word) {
+                expected.addAll(expectedRecordedArchitectureText(architecture));
                 expected.add(wordGraphHash);
                 for(String collection:List.of("nodes","edges"))for(Object value:array(object(architecture.get("diagram")).get(collection)))expected.add(text(object(value),"id"));
             }
@@ -394,6 +407,25 @@ final class ScenarioDocumentQa {
             for (Object child : array(chapter.get("children"))) {
                 Object reason = object(child).get("reason");
                 if (reason instanceof String phrase && !phrase.isBlank()) expected.add(phrase);
+            }
+        }
+        return expected;
+    }
+
+    /** Full source values, not summaries or prefixes; absent historical fields stay absent. */
+    static List<String> expectedRecordedArchitectureText(Map<String, Object> architecture) {
+        var expected = new ArrayList<String>();
+        if (!architecture.containsKey("nodeReasons")) return expected;
+        for (Object value : object(architecture.get("nodeReasons")).values()) {
+            require(value instanceof String reason && !reason.isBlank(), "Invalid recorded node evidence");
+            expected.add((String) value);
+        }
+        if (architecture.get("relations") instanceof Map<?, ?> relations) {
+            for (Object value : relations.values()) {
+                var relation = object(value);
+                for (String field : List.of("presenceReason", "decisionComment")) {
+                    if (relation.get(field) instanceof String reason && !reason.isBlank()) expected.add(reason);
+                }
             }
         }
         return expected;

@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.model;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.dto.AnalysisLanguage;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -80,6 +81,11 @@ public class RequirementAnalysisJob {
     @Enumerated(EnumType.STRING)
     @Column(name = "analysis_reason_length", length = 16)
     private AnalysisReasonLength analysisReasonLength;
+
+    /** Immutable content-language admission; historical jobs remain null. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "analysis_language", length = 16)
+    private AnalysisLanguage analysisLanguage;
 
     @Column(name = "requested_by", nullable = false, length = 160)
     private String requestedBy;
@@ -253,6 +259,11 @@ public class RequirementAnalysisJob {
     public void recordAnalysisReasonLength(AnalysisReasonLength length) {
         if (analysisReasonLength != null) throw new IllegalStateException("Analysis reason length admission is immutable");
         analysisReasonLength = Objects.requireNonNull(length, "Analysis reason length is required for a new job");
+    }
+    public AnalysisLanguage getAnalysisLanguage() { return analysisLanguage; }
+    public void recordAnalysisLanguage(AnalysisLanguage language) {
+        if (analysisLanguage != null) throw new IllegalStateException("Analysis language admission is immutable");
+        analysisLanguage = Objects.requireNonNull(language, "Analysis language is required for a new job");
     }
     public String getRequestedBy() { return requestedBy; }
     public String getWorkspaceId() { return workspaceId; }

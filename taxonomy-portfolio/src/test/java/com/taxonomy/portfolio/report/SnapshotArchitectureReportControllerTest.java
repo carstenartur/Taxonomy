@@ -26,14 +26,15 @@ class SnapshotArchitectureReportControllerTest {
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"", "   ", "%%%", "de", " en "})
-    void validAndFallbackLocalesDownloadTheSameFrozenEvidence(String language) throws Exception {
+    void explicitOrDeferredLocalesDownloadTheSameFrozenEvidence(String language) throws Exception {
         LocaleContextHolder.setLocale(Locale.GERMAN);
         Locale expected = " en ".equals(language) ? Locale.ENGLISH : Locale.GERMAN;
+        Locale override = " en ".equals(language) ? Locale.ENGLISH : "de".equals(language) ? Locale.GERMAN : null;
         var context = SnapshotWordReportServiceTest.CONTEXT;
         var decisions = mock(DecisionRationaleSnapshotReportService.class);
         var workbench = mock(ArchitectureWorkbenchService.class);
-        when(decisions.generate(41L, "snapshot-1", "auditor", context, expected))
-                .thenReturn(SnapshotWordReportServiceTest.decision());
+        when(decisions.generate(41L, "snapshot-1", "auditor", context, override))
+                .thenReturn(SnapshotWordReportServiceTest.decision(expected.toLanguageTag()));
         when(workbench.load(41L, "snapshot-1", "auditor", context))
                 .thenReturn(SnapshotWordReportServiceTest.projection("Live title", "commit-a"));
         var resolver = mock(WorkspaceResolver.class);
@@ -59,7 +60,7 @@ class SnapshotArchitectureReportControllerTest {
             assertThat(new XWPFWordExtractor(doc).getText()).contains("Saved A", "Saved B", "R1", "snapshot-1",
                     expected.equals(Locale.GERMAN) ? "Architekturübersicht" : "Architecture overview");
         }
-        verify(decisions).generate(41L, "snapshot-1", "auditor", context, expected);
+        verify(decisions).generate(41L, "snapshot-1", "auditor", context, override);
     }
 
     @Test

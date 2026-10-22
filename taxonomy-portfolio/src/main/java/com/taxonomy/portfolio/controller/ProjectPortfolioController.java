@@ -124,7 +124,7 @@ public class ProjectPortfolioController {
                                 false,
                                 request.provider(),
                                 request.maxArchitectureNodes(),
-                                request.idempotencyKey()),
+                                request.idempotencyKey(), request.analysisLanguage()),
                         scope.username(),
                         scope.context())
                 : null;

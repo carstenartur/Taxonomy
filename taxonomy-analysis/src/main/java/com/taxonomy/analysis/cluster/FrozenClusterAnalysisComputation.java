@@ -74,6 +74,7 @@ public final class FrozenClusterAnalysisComputation implements ClusterAnalysisCo
         try (var catalogue = snapshots.bind(DurableClusterAnalysisExecution.source(context), Set.of(root), List.of(frozen));
              var provider = providers.withRequestProvider(command.provider(), command.providerBinding());
              var reasons = com.taxonomy.analysis.service.AnalysisReasonContext.open(command.analysisReasonLength());
+             var language = com.taxonomy.analysis.service.AnalysisLanguageContext.open(command.analysisLanguage());
              var checkpoint = command.continuationBinding() == null ? null : store.checkpointSession(input, task,
                      llm.recoveryPolicyFingerprint(command.provider()), null);
              var run = AnalysisRunControl.worker(diagnostics, cancelled, guards.get());

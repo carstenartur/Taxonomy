@@ -42,7 +42,12 @@ public interface ClusterAnalysisObservation {
     RecoveryInput request(String operationId, String owner, WorkspaceContext scope);
 
     record RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,
-                         ClusterAnalysisView.ObservationScope scope, AnalysisReasonLength analysisReasonLength) {
+                         ClusterAnalysisView.ObservationScope scope, AnalysisReasonLength analysisReasonLength,
+                         com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+        public RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,
+                             ClusterAnalysisView.ObservationScope scope, AnalysisReasonLength analysisReasonLength) {
+            this(operationId, businessText, provider, analysisScope, scope, analysisReasonLength, null);
+        }
         public RecoveryInput(String operationId, String businessText, String provider, AnalysisScope analysisScope,
                              ClusterAnalysisView.ObservationScope scope) {
             this(operationId, businessText, provider, analysisScope, scope, null);

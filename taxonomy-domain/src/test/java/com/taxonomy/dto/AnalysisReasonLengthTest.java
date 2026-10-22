@@ -49,4 +49,21 @@ class AnalysisReasonLengthTest {
                     () -> AnalysisReasonLength.fromValue(invalid));
         }
     }
+    @Test
+    void analysisLanguageHasStrictWireValuesAndOnlyNewAdmissionUsesLocaleFallback() {
+        assertNull(AnalysisLanguage.fromValue(null));
+        assertEquals(AnalysisLanguage.GERMAN, AnalysisLanguage.fromValue("de"));
+        assertEquals(AnalysisLanguage.ENGLISH, AnalysisLanguage.fromValue("en"));
+        assertEquals("de", AnalysisLanguage.GERMAN.value());
+        assertEquals("en", AnalysisLanguage.ENGLISH.value());
+        assertEquals(AnalysisLanguage.GERMAN, AnalysisLanguage.fromLocale(java.util.Locale.forLanguageTag("de-CH")));
+        assertEquals(AnalysisLanguage.ENGLISH, AnalysisLanguage.fromLocale(java.util.Locale.FRENCH));
+        assertEquals(AnalysisLanguage.ENGLISH, AnalysisLanguage.fromLocale(null));
+        for (String invalid : new String[]{"", " ", "DE", "de-DE", "fr", "ui"})
+            assertThrows(IllegalArgumentException.class, () -> AnalysisLanguage.fromValue(invalid));
+        assertNull(new AnalysisRequest().getAnalysisLanguage());
+        assertNull(new AnalysisResult().getAnalysisLanguage());
+        assertNull(new SavedAnalysis().getAnalysisLanguage());
+    }
+
 }

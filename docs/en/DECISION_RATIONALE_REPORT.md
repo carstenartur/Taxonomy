@@ -20,11 +20,17 @@ The export dialog starts with **Standard**, short contents and **Automatic (land
 
 The opening comparison table covers every selected taxonomy with its recorded area relevance, assessment status, complete representative code path and short excerpts from its stored reasons. Linked destinations retain full names and original text. Areas scored 0%, unassessed areas and tied leading results remain identifiable. A summary of child entries does not substitute for a missing area assessment.
 
-The following tree figures show hierarchy and effective relevance through numbers and bars. Long names wrap. Large trees continue completely across pages with parent context. The node key beside each figure in Standard and Full reports leads to the corresponding original reason, which links back to the taxonomy's tree. Equal text with the same source can share a reason block; each corresponding node code keeps its own link.
+The following tree figures show hierarchy and effective relevance through numbers and bars. Long names wrap. Large trees continue completely across pages with parent context. The node key beside each figure, including in Compact reports, leads to the corresponding complete original reason, which links back to the taxonomy's tree. Equal text with the same source can share a reason block; each corresponding node code keeps its own link.
 
 Individual decisions and reasons precede extensive architecture and provenance material. A brief source reference and notice of incomplete results remain visible at the front. Export uses saved results and does not call a model to create new reasons. The [user guide](USER_GUIDE.md#configurable-decision-report) explains section selection.
 
-**Compact** defaults to the overview and trees. Brief source and status information precedes the trees without forcing an additional rationale appendix. Selecting decision chapters or evidence in this profile includes the full original reasons and their corresponding links.
+**Compact** includes the overview and trees together with their complete original reasons. Short card excerpts link to these texts even when decision chapters and detailed evidence are not selected. Brief source and status details remain before the trees.
+
+## Document language
+
+**Document language** offers **Follow analysis**, **Follow interface**, **German** and **English**. Without an explicit override, reports use the recorded analysis language; older results without that metadata use the request/interface locale. An explicit `language=de` or `language=en` takes precedence.
+
+The selection localizes generated headings and labels. Saved AI explanations retain their original wording; export performs no translation or new scoring. The separate **AI response language** controls new analyses. `analysisLanguage` records provenance and stays absent for historical results with unknown language.
 
 ## Score semantics
 

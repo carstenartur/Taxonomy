@@ -43,7 +43,8 @@ window.ArchitectureWorkbenchApi = (function () {
         const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/snapshots/' + snapshot(snapshotId) + '/' + report + '/docx';
         const url = window.TaxonomyI18n?.resolveUrl?.(path) || path;
-        return url + '?language=' + encodeURIComponent(document.documentElement.lang || 'en');
+        const language = window.TaxonomyContentLanguage?.documentLanguage(null);
+        return language ? url + '?language=' + encodeURIComponent(language) : url;
     }
 
     return {

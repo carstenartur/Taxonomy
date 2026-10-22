@@ -21,7 +21,7 @@ function fixture(options = {}) {
         renderView: (tree, scores) => { renders.push({ tree, scores: { ...scores } }); order.push('render'); }
     } };
     const textField = { value: 'communications', classList: { remove() {} } };
-    const document = { querySelector: () => null, querySelectorAll: () => [], getElementById: id => id === 'businessText' ? textField
+    const document = { documentElement: { lang: 'en' }, querySelector: () => null, querySelectorAll: () => [], getElementById: id => id === 'businessText' ? textField
         : id === 'includeArchitectureView' ? { checked: true } : null };
     const sandbox = { window, document, CSS: { escape: value => value }, console: { log() {}, error() {} },
         TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(': ') }, TaxonomyUtils: { escapeHtml: text => text },

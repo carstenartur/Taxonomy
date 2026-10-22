@@ -162,7 +162,9 @@ class VisioGraphicalQualityTest {
         // Independently package the same base with its legitimate losses. Deliberately
         // exclude only the exact generated detail-caption records from this oracle.
         var base = new VisioDocument();
-        base.getPages().add(doc.getPages().getFirst());
+        // Mandatory evidence is part of the complete base; only graphical details are optional.
+        doc.getPages().stream().filter(page -> !page.isRelationshipDetail()).forEach(base.getPages()::add);
+        int mandatoryPages = base.getPages().size();
         base.getProperties().putAll(doc.getProperties());
         doc.getLosses().stream().filter(l -> !l.rationale().equals(detailRationale)).forEach(base.getLosses()::add);
         VisioPresentation.updateDetailCoverage(base, "byte capacity");
@@ -192,7 +194,7 @@ class VisioGraphicalQualityTest {
         assertTrue(packageBytes(parts) <= VisioHandoffProfile.MAX_XML_BYTES);
         assertTrue(doc.getPages().size() < originalPages, "actual builder must trim optional pages");
         if (retainDetails) assertEquals(originalPages - 1, doc.getPages().size());
-        else assertEquals(1, doc.getPages().size());
+        else assertEquals(mandatoryPages, doc.getPages().size());
         assertEquals(100, doc.getPages().getFirst().getShapes().size());
         assertEquals(12, doc.getPages().getFirst().getConnects().size());
         doc.getPages().getFirst().getConnects()

@@ -154,7 +154,7 @@ public class PromptTemplateService {
                 "{{TAXONOMY_NAME}}", name,
                 "{{PARENT_SCORE}}", com.taxonomy.dto.AnalysisPercentages.canonical(parentScore),
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")) + numericContract()
-                + childAllocationContract(parentScore) + functionalScopeContract() + reasonContract();
+                + childAllocationContract(parentScore) + functionalScopeContract() + reasonContract() + AnalysisLanguageContext.promptContract();
     }
 
     /** Evaluates one catalogue root independently, without a child allocation budget. */
@@ -165,7 +165,7 @@ public class PromptTemplateService {
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode),
                 "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n"
-                + functionalScopeContract() + reasonContract();
+                + functionalScopeContract() + reasonContract() + AnalysisLanguageContext.promptContract();
     }
 
     /** Shared scope for relevance, source contributions and first-hop relation decisions. */
@@ -228,7 +228,7 @@ public class PromptTemplateService {
                 "{{NODE_LIST}}", nodeList,
                 "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "",
                 "{{MIN_SCORE}}", String.valueOf(minimumScore))) + numericContract() + "Product suitability is independent of parent relevance; do not divide the category budget between products.\n"
-                + functionalScopeContract() + reasonContract();
+                + functionalScopeContract() + reasonContract() + AnalysisLanguageContext.promptContract();
     }
 
     private static String reasonContract() {
@@ -281,7 +281,7 @@ public class PromptTemplateService {
                 "{{BUSINESS_TEXT}}", businessText,
                 "{{LEAF_CODE}}", leafCode,
                 "{{PATH_DESCRIPTION}}", pathDescription,
-                "{{CROSS_REFERENCES}}", crossRefs)) + reasonContract();
+                "{{CROSS_REFERENCES}}", crossRefs)) + reasonContract() + AnalysisLanguageContext.promptContract();
     }
 
     /**

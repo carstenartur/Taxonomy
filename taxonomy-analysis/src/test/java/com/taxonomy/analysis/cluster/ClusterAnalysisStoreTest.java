@@ -136,6 +136,28 @@ class ClusterAnalysisStoreTest {
         }
     }
 
+    @Test void legacyCommandWithoutLanguageCanBeReadmittedButCannotAcquireANewLanguage() {
+        try (var db = new Database()) {
+            var context = context("legacy-language-admission");
+            db.admit(context);
+            new TransactionTemplate(db.transactions).executeWithoutResult(status -> {
+                var run = db.em.find(ClusterAnalysisRun.class, context.operationId());
+                var mapper = new ObjectMapper();
+                var command = (tools.jackson.databind.node.ObjectNode) mapper.readTree(run.commandJson);
+                command.remove("analysisLanguage");
+                run.commandJson = mapper.writeValueAsString(command);
+            });
+
+            db.admit(context);
+
+            assertEquals(1, db.sent.size(), "An idempotent legacy admission must not duplicate work");
+            assertNull(db.store.start(db.task(CP)).command().analysisLanguage());
+            assertThrows(IllegalStateException.class, () -> db.store.admit(context,
+                    command("requirement").withAnalysisLanguage(AnalysisLanguage.ENGLISH), null,
+                    Map.of(CP, "{\"root\":\"CP\"}", IP, "{\"root\":\"IP\"}")));
+        }
+    }
+
     @Test void rejectsEveryAdmissionIdentityMismatchWithoutDurableOrPublishedEffects() {
         try (var db = new Database()) {
             var context = context("rejected-admission");

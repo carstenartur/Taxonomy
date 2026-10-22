@@ -24,6 +24,8 @@
         lastAnalysisProvider: null, // provider that produced current scores
         lastAnalysisStatus: null, // SUCCESS, PARTIAL, ERROR, IN_PROGRESS, or imported/unknown
         lastAnalysisScope: null, // frozen evidence scope; independent of next-run controls
+        lastAnalysisLanguage: null, // recorded language; null for legacy or mixed evidence
+        activeAnalysisLanguage: null, // frozen at interactive start
         lastAnalysisReasonLength: null, // recorded generation setting; null for legacy, manual or mixed evidence
         currentView: 'list', // 'list' | 'tabs' | 'sunburst' | 'tree' | 'decision' | 'summary'
         currentTreeRoot: 'BP', // code of the taxonomy shown in tree view

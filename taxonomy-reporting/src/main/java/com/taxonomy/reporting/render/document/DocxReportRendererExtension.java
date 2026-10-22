@@ -30,6 +30,8 @@ public class DocxReportRendererExtension implements ReportRendererExtension {
 
     @Override
     public ReportRenderResult render(ReportRenderContext context) {
-        return new ReportRenderResult(reportService.render(context.report()));
+        return new ReportRenderResult(reportService.render(context.report(),
+                com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererLanguage(context),
+                com.taxonomy.reporting.render.decision.DecisionReportLanguage.rendererReasons(context)));
     }
 }

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -80,6 +81,22 @@ class ArchitecturePdfRendererTest {
         byte[] pdf = renderer.render(scene, metadata);
 
         assertThat(new String(pdf, 0, 5, StandardCharsets.ISO_8859_1)).isEqualTo("%PDF-");
+    }
+
+    @Test
+    void snapshotInventoryIncludesSuppliedOriginalNodeReasons() throws Exception {
+        var metadata = new ArchitecturePdfRenderer.SnapshotMetadata(
+                "P-001", "REQ-001", "snapshot-1", "GEMINI", "feature-a", "abcdef1234567890", List.of());
+        byte[] bytes = renderer.render(scene(), metadata, Map.of(
+                "CP-1", "Original analysis justification. SNAPSHOT-NODE-REASON-END",
+                "NOT-IN-SCENE", "EXCLUDED-REASON-MUST-NOT-LEAK"));
+
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(bytes)) {
+            assertThat(pdf.getDocumentInformation().getSubject()).isEqualTo("Requirement-derived architecture snapshot snapshot-1");
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf))
+                    .contains("CP-1", "91%", "Original analysis justification.", "SNAPSHOT-NODE-REASON-END")
+                    .doesNotContain("EXCLUDED-REASON-MUST-NOT-LEAK");
+        }
     }
 
     @Test

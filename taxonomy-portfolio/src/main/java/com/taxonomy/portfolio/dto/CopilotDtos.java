@@ -21,7 +21,15 @@ public final class CopilotDtos {
             Integer verificationPasses,
             Boolean force,
             Boolean proposeSolutions,
-            Boolean proposeProducts) {
+            Boolean proposeProducts,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+
+        public CopilotRunRequest(String targetId, String provider, Integer maxArchitectureNodes,
+                AnalysisAutomationProfile profile, Integer verificationPasses, Boolean force,
+                Boolean proposeSolutions, Boolean proposeProducts) {
+            this(targetId, provider, maxArchitectureNodes, profile, verificationPasses, force,
+                    proposeSolutions, proposeProducts, null);
+        }
 
         /** Source-compatible constructor for clients that still select by provider name. */
         public CopilotRunRequest(
@@ -43,7 +51,11 @@ public final class CopilotDtos {
 
     public record ProjectAutopilotRunRequest(
             List<Long> requirementIds,
-            Integer maxRequirements) {
+            Integer maxRequirements,
+            com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
+        public ProjectAutopilotRunRequest(List<Long> requirementIds, Integer maxRequirements) {
+            this(requirementIds, maxRequirements, null);
+        }
     }
 
     public record ProjectAutopilotStatus(

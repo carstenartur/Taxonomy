@@ -63,7 +63,7 @@ public final class RelationSearchProtocol {
     }
 
     static String sourcePrompt(String original, List<Node> nodes, Map<String, String> errors) {
-        return PREAMBLE + PromptTemplateService.functionalScopeContract() + """
+        return PREAMBLE + com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract() + PromptTemplateService.functionalScopeContract() + """
             Extract ONLY each source element's contribution grounded in a requested function.
             Return exactly one selection per offered node:
             {"selections":[{"nodeId":"offered ID","outcome":"EXPLICIT|REJECT|UNRESOLVED",
@@ -219,7 +219,7 @@ public final class RelationSearchProtocol {
         input.put("candidates", query.candidates().stream().map(node -> promptNode(node, false)).toList());
         input.put("proposal", query.proposal());
         if (!errors.isEmpty()) input.put("validationErrors", errors);
-        return PREAMBLE + PromptTemplateService.functionalScopeContract() + relationMeaning(query.type()) + "\n"
+        return PREAMBLE + com.taxonomy.analysis.service.AnalysisLanguageContext.promptContract() + PromptTemplateService.functionalScopeContract() + relationMeaning(query.type()) + "\n"
                 + "Source context policy: relation-source-context-v1. Ancestors do not broaden the assessed contribution. Candidates keep full context.\n"
                 + "OUTGOING = source contribution -> candidate. "
                 + "INCOMING = candidate -> source contribution. Apply this also during VERIFY.\n"

@@ -84,10 +84,10 @@ public final class DecisionNodeEvidence {
     }
     public boolean includesFullReasons() {
         var options = report.scope().options();
-        return (options.profile() != com.taxonomy.reporting.api.decision.DecisionReportOptions.Profile.COMPACT
-                || options.includes(Section.CHAPTERS) || options.includes(Section.EVIDENCE))
-                && (options.includes(Section.SUMMARY) || options.includes(Section.TREE)
-                    || options.includes(Section.CHAPTERS) || options.includes(Section.EVIDENCE));
+        // Compact controls the overview and optional appendices, never the completeness
+        // of an original reason referenced by a displayed decision.
+        return options.includes(Section.SUMMARY) || options.includes(Section.TREE)
+                || options.includes(Section.CHAPTERS) || options.includes(Section.EVIDENCE);
     }
     public boolean hasOriginal(String code) {
         var node = nodes.get(code);

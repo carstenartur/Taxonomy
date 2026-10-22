@@ -8,6 +8,8 @@ import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.MermaidLabels;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.spi.ExportContext;
 import com.taxonomy.export.spi.ExportFormatDescriptor;
@@ -86,6 +88,27 @@ class ExportFormatExtensionAdapterTest {
         assertThat(descriptor.id()).isEqualTo("structurizr");
         assertThat(descriptor.fileExtension()).isEqualTo("dsl");
         assertThat(descriptor.binary()).isFalse();
+    }
+
+    @Test
+    void svgExtensionIncludesOnlyStringReasonsForExportedNodesAsVisibleText() throws Exception {
+        Map<Object, Object> reasons = Map.of(
+                "CP-1023", "Original saved justification. SVG-ADAPTER-REASON-END",
+                "BP-1042", 123,
+                42, "INVALID-KEY-MUST-NOT-LEAK",
+                "NOT-IN-SCENE", "EXCLUDED-REASON-MUST-NOT-LEAK");
+        var extension = new SvgExportExtension(new LayeredDiagramLayoutService(), new SvgDiagramRenderer());
+        String svg = extension.export(new ExportContext(model, Map.of("elementReasons", reasons))).utf8();
+        var factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        var document = factory.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(svg)));
+        var texts = document.getElementsByTagNameNS("http://www.w3.org/2000/svg", "text");
+        var visible = new StringBuilder();
+        for (int index = 0; index < texts.getLength(); index++) visible.append(texts.item(index).getTextContent()).append(' ');
+
+        assertThat(visible.toString()).contains("CP-1023", "90%", "Original saved justification.", "SVG-ADAPTER-REASON-END")
+                .doesNotContain("INVALID-KEY-MUST-NOT-LEAK", "EXCLUDED-REASON-MUST-NOT-LEAK");
     }
 
     @Test

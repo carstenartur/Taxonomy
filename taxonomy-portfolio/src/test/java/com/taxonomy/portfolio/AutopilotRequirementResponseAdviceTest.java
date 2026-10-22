@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio;
 
 import com.taxonomy.portfolio.controller.AutopilotRequirementResponseAdvice;
+import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ImportRequirementsResult;
@@ -101,6 +102,43 @@ class AutopilotRequirementResponseAdviceTest {
     }
 
     @Test
+    void saveAdmissionPassesTheExplicitLanguageHeaderToAutopilot() {
+        AutopilotRequirementResponseAdvice advice = advice(true, true);
+        HttpHeaders headers = requestAndResponse("/api/projects/41/requirements");
+        request.getHeaders().set("X-Taxonomy-Analysis-Language", "en");
+        CopilotOperationView operation = operation("d".repeat(64));
+        when(automationService.tryAutopilot(
+                41L, 7L, context.username(), context, AnalysisLanguage.ENGLISH))
+                .thenReturn(Optional.of(operation));
+
+        RequirementView body = requirement(7L);
+        assertThat(advice.beforeBodyWrite(body, returnType, MediaType.APPLICATION_JSON,
+                converterType(), request, response)).isSameAs(body);
+
+        verify(automationService).tryAutopilot(
+                41L, 7L, context.username(), context, AnalysisLanguage.ENGLISH);
+        assertThat(headers.getFirst("X-Taxonomy-Autopilot-Operation-Count")).isEqualTo("1");
+    }
+
+    @Test
+    void invalidLanguageHeaderLeavesTheSavedRequirementWithoutDispatch() {
+        AutopilotRequirementResponseAdvice advice = advice(true, true);
+        requestAndResponse("/api/projects/41/requirements");
+        request.getHeaders().set("X-Taxonomy-Analysis-Language", "fr");
+        RequirementView body = requirement(7L);
+
+        assertThat(advice.beforeBodyWrite(body, returnType, MediaType.APPLICATION_JSON,
+                converterType(), request, response)).isSameAs(body);
+
+        verify(automationService, never()).tryAutopilot(
+                41L, 7L, context.username(), context);
+        verify(automationService, never()).tryAutopilot(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void disabledSaveHookDoesNotDispatchEvenWhenExplicitAutopilotIsReady() {
         AutopilotRequirementResponseAdvice advice = advice(true, false);
 
@@ -137,7 +175,8 @@ class AutopilotRequirementResponseAdviceTest {
     private HttpHeaders requestAndResponse(String path) {
         HttpHeaders headers = new HttpHeaders();
         when(request.getURI()).thenReturn(URI.create(path));
-        when(response.getHeaders()).thenReturn(headers);
+        when(request.getHeaders()).thenReturn(new HttpHeaders());
+        lenient().when(response.getHeaders()).thenReturn(headers);
         return headers;
     }
 

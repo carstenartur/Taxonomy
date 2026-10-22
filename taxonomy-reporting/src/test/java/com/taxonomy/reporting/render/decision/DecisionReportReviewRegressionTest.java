@@ -19,15 +19,15 @@ import static com.taxonomy.reporting.api.decision.DecisionReportOptions.*;
 import static com.taxonomy.reporting.api.decision.DecisionRationaleReport.Disposition.*;
 
 class DecisionReportReviewRegressionTest {
-    @Test void compactEndsWithTreeAndDoesNotClaimOrPrintFullReasons() throws Exception {
+    @Test void compactRetainsFullReasonsAfterTheLandscapeTree() throws Exception {
         var base = DecisionCompactReportTest.report(TreeLayout.AUTO, 4);
         String reason = "Saved essential root evidence. ".repeat(30) + "FULL-REASON-END";
         var report = base.withScope(base.scope().withRecordedReasons(Map.of("CP", reason)));
         try (var doc = open(report)) {
             String text = new XWPFWordExtractor(doc).getText();
-            assertThat(text).contains("Saved essential root evidence.", "snapshot", "analysis-sha")
-                    .doesNotContain("Recorded node reasons", "Full original reason", "FULL-REASON-END");
-            assertThat(doc.getDocument().getBody().getSectPr().getPgSz().getOrient().toString()).isEqualTo("landscape");
+            assertThat(text).contains(reason, "snapshot", "analysis-sha", "Recorded node reasons");
+            assertThat(doc.getDocument().xmlText()).contains("landscape");
+            assertThat(doc.getDocument().getBody().getSectPr().getPgSz().getOrient().toString()).isEqualTo("portrait");
             assertResolved(doc);
         }
     }

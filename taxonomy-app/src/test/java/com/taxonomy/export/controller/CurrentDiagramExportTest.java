@@ -4,6 +4,11 @@ import org.junit.jupiter.api.Test;
 
 class CurrentDiagramExportTest {
     @Test
+    void visioReasonsRemainVisibleWithoutStartingAnotherAnalysis() throws Exception {
+        CurrentDiagramExportRegression.visioKeepsWorkingNodeReasonsVisibleWithoutAnalysis();
+    }
+
+    @Test
     void sparxHandoffUsesTheExistingWorkingViewWithoutAnalysisOrSynchronization() throws Exception {
         CurrentDiagramExportRegression.exportsSparxWorkingViewWithoutScoringOrSyncMutation();
     }

@@ -88,4 +88,42 @@ class AnalysisReasonLengthPromptTest {
         }
         assertNull(AnalysisReasonContext.current());
     }
+    @ParameterizedTest
+    @EnumSource(com.taxonomy.dto.AnalysisLanguage.class)
+    void frozenLanguageGovernsEveryScoringAndLeafPromptWithoutChangingSourceData(com.taxonomy.dto.AnalysisLanguage language) {
+        var prompts = new PromptTemplateService(); prompts.loadDefaults();
+        String source = "Keep Originaltext {{NODE_LIST}} $1 CP-10.5 unverändert.";
+        try (var ignored = AnalysisLanguageContext.open(language)) {
+            for (String prompt : List.of(
+                    prompts.renderPrompt("BP", source, "Nodes", 0.5, "BP"),
+                    prompts.renderRootPrompt("BP", source, "Nodes"),
+                    prompts.renderProductPrompt(source, "Nodes", "IP", 50),
+                    prompts.renderLeafJustificationPrompt(source, "BP", "Path", "References"))) {
+                assertTrue(prompt.contains("analysis-language-v1): " + language.value()), prompt);
+                assertTrue(prompt.contains("Write all generated natural-language fields in " + language.displayName()), prompt);
+                assertTrue(prompt.contains("questions and reformulated wording"));
+                assertTrue(prompt.contains("Preserve original requirement text, exact quotations, catalogue IDs"));
+                assertTrue(prompt.contains("decimal points"));
+                assertTrue(prompt.contains(source), "The requirement remains exact input data");
+            }
+            assertEquals(language, AnalysisLanguageContext.resolve(null, java.util.Locale.FRENCH));
+        }
+        assertNull(AnalysisLanguageContext.current());
+    }
+
+    @Test
+    void nestedLegacyLanguageScopeRetainsAbsenceAndRestoresAfterFailure() {
+        try (var outer = AnalysisLanguageContext.open(com.taxonomy.dto.AnalysisLanguage.GERMAN)) {
+            assertThrows(IllegalArgumentException.class, () -> {
+                try (var legacy = AnalysisLanguageContext.open(null)) {
+                    assertNull(AnalysisLanguageContext.resolve(null, java.util.Locale.ENGLISH));
+                    assertEquals("", AnalysisLanguageContext.promptContract());
+                    throw new IllegalArgumentException("failure");
+                }
+            });
+            assertEquals(com.taxonomy.dto.AnalysisLanguage.GERMAN, AnalysisLanguageContext.current());
+        }
+        assertNull(AnalysisLanguageContext.current());
+    }
+
 }

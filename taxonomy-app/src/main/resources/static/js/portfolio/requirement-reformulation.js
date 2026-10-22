@@ -458,7 +458,7 @@
         const requested=new URLSearchParams(location.search).get('snapshot');if(snapshots.some(s=>s.id===requested))select.value=requested;
         start.append(field(t('snapshot'),select),button(t('create'),()=>transition(()=>{
             const snapshot=snapshots.find(s=>s.id===select.value);if(!snapshot)throw new Error(t('noSnapshot'));
-            return api.createReformulation(project,requirement,{sourceVersionId:snapshot.requirementVersionId,snapshotId:snapshot.id,language:lang});
+            return api.createReformulation(project,requirement,{sourceVersionId:snapshot.requirementVersionId,snapshotId:snapshot.id});
         })));
         offers=await api.listReformulations(project,requirement);
         const selected=offers.find(p=>p.id===new URLSearchParams(location.search).get('proposal')) || offers[0];

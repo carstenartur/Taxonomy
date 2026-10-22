@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio;
 
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
+import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
 import com.taxonomy.portfolio.dto.CopilotDtos.ProjectAutopilotRunRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
@@ -72,6 +73,32 @@ class ProjectAutopilotServiceTest {
                 41L, 9L, context.username(), context);
         verify(automationService).tryAutopilot(
                 41L, 7L, context.username(), context);
+    }
+
+    @Test
+    void explicitLanguageIsPassedToEverySelectedOperation() {
+        ProjectAutopilotService service = service(10);
+        CopilotOperationView operationForSeven = operation("a".repeat(64));
+        CopilotOperationView operationForEight = operation("b".repeat(64));
+        when(automationService.status()).thenReturn(status(true, true, "ready"));
+        when(projectService.listRequirements(41L, context.username(), context))
+                .thenReturn(List.of(requirement(7L), requirement(8L)));
+        when(automationService.tryAutopilot(
+                41L, 7L, context.username(), context, AnalysisLanguage.GERMAN))
+                .thenReturn(Optional.of(operationForSeven));
+        when(automationService.tryAutopilot(
+                41L, 8L, context.username(), context, AnalysisLanguage.GERMAN))
+                .thenReturn(Optional.of(operationForEight));
+
+        var result = service.run(41L,
+                new ProjectAutopilotRunRequest(List.of(7L, 8L), 2, AnalysisLanguage.GERMAN),
+                context.username(), context);
+
+        assertThat(result.operationsStarted()).isEqualTo(2);
+        verify(automationService).tryAutopilot(
+                41L, 7L, context.username(), context, AnalysisLanguage.GERMAN);
+        verify(automationService).tryAutopilot(
+                41L, 8L, context.username(), context, AnalysisLanguage.GERMAN);
     }
 
     @Test

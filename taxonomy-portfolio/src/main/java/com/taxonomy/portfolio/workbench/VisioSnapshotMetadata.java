@@ -68,12 +68,17 @@ final class VisioSnapshotMetadata {
                 put(values, "decisionBy", metadata.decisionBy());
                 put(values, "decisionAt", metadata.decisionAt());
                 put(values, "decisionRationale", metadata.decisionComment());
-                losses.add(new VisioLoss("element", node.id(), "presenceReason", "OMITTED",
-                        "Provider-derived explanation excluded; selection flags and reviewed human rationale are retained."));
+                put(values, "presenceReason", projection.nodeReasons().get(node.id()));
+                if (!projection.nodeReasons().containsKey(node.id())) {
+                    losses.add(new VisioLoss("element", node.id(), "presenceReason", "OMITTED",
+                            "No original explanation was recorded for this selected element."));
+                }
             } else {
                 losses.add(new VisioLoss("element", node.id(), "reviewMetadata", "OMITTED",
                         "No persisted mapping metadata is available for this selected element."));
             }
+            if (projection.nodeReasons().containsKey(node.id()))
+                put(values, "presenceReason", projection.nodeReasons().get(node.id()));
             elements.put(node.id(), values);
         }
         Map<String, Map<String, VisioProperty>> relations = new LinkedHashMap<>();
@@ -90,6 +95,8 @@ final class VisioSnapshotMetadata {
             put(values, "decisionBy", metadata.decisionBy());
             put(values, "decisionAt", metadata.decisionAt());
             put(values, "decisionRationale", metadata.decisionComment());
+            // Selection evidence is separate from the neutral relation's recorded presence reason.
+            put(values, "selectionReason", metadata.presenceReason());
             relations.put(edge.id(), values);
             if (edge.metadata() == null || edge.metadata().presenceReason() == null) {
                 losses.add(new VisioLoss("relationship", edge.id(), "presenceReason", "OMITTED",

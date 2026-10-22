@@ -58,6 +58,7 @@ public final class FrozenClusterRelationComputation implements ClusterRelationCo
         var diagnostics = store.diagnostics(task, input.deliveryAttempt());
         try (var provider = providers.withRequestProvider(input.command().provider(), input.command().providerBinding());
              var reasons = AnalysisReasonContext.open(input.command().analysisReasonLength());
+             var language = com.taxonomy.analysis.service.AnalysisLanguageContext.open(input.command().analysisLanguage());
              var checkpoint = input.command().continuationBinding() == null ? null : store.checkpointSession(input, task,
                      relations.scoringPolicyFingerprint(input.command().provider()),
                      com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(relations.recoveryPolicyFingerprint()));

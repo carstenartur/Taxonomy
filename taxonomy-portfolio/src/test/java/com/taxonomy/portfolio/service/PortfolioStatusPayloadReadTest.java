@@ -611,4 +611,18 @@ class PortfolioStatusPayloadReadTest {
         }
         @Override public void close() { factory.close(); }
     }
+    @Test
+    void durableJobLanguageIsFrozenAndReturnedWithoutLoadingSnapshotPayloads() {
+        try (var f = new Fixture()) {
+            var created = f.persistence.createOrReuseJob(f.projectId, List.of(f.requirementId), "CUSTOM_OPENAI",
+                    25, "language-job-key", "owner", f.scope, com.taxonomy.dto.AnalysisLanguage.GERMAN);
+            assertThat(created.analysisLanguage()).isEqualTo(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+            var reused = f.persistence.createOrReuseJob(f.projectId, List.of(f.requirementId), "CUSTOM_OPENAI",
+                    25, "language-job-key", "owner", f.scope, com.taxonomy.dto.AnalysisLanguage.ENGLISH);
+            assertThat(reused.id()).isEqualTo(created.id());
+            assertThat(reused.analysisLanguage()).isEqualTo(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+            f.assertNoSnapshotPayloadRead();
+        }
+    }
+
 }

@@ -151,6 +151,13 @@ public class ProjectRequirementAnalysisService {
                 context);
     }
 
+    public AnalysisJobView enqueueRequirement(Long projectId, Long requirementId, String provider,
+                                              Integer maxArchitectureNodes, String idempotencyKey, String username,
+                                              WorkspaceContext context, com.taxonomy.dto.AnalysisLanguage language) {
+        return enqueueProject(projectId, new AnalyzeProjectRequest(List.of(requirementId), false, provider,
+                maxArchitectureNodes, idempotencyKey, language), username, context);
+    }
+
     public AnalysisJobView retryFailed(String jobId,
                                        Long projectId,
                                        String username,
@@ -253,6 +260,9 @@ public class ProjectRequirementAnalysisService {
 
         List<Long> requirementIds = selectRequirementIds(projectId, request, username, context);
         int maxNodes = normalizeMaxNodes(request.maxArchitectureNodes());
+        if (request.analysisLanguage() != null) return persistenceService.createOrReuseJob(
+                projectId, requirementIds, normalizeProvider(request.provider()), maxNodes, request.idempotencyKey(),
+                username, context, request.analysisLanguage());
         return persistenceService.createOrReuseJob(
                 projectId,
                 requirementIds,
@@ -300,6 +310,8 @@ public class ProjectRequirementAnalysisService {
         AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
         String taxonomyFingerprint = fingerprintService.taxonomyFingerprint();
         String promptFingerprint = fingerprintService.promptFingerprint();
+        if (job.analysisLanguage() != null) promptFingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
+                promptFingerprint, com.taxonomy.analysis.service.AnalysisLanguageContext.POLICY, job.analysisLanguage().value());
         String effectiveProvider = job.provider() != null
                 ? job.provider() : llmService.getActiveProviderName();
 
@@ -314,7 +326,8 @@ public class ProjectRequirementAnalysisService {
             String snapshotId = UUID.randomUUID().toString();
             String analysisSessionId = "portfolio:" + snapshotId;
             long startedAt = System.nanoTime();
-            try (var providerScope = llmService.withProviderBinding(job.provider(), job.providerBinding())) {
+            try (var providerScope = llmService.withProviderBinding(job.provider(), job.providerBinding());
+                 var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(job.analysisLanguage())) {
                 AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
                                 workItem.requirementText(),
                                 true,
@@ -328,7 +341,8 @@ public class ProjectRequirementAnalysisService {
                                         snapshotId,
                                         analysisSessionId), com.taxonomy.dto.AnalysisScope.full(), job.providerBinding())
                                 .withAnalysisReasonLength(job.analysisReasonLength() == null
-                                        ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength());
+                                        ? com.taxonomy.dto.AnalysisReasonLength.STANDARD : job.analysisReasonLength())
+                                .withAnalysisLanguage(job.analysisLanguage());
                 AnalysisResult analysis;
                 // Close the question journal before optional snapshot enrichment. Only
                 // the actual classification/relation procedure owns these checkpoints.

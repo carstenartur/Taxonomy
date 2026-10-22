@@ -27,6 +27,6 @@ public class ArchitecturePdfRenderer {
                 projection.branchName(),
                 projection.commitSha(),
                 projection.warnings());
-        return delegate.render(projection.scene(), metadata);
+        return delegate.render(projection.scene(), metadata, projection.nodeReasons(), projection.relationReasons());
     }
 }

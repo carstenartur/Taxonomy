@@ -20,11 +20,17 @@ Der Exportdialog beginnt mit **Standard**, kurzem Inhaltsverzeichnis und **Autom
 
 Am Anfang steht eine kompakte Vergleichstabelle über jede ausgewählte Teiltaxonomie mit gespeicherter Bereichsrelevanz, Bewertungsstand, vollständigem repräsentativem Codepfad und kurzen Auszügen aus den gespeicherten Begründungen. Vollständige Bezeichnungen und Originaltexte stehen an den verlinkten Zielen. Bereiche mit 0%, noch unbewertete Bereiche und gleich bewertete führende Ergebnisse bleiben erkennbar. Eine Zusammenfassung von Unterknoten ersetzt keine fehlende Bereichsbewertung.
 
-Die folgenden Baumgrafiken stellen die Hierarchie und die effektive Relevanz als Zahlen und Balken dar. Lange Bezeichnungen werden umgebrochen. Große Bäume erhalten vollständige Folgeseiten mit übergeordnetem Kontext. Der Knotenschlüssel bei der Grafik führt im Standard- und vollständigen Bericht zur jeweiligen Originalbegründung. Dort führt ein Rückverweis zum Baum der Teiltaxonomie. Gleiche Texte mit gleicher Herkunft können einen gemeinsamen Begründungsblock verwenden; die zugehörigen Knotencodes bleiben einzeln verlinkt.
+Die folgenden Baumgrafiken stellen die Hierarchie und die effektive Relevanz als Zahlen und Balken dar. Lange Bezeichnungen werden umgebrochen. Große Bäume erhalten vollständige Folgeseiten mit übergeordnetem Kontext. Der Knotenschlüssel bei der Grafik führt auch im kompakten Bericht zur jeweiligen vollständigen Originalbegründung. Dort führt ein Rückverweis zum Baum der Teiltaxonomie. Gleiche Texte mit gleicher Herkunft können einen gemeinsamen Begründungsblock verwenden; die zugehörigen Knotencodes bleiben einzeln verlinkt.
 
 Einzelentscheidungen und Begründungen stehen vor den umfangreichen Architektur- und Herkunftsnachweisen. Eine kurze Quellenangabe und ein Hinweis auf unvollständige Ergebnisse bleiben am Anfang sichtbar. Der Export verwendet die gespeicherten Ergebnisse und ruft kein Modell für neue Begründungen auf. Hinweise zur Auswahl einzelner Abschnitte stehen im [Benutzerhandbuch](USER_GUIDE.md#configurable-decision-report).
 
-**Kompakt** beschränkt sich standardmäßig auf Übersicht und Bäume. Die kurzen Quellen- und Statusangaben stehen vor den Bäumen, ohne einen zusätzlichen Begründungsanhang zu erzwingen. Wer auch in diesem Profil Entscheidungskapitel oder Evidenz auswählt, erhält die vollständigen Originalbegründungen und die zugehörigen Verweise.
+**Kompakt** enthält standardmäßig Übersicht und Bäume sowie die zugehörigen vollständigen Originalbegründungen. Kurze Kartenauszüge verweisen auf diese Texte, auch wenn Entscheidungskapitel und ausführliche Evidenz nicht ausgewählt sind. Die kurzen Quellen- und Statusangaben bleiben vor den Bäumen sichtbar.
+
+## Dokumentsprache
+
+**Dokumentsprache** bietet **Wie Analyse**, **Wie Oberfläche**, **Deutsch** und **Englisch**. Ohne explizite Angabe verwendet der Bericht die aufgezeichnete Analysesprache; bei älteren Ergebnissen ohne Sprachangabe gilt die Anfrage-/Oberflächensprache. Ein explizites `language=de` oder `language=en` hat Vorrang.
+
+Die Auswahl lokalisiert generierte Überschriften und Beschriftungen. Gespeicherte KI-Begründungen behalten ihren Originaltext; der Export löst keine Übersetzung oder neue Bewertung aus. Die separate **KI-Antwortsprache** legt die Sprache neuer Analysen fest. `analysisLanguage` bezeichnet aufgezeichnete Herkunft und bleibt bei unbekannten historischen Ergebnissen leer.
 
 ## Bedeutung der Prozentwerte
 

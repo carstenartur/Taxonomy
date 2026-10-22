@@ -8,7 +8,7 @@ const state = {currentReasons: {'BP-1000': 'Saved explanation\n' + 'Detailed rea
 const window = {TaxonomyState: state};
 const context = {window, document, TaxonomyI18n: {t: (key, ...args) => key + (args.length ? ': ' + args.join(' / ') : '')}};
 vm.runInNewContext(source.replace('window.TaxonomyViews = {',
-    'window.diagramTest = {layout: typeof layoutDecisionPanels === "function" ? layoutDecisionPanels : null, pages: typeof buildDecisionPrintPages === "function" ? buildDecisionPrintPages : null, reason: typeof showDecisionReason === "function" ? showDecisionReason : null}; window.TaxonomyViews = {'), context);
+    'window.diagramTest = {layout: typeof layoutDecisionPanels === "function" ? layoutDecisionPanels : null, pages: typeof buildDecisionPrintPages === "function" ? buildDecisionPrintPages : null, sheet: typeof buildDecisionPrintSheet === "function" ? buildDecisionPrintSheet : null, print: typeof printDecisionDiagram === "function" ? printDecisionDiagram : null, evidence: typeof buildDiagramEvidencePages === "function" ? buildDiagramEvidencePages : null, reason: typeof showDecisionReason === "function" ? showDecisionReason : null}; window.TaxonomyViews = {'), context);
 const api = window.diagramTest;
 assert.equal(typeof api.layout, 'function', 'Decision groups need occupied-bounds layout');
 assert.equal(typeof api.pages, 'function', 'Printing needs paginated complete diagram content');
@@ -19,12 +19,13 @@ function makeDocument() {
     function element(tag) {
         return {tagName: tag, attributes: {}, children: [], listeners: {}, style: {}, textContent: '', isConnected: true,
             setAttribute(k,v) {this.attributes[k] = String(v);}, getAttribute(k) {return this.attributes[k] ?? null;},
-            appendChild(child) {this.children.push(child); child.parentNode=this; return child;}, append(...children) {children.forEach(c => this.appendChild(c));},
+            appendChild(child) {if(child.parentNode)child.parentNode.children=child.parentNode.children.filter(c=>c!==child);this.children.push(child); child.parentNode=this; return child;}, append(...children) {children.forEach(c => this.appendChild(c));},
+            replaceChildren(...children) {this.children=[];this.append(...children);},
             addEventListener(k,v) {this.listeners[k]=v;}, focus() {doc.activeElement=this;},
             showModal() {this.open=true;}, close() {this.open=false; if(this.listeners.close)this.listeners.close();},
             remove() {this.isConnected=false; if(this.parentNode)this.parentNode.children=this.parentNode.children.filter(c=>c!==this);}};
     }
-    doc.body=element('body'); return doc;
+    doc.body=element('body'); doc.head=element('head'); doc.documentElement={lang:'en'}; return doc;
 }
 function find(node, predicate) {if(predicate(node))return node; for(const child of node.children || []){const result=find(child,predicate);if(result)return result;}}
 function all(node,predicate){return [node,...(node.children || []).flatMap(c=>all(c,predicate))].filter(predicate);}
@@ -84,11 +85,30 @@ assert.equal(layout.nodes[0].box.right-layout.nodes[0].box.left,262,'Screen metr
 // Mixed recorded area-only evidence remains a caption panel and never becomes a node.
 const mixedRoot=hierarchy({code:'__root__',children:[{code:'fixture-positive',name:'Assessed process'}]});
 const mixedAreas=[{code:'BP',name:'Processes'},{code:'BR',name:'Roles'}];
+Object.assign(state.currentReasons,{BP:'Recorded process area reason. BP-AREA-REASON-END',BR:'Recorded caption-only area reason. BR-AREA-ONLY-REASON-END',
+    'fixture-positive':'Recorded ordinary node reason. CONTENT-NODE-REASON-END',CR:'EXCLUDED-AREA-REASON-MUST-NOT-LEAK'});
 const mixed=api.layout(mixedRoot,{BP:90,BR:85,'fixture-positive':60},{'fixture-positive':mixedAreas[0]},measure,mixedAreas);
 assert.equal(mixed.panels.length,2);assert.equal(mixed.nodes.length,1);assert.equal(mixed.panels[1].nodes.length,0);
 const mixedDoc=makeDocument();api.pages(mixed,mixedDoc);
 assert.ok(text(mixedDoc.body).includes('BR – Roles · browse.container.relevance: 85'));
 assert.equal(all(mixedDoc.body,e=>e.getAttribute?.('data-print-node')).length,1);
+for(const mode of ['pages','single'])for(const areaOnly of [false,true]){
+    const selected=areaOnly?api.layout(hierarchy({code:'__root__',children:[]}),{BR:85,CR:99},{},measure,[mixedAreas[1]]):mixed;
+    const printedDoc=makeDocument();let printCalls=0;
+    window.open=()=>({document:printedDoc,addEventListener(){},focus(){},requestAnimationFrame(callback){callback();},print(){printCalls++;},close(){}});
+    api.print(selected,{querySelector(){return null;}},mode);
+    assert.equal(printCalls,1);
+    assert.ok(text(printedDoc.body).includes('BR-AREA-ONLY-REASON-END'),'Caption-only area explanations survive Decision print in '+mode+' mode');
+    assert.ok(!text(printedDoc.body).includes('EXCLUDED-AREA-REASON-MUST-NOT-LEAK'),'Unselected area explanations stay excluded');
+    assert.equal(all(printedDoc.body,e=>e.getAttribute?.('data-print-node')).length,areaOnly?0:1,'Areas remain captions, not fabricated screen/print nodes');
+    assert.ok(all(printedDoc.body,e=>e.getAttribute?.('data-evidence-area')==='BR').length>0,'Area evidence stays distinct from ordinary node evidence');
+    if(areaOnly){assert.ok(!text(printedDoc.body).includes('BP-AREA-REASON-END'));}
+    else{
+        assert.ok(text(printedDoc.body).includes('BP-AREA-REASON-END'));
+        assert.ok(text(printedDoc.body).includes('CONTENT-NODE-REASON-END'));
+        for(const code of ['BP','BR','fixture-positive'])assert.equal(all(printedDoc.body,e=>e.getAttribute?.('data-evidence-code')===code&&e.getAttribute?.('id')).length,1,'Each selected code has one explanation reference');
+    }
+}
 // Expanding a giant parent into fragments must not leave its ordinary child behind
 // a later fragment's top. Every fragment, including parent continuations, fits its page.
 const nestedRoot=hierarchy({code:'__root__',children:[{code:'fixture-long',name:'Exceptionally long complete node name '.repeat(80),children:[{code:'fixture-child',name:'Ordinary child'}]},{code:'fixture-sibling',name:'Ordinary sibling'}]});
@@ -98,6 +118,9 @@ const nestedDoc=makeDocument();const nestedPages=api.pages(nested,nestedDoc);
 for(const page of nestedPages){const svg=find(page,e=>e.tagName==='svg');const vb=svg.getAttribute('viewBox').split(' ').map(Number);
     for(const fragment of all(svg,e=>e.getAttribute?.('data-print-fragment'))){const box=JSON.parse(fragment.getAttribute('data-occupied-bounds'));assert.ok(box.top>=0&&box.left>=0&&box.bottom<=vb[3]&&box.right<=vb[2],'Every giant-parent/child/sibling fragment stays within the actual page bounds');}}
 assert.equal(all(nestedDoc.body,e=>e.getAttribute?.('data-print-node')).length,3);
+const nestedIdentities=all(nestedDoc.body,e=>e.getAttribute?.('data-print-node')!==null&&e.getAttribute?.('data-print-node')!==undefined)
+    .map(e=>e.getAttribute('data-print-node')).sort();
+assert.deepEqual(nestedIdentities,['fixture-child','fixture-long','fixture-sibling'],'Only original nodes carry data-print-node; continuation fragments must not create empty CSS node identities');
 // Extensive root lists get overview continuation sheets; short lists stay in the header.
 const manyBranches=Array.from({length:40},(_,i)=>({code:'fixture-root-'+i,name:'Root '+i}));
 const manyAreas={};manyBranches.forEach(branch=>manyAreas[branch.code]={code:'fixture-group',name:'One area'});
@@ -123,4 +146,24 @@ assert.ok(text(dialog).includes('views.diagram.analysisReason'));assert.ok(text(
 dialog.close();assert.equal(document.activeElement,trigger);
 api.reason({code:'BR-1000',name:'Roles'},scores,trigger);dialog=document.getElementById('decisionReasonDialog');assert.ok(text(dialog).includes('views.diagram.reasonMissing'));
 assert.equal(state.currentReasons['BR-1000'],undefined);
+// A narrow hierarchy with hundreds of siblings must retain legible type on a
+// balanced sheet, rather than becoming a long vertical stripe in PDF viewers.
+const tallData={code:'__root__',children:[{code:'fixture-tall-root',name:'Root',children:Array.from({length:100},(_,i)=>({code:'fixture-tall-'+i,name:'Assessed leaf '+i}))}]};
+const tall=api.layout(hierarchy(tallData),{'fixture-tall-root':87.5},{'fixture-tall-root':{code:'fixture-area',name:'Area'}},measure,undefined,{textWidth:174,cardWidth:210,columnPitch:240,columnsPerPage:4});
+const tallDoc=makeDocument(),sheet=api.sheet(tall,tallDoc);
+assert.ok(sheet.width/sheet.height>=0.5 && sheet.width/sheet.height<=2.5,'Long single sheets must arrange readable sections at a balanced aspect ratio');
+assert.equal(all(tallDoc.body,e=>e.getAttribute?.('data-print-node')).length,101,'Reflow preserves every selected node exactly once');
+assert.equal(all(tallDoc.body,e=>e.tagName==='path').length,100,'Continuation connections preserve every original relationship');
+assert.ok(text(tallDoc.body).includes('87.5%'),'Fractional percentages are not multiplied by 100');
+assert.equal(typeof api.evidence,'function','Print needs complete saved explanations, not tooltip-only text');
+const reasonEnding='FINAL SAVED REASON — <not markup> & retained.';
+state.currentReasons={'fixture-tall-root':'A saved explanation. '.repeat(400)+'\n'+reasonEnding,'excluded-node':'MUST NOT LEAK INTO SELECTED OUTPUT'};
+const evidenceDoc=makeDocument(),evidencePages=api.evidence(tall.nodes,tall.scores,evidenceDoc,measure);
+assert.ok(evidencePages.length>1,'Very long saved reasons continue at readable size');
+const evidenceText=all(evidenceDoc.body,e=>e.getAttribute?.('data-evidence-node')).map(text).join(' ').replace(/\s+/g,'');
+assert.ok(evidenceText.includes(state.currentReasons['fixture-tall-root'].replace(/\s+/g,'')),'Full saved explanation including its final line must survive wrapping');
+assert.ok(evidenceText.includes('87.5%'));
+assert.ok(!evidenceText.includes('MUSTNOTLEAK'),'Evidence must use the same selected subset as the diagram');
+assert.equal(all(evidenceDoc.body,e=>e.getAttribute?.('id')==='diagram-evidence-1').length,1,'The diagram reference resolves to one complete evidence entry');
+for(const svg of all(evidenceDoc.body,e=>e.tagName==='svg'))assert.ok(svg.getAttribute('viewBox').split(' ').map(Number)[3]<=620,'Evidence remains readable on ordinary paper');
 console.log('DECISION_DIAGRAM_READING_OK');

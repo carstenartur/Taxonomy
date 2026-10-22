@@ -22,10 +22,12 @@ public class AnalyzeNodeChildrenUseCase {
 
     public AnalyzeNodeChildrenResult analyze(AnalyzeNodeChildrenCommand command) {
         var length = com.taxonomy.analysis.service.AnalysisReasonContext.effective(llmService.resolveAnalysisReasonLength(null));
-        try (var reasons = com.taxonomy.analysis.service.AnalysisReasonContext.open(length)) {
+        var language = com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null);
+        try (var reasons = com.taxonomy.analysis.service.AnalysisReasonContext.open(length);
+             var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(language)) {
         List<TaxonomyNode> children = taxonomyService.getChildrenOf(command.parentCode());
         if (children.isEmpty()) {
-            return AnalyzeNodeChildrenResult.empty();
+            return AnalyzeNodeChildrenResult.empty().withAnalysisReasonLength(length).withAnalysisLanguage(language);
         }
         LlmCallDetail detail = llmService.analyzeSingleBatchDetailed(
                 command.businessText(), children, command.parentScore());
@@ -36,7 +38,7 @@ public class AnalyzeNodeChildrenUseCase {
                 detail.getRawResponse(),
                 detail.getProvider(),
                 detail.getDurationMs(),
-                detail.getError()).withAnalysisReasonLength(length);
+                detail.getError()).withAnalysisReasonLength(length).withAnalysisLanguage(language);
         }
     }
 }

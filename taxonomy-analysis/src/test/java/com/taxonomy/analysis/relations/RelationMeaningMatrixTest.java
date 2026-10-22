@@ -118,4 +118,23 @@ class RelationMeaningMatrixTest {
         return new Decision(candidate.id(), Outcome.MATCH, "Provide the requested functional connection.", ORIGINAL,
                 Necessity.OPTIONAL, "If this additional view is selected.", "", "The original supports this bounded functional view.", "");
     }
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(com.taxonomy.dto.AnalysisLanguage.class)
+    void contributionNavigationVerificationAndQuestionsUseTheFrozenLanguage(com.taxonomy.dto.AnalysisLanguage language) {
+        try (var ignored = com.taxonomy.analysis.service.AnalysisLanguageContext.open(language)) {
+            Query navigation = query(RelationType.SUPPORTS, "CP", "BP", Direction.OUTGOING, Phase.NAVIGATE);
+            Query verification = query(RelationType.SUPPORTS, "CP", "BP", Direction.OUTGOING, Phase.VERIFY);
+            for (String prompt : List.of(
+                    RelationSearchProtocol.sourcePrompt(ORIGINAL, List.of(navigation.contribution().source()), Map.of()),
+                    RelationSearchProtocol.decisionPrompt(navigation, Map.of()),
+                    RelationSearchProtocol.decisionPrompt(verification, Map.of()))) {
+                assertThat(prompt).contains("analysis-language-v1): " + language.value(),
+                        "Write all generated natural-language fields in " + language.displayName(),
+                        "questions and reformulated wording", "JSON keys and enum values unchanged");
+                var input = JSON.readTree(prompt.substring(prompt.indexOf("INPUT\n") + 6));
+                assertThat(input.path("original").asString()).isEqualTo(ORIGINAL);
+            }
+        }
+    }
+
 }

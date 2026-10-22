@@ -16,6 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /** Draws a vector PDF directly from the same deterministic scene returned to other export adapters. */
@@ -45,13 +46,22 @@ public final class ArchitecturePdfRenderer {
     }
 
     public byte[] render(DiagramScene scene, SnapshotMetadata metadata) {
+        return render(scene, metadata, Map.of());
+    }
+
+    public byte[] render(DiagramScene scene, SnapshotMetadata metadata, Map<String, String> nodeReasons) {
+        return render(scene, metadata, nodeReasons, Map.of());
+    }
+
+    public byte[] render(DiagramScene scene, SnapshotMetadata metadata, Map<String, String> nodeReasons,
+                         Map<String, Map<String, String>> relationReasons) {
         requireScene(scene);
         if (metadata == null) {
             throw new IllegalArgumentException("Architecture snapshot metadata is required");
         }
         return renderScene(scene, document -> configureMetadata(document, scene, metadata),
                 (stream, height) -> drawHeader(stream, scene, metadata, height),
-                stream -> drawFooter(stream, metadata));
+                stream -> drawFooter(stream, metadata), nodeReasons, relationReasons);
     }
 
     /** Live editor export uses the same vector geometry without masquerading as an analysis snapshot. */
@@ -71,11 +81,20 @@ public final class ArchitecturePdfRenderer {
                 text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33 - i * 12, lines.get(i));
             }
         }, stream -> text(stream, REGULAR, 8, PAGE_MARGIN, 16,
-                "Derived server layout · Git-authoritative architecture"));
+                "Derived server layout · Git-authoritative architecture"), Map.of(), Map.of());
     }
 
     /** Supplied working data has no verified Git or persisted-snapshot authority. */
     public byte[] renderWorkingView(DiagramScene scene) {
+        return renderWorkingView(scene, Map.of());
+    }
+
+    public byte[] renderWorkingView(DiagramScene scene, Map<String, String> nodeReasons) {
+        return renderWorkingView(scene, nodeReasons, Map.of());
+    }
+
+    public byte[] renderWorkingView(DiagramScene scene, Map<String, String> nodeReasons,
+                                    Map<String, Map<String, String>> relationReasons) {
         requireScene(scene);
         return renderScene(scene, document -> {
             var information = new PDDocumentInformation();
@@ -92,7 +111,7 @@ public final class ArchitecturePdfRenderer {
                     PdfDiagramText.wrap(scene.title(), REGULAR, 8,
                             PDRectangle.A3.getHeight() - 2 * PAGE_MARGIN, 1).getFirst());
         }, stream -> text(stream, REGULAR, 8, PAGE_MARGIN, 16,
-                "Generated server layout | Client-provided working view | No re-analysis or persistence"));
+                "Generated server layout | Client-provided working view | No re-analysis or persistence"), nodeReasons, relationReasons);
     }
 
     private static void requireScene(DiagramScene scene) {
@@ -112,7 +131,8 @@ public final class ArchitecturePdfRenderer {
     }
 
     private byte[] renderScene(DiagramScene scene, Consumer<PDDocument> metadata,
-                               HeaderWriter header, FooterWriter footer) {
+                               HeaderWriter header, FooterWriter footer, Map<String, String> nodeReasons,
+                               Map<String, Map<String, String>> relationReasons) {
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             PdfDiagramPages.Plan plan = PdfDiagramPages.plan(scene);
@@ -147,7 +167,8 @@ public final class ArchitecturePdfRenderer {
                     }
                 }
             }
-            drawInventory(document, scene, plan.nodePages());
+            drawInventory(document, scene, plan.nodePages(), nodeReasons == null ? Map.of() : nodeReasons,
+                    relationReasons == null ? Map.of() : relationReasons);
             document.save(output);
             return output.toByteArray();
         } catch (IOException error) {
@@ -302,7 +323,9 @@ public final class ArchitecturePdfRenderer {
     }
 
     /** A complete, paginated inventory is the accessible counterpart of bounded diagram labels. */
-    private static void drawInventory(PDDocument document, DiagramScene scene, java.util.Map<String, Integer> nodePages) throws IOException {
+    private static void drawInventory(PDDocument document, DiagramScene scene, Map<String, Integer> nodePages,
+                                      Map<String, String> nodeReasons,
+                                      Map<String, Map<String, String>> relationReasons) throws IOException {
         var lines = new java.util.ArrayList<String>(DiagramPresentation.inventorySummary(scene));
         lines.add("Element inventory | diagram ellipses do not remove saved labels below");
         var seenNodes = new java.util.HashSet<String>();
@@ -311,14 +334,18 @@ public final class ArchitecturePdfRenderer {
                     + (node.container() ? " | Container" : ""));
             lines.add(node.label());
             lines.add(node.type() + " | Parent: " + (node.parentId() == null ? "not included" : node.parentId()));
+            String reason = nodeReasons.get(node.id());
+            if (reason != null && !reason.isBlank()) lines.add("Explanation: " + reason);
         }
         lines.add("Relationship inventory | presence does not establish human confirmation");
         var seenEdges = new java.util.HashSet<String>();
         for (var edge : scene.edges()) if (seenEdges.add(edge.id())) {
             lines.add(edge.id() + " | " + edge.sourceId() + " -> " + edge.targetId()
                     + " | " + edge.relationType() + " | " + edge.relationCategory()
+                    + " | " + DiagramPresentation.percent(edge.relevance())
                     + " | D" + nodePages.get(edge.sourceId()) + " -> D" + nodePages.get(edge.targetId()));
             lines.addAll(DiagramPresentation.relationshipDetails(edge.metadata()));
+            lines.addAll(DiagramPresentation.relationshipEvidenceDetails(relationReasons.get(edge.id()), false));
         }
         var wrapped = new java.util.ArrayList<String>();
         float width = PDRectangle.A4.getWidth() - 2 * PAGE_MARGIN;

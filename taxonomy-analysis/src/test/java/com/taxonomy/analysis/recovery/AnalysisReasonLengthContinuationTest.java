@@ -95,4 +95,80 @@ class AnalysisReasonLengthContinuationTest {
         request.setContinuationId(UUID.randomUUID().toString());
         return request;
     }
+    @Test
+    void admissionCapturesLanguageOnceAndResumeKeepsTheOriginalAcrossLocaleChanges() {
+        var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
+        var request = request();
+        try {
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.GERMAN);
+            try (var initial = service.begin(request, "owner", workspace, 20)) {
+                assertEquals(AnalysisLanguage.GERMAN, initial.analysisLanguage());
+            }
+            var requests = ArgumentCaptor.forClass(AnalysisRequest.class);
+            var signatures = ArgumentCaptor.forClass(String.class);
+            verify(store).begin(requests.capture(), eq(workspace), signatures.capture(), anyList());
+            var saved = requests.getValue(); var signature = signatures.getValue();
+            assertEquals(AnalysisLanguage.GERMAN, saved.getAnalysisLanguage());
+            assertNull(request.getAnalysisLanguage(), "Admission does not mutate the caller's DTO");
+            when(store.originalRequest(request.getContinuationId(), workspace)).thenReturn(Optional.of(saved));
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
+            try (var resumed = service.begin(request, "owner", workspace, 20)) {
+                var bound = resumed.bind(new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "owner", workspace));
+                assertEquals(AnalysisLanguage.GERMAN, bound.analysisLanguage());
+                assertEquals(AnalysisLanguage.GERMAN, bound.withAnalysisReasonLength(AnalysisReasonLength.SHORT)
+                        .withContinuationBinding(null).withRetainedAnalysis(null).analysisLanguage());
+            }
+            verify(store, times(2)).begin(requests.capture(), eq(workspace), signatures.capture(), anyList());
+            assertEquals(signature, signatures.getValue());
+            request.setAnalysisLanguage(AnalysisLanguage.ENGLISH);
+            assertEquals(409, assertThrows(ResponseStatusException.class,
+                    () -> service.begin(request, "owner", workspace, 20)).getStatusCode().value());
+            verify(store, times(2)).begin(any(), any(), any(), any());
+        } finally { org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous); }
+        assertNull(com.taxonomy.analysis.service.AnalysisLanguageContext.current());
+    }
+
+    @Test
+    void explicitLanguageOverridesUiAndDifferentContractsCannotShareIdentity() {
+        var request = request(); request.setAnalysisLanguage(AnalysisLanguage.ENGLISH);
+        var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
+        try {
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.GERMAN);
+            try (var admitted = service.begin(request, "owner", workspace, 20)) {
+                assertEquals(AnalysisLanguage.ENGLISH, admitted.analysisLanguage());
+            }
+            request.setAnalysisLanguage(AnalysisLanguage.GERMAN);
+            try (var admitted = service.begin(request, "owner", workspace, 20)) {
+                assertEquals(AnalysisLanguage.GERMAN, admitted.analysisLanguage());
+            }
+            var signatures = ArgumentCaptor.forClass(String.class);
+            verify(store, times(2)).begin(any(), eq(workspace), signatures.capture(), anyList());
+            assertNotEquals(signatures.getAllValues().get(0), signatures.getAllValues().get(1));
+        } finally { org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous); }
+    }
+
+    @Test
+    void languageJsonRoundTripsPreserveExactWireContractAndLegacyAbsence() {
+        var mapper = new ObjectMapper();
+        for (var language : AnalysisLanguage.values()) {
+            var request = mapper.readValue("{\"businessText\":\"original\",\"analysisLanguage\":\"" + language.value() + "\"}", AnalysisRequest.class);
+            assertEquals(language, request.getAnalysisLanguage());
+            assertEquals(language.value(), mapper.readTree(mapper.writeValueAsString(request)).path("analysisLanguage").asText());
+            var result = new AnalysisResult(); result.setAnalysisLanguage(language);
+            assertEquals(language, mapper.readValue(mapper.writeValueAsString(result), AnalysisResult.class).getAnalysisLanguage());
+            var command = new AnalyzeRequirementCommand("original", false, 20, "MOCK", "owner", workspace).withAnalysisLanguage(language);
+            assertEquals(language, mapper.readValue(mapper.writeValueAsString(command), AnalyzeRequirementCommand.class).analysisLanguage());
+        }
+        assertNull(mapper.readValue("{}", AnalysisResult.class).getAnalysisLanguage());
+        var saved = request();
+        when(store.originalRequest(saved.getContinuationId(), workspace)).thenReturn(Optional.of(saved));
+        try (var legacy = service.begin(saved, "owner", workspace, 20)) {
+            assertNull(legacy.analysisLanguage());
+            assertNull(legacy.bind(new AnalyzeRequirementCommand("original", false, 20, "MOCK", "owner", workspace)).analysisLanguage());
+        }
+        var requests = ArgumentCaptor.forClass(AnalysisRequest.class);
+        verify(store).begin(requests.capture(), any(), any(), any());
+        assertNull(requests.getValue().getAnalysisLanguage());
+    }
+
 }

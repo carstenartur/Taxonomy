@@ -52,10 +52,11 @@ class DecisionExportPresentationUiIT {
                         </script><script src="/dialog.js"></script><script>
                         document.getElementById('open').addEventListener('click',()=>TaxonomyDecisionExport.open({
                             language:'de',saved:true,source:'Deterministic saved result fixture',
+                            analysisLanguage:'en',
                             roots:[{code:'BP',title:'BP',inAnalysisScope:true},{code:'BR',title:'BR',inAnalysisScope:true},
                                    {code:'CP',title:'CP',inAnalysisScope:false}],
                             analysisScope:{taxonomyRoots:['BP','BR'],mode:'TAXONOMIES_ONLY'},
-                            submit:async(request)=>{window.submittedOptions=request.options;}
+                            submit:async(request)=>{window.submittedOptions=request.options;window.submittedLanguage=request.language;}
                         }));
                         </script></body></html>
                         """.getBytes(StandardCharsets.UTF_8);
@@ -109,7 +110,17 @@ class DecisionExportPresentationUiIT {
         assertThat(browser.executeScript("return submittedOptions.profile")).isEqualTo("STANDARD");
         assertThat(browser.executeScript("return submittedOptions.treeLayout")).isEqualTo("AUTO");
         assertThat(browser.executeScript("return submittedOptions.taxonomyRoots")).isEqualTo(List.of("BP", "BR"));
+        assertThat(browser.executeScript("return submittedLanguage")).isEqualTo("en");
         assertThat(browser.switchTo().activeElement().getDomAttribute("id")).isEqualTo("open");
+    }
+
+    @Test void independentDocumentLanguageCanBeChangedInTheDialog() {
+        select("language").selectByValue("de");
+        browser.findElement(By.cssSelector(".decision-export-dialog [type=submit]")).click();
+        new WebDriverWait(browser, Duration.ofSeconds(10)).until(ignored ->
+                browser.executeScript("return !!window.submittedOptions").equals(true));
+        assertThat(browser.executeScript("return submittedLanguage")).isEqualTo("de");
+        assertThat(browser.executeScript("return document.documentElement.lang")).isEqualTo("de");
     }
 
     private static Select select(String name) {

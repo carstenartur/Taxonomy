@@ -36,7 +36,7 @@ final class FractionalRestoreChecks {
         }
         try (var connection = target.getConnection(); var statement = connection.createStatement();
              var rows = statement.executeQuery("select count(*) from \"restore_business_schema_history\" where \"success\"=true")) {
-            if (!rows.next() || rows.getInt(1) != 11) throw new AssertionError("Not all owned migrations executed");
+            if (!rows.next() || rows.getInt(1) != 12) throw new AssertionError("Not all owned migrations executed");
         }
         try (var connection = active.getConnection(); var statement = connection.createStatement();
              var rows = statement.executeQuery("select id from source_marker")) {

@@ -521,6 +521,7 @@ window.TaxonomyUtils = (function () {
                         ? 'Manuell durch den Benutzer gesetzt'
                         : 'Set manually by the user';
                     state.lastAnalysisReasonLength = null;
+                    state.lastAnalysisLanguage = null;
                 }
                 if (typeof window._renderViewWithCurrentScores === 'function') {
                     window._renderViewWithCurrentScores();

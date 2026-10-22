@@ -63,7 +63,8 @@ window.TaxonomyCopilotApi = (function () {
         },
         start: function (projectId, requirementId, request) {
             return postJson(projectPath(projectId) + '/requirements/'
-                + positiveInteger(requirementId, 'requirementId') + '/copilot', request);
+                + positiveInteger(requirementId, 'requirementId') + '/copilot',
+                Object.assign({analysisLanguage: window.TaxonomyContentLanguage?.analysis()}, request));
         },
         latest: function (projectId, requirementId) {
             return getJson(projectPath(projectId) + '/requirements/'

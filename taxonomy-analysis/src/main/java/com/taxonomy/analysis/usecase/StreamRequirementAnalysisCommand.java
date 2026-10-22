@@ -9,9 +9,14 @@ public record StreamRequirementAnalysisCommand(
         String provider,
         Locale requestLocale,
         AnalysisScope analysisScope,
-        AnalysisReasonLength analysisReasonLength) {
+        AnalysisReasonLength analysisReasonLength,
+        com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
     public StreamRequirementAnalysisCommand {
         analysisScope = AnalysisScope.orDefault(analysisScope);
+    }
+    public StreamRequirementAnalysisCommand(String businessText, String provider, Locale requestLocale,
+                                            AnalysisScope analysisScope, AnalysisReasonLength analysisReasonLength) {
+        this(businessText, provider, requestLocale, analysisScope, analysisReasonLength, null);
     }
     public StreamRequirementAnalysisCommand(String businessText, String provider, Locale requestLocale,
                                             AnalysisScope analysisScope) {

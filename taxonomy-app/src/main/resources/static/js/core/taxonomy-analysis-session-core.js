@@ -359,6 +359,8 @@
             analysisCoverage: S.analysisCoverage || null,
             analysisScope: S.lastAnalysisScope || null,
             analysisReasonLength: S.lastAnalysisReasonLength || null,
+            analysisLanguage: S.lastAnalysisLanguage || null,
+            activeAnalysisLanguage: S.activeAnalysisLanguage || null,
             analysisRecovery: S.analysisRecovery || null,
             recoveryContext: S.recoveryContext || null,
             storedBusinessText: S.storedBusinessText,

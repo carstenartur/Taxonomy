@@ -27,7 +27,8 @@ class RequirementCopilotUiContractTest {
 
         assertThat(loader).contains("requirement-copilot.js", "copilot-api.js");
         assertThat(api)
-                .contains("/copilot-operations/", "/copilot/latest", "/copilot', request)")
+                .contains("/copilot-operations/", "/copilot/latest", "+ '/copilot',")
+                .contains("Object.assign({analysisLanguage: window.TaxonomyContentLanguage?.analysis()}, request)")
                 .doesNotContain("Date.now()", "setInterval");
         assertThat(ui)
                 .contains("selectedSnapshotId", "verificationPasses", "copilotCancel")

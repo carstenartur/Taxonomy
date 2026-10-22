@@ -1,74 +1,89 @@
-# Analysis and document language policy (proposal)
+# Analysis and document language policy
 
-Status: investigated during the 1.4.0 release audit; the settings below are **not implemented**.
-This document records the proposed product contract separately from the scoring and
-provider corrections. A UI-language switch alone cannot deliver consistent translated
-analysis and historical documents with the current implementation.
+The personal language controls are implemented independently of the interface language.
+They extend the existing analysis and report contracts; they do not change numeric
+score semantics or translate historical evidence.
 
-## Current behavior
-
-| Surface | Implemented behavior |
-|---|---|
-| UI | The `lang` parameter/cookie selects the request locale; the default is English. |
-| Scoring and leaf reasons | English prompt templates contain no binding output-language instruction. GUI locale therefore does not guarantee the generated prose language. |
-| Streaming | The request locale is copied into the worker, but the scoring prompts do not consume it. |
-| Durable analysis jobs | The general analysis command/job/result does not freeze a separate content-language field. |
-| Reformulation | A `de`/`en` baseline language is already frozen and explicitly used in prompts and deterministic text. |
-| Decision/snapshot reports | A language parameter localizes labels/catalogue text. Existing AI reasons are copied unchanged. |
-| Older architecture/portfolio exports | Many report labels and sections remain fixed English. |
-| Preferences | The existing Preferences page changes system-wide administrator settings, not personal user preferences. |
-| Local ONNX | The default `MULTILINGUAL_MINILM_L12` profile compares German or English queries with English catalogue text. The explicit legacy `BGE_SMALL_EN` profile remains English-oriented. Output-language settings do not change the embedding profile or add text generation. See [pinned model provisioning](../testing/multilingual-model-provisioning.md). |
-
-Relevant implementation: `WebMvcConfig`, `PromptTemplateService`,
-`StreamRequirementAnalysisUseCase`, `AnalyzeRequirementCommand`, the portfolio job
-service, `ReformulationBaseline`, `ReformulationPromptBuilder`,
-`DecisionRationaleReportService`, `PreferencesService` and `LocalEmbeddingService`.
-
-## Recommended controls
+## Controls
 
 | Control | Options | Default and meaning |
 |---|---|---|
-| AI response language / KI-Antwortsprache | Follow UI, German, English | Follow UI, resolved **once before starting/queuing a new run**. Controls generated natural-language reasons, summaries and questions. |
-| Document language / Dokumentsprache | Follow stored analysis, follow UI, German, English | Follow stored analysis. An explicit export override is resolved once for that export. |
+| AI response language / KI-Antwortsprache | Follow UI, German, English | Follow UI, resolved once before starting or queuing a new operation. Controls generated natural-language reasons, summaries and questions. |
+| Document language / Dokumentsprache | Follow stored analysis, follow UI, German, English | Follow stored analysis. An explicit selection overrides generated headings and labels for that export. |
 
-Keep technical prompt instructions and protocol keys in their tested language
-(currently English); add an explicit language instruction for natural-language
-response fields. A separate prompt-translation switch adds substantial template
-and evaluation work with little direct user benefit. Do not translate original
-requirements, quotations, node IDs, JSON keys or numeric evidence implicitly.
+The controls appear in the analysis workspace, project/requirement pages and import
+confirmation. The decision-report dialog has its own document-language selector;
+the architecture workbench offers it as **Word report language** beside the export actions. Preferences are
+stored in the current browser, namespaced by application path and signed-in account.
+They are not installation-wide administrator settings and do not synchronize across
+devices. Without browser storage, the current page still supports explicit choices.
 
-System-wide defaults may be administered through Preferences, but personal overrides
-need their own user-scoped storage. A user's desired report language must not silently
-change every other user's analysis language.
+## Admission and execution
 
-## Persistence, recovery and historical exports
+New requests carry the typed optional `analysisLanguage` value (`de` or `en`). The
+request boundary resolves an omitted value from the request locale (German for `de`,
+English otherwise) before queuing work. The resolved value travels with commands,
+streaming workers, cluster work, continuation records, portfolio jobs, results and
+immutable saved analyses. Personal/UI changes affect new operations; existing
+operation IDs retain their original language. Requirement writes also carry the
+personal choice in `X-Taxonomy-Analysis-Language` for optional after-save Autopilot
+admission. The header is limited to same-origin requirement writes.
 
-Resolve typed language values at the request boundary and persist them on the queued
-command/job, result and immutable snapshot. Include the resolved language and prompt
-policy version in run/checkpoint identity so a resumed run cannot combine different
-language contracts. A later GUI switch or preference change affects new operations.
+Prompts append the `analysis-language-v1` contract for generated prose. Technical
+instructions, identifiers, JSON keys, enum values, source requirements, quotations
+and numeric protocol remain unchanged. The language and prompt policy participate
+in new operation identity. Legacy operations without recorded language retain their
+original prompt/fingerprint contract instead of inheriting a new preference during
+resume. Reformulation proposals inherit a selected snapshot's recorded language
+unless an explicit language is supplied; their baseline freezes that choice.
 
-Report labels and stored AI prose must be treated separately. If the export language
-differs from the saved reason language, preserve the original evidence and require an
-explicit translation operation. Store that derived translation with its source
-snapshot, target language, translator/model identity and version; never overwrite
-the original reasons or recompute scores merely to export. Offline deployments must
-not silently call a remote provider for translation. Legacy mixed/unknown-language
-results should be identified honestly rather than retroactively assigned a language.
+The local ONNX embedding provider remains a similarity provider. These controls do
+not introduce generative capabilities or change the embedding model. See
+[pinned model provisioning](../testing/multilingual-model-provisioning.md).
 
-## Acceptance criteria for a later implementation
+## Documents and historical provenance
 
-- German UI plus fixed English output produces English reasons in normal, streaming
-  and durable job paths; the inverse setting produces German reasons.
-- All generated free-text fields, including relation evidence and reformulation
-  questions, follow the same resolved run contract; IDs and source text remain intact.
-- Preference/UI changes during a paused run do not alter its saved language or reuse
-  checkpoints created for another language contract.
-- Reports in the analysis language preserve saved reasons byte-for-byte. Explicit
-  translations retain their source and never mutate the original snapshot or scores.
-- Unknown legacy language and unsupported local-provider translation remain visible.
-- User overrides cannot change another user's defaults; administrators can set the
-  installation default without masquerading as a personal setting.
+Document language resolves in this order: explicit export selection, recorded
+analysis language, request locale. Live and frozen decision and architecture reports
+use their existing localized report labels. The report-options response supplies
+recorded `analysisLanguage` separately from the resolved document `language`.
 
-The existing release defects should be fixed first. These language controls are a
-bounded follow-up with persistence and export implications, not a cosmetic GUI toggle.
+This localizes Word, HTML and Markdown report labels. SVG, PDF and Visio diagram
+exports retain their existing diagram labels; their original analysis reasons use
+the language recorded when those reasons were generated.
+
+Saved reasons are copied in their original wording. Changing document language
+localizes generated headings and labels; it does not invoke a model, recompute
+scores, or rewrite source evidence. The export dialog explains this distinction.
+An English historical analysis can therefore have German headings and English
+original reasons. For fully German new results, select German AI output before
+analysis, then export using the analysis language.
+
+Missing historical language remains null/unknown. Mixed interactive evidence is not
+assigned a single language when its contributing batches disagree. Drafts retain
+recorded language separately from the language of an active interactive operation.
+Review-only backups preserve recorded provenance and exclude transient active state.
+PostgreSQL and restore-schema migrations add a nullable job field without backfilling
+invented historical language.
+
+Explicit historical translation remains a separate follow-up. Any such feature must
+preserve the original snapshot, identify its source and translation provenance, and
+avoid silently invoking remote providers in offline deployments.
+
+## Readable evidence
+
+Tree and Decision print preserve numeric scores and complete recorded explanations.
+Compact cards link to visible numbered evidence; one-large-sheet mode arranges
+logical sections across the sheet instead of reproducing a tall narrow strip.
+Word tree reports include linked original reasons even with the compact profile.
+Visio exports retain compact native graph shapes and add visible, wrapped evidence
+pages linked by stable node/relationship keys. Existing export limits remain
+explicit: an export must not silently drop required evidence to fit a budget.
+
+## Verification
+
+Existing Maven/JUnit suites cover language selection and account isolation, prompt
+contracts, streaming/continuation/cluster propagation, persisted jobs and backups,
+report defaults and legacy-null behavior. Existing browser fixtures exercise Tree
+expansion/filtering, tall and wide print layouts, fractional percentages and unique
+long-text endings. No external provider call is needed for these regression checks.

@@ -14,7 +14,8 @@ public record AnalyzeNodeChildrenResult(
         String error,
         String analysisOperationId,
         String analysisProviderId,
-        AnalysisReasonLength analysisReasonLength) {
+        AnalysisReasonLength analysisReasonLength,
+        com.taxonomy.dto.AnalysisLanguage analysisLanguage) {
 
     public AnalyzeNodeChildrenResult {
         scores = scores == null ? Map.of() : Map.copyOf(scores);
@@ -31,9 +32,21 @@ public record AnalyzeNodeChildrenResult(
                 analysisOperationId, analysisProviderId, null);
     }
 
+    public AnalyzeNodeChildrenResult(Map<String, Double> scores, Map<String, String> reasons, String prompt,
+                                     String rawResponse, String provider, long durationMs, String error,
+                                     String analysisOperationId, String analysisProviderId, AnalysisReasonLength length) {
+        this(scores, reasons, prompt, rawResponse, provider, durationMs, error,
+                analysisOperationId, analysisProviderId, length, null);
+    }
+
+    public AnalyzeNodeChildrenResult withAnalysisLanguage(com.taxonomy.dto.AnalysisLanguage language) {
+        return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
+                analysisOperationId, analysisProviderId, analysisReasonLength, language);
+    }
+
     public AnalyzeNodeChildrenResult withAnalysisReasonLength(AnalysisReasonLength length) {
         return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
-                analysisOperationId, analysisProviderId, length);
+                analysisOperationId, analysisProviderId, length, analysisLanguage);
     }
 
     public AnalyzeNodeChildrenResult(Map<String, Double> scores, Map<String, String> reasons, String prompt,
@@ -43,7 +56,7 @@ public record AnalyzeNodeChildrenResult(
 
     public AnalyzeNodeChildrenResult withFollowUpContext(String operationId, String providerId) {
         return new AnalyzeNodeChildrenResult(scores, reasons, prompt, rawResponse, provider, durationMs, error,
-                operationId, providerId, analysisReasonLength);
+                operationId, providerId, analysisReasonLength, analysisLanguage);
     }
 
     public static AnalyzeNodeChildrenResult empty() {

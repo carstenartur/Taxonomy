@@ -220,7 +220,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             var existing = em.find(ClusterAnalysisRun.class, context.operationId(), LockModeType.PESSIMISTIC_WRITE);
             if (existing != null) {
                 requireAuthority(existing, context);
-                if (!existing.commandJson.equals(json(command))) throw new IllegalStateException("Operation input changed");
+                if (!json(read(existing.commandJson, AnalyzeRequirementCommand.class)).equals(json(command))) throw new IllegalStateException("Operation input changed");
                 return;
             }
             if (command.continuationBinding() != null) {
@@ -882,6 +882,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         result.setAnalysisProviderId(read(run.commandJson, AnalyzeRequirementCommand.class).provider());
         result.setAnalysisScope(read(run.commandJson, AnalyzeRequirementCommand.class).analysisScope());
         result.setAnalysisReasonLength(read(run.commandJson, AnalyzeRequirementCommand.class).analysisReasonLength());
+        result.setAnalysisLanguage(read(run.commandJson, AnalyzeRequirementCommand.class).analysisLanguage());
         result.setViewContext(run.viewJson == null ? null : read(run.viewJson, ViewContext.class));
         result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));
         return result;

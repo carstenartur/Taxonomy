@@ -51,6 +51,8 @@ final class VisioPresentation {
         }
         if (unplaced > 0) document.getLosses().add(new VisioLoss("document", "", "overviewCaptions", "OMITTED",
                 unplaced + " overview captions could not be placed without collision. Native connectors/data remain; consult relationship details."));
+        // Mandatory readable evidence reserves page capacity before optional diagram details.
+        VisioEvidencePages.append(document, overview);
         if (dense || unplaced > 0 || shortenedOverviewType) addDetails(document, overview, nodes);
     }
 
@@ -67,10 +69,11 @@ final class VisioPresentation {
     }
 
     private static void addDetails(VisioDocument document, VisioPage overview, Map<String, VisioShape> nodes) {
-        int shapes = document.getPages().stream().mapToInt(p -> p.getShapes().size()).sum();
+        int shapes = document.getPages().stream().mapToInt(p -> p.getShapes().size() + (p.getLegend() == null ? 0 : 1)).sum();
         int connectors = document.getPages().stream().mapToInt(p -> p.getConnects().size()).sum();
         int covered = 0;
-        while (covered < overview.getConnects().size() && document.getPages().size() < 32) {
+        int diagramPages = (int) document.getPages().stream().filter(page -> !page.isEvidencePage()).count();
+        while (covered < overview.getConnects().size() && diagramPages < VisioPackageValidator.MAX_DIAGRAM_PAGES) {
             List<VisioConnect> batch = new ArrayList<>();
             Set<String> endpoints = new TreeSet<>(Comparator.comparingLong(Long::parseLong));
             for (int next = covered; next < overview.getConnects().size() && batch.size() < 6; next++) {
@@ -109,7 +112,7 @@ final class VisioPresentation {
                 page.getConnects().add(connect); row++;
             }
             shapes += endpoints.size(); connectors += batch.size(); covered += batch.size();
-            document.getPages().add(page);
+            document.getPages().add(page); diagramPages++;
         }
         updateDetailCoverage(document, "page/node/connector capacity");
     }
@@ -124,7 +127,7 @@ final class VisioPresentation {
         document.getLosses().add(new VisioLoss("document", "", "relationshipDetailCoverage", covered == total ? "MAPPED" : "TRUNCATED",
                 "Native relationship detail coverage " + covered + "/" + total + "; covered keys " + range + ". "
                         + (covered == total ? "All relationships have a detail caption (long types explicitly marked if shortened)."
-                        : "Optional detail " + capacity + " exhausted (32 pages / 20000 nodes / 60000 connectors / 32 MiB uncompressed package bytes). Remaining keys R" + (covered + 1)
+                        : "Optional detail " + capacity + " exhausted (32 diagram pages / 128 additional evidence pages / 20000 nodes / 60000 connectors / 32 MiB uncompressed package bytes). Remaining keys R" + (covered + 1)
                         + "–R" + total + " remain complete in overview native shape data. Inspect taxonomy.id/type/sourceId/targetId or the complete report inventory.")));
     }
 

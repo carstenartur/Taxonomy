@@ -431,6 +431,13 @@
     // A single setting describes the reasons only while every contributing batch
     // records that same setting. Do not relabel older or mixed interactive evidence.
     function acceptAnalysisReasonLength(result, replace) {
+        var language = ['de', 'en'].includes(result?.analysisLanguage) ? result.analysisLanguage : null;
+        if (replace || Object.keys(S.currentReasons || {}).length === 0) {
+            S.lastAnalysisLanguage = language;
+        } else if (Object.keys(result?.reasons || {}).length > 0 && S.lastAnalysisLanguage !== language) {
+            S.lastAnalysisLanguage = null;
+        }
+        if (language) S.activeAnalysisLanguage = language;
         var value = ['short', 'standard', 'detailed'].includes(result?.analysisReasonLength)
             ? result.analysisReasonLength : null;
         if (replace || Object.keys(S.currentReasons || {}).length === 0) {
@@ -647,6 +654,8 @@
         S.analysisOperationId = null;
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;
+        S.lastAnalysisLanguage = null;
+        S.activeAnalysisLanguage = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         window._currentProvisionalRelations = [];
         S.lastAnalysisDurationMillis = null;
@@ -712,6 +721,7 @@
 
         var requestBody = {
             businessText: text,
+            analysisLanguage: window.TaxonomyContentLanguage?.analysis(),
             includeArchitectureView: requestedScope?.mode !== 'TAXONOMIES_ONLY'
                 && document.getElementById('includeArchitectureView').checked,
             analysisScope: requestedScope
@@ -721,6 +731,7 @@
         }
 
         if (options.continuation) requestBody = Object.assign({}, options.continuation);
+        S.activeAnalysisLanguage = requestBody.analysisLanguage || null;
         const workspacePin = sessionState.workspaceId == null ? '' : sessionState.workspaceId;
         var posted = fetch('/api/analyze', {
             method: 'POST',
@@ -809,6 +820,8 @@
         S.analysisCoverage = null; S.analysisRecovery = null; S.recoveryContext = null;
         S.lastAnalysisScope = saved.analysisScope; S.lastAnalysisProvider = saved.provider;
         S.lastAnalysisReasonLength = saved.analysisReasonLength || null;
+        S.lastAnalysisLanguage = saved.analysisLanguage || null;
+        S.activeAnalysisLanguage = S.lastAnalysisLanguage;
         S.analysisProviderId = saved.provider || null;
         S.analysisOperationId = operationId;
         S.storedBusinessText = saved.businessText; S.lastAnalyzedText = null;
@@ -843,6 +856,8 @@
         // Reset interactive state
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;
+        S.lastAnalysisLanguage = null;
+        S.activeAnalysisLanguage = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
@@ -859,6 +874,7 @@
         var interactiveProvider = document.getElementById('providerSelect');
         S.lastAnalysisProvider = interactiveProvider ? interactiveProvider.value : null;
         S.analysisProviderId = S.lastAnalysisProvider;
+        S.activeAnalysisLanguage = window.TaxonomyContentLanguage?.analysis() || (isGermanLocale() ? 'de' : 'en');
         S.analysisOperationId = null;
         S.lastAnalysisDurationMillis = null;
         S.lastAnalysisStatus = 'IN_PROGRESS';
@@ -906,6 +922,8 @@
         S.currentReasons = {};
         S.lastAnalysisDurationMillis = null;
         S.lastAnalysisReasonLength = null;
+        S.lastAnalysisLanguage = null;
+        S.activeAnalysisLanguage = null;
         S.lastAnalysisStatus = 'IN_PROGRESS';
         S.storedBusinessText = text;
         document.getElementById('businessText').classList.remove('stale-results');
@@ -916,7 +934,9 @@
         var providerSelect = document.getElementById('providerSelect');
         var provider = providerSelect ? providerSelect.value : '';
 
-        var url = '/api/analyze-stream?businessText=' + encodeURIComponent(text);
+        S.activeAnalysisLanguage = window.TaxonomyContentLanguage?.analysis() || (isGermanLocale() ? 'de' : 'en');
+        var url = '/api/analyze-stream?businessText=' + encodeURIComponent(text)
+            + '&analysisLanguage=' + encodeURIComponent(S.activeAnalysisLanguage);
         if (requestedScope) {
             url += '&analysisMode=' + encodeURIComponent(requestedScope.mode);
             requestedScope.taxonomyRoots.forEach(function (root) { url += '&taxonomyRoots=' + encodeURIComponent(root); });
@@ -1334,6 +1354,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 nodeCode: nodeCode,
+                analysisLanguage: S.activeAnalysisLanguage || S.lastAnalysisLanguage || window.TaxonomyContentLanguage?.analysis(),
                 businessText: S.storedBusinessText,
                 scores: S.currentScores || {},
                 reasons: S.currentReasons || {},

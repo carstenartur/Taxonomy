@@ -55,8 +55,15 @@ async function probe(source, scenario) {
     const state = {
         currentArchView: {includedElements: [{nodeCode: 'CP-outside-viewport'}], includedRelationships: []},
         lastAnalyzedText: 'Accepted requirement', lastAnalysisStatus: 'COMPLETE',
+        lastAnalysisLanguage: 'de',
         analysisOperationId: 'accepted-operation', analysisProviderId: 'LOCAL_ONNX'
     };
+    if (scenario === 'pdf-evidence') {
+        state.currentReasons = {'CP-outside-viewport': 'Complete saved explanation. '.repeat(30) + 'ORIGINAL-REASON-END',
+            'NOT-IN-EXPORT': 'UNSELECTED-REASON'};
+        state.currentArchView.includedElements[0].includedBecause = 'Existing inclusion explanation';
+        state.currentArchView.includedElements[0].presenceReason = 'Existing presence explanation';
+    }
     if (scenario === 'pdf-large') {
         state.currentArchView.includedElements = Array.from({length: 500}, (_, index) => ({
             nodeCode: index === 0 ? 'CP-outside-viewport' : 'CP-' + index,
@@ -115,7 +122,7 @@ async function probe(source, scenario) {
     }
     await new Promise(resolve => setImmediate(resolve));
     return {requests, pdfs, alerts, filenames, downloads: await Promise.all(downloads.map(blob => blob.text())),
-        status: elements.diagramExportStatusText.textContent};
+        sourceView: state.currentArchView, status: elements.diagramExportStatusText.textContent};
 }
 
 probe(fs.readFileSync(process.argv[2], 'utf8'), process.argv[3])

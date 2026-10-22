@@ -783,7 +783,7 @@
       "fromPackage": "com.taxonomy.composition.report",
       "toContext": "reporting",
       "toPackage": "com.taxonomy.reporting.render.decision",
-      "classDependencyCount": 1
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
@@ -1299,6 +1299,13 @@
     {
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.reformulation",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "portfolio",
+      "fromPackage": "com.taxonomy.portfolio.reformulation",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 8
@@ -1322,7 +1329,7 @@
       "fromPackage": "com.taxonomy.portfolio.report",
       "toContext": "reporting",
       "toPackage": "com.taxonomy.reporting.render.decision",
-      "classDependencyCount": 2
+      "classDependencyCount": 5
     },
     {
       "fromContext": "portfolio",
@@ -1350,14 +1357,14 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.recovery",
-      "classDependencyCount": 5
+      "classDependencyCount": 6
     },
     {
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 9
+      "classDependencyCount": 14
     },
     {
       "fromContext": "portfolio",

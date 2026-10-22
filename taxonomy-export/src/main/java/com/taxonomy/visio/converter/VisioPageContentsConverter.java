@@ -99,7 +99,7 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("ID", shape.getId());
         writer.addAttribute("NameU", "TaxonomyShape." + shape.getId());
         writer.addAttribute("IsCustomNameU", "1");
-        writer.addAttribute("Name", shape.getText());
+        writer.addAttribute("Name", "Evidence".equals(shape.getType()) ? "Full recorded evidence" : shape.getText());
         writer.addAttribute("IsCustomName", "1");
         writer.addAttribute("Type", "Shape");
         writeStyleReferences(writer);
@@ -116,8 +116,22 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "LineColor", LINE_COLOR);
         writeCell(writer, "LinePattern", "1");
         writeCell(writer, "LineWeight", shape.isAnchor() ? "0.02777777777777778" : "0.01388888888888889");
-        writeCell(writer, "VerticalAlign", "1");
-        writeCharacterStyle(writer, shape.getHeight() >= 1 ? 12 : 10);
+        boolean evidence = "Evidence".equals(shape.getType());
+        writeCell(writer, "VerticalAlign", evidence ? "0" : "1");
+        if (evidence) {
+            writeCell(writer, "LeftMargin", "0.1");
+            writeCell(writer, "RightMargin", "0.1");
+            writeCell(writer, "TopMargin", "0.1");
+            writeCell(writer, "BottomMargin", "0.1");
+        }
+        writeCharacterStyle(writer, evidence ? 10 : shape.getHeight() >= 1 ? 12 : 10);
+        if (evidence) {
+            writer.startNode("Section"); writer.addAttribute("N", "Paragraph");
+            writer.startNode("Row"); writer.addAttribute("IX", "0");
+            writeCell(writer, "HorzAlign", "0");
+            writeCell(writer, "SpLine", "-1.2");
+            writer.endNode(); writer.endNode();
+        }
         writeRectangleGeometry(writer, shape.getWidth(), shape.getHeight());
         writeProperties(writer, shape.getProperties());
 
@@ -260,6 +274,16 @@ public class VisioPageContentsConverter implements Converter {
             writer.endNode();
         }
         writer.endNode();
+        var evidencePage = properties.get("taxonomy.evidencePage");
+        if (evidencePage != null) {
+            writer.startNode("Section"); writer.addAttribute("N", "Hyperlink");
+            writer.startNode("Row"); writer.addAttribute("N", "FullEvidence");
+            writeCell(writer, "Description", "Full recorded evidence");
+            writeCell(writer, "Address", "");
+            writeCell(writer, "SubAddress", evidencePage.value());
+            writeCell(writer, "Default", "1");
+            writer.endNode(); writer.endNode();
+        }
     }
 
     private static void writeRectangleGeometry(

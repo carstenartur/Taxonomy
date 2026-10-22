@@ -1,6 +1,8 @@
 package com.taxonomy.composition.report;
 
 import com.taxonomy.reporting.render.document.ReportRendererRegistry;
+import com.taxonomy.reporting.render.decision.DecisionReportLanguage;
+import com.taxonomy.dto.AnalysisLanguage;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
@@ -47,7 +49,13 @@ public class ReportApiController {
     public record ReportRequest(
             Map<String, Double> scores,
             String businessText,
-            int minScore) {
+            int minScore,
+            Map<String, String> reasons,
+            AnalysisLanguage analysisLanguage,
+            String language) {
+        public ReportRequest(Map<String, Double> scores, String businessText, int minScore) {
+            this(scores, businessText, minScore, Map.of(), null, null);
+        }
     }
 
     @Operation(summary = "Export Markdown report",
@@ -101,7 +109,10 @@ public class ReportApiController {
         ArchitectureReport report = generateReport(request);
         ReportRendererExtension renderer = reportRendererRegistry.getRequired(formatId);
         ReportFormatDescriptor format = renderer.descriptor();
-        ReportRenderResult rendered = renderer.render(ReportRenderContext.of(report));
+        String language = DecisionReportLanguage.resolve(
+                DecisionReportLanguage.optionalOverride(request.language()), request.analysisLanguage()).toLanguageTag();
+        ReportRenderResult rendered = renderer.render(new ReportRenderContext(report, Map.of(
+                "language", language, "nodeReasons", request.reasons() == null ? Map.of() : request.reasons())));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"architecture-report."

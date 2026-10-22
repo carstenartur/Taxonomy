@@ -17,7 +17,7 @@ public interface RequirementAnalysisJobRepository extends JpaRepository<Requirem
                 job.createdAt, job.startedAt, job.completedAt,
                 job.totalItems, job.successfulItems, job.partialItems, job.failedItems, job.errorSummary,
                 job.providerPluginId, job.providerPluginVersion, job.providerPluginSha256,
-                job.providerConfigRevision, job.analysisReasonLength,
+                job.providerConfigRevision, job.analysisReasonLength, job.analysisLanguage,
                 item.id, item.requirementId, requirement.requirementKey, item.requirementVersionId,
                 admittedVersion.versionNumber, item.status, item.snapshotId, item.attempt,
                 item.startedAt, item.completedAt, item.errorMessage)
@@ -39,7 +39,7 @@ public interface RequirementAnalysisJobRepository extends JpaRepository<Requirem
                 job.createdAt, job.startedAt, job.completedAt,
                 job.totalItems, job.successfulItems, job.partialItems, job.failedItems, job.errorSummary,
                 job.providerPluginId, job.providerPluginVersion, job.providerPluginSha256,
-                job.providerConfigRevision, job.analysisReasonLength,
+                job.providerConfigRevision, job.analysisReasonLength, job.analysisLanguage,
                 item.id, item.requirementId, requirement.requirementKey, item.requirementVersionId,
                 admittedVersion.versionNumber, item.status, item.snapshotId, item.attempt,
                 item.startedAt, item.completedAt, item.errorMessage)

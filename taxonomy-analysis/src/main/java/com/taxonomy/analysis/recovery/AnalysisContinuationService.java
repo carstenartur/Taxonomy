@@ -62,7 +62,8 @@ public class AnalysisContinuationService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "The original plugin provider binding is unavailable");
             }
             try (var ignored = providers == null ? null : providers.withRequestProvider(provider, binding);
-                 var reasons = AnalysisReasonContext.open(saved.getAnalysisReasonLength())) {
+                 var reasons = AnalysisReasonContext.open(saved.getAnalysisReasonLength());
+                 var language = AnalysisLanguageContext.open(saved.getAnalysisLanguage())) {
                 var tree = catalogue.getFullTree();
                 store.verifySourceSignature(decision.getRelationSourceContinuationId(), scope, signature(saved, tree));
                 Authority authority = saved.getContinuationAuthority() == null
@@ -128,7 +129,7 @@ public class AnalysisContinuationService {
         if (request.getRelationSourceContinuationId() != null) return resolveRelationsRequest(request, username, scope);
         var frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);
         frozen.setMaxArchitectureNodes(maxNodes);
-        var original = freezeReasonLength(frozen, scope);
+        var original = freezeGenerationContract(frozen, scope);
         String originalAuthority = original == null ? null : original.getContinuationAuthority();
         Authority savedAuthority = originalAuthority == null ? null : mapper.readValue(originalAuthority, Authority.class);
         frozen.setRelationSourcePartial(false);
@@ -139,7 +140,8 @@ public class AnalysisContinuationService {
             frozen.setProvider(provider);
             var binding = providers.captureProviderBinding(provider);
             try (var ignored = providers.withRequestProvider(provider, binding);
-                 var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength())) {
+                 var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength());
+                 var language = AnalysisLanguageContext.open(frozen.getAnalysisLanguage())) {
                 var tree = catalogue.getFullTree();
                 if (savedAuthority == null) frozen.setContinuationAuthority(mapper.writeValueAsString(authority(provider, binding, tree)));
                 else {
@@ -150,7 +152,8 @@ public class AnalysisContinuationService {
             }
         } else if (savedAuthority != null) {
             requireProvider(savedAuthority, frozen.getProvider(), null);
-            try (var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength())) {
+            try (var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength());
+                 var language = AnalysisLanguageContext.open(frozen.getAnalysisLanguage())) {
                 validateAuthority(savedAuthority, catalogue.getFullTree());
                 frozen.setContinuationAuthority(originalAuthority);
             }
@@ -178,7 +181,8 @@ public class AnalysisContinuationService {
         Authority authority = frozen.getContinuationAuthority() == null ? null : mapper.readValue(frozen.getContinuationAuthority(), Authority.class);
         var binding = authority == null ? null : authority.binding();
         try (var ignored = providers == null ? null : providers.withRequestProvider(frozen.getProvider(), binding);
-             var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength())) {
+             var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength());
+                 var language = AnalysisLanguageContext.open(frozen.getAnalysisLanguage())) {
             // A claim may authorize execution only after its server-captured authority matches.
             // Standalone local callers without a provider envelope bind their policy in this scope.
             validateAuthority(authority == null ? authority(frozen.getProvider(), binding, tree) : authority, tree);
@@ -197,7 +201,8 @@ public class AnalysisContinuationService {
         Authority authority = frozen.getContinuationAuthority() == null ? null : mapper.readValue(frozen.getContinuationAuthority(), Authority.class);
         var pluginBinding = authority == null ? providers.captureProviderBinding(provider) : authority.binding();
         try (var ignored = providers.withRequestProvider(provider, pluginBinding);
-             var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength())) {
+             var reasons = AnalysisReasonContext.open(frozen.getAnalysisReasonLength());
+                 var language = AnalysisLanguageContext.open(frozen.getAnalysisLanguage())) {
             validateAuthority(authority == null ? authority(provider, pluginBinding, tree) : authority, tree);
             String signature = signature(frozen, tree);
             var claim = store.begin(frozen, scope, signature, tree);
@@ -208,7 +213,7 @@ public class AnalysisContinuationService {
             return new Execution(claim, binding, frozen, pluginBinding);
         }
     }
-    private AnalysisRequest freezeReasonLength(AnalysisRequest request, WorkspaceContext scope) {
+    private AnalysisRequest freezeGenerationContract(AnalysisRequest request, WorkspaceContext scope) {
         var original = store.originalRequest(request.getContinuationId(), scope);
         if (original.isPresent()) {
             var saved = original.get().getAnalysisReasonLength();
@@ -217,8 +222,16 @@ public class AnalysisContinuationService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "The analysis reason length belongs to the saved run; start a new analysis to change it");
             request.setAnalysisReasonLength(saved);
-        } else request.setAnalysisReasonLength(request.getAnalysisReasonLength() != null
-                ? request.getAnalysisReasonLength() : AnalysisReasonContext.effective(llm.resolveAnalysisReasonLength(null)));
+            var savedLanguage = original.get().getAnalysisLanguage();
+            if (request.getAnalysisLanguage() != null && request.getAnalysisLanguage() != savedLanguage)
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "The analysis language belongs to the saved run; start a new analysis to change it");
+            request.setAnalysisLanguage(savedLanguage);
+        } else {
+            request.setAnalysisReasonLength(request.getAnalysisReasonLength() != null
+                    ? request.getAnalysisReasonLength() : AnalysisReasonContext.effective(llm.resolveAnalysisReasonLength(null)));
+            request.setAnalysisLanguage(AnalysisLanguageContext.resolveCurrentRequest(request.getAnalysisLanguage()));
+        }
         return original.orElse(null);
     }
     private RequirementRelationSearch.BudgetPolicy captureBudgetPolicy(AnalysisContinuationStore.Claim claim, AnalysisRequest request) {
@@ -258,7 +271,8 @@ public class AnalysisContinuationService {
         authorize(username, scope); return store.detail(id, key, scope);
     }
     private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree) {
-        try (var reasons = AnalysisReasonContext.open(request.getAnalysisReasonLength())) {
+        try (var reasons = AnalysisReasonContext.open(request.getAnalysisReasonLength());
+                 var language = AnalysisLanguageContext.open(request.getAnalysisLanguage())) {
         var relationPolicy = relationPolicy(request.getContinuationAuthority() == null ? null
                 : mapper.readValue(request.getContinuationAuthority(), Authority.class));
         String legacy = AnalysisEvidenceFingerprint.digestJson(mapper, new String[]{"resumable-scoring-v1", request.getBusinessText(),
@@ -270,6 +284,8 @@ public class AnalysisContinuationService {
                 mapper.writeValueAsString(request.getAnalysisScope()));
         String reasoned = request.getAnalysisReasonLength() == null ? legacy : AnalysisCheckpointSession.digest(legacy,
                 AnalysisReasonContext.POLICY, request.getAnalysisReasonLength().value());
+        if (request.getAnalysisLanguage() != null) reasoned = AnalysisCheckpointSession.digest(reasoned,
+                AnalysisLanguageContext.POLICY, request.getAnalysisLanguage().value());
         return request.getRelationSourceContinuationId() == null ? reasoned
                 : AnalysisCheckpointSession.digest(reasoned, "retained-relations-v1", request.getRelationSourceContinuationId(),
                         String.valueOf(request.getRelationSourceVersion()));
@@ -327,6 +343,9 @@ public class AnalysisContinuationService {
             });
         }
         public AnalysisContinuationBinding binding() { return distributedBinding; }
+        public AnalysisLanguage analysisLanguage() {
+            return frozenRequest == null ? null : frozenRequest.getAnalysisLanguage();
+        }
         public AnalysisReasonLength analysisReasonLength() {
             return AnalysisReasonContext.effective(frozenRequest == null ? null : frozenRequest.getAnalysisReasonLength());
         }
@@ -334,7 +353,7 @@ public class AnalysisContinuationService {
             if (frozenRequest == null) return command.withContinuationBinding(distributedBinding);
             return new com.taxonomy.analysis.usecase.AnalyzeRequirementCommand(frozenRequest.getBusinessText(), frozenRequest.isIncludeArchitectureView(),
                     frozenRequest.getMaxArchitectureNodes(), frozenRequest.getProvider(), command.username(), command.workspaceContext(), command.provenance(),
-                    frozenRequest.getAnalysisScope(), providerBinding, distributedBinding, analysisReasonLength(), claim.retainedAnalysis());
+                    frozenRequest.getAnalysisScope(), providerBinding, distributedBinding, analysisReasonLength(), claim.retainedAnalysis(), analysisLanguage());
         }
         public AnalysisResult replay() { return claim.completedResult(); }
         public AnalysisResult complete(AnalysisResult result) {

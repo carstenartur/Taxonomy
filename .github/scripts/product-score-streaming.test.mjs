@@ -489,7 +489,7 @@ function interactiveHarness(response) {
   const window = { TaxonomyState: state, TaxonomyScoring: scoring };
   const context = vm.createContext({
     window,
-    document: { addEventListener() {}, getElementById: id => id === 'statusArea' ? status : null },
+    document: { documentElement: { lang: 'en' }, addEventListener() {}, getElementById: id => id === 'statusArea' ? status : null },
     console: { log() {}, warn() {}, error(...args) { errors.push(args); } },
     TaxonomyI18n: { t: (key, ...args) => [key, ...args].join(' ') },
     TaxonomyUtils: { escapeHtml: text => String(text) }, CSS: { escape: text => text },

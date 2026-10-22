@@ -7,6 +7,7 @@ public class VisioPage {
     private final String id;
     private final String name;
     private boolean relationshipDetail;
+    private boolean evidencePage;
     private VisioTextBox legend;
     public VisioTextBox getLegend() { return legend; }
     public void setLegend(VisioTextBox legend) { this.legend = legend; }
@@ -20,6 +21,8 @@ public class VisioPage {
 
     public boolean isRelationshipDetail() { return relationshipDetail; }
     public void setRelationshipDetail(boolean relationshipDetail) { this.relationshipDetail = relationshipDetail; }
+    public boolean isEvidencePage() { return evidencePage; }
+    public void setEvidencePage(boolean evidencePage) { this.evidencePage = evidencePage; }
 
     public String getId() { return id; }
     public String getName() { return name; }

@@ -68,7 +68,7 @@ public final class ArchitectureWordSectionRenderer {
                                                                         edge.relationCategory(),
                                                                         labels)
                                                                         + " · " + com.taxonomy.export.DiagramPresentation
-                                                                                .relationshipStatus(edge.metadata())))
+                                                                                .relationshipStatus(edge.metadata(), labels.german())))
                                         .toList());
                 writer.columnWidths(key, 12, 32, 32, 24);
             }
@@ -104,6 +104,13 @@ public final class ArchitectureWordSectionRenderer {
                                                 percentage(e.relevance()),
                                                 value(e.parentId(), labels)))
                         .toList());
+        if (!report.nodeReasons().isEmpty()) {
+            writer.heading(labels.recordedNodeReasons(), 2, null);
+            report.nodeReasons().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+                writer.heading(entry.getKey(), 3, null);
+                writer.paragraph(entry.getValue());
+            });
+        }
         writer.heading(labels.relations(), 1, "architecture_relations");
         writer.caption(labels.relations(), false);
         var metadataById = new HashMap<String, com.taxonomy.diagram.DiagramRelationMetadata>();
@@ -125,16 +132,19 @@ public final class ArchitectureWordSectionRenderer {
                                                 e.targetId(),
                                                 value(e.type(), labels),
                                                 value(e.category(), labels) + " · "
-                                                        + com.taxonomy.export.DiagramPresentation.relationshipStatus(metadataById.get(e.id())),
+                                                        + com.taxonomy.export.DiagramPresentation.relationshipStatus(metadataById.get(e.id()), labels.german()),
                                                 percentage(e.relevance())))
                         .toList());
-        if (report.diagram().edges().stream().anyMatch(edge -> edge.metadata() != null)) {
-            writer.heading(labels.german() ? "Beziehungsherkunft" : "Relationship provenance", 2, null);
+        if (report.diagram().edges().stream().anyMatch(edge -> edge.metadata() != null
+                || report.relationReasons().containsKey(edge.id()))) {
+            writer.heading(labels.relationshipProvenance(), 2, null);
             for (var edge : report.diagram().edges()) {
-                if (edge.metadata() == null) continue;
+                var supplemental = report.relationReasons().get(edge.id());
+                if (edge.metadata() == null && supplemental == null) continue;
                 writer.heading(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId(), 2, null);
                 // One point between evidence fields; body type remains the writer's readable 10pt.
-                relationshipDetails(edge.metadata()).forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
+                relationshipDetails(edge.metadata(), supplemental, labels.german())
+                        .forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
             }
         }
         writer.heading(labels.provenance(), 1, "architecture_evidence");
@@ -165,17 +175,34 @@ public final class ArchitectureWordSectionRenderer {
     }
 
     /** Equal recorded reasons share their value while retaining every source-field label. */
-    private static List<String> relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata) {
-        var labels = List.of("Included because", "Derivation reason", "Presence reason");
-        var values = Arrays.asList(metadata.includedBecause(), metadata.derivationReason(), metadata.presenceReason());
+    private static List<String> relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata,
+            Map<String, String> supplemental, boolean german) {
+        var labels = german ? List.of("Aufgenommen weil", "Herleitungsbegründung", "Begründung der Aufnahme")
+                : List.of("Included because", "Derivation reason", "Presence reason");
+        var values = metadata == null ? Arrays.<String>asList(null, null, null)
+                : Arrays.asList(metadata.includedBecause(), metadata.derivationReason(), metadata.presenceReason());
         var grouped = new LinkedHashMap<String, List<String>>();
         for (int i = 0; i < labels.size(); i++) {
             String value = values.get(i);
             if (value != null) grouped.computeIfAbsent(value, ignored -> new ArrayList<>()).add(labels.get(i));
         }
+        // Group only exactly equal values within this relationship. Keep distinct wording,
+        // every source-field label and the frozen graph metadata unchanged.
+        if (supplemental != null) {
+            for (String key : List.of("presenceReason", "decisionComment")) {
+                String value = supplemental.get(key);
+                if (value == null || value.isBlank()) continue;
+                String label = key.equals("presenceReason")
+                        ? (german ? "Gespeicherte Auswahlbegründung" : "Recorded selection reason")
+                        : (german ? "Gespeicherter Prüfkommentar" : "Recorded review comment");
+                grouped.computeIfAbsent(value, ignored -> new ArrayList<>()).add(label);
+            }
+        }
         var result = new ArrayList<String>();
         boolean reasonsWritten = false;
-        for (String detail : com.taxonomy.export.DiagramPresentation.relationshipDetails(metadata)) {
+        var details = metadata == null ? List.<String>of()
+                : com.taxonomy.export.DiagramPresentation.relationshipDetails(metadata, german);
+        for (String detail : details) {
             if (labels.stream().anyMatch(label -> detail.startsWith(label + ": "))) {
                 if (!reasonsWritten) {
                     grouped.forEach((value, fields) -> result.add(String.join(", ", fields) + ": " + value));
@@ -185,6 +212,8 @@ public final class ArchitectureWordSectionRenderer {
                 result.add(detail);
             }
         }
+        if (!reasonsWritten)
+            grouped.forEach((value, fields) -> result.add(String.join(", ", fields) + ": " + value));
         return result;
     }
 

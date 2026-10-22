@@ -67,6 +67,7 @@ public class VisioPagesConverter implements Converter {
     }
 
     private static double pageWidth(VisioPage page) {
+        if (page.isEvidencePage()) return 8.3;
         double right = page.getShapes().stream()
                 .mapToDouble(shape -> shape.getX() + shape.getWidth() / 2.0)
                 .max()
@@ -78,6 +79,7 @@ public class VisioPagesConverter implements Converter {
     }
 
     private static double pageHeight(VisioPage page) {
+        if (page.isEvidencePage()) return 11.7;
         double top = page.getShapes().stream()
                 .mapToDouble(shape -> shape.getY() + shape.getHeight() / 2.0)
                 .max()

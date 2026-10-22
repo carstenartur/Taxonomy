@@ -99,6 +99,68 @@ class ArchitectureWorkbenchServiceTest {
     }
 
     @Test
+    void frozenExportsRetainScoringAndInclusionExplanationsTogether() throws Exception {
+        var snapshot = snapshotWithArchitecture();
+        String scoringReason = "The recorded assessment retains the original rationale. ".repeat(70) + "SCORING-REASON-END-927";
+        String presenceReason = "The recorded architecture inclusion is justified. PRESENCE-REASON-END-927";
+        String includedBecause = "A saved traversal connects this element to the requirement. INCLUSION-REASON-END-927";
+        snapshot.analysis().setReasons(Map.of("CP-1", scoringReason));
+        var element = snapshot.analysis().getArchitectureView().getIncludedElements().stream()
+                .filter(candidate -> "CP-1".equals(candidate.getNodeCode())).findFirst().orElseThrow();
+        element.setPresenceReason(presenceReason);
+        element.setIncludedBecause(includedBecause);
+        prepareSnapshot(snapshot);
+        assertThat(service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT).nodeReasons().get("CP-1"))
+                .contains(scoringReason, presenceReason, includedBecause);
+        String svg = service.renderSvg(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+        var xml = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(new java.io.ByteArrayInputStream(svg.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        var visible = new StringBuilder();
+        var labels = xml.getElementsByTagName("text");
+        for (int index = 0; index < labels.getLength(); index++) visible.append(labels.item(index).getTextContent()).append(' ');
+        assertThat(visible.toString()).contains("SCORING-REASON-END-927", "PRESENCE-REASON-END-927", "INCLUSION-REASON-END-927");
+        try (var document = Loader.loadPDF(service.renderPdf(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))) {
+            assertThat(new PDFTextStripper().getText(document)).contains("SCORING-REASON-END-927", "PRESENCE-REASON-END-927", "INCLUSION-REASON-END-927");
+        }
+    }
+
+    @Test
+    void legacyRelationMappingEvidenceIsVisibleInFrozenSvgAndPdf() throws Exception {
+        var base = snapshotWithArchitecture();
+        String reason = "The mapping retains the full recorded inclusion assessment. ".repeat(70)
+                + "WORKBENCH-RELATION-SELECTION-END-5831";
+        String comment = "The reviewer records a distinct and independently preserved explanation. ".repeat(70)
+                + "WORKBENCH-RELATION-REVIEW-END-5831";
+        String excluded = "RELATION-OUTSIDE-FROZEN-GRAPH-5831";
+        var mapping = new com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView(
+                1L, SNAPSHOT_ID, "CP-1", "CR-1", "REALIZED_BY", null, null, .82, .8, reason,
+                ReviewStatus.CONFIRMED, "reviewer", Instant.EPOCH, comment);
+        var outside = new com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView(
+                2L, SNAPSHOT_ID, "CR-1", "CP-1", "REALIZED_BY", null, null, .5, .5, excluded,
+                null, null, null, excluded);
+        prepareSnapshot(new SnapshotDetail(base.summary(), base.analysis(), base.gapAnalysis(),
+                base.patternDetection(), base.recommendation(), base.elementMappings(), List.of(mapping, outside)));
+        var projection = service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+        assertThat(projection.diagram().edges()).hasSize(1);
+        assertThat(projection.diagram().edges().getFirst().metadata().presenceReason()).isNull();
+        String svg = service.renderSvg(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+        var xml = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(new java.io.ByteArrayInputStream(svg.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        var visible = new StringBuilder();
+        var labels = xml.getElementsByTagName("text");
+        for (int index = 0; index < labels.getLength(); index++) visible.append(labels.item(index).getTextContent()).append(' ');
+        String pdf;
+        try (var document = Loader.loadPDF(service.renderPdf(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))) {
+            pdf = new PDFTextStripper().getText(document);
+        }
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertThat(visible.toString()).contains("WORKBENCH-RELATION-SELECTION-END-5831", "WORKBENCH-RELATION-REVIEW-END-5831",
+                        "Recorded selection reason", "Recorded review comment").doesNotContain(excluded),
+                () -> assertThat(pdf).contains("WORKBENCH-RELATION-SELECTION-END-5831", "WORKBENCH-RELATION-REVIEW-END-5831",
+                        "Recorded selection reason", "Recorded review comment").doesNotContain(excluded));
+    }
+
+    @Test
     void carriesPersistedTitleProvenanceEvenWhenItMatchesMutableFallbackText() {
         var snapshot=snapshotWithArchitecture();
         snapshot.analysis().getArchitectureView().setViewTitle("P-001 / REQ-001 — Secure command information");

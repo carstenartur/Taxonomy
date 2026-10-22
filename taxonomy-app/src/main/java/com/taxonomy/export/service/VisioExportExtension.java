@@ -7,10 +7,15 @@ import com.taxonomy.export.spi.ExportFormatDescriptor;
 import com.taxonomy.export.spi.ExportFormatExtension;
 import com.taxonomy.export.spi.ExportResult;
 import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioExportMetadata;
+import com.taxonomy.visio.VisioProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /** Spring adapter for Visio VSDX output. */
 @Component
@@ -41,7 +46,15 @@ public class VisioExportExtension implements ExportFormatExtension {
 
     @Override
     public ExportResult export(ExportContext context) {
-        VisioDocument document = visioDiagramService.convert(context.diagram());
+        var elements = new LinkedHashMap<String, Map<String, VisioProperty>>();
+        if (context.options().get("elementReasons") instanceof Map<?, ?> reasons) {
+            reasons.forEach((key, value) -> {
+                if (key instanceof String code && value instanceof String reason && !reason.isBlank())
+                    elements.put(code, Map.of("taxonomy.presenceReason", VisioProperty.text(reason)));
+            });
+        }
+        VisioDocument document = visioDiagramService.convert(context.diagram(),
+                new VisioExportMetadata(Map.of(), elements, Map.of(), List.of()));
         try {
             return new ExportResult(visioPackageBuilder.build(document));
         } catch (IOException e) {

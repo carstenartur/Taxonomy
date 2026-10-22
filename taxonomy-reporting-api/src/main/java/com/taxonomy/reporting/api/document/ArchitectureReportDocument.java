@@ -25,7 +25,37 @@ public record ArchitectureReportDocument(
         List<RelationRow> relations,
         List<LegendEntry> legend,
         DecisionTreeOverview decisionTree,
-        SnapshotEvidence evidence) {
+        SnapshotEvidence evidence,
+        Map<String, String> nodeReasons,
+        Map<String, Map<String, String>> relationReasons) {
+
+    /** Older callers retain their captured graph without inventing missing explanation evidence. */
+    public ArchitectureReportDocument(String title, String languageTag, String requirement, String scope,
+            String recommendation, List<String> unresolvedGaps, DiagramModel diagram, DiagramScene scene,
+            List<ElementRow> elements, List<RelationRow> relations, List<LegendEntry> legend,
+            DecisionTreeOverview decisionTree, SnapshotEvidence evidence) {
+        this(title, languageTag, requirement, scope, recommendation, unresolvedGaps, diagram, scene,
+                elements, relations, legend, decisionTree, evidence, Map.of(), Map.of());
+    }
+
+    /** Source-compatible constructor for reports created before separate relation mapping evidence. */
+    public ArchitectureReportDocument(String title, String languageTag, String requirement, String scope,
+            String recommendation, List<String> unresolvedGaps, DiagramModel diagram, DiagramScene scene,
+            List<ElementRow> elements, List<RelationRow> relations, List<LegendEntry> legend,
+            DecisionTreeOverview decisionTree, SnapshotEvidence evidence, Map<String, String> nodeReasons) {
+        this(title, languageTag, requirement, scope, recommendation, unresolvedGaps, diagram, scene,
+                elements, relations, legend, decisionTree, evidence, nodeReasons, Map.of());
+    }
+
+    public ArchitectureReportDocument withNodeReasons(Map<String, String> reasons) {
+        return new ArchitectureReportDocument(title, languageTag, requirement, scope, recommendation,
+                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence, reasons, relationReasons);
+    }
+
+    public ArchitectureReportDocument withRelationReasons(Map<String, Map<String, String>> reasons) {
+        return new ArchitectureReportDocument(title, languageTag, requirement, scope, recommendation,
+                unresolvedGaps, diagram, scene, elements, relations, legend, decisionTree, evidence, nodeReasons, reasons);
+    }
     public record ElementRow(
             String id,
             String title,
@@ -72,6 +102,21 @@ public record ArchitectureReportDocument(
         elements = List.copyOf(elements);
         relations = List.copyOf(relations);
         legend = List.copyOf(legend);
+        nodeReasons = nodeReasons == null ? Map.of() : Map.copyOf(nodeReasons);
+        var selectedReasons = new LinkedHashMap<String, Map<String, String>>();
+        if (relationReasons != null) {
+            for (var edge : diagram.edges()) {
+                var fields = relationReasons.get(edge.id());
+                if (fields == null) continue;
+                var copied = new LinkedHashMap<String, String>();
+                for (String field : List.of("presenceReason", "decisionComment")) {
+                    String value = fields.get(field);
+                    if (value != null && !value.isBlank()) copied.put(field, value);
+                }
+                if (!copied.isEmpty()) selectedReasons.put(edge.id(), Map.copyOf(copied));
+            }
+        }
+        relationReasons = Map.copyOf(selectedReasons);
         if (evidence == null || !graphSha256(diagram).equals(evidence.graphSha256()))
             throw new IllegalArgumentException(
                     "Frozen graph digest disagrees with source evidence");

@@ -73,6 +73,7 @@ test('Sunburst keeps an unassessed branch color when the preceding zero branch i
             getAttribute(key){return this.attributes[key]??null;},
             removeAttribute(key){delete this.attributes[key];},
             appendChild(child){child.parentNode=this;this.children.push(child);return child;},
+            append(...children){children.forEach(child=>this.appendChild(child));},
             insertBefore(child,before){this.children.splice(this.children.indexOf(before),0,child);},
             addEventListener(){},contains(child){return this===child||descendants(this).includes(child);},
             querySelector(tag){return descendants(this).find(child=>child.tagName===tag)||null;}};

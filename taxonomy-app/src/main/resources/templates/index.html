@@ -2,6 +2,7 @@
 <html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
 <head>
     <meta charset="UTF-8"/>
+    <meta name="taxonomy-user" th:content="${#authentication != null ? #authentication.name : ''}"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
     <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
@@ -15,6 +16,7 @@
     <link rel="stylesheet" th:href="@{/css/git-status.css}"/>
     <!-- i18n: load translations before other scripts -->
     <script th:src="@{/js/taxonomy-i18n.js}"></script>
+<script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
 </head>
 <body>
 <!-- Skip-Link (BITV 2.0 / WCAG 2.4.1) -->
@@ -298,6 +300,7 @@
                             </label>
                         </div>
                         <div id="aiProviderInfo" class="mt-1 text-muted small d-none"></div>
+                        <div th:replace="~{fragments/content-language-controls :: controls}"></div>
                         <details class="mt-3">
                             <summary class="fw-semibold" th:text="#{analysis.scope.title}">Automatic analysis scope</summary>
                             <p class="small text-muted mt-2" th:text="#{analysis.scope.hint}">Applies to automatic analysis and Copilot. Turn off Interactive Mode to run automatic analysis.</p>

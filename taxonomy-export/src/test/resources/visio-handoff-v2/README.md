@@ -21,9 +21,10 @@ All authority/review values are synthetic. In particular the all-zero `authorita
 | `relation/β` | `BP-02` → `CS-03`, `USES`, score 0.6 |
 | Primary page | Three elements and both connectors |
 | Impact page | `CP-01`, `BP-02` and `relation/α` |
+| Evidence page | Full recorded explanations and complete labels, linked from their graph objects |
 
 Names include accents, Japanese characters, XML delimiters and an emoji. The human rationale deliberately begins with a formula-like string; tests ensure it is emitted as a literal value without an `F` formula attribute.
 
-The automated secondary consumer is Apache POI XDGF 5.5.1 with XMLBeans 5.3.0 and the full Visio schema JAR. Both pages load and render with Java 21 on Linux. Observed previews lack Japanese/emoji glyphs and arrowheads; successful POI loading/rendering does not certify visual fidelity or Microsoft Visio edit/save behavior.
+The automated secondary consumer is Apache POI XDGF 5.5.1 with XMLBeans 5.3.0 and the full Visio schema JAR. The graph and evidence pages load and render with Java 21 on Linux. Observed previews lack Japanese/emoji glyphs and arrowheads; successful POI loading/rendering does not certify visual fidelity or Microsoft Visio edit/save behavior.
 
 Microsoft Visio desktop evidence is **pending**. Follow the [profile and acceptance procedure](../../../../../docs/dev/VISIO_HANDOFF_PROFILE.md) for a candidate release SHA. Retain the original fixture, edited output, exact source/version identities, checksums and screenshots with the result record. No desktop results are pre-filled in this fixture.

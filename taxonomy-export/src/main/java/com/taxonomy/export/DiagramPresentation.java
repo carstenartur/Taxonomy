@@ -38,32 +38,62 @@ public final class DiagramPresentation {
         };
     }
 
+    public static String relationshipStatus(com.taxonomy.diagram.DiagramRelationMetadata metadata, boolean german) {
+        if (!german) return relationshipStatus(metadata);
+        if (metadata == null) return "Herkunft nicht aufgezeichnet";
+        if (metadata.proposed()) return "KI-Vorschlag";
+        if (metadata.origin() == null) return "Herkunft nicht aufgezeichnet";
+        return switch (metadata.origin()) {
+            case TAXONOMY_SEED -> "Katalogbeziehung";
+            case PROPAGATED_TRACE -> "Fortgeführte Herleitung";
+            case IMPACT_DERIVED -> "Abgeleitete Auswirkung";
+            case LLM_SUPPORTED, SUGGESTED_CANDIDATE -> "KI-Vorschlag";
+        };
+    }
+
     /** Complete readable provenance, including exact scoped evidence. Never infers review status. */
     public static List<String> relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata) {
+        return relationshipDetails(metadata, false);
+    }
+
+    public static List<String> relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata, boolean german) {
         var lines = new ArrayList<String>();
-        lines.add("Status: " + relationshipStatus(metadata));
+        lines.add("Status: " + relationshipStatus(metadata, german));
         if (metadata == null) return List.copyOf(lines);
-        if (metadata.relationId() != null) lines.add("Relation ID: " + metadata.relationId());
-        lines.add("Origin: " + (metadata.origin() == null ? "unrecorded" : metadata.origin().name()));
-        if (metadata.confidence() != null) lines.add("Confidence: " + metadata.confidence());
-        if (metadata.seedType() != null) lines.add("Seed type: " + metadata.seedType());
-        if (metadata.includedBecause() != null) lines.add("Included because: " + metadata.includedBecause());
-        if (metadata.derivationReason() != null) lines.add("Derivation reason: " + metadata.derivationReason());
-        if (metadata.presenceReason() != null) lines.add("Presence reason: " + metadata.presenceReason());
+        if (metadata.relationId() != null) lines.add((german ? "Beziehungskennung: " : "Relation ID: ") + metadata.relationId());
+        lines.add((german ? "Herkunft: " : "Origin: ") + (metadata.origin() == null ? (german ? "nicht aufgezeichnet" : "unrecorded") : metadata.origin().name()));
+        if (metadata.confidence() != null) lines.add((german ? "Konfidenz: " : "Confidence: ") + metadata.confidence());
+        if (metadata.seedType() != null) lines.add((german ? "Ausgangstyp: " : "Seed type: ") + metadata.seedType());
+        if (metadata.includedBecause() != null) lines.add((german ? "Aufgenommen weil: " : "Included because: ") + metadata.includedBecause());
+        if (metadata.derivationReason() != null) lines.add((german ? "Herleitungsbegründung: " : "Derivation reason: ") + metadata.derivationReason());
+        if (metadata.presenceReason() != null) lines.add((german ? "Begründung der Aufnahme: " : "Presence reason: ") + metadata.presenceReason());
         for (var evidence : metadata.requirementEvidence()) {
-            lines.add("Scoped evidence: " + evidence.sourceId() + " -> " + evidence.targetId()
+            lines.add((german ? "Anforderungsbezogene Evidenz: " : "Scoped evidence: ") + evidence.sourceId() + " -> " + evidence.targetId()
                     + " | " + evidence.type() + " | " + evidence.direction());
-            lines.add("Contribution: " + evidence.contribution().text());
-            lines.add("Original quote: " + evidence.contribution().quote());
-            lines.add("Contribution condition: " + evidence.contribution().condition());
+            lines.add((german ? "Beitrag: " : "Contribution: ") + evidence.contribution().text());
+            lines.add((german ? "Originalzitat: " : "Original quote: ") + evidence.contribution().quote());
+            lines.add((german ? "Bedingung des Beitrags: " : "Contribution condition: ") + evidence.contribution().condition());
             var decision = evidence.evidence();
             if (decision != null) {
-                lines.add("Outcome: " + decision.outcome() + " | Necessity: " + decision.necessity());
-                lines.add("Evidence contribution: " + decision.contribution() + " | Quote: " + decision.quote());
-                lines.add("Condition: " + decision.condition() + " | Alternative group: " + decision.alternativeGroup());
-                lines.add("Rationale: " + decision.rationale() + " | Question: " + decision.question());
+                lines.add((german ? "Ergebnis: " : "Outcome: ") + decision.outcome() + (german ? " | Notwendigkeit: " : " | Necessity: ") + decision.necessity());
+                lines.add((german ? "Evidenzbeitrag: " : "Evidence contribution: ") + decision.contribution() + (german ? " | Zitat: " : " | Quote: ") + decision.quote());
+                lines.add((german ? "Bedingung: " : "Condition: ") + decision.condition() + (german ? " | Alternativgruppe: " : " | Alternative group: ") + decision.alternativeGroup());
+                lines.add((german ? "Begründung: " : "Rationale: ") + decision.rationale() + (german ? " | Frage: " : " | Question: ") + decision.question());
             }
         }
+        return List.copyOf(lines);
+    }
+
+    /** Original mapping/review evidence stored separately from the frozen graph provenance. */
+    public static List<String> relationshipEvidenceDetails(Map<String, String> fields, boolean german) {
+        if (fields == null || fields.isEmpty()) return List.of();
+        var lines = new ArrayList<String>();
+        String presence = fields.get("presenceReason");
+        if (presence != null && !presence.isBlank())
+            lines.add((german ? "Gespeicherte Auswahlbegründung: " : "Recorded selection reason: ") + presence);
+        String comment = fields.get("decisionComment");
+        if (comment != null && !comment.isBlank())
+            lines.add((german ? "Gespeicherter Prüfkommentar: " : "Recorded review comment: ") + comment);
         return List.copyOf(lines);
     }
 

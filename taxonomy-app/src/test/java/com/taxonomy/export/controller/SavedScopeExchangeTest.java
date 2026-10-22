@@ -93,6 +93,54 @@ class SavedScopeExchangeTest {
     }
 
     @ParameterizedTest
+    @CsvSource({"de", "en"})
+    void analysisLanguageSurvivesExportImportWithoutChangingReasons(String language) throws Exception {
+        var request = new HashMap<String, Object>(Map.of("requirement", "requirement",
+                "scores", Map.of("BP", 70d), "reasons", Map.of("BP", "Original rationale ORIGINAL-END-7319"),
+                "provider", "MOCK", "analysisLanguage", language));
+        var exported = controller().exportScores(request);
+        assertThat(exported.getStatusCode().value()).isEqualTo(200);
+        var imported = controller().importScores(mapper.writeValueAsString(exported.getBody()));
+        assertThat(imported.getStatusCode().value()).isEqualTo(200);
+        var reExported = controller().exportScores(imported.getBody());
+        assertThat(reExported.getStatusCode().value()).isEqualTo(200);
+        for (var result : List.of(exported.getBody(), imported.getBody(), reExported.getBody())) {
+            var json = mapper.valueToTree(result);
+            assertThat(json.path("analysisLanguage").asString()).isEqualTo(language);
+            assertThat(json.path("reasons").path("BP").asString()).isEqualTo("Original rationale ORIGINAL-END-7319");
+        }
+    }
+
+    @Test
+    void missingLanguageRemainsUnknownAndUnsupportedLanguageIsRejected() throws Exception {
+        var request = new HashMap<String, Object>(Map.of("requirement", "requirement", "scores", Map.of("BP", 70d), "provider", "MOCK"));
+        var imported = controller().importScores(mapper.writeValueAsString(request));
+        assertThat(imported.getBody()).containsEntry("analysisLanguage", null);
+        var exported = controller().exportScores(imported.getBody());
+        assertThat(mapper.valueToTree(exported.getBody()).path("analysisLanguage").isNull()).isTrue();
+        request.put("analysisLanguage", "fr");
+        assertThat(controller().exportScores(request).getStatusCode().value()).isEqualTo(400);
+        assertThat(controller().importScores(mapper.writeValueAsString(request)).getStatusCode().value()).isEqualTo(400);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.MethodSource("invalidRecordedLanguages")
+    void invalidLanguageIsRejectedInsteadOfLosingRecordedMetadata(String direction, Object value) throws Exception {
+        var request = new HashMap<String, Object>(Map.of("requirement", "requirement",
+                "scores", Map.of("BP", 70d), "provider", "MOCK", "analysisLanguage", value));
+        var response = direction.equals("export") ? controller().exportScores(request)
+                : controller().importScores(mapper.writeValueAsString(request));
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+    }
+
+    private static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> invalidRecordedLanguages() {
+        return java.util.stream.Stream.of("export", "import").flatMap(direction ->
+                java.util.stream.Stream.<Object>of("fr", "EN", "de-DE", "", " ", "\t",
+                                42, true, Map.of("value", "en"), List.of("en"))
+                        .map(value -> org.junit.jupiter.params.provider.Arguments.of(direction, value)));
+    }
+
+    @ParameterizedTest
     @CsvSource({"1, false", "2, true", "3, false", "4, true"})
     void unrecordedReasonLengthStaysUnknownInLegacyAndManualEvidence(int version, boolean explicitNull) throws Exception {
         var request = mapper.convertValue(evidence(version), new TypeReference<Map<String, Object>>() {});

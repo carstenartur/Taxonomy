@@ -60,9 +60,10 @@ class VisioHandoffContractTest {
             assertEquals(node.type(), data.get("taxonomy.type"));
             assertEquals(node.label(), data.get("taxonomy.label"));
             String display = data.get("label");
-            assertTrue(display.startsWith(node.id() + "\n"));
+            String identity = data.get("taxonomy.displayKey") + " | " + node.id();
+            assertTrue(display.startsWith(identity + "\n"));
             assertTrue(display.endsWith("\nDepth " + node.depth()));
-            assertEquals(node.label(), display.substring(node.id().length() + 1,
+            assertEquals(node.label(), display.substring(identity.length() + 1,
                     display.lastIndexOf("\nDepth ")).replace("\n", ""));
             assertEquals(node.relevance(), Double.parseDouble(data.get("taxonomy.relevance")));
             assertEquals(node.anchor() ? "1" : "0", data.get("taxonomy.anchor"));
@@ -82,17 +83,17 @@ class VisioHandoffContractTest {
         assertEquals(Set.of("CP-01", "BP-02", "relation/α"), shapeData(parts.get("visio/pages/page2.xml")).keySet());
     }
 
-    @Test void poiIndependentlyLoadsBothPagesAndEveryGlueEndpoint() throws Exception {
+    @Test void poiIndependentlyLoadsGraphAndEvidencePagesAndEveryGlueEndpoint() throws Exception {
         try (var reader = new XmlVisioDocument(new ByteArrayInputStream(new VisioPackageBuilder().build(fixtureDocument())))) {
-            assertEquals(2, reader.getPages().size());
+            assertEquals(3, reader.getPages().size());
             int shapes = 0, connections = 0;
             for (var page : reader.getPages()) {
-                assertTrue(page.getPageSize().getWidth() >= 11);
+                assertTrue(page.getPageSize().getWidth() >= (page.getName().startsWith("Evidence ") ? 8.3 : 11));
                 assertTrue(page.getPageSize().getHeight() >= 8.5);
                 shapes += page.getContent().getTopLevelShapes().size();
                 connections += page.getContent().getConnections().size();
             }
-            assertEquals(8, shapes);
+            assertEquals(11, shapes);
             assertEquals(6, connections);
         }
     }
@@ -117,7 +118,7 @@ class VisioHandoffContractTest {
                         new org.apache.poi.xdgf.usermodel.shape.ShapeRenderer());
                 var rendered = javax.imageio.ImageIO.read(image.toFile());
                 assertNotNull(rendered);
-                assertTrue(rendered.getWidth() >= 700);
+                assertTrue(rendered.getWidth() >= (page.getName().startsWith("Evidence ") ? 590 : 700));
                 assertTrue(Files.size(image) > 1000);
             }
         }
@@ -135,7 +136,7 @@ class VisioHandoffContractTest {
 
     @Test void impactPageUsesIndependentShapesConnectorsAndPropertyMaps() {
         VisioDocument document = fixtureDocument();
-        assertEquals(2, document.getPages().size());
+        assertEquals(3, document.getPages().size());
         VisioPage primary = document.getPages().get(0);
         VisioPage impact = document.getPages().get(1);
 
@@ -235,7 +236,7 @@ class VisioHandoffContractTest {
         Map<String, Map<String, String>> data = shapeData(parts(output).get("visio/pages/page1.xml"));
         assertEquals(152, data.size());
         assertEquals(longLabel, data.get("a").get("taxonomy.label"));
-        assertTrue(data.get("a").get("label").startsWith("a\n"));
+        assertTrue(data.get("a").get("label").startsWith("N1 | a\n"));
         assertTrue(data.get("a").get("label").contains("…\nDepth "));
         assertEquals("CUSTOM/RELATION", data.get("e149").get("taxonomy.type"));
     }
@@ -341,6 +342,12 @@ class VisioHandoffContractTest {
                 }
                 values.put(cells.get("Label"), cells.get("Value"));
             }
+            if (values.containsKey("taxonomy.presentationOnly")) {
+                assertEquals("1", values.get("taxonomy.presentationOnly"));
+                assertFalse(values.containsKey("taxonomy.id"), "Presentation shapes must not impersonate graph objects");
+                continue;
+            }
+            assertNotNull(values.get("taxonomy.id"), "Every graph shape must retain its canonical identity");
             values.put("label", shape.getElementsByTagNameNS(NS, "Text").item(0).getTextContent());
             assertNull(result.put(values.get("taxonomy.id"), values));
         }

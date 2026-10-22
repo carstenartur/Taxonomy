@@ -376,7 +376,8 @@ public class LlmService {
     }
 
     public AnalysisResult analyzeWithBudget(String businessText, AnalysisScope requestedScope) {
-        try (var reasons = withAnalysisReasonLength(null)) {
+        try (var reasons = withAnalysisReasonLength(null);
+             var language = AnalysisLanguageContext.open(AnalysisLanguageContext.resolveCurrentRequest(null))) {
             return analyzeWithFrozenReasonLength(businessText, requestedScope);
         }
     }
@@ -430,6 +431,7 @@ public class LlmService {
         }
         result.setAnalysisScope(scope);
         result.setAnalysisReasonLength(AnalysisReasonContext.current());
+        result.setAnalysisLanguage(AnalysisLanguageContext.current());
         result.setReasons(run.allReasons);
         result.setProvider(getActiveProviderName());
         result.setDiscrepancies(run.allDiscrepancies);
@@ -650,7 +652,8 @@ public class LlmService {
     }
 
     public void analyzeStreaming(String businessText, AnalysisScope requestedScope, AnalysisEventCallback callback) {
-        try (var reasons = withAnalysisReasonLength(null)) {
+        try (var reasons = withAnalysisReasonLength(null);
+             var language = AnalysisLanguageContext.open(AnalysisLanguageContext.resolveCurrentRequest(null))) {
             analyzeStreamingWithFrozenReasonLength(businessText, requestedScope, callback);
         }
     }
@@ -732,7 +735,8 @@ public class LlmService {
      */
     public LlmCallDetail analyzeSingleBatchDetailed(
             String businessText, List<TaxonomyNode> nodes, double parentScore) {
-        try (var reasons = withAnalysisReasonLength(null)) {
+        try (var reasons = withAnalysisReasonLength(null);
+             var language = AnalysisLanguageContext.open(AnalysisLanguageContext.resolveCurrentRequest(null))) {
             return scoreSiblingBatchDetailed(businessText, nodes, parentScore);
         } catch (ProductBatchFailure failure) {
             return failure.detail;
@@ -875,12 +879,15 @@ public class LlmService {
     /** Semantic input identity deliberately excludes credentials and transport-only retry settings. */
     public String recoveryPolicyFingerprint(String requestedProvider) {
         try (var reasons = withAnalysisReasonLength(null)) {
-            return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
+            String fingerprint = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(
                     recoveryProviderPolicyFingerprint(requestedProvider), PromptTemplateService.childAllocationContract(100),
                     PromptTemplateService.functionalScopeContract(),
                     TaxonomyService.ROOT_ASSESSMENT_CONTEXT_POLICY,
                     AnalysisReasonContext.POLICY,
                     AnalysisReasonContext.current().value());
+            return AnalysisLanguageContext.current() == null ? fingerprint
+                    : com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(fingerprint,
+                            AnalysisLanguageContext.POLICY, AnalysisLanguageContext.current().value());
         }
     }
 
@@ -1659,7 +1666,8 @@ public class LlmService {
                                              List<TaxonomyNode> pathNodes,
                                              Map<String, Double> allScores,
                                              Map<String, String> allReasons) {
-        try (var reasons = withAnalysisReasonLength(null)) {
+        try (var reasons = withAnalysisReasonLength(null);
+             var language = AnalysisLanguageContext.open(AnalysisLanguageContext.resolveCurrentRequest(null))) {
             return generateLeafJustificationWithFrozenReasonLength(businessText, leafCode, pathNodes, allScores, allReasons);
         }
     }

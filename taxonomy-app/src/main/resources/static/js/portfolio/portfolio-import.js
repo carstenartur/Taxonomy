@@ -403,6 +403,7 @@
                     }
                 })),
                 analyzeAfterImport: document.getElementById('analyzeAfterImport').checked,
+                analysisLanguage: window.TaxonomyContentLanguage?.analysis(),
                 provider: null, maxArchitectureNodes: 25,
                 idempotencyKey: `import-review:${projectId}:${state.sourceVersionId || 'draft'}:${Date.now()}`
             };

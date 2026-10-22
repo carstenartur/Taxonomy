@@ -13,6 +13,13 @@ import java.util.Map;
 /** Validates the bounded in-memory model before any VSDX bytes are emitted. */
 final class VisioPackageValidator {
 
+    // Graph duplication and readable text have distinct, bounded page budgets.
+    static final int MAX_DIAGRAM_PAGES = 32;
+    static final int MAX_EVIDENCE_PAGES = 128;
+    static final int MAX_PAGES = MAX_DIAGRAM_PAGES + MAX_EVIDENCE_PAGES;
+    // Twelve fixed package parts plus one contents part per page.
+    static final int MAX_OPC_PARTS = 12 + MAX_PAGES;
+
     static final long MAX_VISIO_ID = 0xffff_ffffL;
 
     private VisioPackageValidator() {
@@ -27,7 +34,7 @@ final class VisioPackageValidator {
             throw invalid("Visio page collection must not be null");
         }
 
-        if (pages.isEmpty() || pages.size() > 32) throw invalid("Visio profile requires 1 to 32 pages");
+        if (pages.isEmpty() || pages.size() > MAX_PAGES) throw invalid("Visio profile requires 1 to " + MAX_PAGES + " pages");
         validateProperties(document.getProperties());
         for (var loss : document.getLosses()) {
             if (loss == null) throw invalid("Missing loss entry");
@@ -35,10 +42,16 @@ final class VisioPackageValidator {
         }
         java.util.Set<Long> pageIds = new java.util.HashSet<>();
         long shapeCount = 0, connectorCount = 0;
+        int diagramPages = 0, evidencePages = 0;
         for (int pageIndex = 0; pageIndex < pages.size(); pageIndex++) {
             VisioPage page = pages.get(pageIndex);
             if (page == null) {
                 throw invalid("Page " + pageIndex + " must not be null");
+            }
+            if (page.isEvidencePage()) {
+                if (++evidencePages > MAX_EVIDENCE_PAGES) throw invalid("Visio evidence page limit exceeded");
+            } else if (++diagramPages > MAX_DIAGRAM_PAGES) {
+                throw invalid("Visio diagram page limit exceeded");
             }
             if (page.getId() == null || !page.getId().matches("0|[1-9][0-9]*")) throw invalid("Page ID must be a canonical unsigned integer");
             long pageId;
@@ -55,6 +68,9 @@ final class VisioPackageValidator {
                 throw invalid("Connect collection on page " + pageIndex + " must not be null");
             }
 
+            if (page.isEvidencePage() && (page.isRelationshipDetail() || !connects.isEmpty())) {
+                throw invalid("Visio evidence pages must contain presentation-only text, not graph connectors");
+            }
             shapeCount += shapes.size() + (page.getLegend() == null ? 0 : 1); connectorCount += connects.size();
             if (shapeCount > 20_000 || connectorCount > 60_000) throw invalid("Visio profile shape/connector limit exceeded");
             Map<Long, VisioShape> shapesById = new HashMap<>();
@@ -75,6 +91,11 @@ final class VisioPackageValidator {
                 maximumShapeId = Math.max(maximumShapeId, shapeId);
 
                 validateProperties(shape.getProperties());
+                if (page.isEvidencePage() && (!VisioProperty.bool(true).equals(
+                        shape.getProperties().get("taxonomy.presentationOnly"))
+                        || shape.getProperties().containsKey("taxonomy.id"))) {
+                    throw invalid("Visio evidence pages must contain presentation-only text");
+                }
                 validateXmlText(shape.getText(), "Text of shape " + shapeId);
                 if (shape.getType() != null) {
                     validateXmlText(shape.getType(), "Type of shape " + shapeId);

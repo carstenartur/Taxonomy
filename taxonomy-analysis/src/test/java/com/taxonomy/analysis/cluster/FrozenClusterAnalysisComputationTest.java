@@ -51,7 +51,8 @@ class FrozenClusterAnalysisComputationTest {
 
         var result = computation.score(new ClusterAnalysisStore.Input(context,
                 DurableClusterAnalysisExecutionTest.command(AnalysisMode.TAXONOMIES_ONLY, "MOCK")
-                        .withAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.DETAILED), true, null),
+                        .withAnalysisReasonLength(com.taxonomy.dto.AnalysisReasonLength.DETAILED)
+                        .withAnalysisLanguage(com.taxonomy.dto.AnalysisLanguage.GERMAN), true, null),
                 task, () -> false);
 
         assertThat(result.getStatus()).isEqualTo("SUCCESS");
@@ -60,6 +61,8 @@ class FrozenClusterAnalysisComputationTest {
         assertThat(result.getAnalysisScope().taxonomyRoots()).containsExactly("CP");
         assertThat(result.getProvider()).isEqualTo("Mock");
         assertThat(result.getAnalysisReasonLength()).isEqualTo(com.taxonomy.dto.AnalysisReasonLength.DETAILED);
+        assertThat(result.getAnalysisLanguage()).isEqualTo(com.taxonomy.dto.AnalysisLanguage.GERMAN);
+        assertThat(AnalysisLanguageContext.current()).isNull();
         assertThat(AnalysisReasonContext.current()).isNull();
         verifyNoInteractions(liveSettings);
         assertThat(FrozenCatalogueContext.current()).isNull();

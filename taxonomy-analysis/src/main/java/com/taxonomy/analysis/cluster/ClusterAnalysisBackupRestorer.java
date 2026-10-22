@@ -148,6 +148,7 @@ public final class ClusterAnalysisBackupRestorer {
                 && sourceCommand.maxArchitectureNodes() == command.maxArchitectureNodes() && Objects.equals(sourceCommand.provider(), command.provider())
                 && Objects.equals(sourceCommand.providerBinding(), command.providerBinding())
                 && Objects.equals(sourceCommand.analysisReasonLength(), command.analysisReasonLength())
+                && Objects.equals(sourceCommand.analysisLanguage(), command.analysisLanguage())
                 && Objects.equals(json.valueToTree(sourceCommand.retainedAnalysis()), json.valueToTree(command.retainedAnalysis())),
                 "Restore cannot change the captured analysis request");
         var state = ClusterAnalysisState.valueOf(run.sourceState());
@@ -382,6 +383,7 @@ public final class ClusterAnalysisBackupRestorer {
         result.setWarnings(warnings); result.setStatus("PARTIAL"); result.setErrorMessage(INTERRUPTED);
         result.setAnalysisScope(command.analysisScope());
         result.setAnalysisReasonLength(command.analysisReasonLength());
+        result.setAnalysisLanguage(command.analysisLanguage());
         if (archive.run().viewJson() != null) result.setViewContext(read(archive.run().viewJson(), ViewContext.class));
         result.setAnalysisDurationMillis(Math.max(0, archive.run().updatedAt() - archive.run().createdAt()));
         if (result.getArchitectureView() != null) {

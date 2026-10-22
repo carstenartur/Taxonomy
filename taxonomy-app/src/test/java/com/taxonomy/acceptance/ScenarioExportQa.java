@@ -74,6 +74,15 @@ public final class ScenarioExportQa {
         for (JsonNode page : visioManifest.path("pages")) {
             Set<String> localIds = new HashSet<>();
             for (JsonNode shape : page.path("shapes")) {
+                JsonNode properties = shape.path("properties");
+                if ("true".equals(properties.path("taxonomy.presentationOnly").path("value").asText())) {
+                    // Evidence text is visible content, not a graph node or a connector endpoint.
+                    assertThat(properties.path("taxonomy.presentationOnly").path("kind").asText()).isEqualTo("BOOLEAN");
+                    assertThat(properties.has("taxonomy.id")).isFalse();
+                    assertThat(shape.path("label").asText()).isNotBlank();
+                    continue;
+                }
+                assertThat(properties.path("taxonomy.id").path("value").asText()).isNotBlank();
                 localIds.add(shape.path("shapeId").asText());
                 shapeIds.add(shape.path("properties").path("taxonomy.id").path("value").asText());
             }

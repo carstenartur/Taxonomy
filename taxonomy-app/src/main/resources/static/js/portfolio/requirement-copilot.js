@@ -609,7 +609,7 @@
         if (!snapshotId) { await runDecisionReportExport(button, format); return; }
         window.TaxonomyDecisionExport.openSaved({projectId, snapshotId, language: locale, format,
             api: window.TaxonomyPortfolioApi,
-            submit: selection => runDecisionReportExport(button, selection.format, selection.options, selection.signal)});
+            submit: selection => runDecisionReportExport(button, selection.format, selection.options, selection.signal, selection.language)});
     }
 
     function markExportControls() {
@@ -619,7 +619,7 @@
         });
     }
 
-    async function runDecisionReportExport(button, format, options, signal) {
+    async function runDecisionReportExport(button, format, options, signal, language) {
         const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
         const surface = ensureExportSurface(button);
         const operationId = 'export-' + Date.now().toString(36) + '-' + format;
@@ -634,7 +634,7 @@
         try {
             throwIfExportCancelled(signal);
             const response = await window.TaxonomyPortfolioApi.downloadDecisionReport(
-                projectId, snapshotId, format, locale, options, { signal });
+                projectId, snapshotId, format, language || null, options, { signal });
             throwIfExportCancelled(signal);
             if (options && (response.redirected || response.headers.get('X-Taxonomy-Snapshot-Id') !== snapshotId
                     || !response.headers.get('X-Taxonomy-Analysis-SHA256'))) throw new Error('Snapshot report provenance is missing or differs.');

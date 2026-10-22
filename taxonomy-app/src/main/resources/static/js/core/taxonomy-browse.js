@@ -172,6 +172,8 @@
                         S.analysisCoverage = data.analysisCoverage || null;
                         S.lastAnalysisScope = data.analysisScope || null;
                         S.lastAnalysisReasonLength = data.analysisReasonLength || null;
+                        S.lastAnalysisLanguage = data.analysisLanguage || null;
+                        S.activeAnalysisLanguage = S.lastAnalysisLanguage;
                         window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
                         if (window.TaxonomyScoring?.applyLocalRawScores) {
                             window.TaxonomyScoring.applyLocalRawScores(data.rawScores || data.scores || {}, true);
@@ -702,6 +704,7 @@
         if (diagram && diagramData.length === 0) {
             cleanupD3(container);
             container.innerHTML = '<p class="text-muted p-3" role="status">' + t('view.relevance.empty') + '</p>';
+            window.TaxonomyViews?.installDiagramRelevanceControl?.(container);
             container.setAttribute('data-view-rendered', S.currentView);
         } else {
         switch (S.currentView) {
@@ -870,6 +873,7 @@
                 analysisCoverage: S.analysisCoverage || null,
                 analysisScope: S.lastAnalysisScope || null,
                 analysisReasonLength: S.lastAnalysisReasonLength || null,
+                analysisLanguage: S.lastAnalysisLanguage || null,
                 discrepancies: S.currentDiscrepancies || [],
                 productCoverageGaps: S.currentProductCoverageGaps || [],
                 language: window.TaxonomyI18n
@@ -881,11 +885,12 @@
                 language: request.language,
                 roots: (S.taxonomyData || []).map(function (root) { return {code: root.code, title: root.name || root.nameEn || root.code}; }),
                 analysisScope: S.lastAnalysisScope,
+                analysisLanguage: S.lastAnalysisLanguage,
                 selectedRoots: S.currentView === 'tree' ? [S.currentTreeRoot] : [],
                 submit: async function (selection) {
                     var report = await window.TaxonomyApiClient.requestBlob('/api/decision-report/' + selection.format, {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options}))
+                        body: JSON.stringify(Object.assign({}, frozenRequest, {exportOptions: selection.options, language: selection.language}))
                     }, { signal: selection.signal });
                     await window.TaxonomyDecisionExport.download(report.response, selection.format, null, selection.signal, report.blob, selection.descriptor);
                 }
@@ -902,7 +907,10 @@
             fetch('/api/report/' + format, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ scores: S.currentScores, businessText: businessText, minScore: 20 })
+                body: JSON.stringify({ scores: S.currentScores, businessText: businessText, minScore: 20,
+                    reasons: S.currentReasons || {},
+                    analysisLanguage: S.lastAnalysisLanguage || null,
+                    language: window.TaxonomyContentLanguage?.documentLanguage(S.lastAnalysisLanguage) })
             })
             .then(function (resp) {
                 if (!resp.ok) throw new Error('Report generation failed');
@@ -1752,6 +1760,7 @@
         fetch('/api/analyze-node?parentCode=' + encodeURIComponent(parentCode)
               + '&businessText=' + encodeURIComponent(S.storedBusinessText)
               + '&parentScore=' + encodeURIComponent(parentScore)
+              + '&analysisLanguage=' + encodeURIComponent(S.activeAnalysisLanguage || S.lastAnalysisLanguage || window.TaxonomyContentLanguage?.analysis() || document.documentElement.lang)
               + (S.analysisProviderId ? '&provider=' + encodeURIComponent(S.analysisProviderId) : '')
               + (S.analysisOperationId ? '&operationId=' + encodeURIComponent(S.analysisOperationId) : ''))
             .then(r => {
@@ -1864,6 +1873,7 @@
                                         SC().applyLocalRawScores({ [code]: val });
                                         S.currentReasons[code] = t('browse.manual.reason');
                                         S.lastAnalysisReasonLength = null;
+                                        S.lastAnalysisLanguage = null;
                                         SC().syncVisibleScoreNodes();
                                         updateExportGroupVisibility();
                                     }
@@ -1977,6 +1987,8 @@
         S.analysisProviderId = null;
         S.currentReasons = {};
         S.lastAnalysisReasonLength = null;
+        S.lastAnalysisLanguage = null;
+        S.activeAnalysisLanguage = null;
         S.storedBusinessText = null;
         S.evaluatedNodes = new Set();
         S.lastAnalyzedText = null;
@@ -2531,6 +2543,8 @@
 
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;
+        S.lastAnalysisLanguage = null;
+        S.activeAnalysisLanguage = null;
         S.analysisOperationId = null;
         S.analysisProviderId = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
@@ -2607,6 +2621,8 @@
         SC().applyLocalRawScores(scores, true);
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;
+        S.lastAnalysisLanguage = null;
+        S.activeAnalysisLanguage = null;
         window.TaxonomyAnalysisScope?.acceptResult?.(null);
         S.currentReasons = reasons;
         window._taxonomyCurrentScores = S.currentScores;

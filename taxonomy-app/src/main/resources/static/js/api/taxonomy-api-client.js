@@ -56,6 +56,15 @@ window.TaxonomyApiClient = (function () {
         }
     }
 
+    // A successful requirement save can admit Autopilot work. Capture the
+    // personal choice with that write; later passes use the persisted job value.
+    function requirementAnalysisLanguage(input, method) {
+        if (!['POST', 'PUT', 'PATCH'].includes(method) || !isSameOrigin(input)
+                || !/\/api\/projects\/\d+\/requirements(?:\/|$)/.test(requestPath(input))) return null;
+        var language = window.TaxonomyContentLanguage?.analysis();
+        return language === 'de' || language === 'en' ? language : null;
+    }
+
     function createRequestId() {
         if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
             return crypto.randomUUID();
@@ -222,6 +231,10 @@ window.TaxonomyApiClient = (function () {
                 && !headers.has(metadata.name)) {
             headers.set(metadata.name, metadata.value);
         }
+        var analysisLanguage = requirementAnalysisLanguage(input, method);
+        if (analysisLanguage && !headers.has('X-Taxonomy-Analysis-Language')) {
+            headers.set('X-Taxonomy-Analysis-Language', analysisLanguage);
+        }
         prepared.method = method;
         prepared.headers = headers;
         prepared.signal = signal;
@@ -338,11 +351,15 @@ window.TaxonomyApiClient = (function () {
             var method = (requestInit.method || (input instanceof Request ? input.method : 'GET'))
                 .toUpperCase();
             var metadata = csrfMetadata();
-            if (metadata && isSameOrigin(input) && method !== 'GET' && method !== 'HEAD') {
+            var analysisLanguage = requirementAnalysisLanguage(input, method);
+            if ((metadata && isSameOrigin(input) && method !== 'GET' && method !== 'HEAD') || analysisLanguage) {
                 var inheritedHeaders = input instanceof Request ? input.headers : undefined;
                 requestInit.headers = new Headers(requestInit.headers || inheritedHeaders || {});
-                if (!requestInit.headers.has(metadata.name)) {
+                if (metadata && !requestInit.headers.has(metadata.name)) {
                     requestInit.headers.set(metadata.name, metadata.value);
+                }
+                if (analysisLanguage && !requestInit.headers.has('X-Taxonomy-Analysis-Language')) {
+                    requestInit.headers.set('X-Taxonomy-Analysis-Language', analysisLanguage);
                 }
             }
 
