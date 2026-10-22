@@ -164,7 +164,8 @@ parallel jobs; compare their published timings after a complete successful run.
 The standalone `./mvnw -B verify -Pci -DrunOnnxTests=true` command does not activate
 sharding and continues to run the complete suite. In GitHub Actions, the
 `.mvn/verification-suites.json` `applicationTestShards` plan assigns measured
-recovery/restart and browser acceptance classes to isolated Maven runners. Their
+recovery/restart, browser acceptance and architecture scenario classes to isolated
+Maven runners. Their
 JUnit tags and Maven profiles are checked against the catalogue; app tests not
 listed for a shard—including newly added test classes—remain in the core group.
 The product-demo isolated Surefire execution and the required architecture gates
@@ -187,7 +188,7 @@ reports. Machine timings and a concise slow-suite inventory are retained in
 The inventory verifier is the Java `taxonomy-tooling` command
 `check-app-test-shards`; its source discovery, evidence validation and actual
 archive/staging shell contracts are tested with JUnit in the normal Maven
-lifecycle. Both isolated app runners also build `taxonomy-tooling` with
+lifecycle. All isolated app runners also build `taxonomy-tooling` with
 `-pl taxonomy-tooling,taxonomy-app -am`. No separate Node test runner is needed
 for this application-test partitioning.
 

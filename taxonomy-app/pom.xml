@@ -813,6 +813,12 @@
             </plugin></plugins></build>
         </profile>
         <profile>
+            <id>ci-app-test-shard-scenario</id>
+            <properties>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+            </properties>
+        </profile>
+        <profile>
             <id>ci-app-test-shards-coverage</id>
             <properties>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>

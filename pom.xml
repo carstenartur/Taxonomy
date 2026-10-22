@@ -700,7 +700,7 @@
                 <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
                 <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
-                <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser</excludedGroups>
+                <excludedGroups>real-llm,db-mssql,db-oracle,ci-app-shard-recovery,ci-app-shard-browser,ci-app-shard-scenario</excludedGroups>
                 <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
                 <taxonomy.coverage.policy.exclude>**/ReactorCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
             </properties>
@@ -729,6 +729,21 @@
                 <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
                 <groups>ci-app-shard-browser</groups>
+                <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
+                <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
+                <taxonomy.quality.skip>true</taxonomy.quality.skip>
+                <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>ci-app-test-shard-scenario</id>
+            <properties>
+                <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
+                <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
+                <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
+                <maven.build.cache.enabled>false</maven.build.cache.enabled>
+                <groups>ci-app-shard-scenario</groups>
                 <taxonomy.productDemo.testPhase>none</taxonomy.productDemo.testPhase>
                 <taxonomy.app.architectureAnchorPhase>none</taxonomy.app.architectureAnchorPhase>
                 <taxonomy.quality.skip>true</taxonomy.quality.skip>

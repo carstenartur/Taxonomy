@@ -3,6 +3,7 @@ package com.taxonomy.tooling;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.charset.StandardCharsets;
@@ -41,10 +42,10 @@ class QualityEvidenceFinalizationTest {
             assertThat(read(QUALITY + "tests/observability-performance/taxonomy-app/target/" + REPORT))
                     .isEqualTo(DEDICATED);
             Map<?, ?> counts = (Map<?, ?>) FlatJson.parseObject(read(QUALITY + "quality-summary.json")).get("tests");
-            assertThat(((Number) counts.get("tests")).intValue()).isEqualTo(4);
-            assertThat(((Number) counts.get("passed")).intValue()).isEqualTo(3);
+            assertThat(((Number) counts.get("tests")).intValue()).isEqualTo(5);
+            assertThat(((Number) counts.get("passed")).intValue()).isEqualTo(4);
             assertThat(((Number) counts.get("skipped")).intValue()).isEqualTo(1);
-            assertThat(((Number) counts.get("reportFiles")).intValue()).isEqualTo(4);
+            assertThat(((Number) counts.get("reportFiles")).intValue()).isEqualTo(5);
             assertThat(checkout.resolve(QUALITY + "evidence/observability-performance/tests")).doesNotExist();
         }
     }
@@ -61,7 +62,7 @@ class QualityEvidenceFinalizationTest {
         assertThat(result.exit()).as(result.output()).isZero();
         assertThat(FlatJson.parseObject(read(QUALITY + "quality-summary.json")))
                 .containsEntry("buildId", "123.2");
-        for (String shard : List.of("core", "browser", "recovery")) {
+        for (String shard : List.of("core", "browser", "recovery", "scenario")) {
             assertThat(FlatJson.parseObject(read(QUALITY + "evidence/application-test-shards/" + shard + "/manifest.json")))
                     .containsEntry("buildId", "123." + (shard.equals("browser") ? browserAttempt : 1) + "." + shard);
         }
@@ -93,21 +94,27 @@ class QualityEvidenceFinalizationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"report-bytes", "missing-report", "coverage-bytes", "commit", "sourceTree", "buildId", "counter"})
-    void refusesManifestDriftEvenWhenThePublishedSummaryIsInternallyConsistent(String mutation) throws Exception {
+    @CsvSource({"core,report-bytes", "core,missing-report", "core,coverage-bytes", "core,commit",
+            "core,sourceTree", "core,buildId", "core,counter", "scenario,missing-manifest",
+            "scenario,coverage-bytes", "scenario,commit"})
+    void refusesManifestDriftEvenWhenThePublishedSummaryIsInternallyConsistent(String shard, String mutation) throws Exception {
         fixture();
         // Keep the fixture independent of the report-path collision tested above.
         Files.delete(checkout.resolve(DEDICATED_REPORT));
         assertThat(finalizeEvidence().exit()).isZero();
 
-        String manifest = QUALITY + "evidence/application-test-shards/core/manifest.json";
+        String evidence = QUALITY + "evidence/application-test-shards/" + shard + "/";
+        String manifest = evidence + "manifest.json";
+        String report = shard.equals("core") ? CORE_REPORT
+                : QUALITY + "tests/application-test-shards/" + shard + "/" + REPORT;
         switch (mutation) {
-            case "report-bytes" -> put(CORE_REPORT, xml("changed-core-result", false));
-            case "missing-report" -> Files.delete(checkout.resolve(CORE_REPORT));
-            case "coverage-bytes" -> put(QUALITY + "evidence/application-test-shards/core/coverage.exec", "changed execution data");
+            case "report-bytes" -> put(report, xml("changed-result", false));
+            case "missing-report" -> Files.delete(checkout.resolve(report));
+            case "missing-manifest" -> Files.delete(checkout.resolve(manifest));
+            case "coverage-bytes" -> put(evidence + "coverage.exec", "changed execution data");
             case "commit" -> put(manifest, read(manifest).replace("\"HEAD\"", "\"other-commit\""));
             case "sourceTree" -> put(manifest, read(manifest).replace(tree(), "0".repeat(40)));
-            case "buildId" -> put(manifest, read(manifest).replace("123.2.core", "124.2.core"));
+            case "buildId" -> put(manifest, read(manifest).replace("123.2." + shard, "124.2." + shard));
             case "counter" -> put(manifest, read(manifest).replace("\"tests\": 1", "\"tests\": 2"));
             default -> throw new IllegalArgumentException(mutation);
         }
@@ -139,7 +146,7 @@ class QualityEvidenceFinalizationTest {
         put("target/ui-verification/summary.json", "{}");
         put("target/observability-performance/ci-scope.json", "{\"executed\":true}");
         put(DEDICATED_REPORT, DEDICATED);
-        for (String shard : List.of("core", "browser", "recovery")) {
+        for (String shard : List.of("core", "browser", "recovery", "scenario")) {
             String report = shard.equals("core") ? CORE : xml(shard, false);
             String destination = shard.equals("core") ? CORE_REPORT
                     : QUALITY + "tests/application-test-shards/" + shard + "/" + REPORT;
@@ -163,7 +170,7 @@ class QualityEvidenceFinalizationTest {
     }
 
     private void applicationBuildId(String buildId) throws Exception {
-        for (String shard : List.of("core", "browser", "recovery")) {
+        for (String shard : List.of("core", "browser", "recovery", "scenario")) {
             applicationBuildId(shard, buildId);
         }
     }

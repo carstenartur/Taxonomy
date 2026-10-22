@@ -76,7 +76,7 @@ def verify_application_shards(root: Path, summary: dict) -> None:
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError(f"application shard original digest differs: {path}")
 
-    for shard in ("core", "browser", "recovery"):
+    for shard in ("core", "browser", "recovery", "scenario"):
         manifest_path = evidence / shard / "manifest.json"
         if not manifest_path.is_file():
             raise ValueError(f"application shard manifest is missing: {shard}")

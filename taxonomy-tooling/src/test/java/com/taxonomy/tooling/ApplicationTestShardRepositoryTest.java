@@ -19,15 +19,23 @@ class ApplicationTestShardRepositoryTest {
         assertEquals("core", plan.get("defaultGroup")); assertFalse(plan.containsKey("allowedRepeatedClasses"));
         assertEquals(List.of(map("className", "com.taxonomy.composition.demo.ProductDemoEndToEndTest", "identities", List.of("product-demo-isolated")), map("className", "com.taxonomy.ArchitectureExceptionLedgerTest", "identities", List.of("default", "module-gate-ci-anchor"))), plan.get("requiredExecutions"));
         Element project = pom("");
+        Set<String> coreExclusions = new HashSet<>(strings(plan.get("excludedTags")));
         for (Map<String, Object> group : object(plan.get("groups")).values().stream().map(AppTestShardVerifier::object).toList()) {
             Element profile = profile(project, (String) group.get("profile"));
             if (Boolean.TRUE.equals(group.get("default"))) continue;
+            coreExclusions.add((String) group.get("tag"));
             assertTrue(XmlSupport.descendants(profile, "groups").stream().anyMatch(element -> element.getTextContent().equals(group.get("tag"))));
             for (String name : strings(group.get("tests"))) {
                 String source = Files.readString(root.resolve("taxonomy-app/src/test/java/" + name.replace('.', '/') + ".java"));
                 assertTrue(source.contains("@Tag(\"" + group.get("tag") + "\")"), name);
             }
         }
+        assertEquals(coreExclusions, Set.of(XmlSupport.childText(XmlSupport.child(
+                profile(project, "ci-app-test-shards-core"), "properties"), "excludedGroups").split(",")),
+                "Core must exclude exactly the global exclusions and every separately executed shard");
+        assertEquals(new HashSet<>(strings(plan.get("excludedTags"))), Set.of(XmlSupport.childText(XmlSupport.child(
+                profile(project, "ci"), "properties"), "excludedGroups").split(",")),
+                "Complete CI verification must retain every shard's tests");
         assertTrue(Boolean.TRUE.equals(object(object(plan.get("groups")).get("recovery")).get("requiresEmbeddingModel")));
         Element app = pom("taxonomy-app"), build = pom("taxonomy-build"), coverage = pom("taxonomy-coverage");
         assertTrue(XmlSupport.descendants(app, "execution").stream().anyMatch(element -> "stage-core-app-test-shard".equals(XmlSupport.childText(element, "id")) && "post-integration-test".equals(XmlSupport.childText(element, "phase"))));
@@ -36,8 +44,17 @@ class ApplicationTestShardRepositoryTest {
         assertTrue(XmlSupport.descendants(coverage, "goal").stream().anyMatch(element -> element.getTextContent().equals("merge")));
         assertTrue(XmlSupport.descendants(coverage, "dataFileInclude").stream().anyMatch(element -> element.getTextContent().equals("${taxonomy.app.shard.coverageInclude}")));
     }
+    @Test void longArchitectureScenarioRunsSeparatelyFromBrowserAcceptance() throws Exception {
+        Map<String, Object> groups = object(object(read(root.resolve(".mvn/verification-suites.json")).get("applicationTestShards")).get("groups"));
+        var scenario = groups.entrySet().stream().filter(entry -> strings(object(entry.getValue()).get("tests"))
+                .contains("com.taxonomy.ScenarioArchitectureAcceptanceTest")).findFirst().orElseThrow();
+        var browser = groups.entrySet().stream().filter(entry -> strings(object(entry.getValue()).get("tests"))
+                .contains("com.taxonomy.CoreUiAcceptanceIT")).findFirst().orElseThrow();
+        assertNotEquals(scenario.getKey(), browser.getKey(),
+                "The measured long architecture scenario must not consume the browser acceptance job's time budget");
+    }
     @Test void shardAndPackagingProfilesDisableCrossProfileBuildCacheReuse() throws Exception {
-        for (String module : List.of("", "taxonomy-app")) for (String id : List.of("ci-app-test-shards-core", "ci-app-test-shard-recovery", "ci-app-test-shard-browser", "ci-app-test-shards-coverage", "ci-plugin-packaging")) {
+        for (String module : List.of("", "taxonomy-app")) for (String id : List.of("ci-app-test-shards-core", "ci-app-test-shard-recovery", "ci-app-test-shard-browser", "ci-app-test-shard-scenario", "ci-app-test-shards-coverage", "ci-plugin-packaging")) {
             Element profile = profile(pom(module), id);
             assertEquals("false", XmlSupport.childText(XmlSupport.child(profile, "properties"), "maven.build.cache.enabled"), module + " " + id);
         }
