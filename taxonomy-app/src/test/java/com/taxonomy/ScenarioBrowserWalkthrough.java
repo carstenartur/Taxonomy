@@ -530,9 +530,23 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         Files.write(output.resolve(name), bytes);
     }
     private void click(By selector) {
-        WebElement element = wait.until(ExpectedConditions.elementToBeClickable(selector));
-        driver.executeScript("arguments[0].scrollIntoView({block:'center'})", element);
-        element.click();
+        click(driver, wait, selector);
+    }
+    static void click(RemoteWebDriver driver, WebDriverWait wait, By selector) {
+        wait.until(browser -> {
+            try {
+                WebElement element = ExpectedConditions.elementToBeClickable(selector).apply(browser);
+                if (element == null) return false;
+                // Bootstrap's smooth scrolling can move the target during the native hit test.
+                driver.executeScript(
+                        "arguments[0].scrollIntoView({behavior:'instant',block:'center',inline:'nearest'})",
+                        element);
+                element.click();
+                return true;
+            } catch (ElementClickInterceptedException | StaleElementReferenceException transientChange) {
+                return false;
+            }
+        });
     }
     private static void fill(WebElement root, String id, String text) {
         var field = root.findElement(By.id(id)); field.clear(); field.sendKeys(text);

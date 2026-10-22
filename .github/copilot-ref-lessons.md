@@ -48,6 +48,10 @@
 
 **Key takeaway:** A different database URL or `@DirtiesContext` does not isolate JVM-global bootstrap/cache state. Keep process isolation for this browser shard and retain the workspace's missing-source checkpoint validation.
 
+## Stabilize native browser clicks before the hit test (2026-10-22)
+
+Bootstrap enables smooth scrolling. A visible, enabled element can still move between `scrollIntoView` and WebDriver's native click, so an interception failure may show a clear target in the later screenshot. Scroll with `behavior:'instant'`, reacquire the element and retry only transient interception or staleness within the existing wait. Keep native clicks: the scenario regression asserts a trusted click after a temporary obstruction and a timeout with no clicks for a permanent obstruction.
+
 ## Do not use an HSTS-preloaded TLD as a Docker HTTP alias (2026-07-18)
 
 **Problem:** The Selenium application container used the single-label network alias `app` and served plain HTTP. Chrome matches that hostname against the HSTS-preloaded `.app` TLD and therefore rewrites `http://app:8080` to HTTPS. HSTS takes precedence over HTTPS-First feature flags, insecure-origin allowlists, and certificate-error options, so the tests fail with `ERR_SSL_PROTOCOL_ERROR` even when those switches are present.

@@ -5,9 +5,11 @@ import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
@@ -60,10 +62,12 @@ class WorkspaceProvisioningClaimIT {
             var factory = mock(DslGitRepositoryFactory.class);
             var central = repositories.getPrimaryRepository();
             var source = new DslGitRepository();
-            String base = source.commitDsl(central.getDefaultBranch(), "meta { language: \"taxdsl\"; }", "system", "Initial source");
+            String sourceDsl = "meta { language: \"taxdsl\"; }";
+            String base = source.commitDsl(central.getDefaultBranch(), sourceDsl, "system", "Initial source");
             when(factory.getSystemRepository()).thenReturn(source);
             var destination = mock(DslGitRepository.class);
-            when(destination.commitDslIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString())).thenReturn(base);
+            when(destination.commitDslIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString(),
+                    any(CommitProvenance.class))).thenReturn(base);
             when(destination.getHeadCommit("main")).thenReturn(null);
             when(factory.openWorkspaceRepository(id)).thenReturn(destination);
             var system = mock(SystemRepositoryService.class);
@@ -85,7 +89,16 @@ class WorkspaceProvisioningClaimIT {
                 assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
                         "Provisioning test workers did not terminate");
             }
-            verify(destination, times(1)).commitDslIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString());
+            var provenance = ArgumentCaptor.forClass(CommitProvenance.class);
+            verify(destination, times(1)).commitDslIfHeadMatches(eq("main"), isNull(), eq(sourceDsl),
+                    eq("claim-owner"), eq("Fork from shared/" + central.getDefaultBranch()), provenance.capture());
+            assertEquals("fork", provenance.getValue().operation());
+            assertEquals(1, provenance.getValue().sources().size());
+            var origin = provenance.getValue().sources().getFirst();
+            assertEquals(central.getRepositoryId(), origin.repositoryId());
+            assertEquals(central.getDefaultBranch(), origin.branch());
+            assertEquals(base, origin.commitId());
+            assertNull(origin.baseCommitId());
             verify(destination, never()).commitDsl(anyString(), anyString(), anyString(), anyString());
             var retained = repository.findByWorkspaceId(id).orElseThrow();
             assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());

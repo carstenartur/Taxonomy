@@ -1,17 +1,24 @@
 package com.taxonomy;
 
+import com.sun.net.httpserver.HttpServer;
 import com.taxonomy.acceptance.ScenarioLlmConfiguration;
 import com.taxonomy.acceptance.ScenarioLlmPlayback;
 import com.taxonomy.acceptance.ScenarioExportQa;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
+import com.taxonomy.testsupport.BrowserSession;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.HttpSessionEvent;
 import jakarta.servlet.http.HttpSessionIdListener;
 import jakarta.servlet.http.HttpSessionListener;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.openqa.selenium.By;
+import org.openqa.selenium.Dimension;
+import org.openqa.selenium.TimeoutException;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -25,6 +32,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.net.CookieManager;
 import java.net.CookiePolicy;
+import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -37,6 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Real HTTP, authentication, catalogue, jobs, persistence and exports; only LLM HTTP is replaced. */
 @Tag("ci-app-shard-browser")
@@ -112,6 +121,62 @@ class ScenarioArchitectureAcceptanceTest {
 
     @Test void generatesAndReopensScenarioArchitectureThroughTheRealCopilot() throws Exception {
         ScenarioAcceptanceProcess.verify();
+    }
+
+    @Test void nativeClickWaitsForTransientObstructionWithoutBypassingPermanentOverlay(
+            @TempDir Path downloads) throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("0.0.0.0", 0), 0);
+        server.createContext("/", exchange -> {
+            byte[] body = """
+                    <!doctype html><meta charset="utf-8"><title>Native result navigation</title>
+                    <style>
+                      html { scroll-behavior: smooth; }
+                      body { margin: 0; min-height: 400vh; }
+                      #result { display: inline-block; margin: 200vh 20px 0; padding: 20px; }
+                      #obstruction { position: fixed; inset: 0; z-index: 10;
+                        pointer-events: auto; background: rgb(0 0 0 / 20%); }
+                    </style>
+                    <a id="result" href="#selected">Open result</a><div id="selected">Selected result</div>
+                    <div id="obstruction">Waiting for the operation surface</div>
+                    <script>
+                      window.clicks = 0; window.trustedClicks = 0; window.wrongClicks = 0;
+                      document.getElementById('result').addEventListener('click', event => {
+                        window.clicks++; if (event.isTrusted) window.trustedClicks++;
+                      });
+                      document.getElementById('obstruction').addEventListener('click', () => window.wrongClicks++);
+                      if (location.pathname === '/transient') {
+                        addEventListener('scroll', () => setTimeout(() =>
+                          document.getElementById('obstruction').remove(), 2000), {once: true});
+                      }
+                    </script>
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var stream = exchange.getResponseBody()) { stream.write(body); }
+        });
+        server.start();
+        try (var session = BrowserSession.open(server.getAddress().getPort(), downloads)) {
+            var driver = session.driver();
+            driver.manage().window().setSize(new Dimension(1600, 1100));
+            driver.get(session.origin() + "/transient");
+            var wait = new WebDriverWait(driver, Duration.ofSeconds(8));
+            ScenarioBrowserWalkthrough.click(driver, wait, By.id("result"));
+            wait.until(browser -> browser.getCurrentUrl().endsWith("#selected"));
+            assertThat(driver.executeScript("return window.clicks")).isEqualTo(1L);
+            assertThat(driver.executeScript("return window.trustedClicks")).isEqualTo(1L);
+            assertThat(driver.executeScript("return window.wrongClicks")).isEqualTo(0L);
+
+            driver.get(session.origin() + "/blocked");
+            assertThatThrownBy(() -> ScenarioBrowserWalkthrough.click(driver,
+                    new WebDriverWait(driver, Duration.ofSeconds(3)), By.id("result")))
+                    .isInstanceOf(TimeoutException.class);
+            assertThat(driver.getCurrentUrl()).doesNotContain("#selected");
+            assertThat(driver.executeScript("return window.clicks")).isEqualTo(0L);
+            assertThat(driver.executeScript("return window.trustedClicks")).isEqualTo(0L);
+            assertThat(driver.executeScript("return window.wrongClicks")).isEqualTo(0L);
+        } finally {
+            server.stop(0);
+        }
     }
 
     void verifyScenario() throws Exception {
