@@ -58,6 +58,19 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 | `TAXONOMY_BACKUP_MAX_RETAINED_BYTES` | `taxonomy.backup.jobs.max-retained-bytes` | `68719476736` | 64 GiB Kontingent für aufbewahrte Archive; abgelaufene Dateien zählen bis zur erfolgreichen Löschung. |
 | `TAXONOMY_BACKUP_MAX_TEMPORARY_BYTES` | `taxonomy.backup.jobs.max-temporary-bytes` | `77309411328` | 72 GiB temporäres Kontingent, 24 GiB reserviert je Worker. Fehlgeschlagene Aufträge behalten die Reservierung bis zur Bereinigung. Mindestens 24 GiB. |
 
+## Signaturen der Modell-Git-Commits
+
+Diese Einstellungen gelten für die von Taxonomy intern erzeugten Modell-Commits in persönlichen und zentralen Repositories. [Signierte Modell-Commits](MODEL_COMMIT_SIGNING.md) beschreibt die Bereitstellung der Schlüssel, das Vertrauen in öffentliche Schlüssel und die Rotation.
+
+| Variable | Property / Gültigkeit | Standard | Bedeutung |
+|---|---|---|---|
+| `TAXONOMY_GIT_SIGNING_ENABLED` | `taxonomy.git.signing.enabled` | `false` | Signiert neue Modell-Commits mit dem vom Betreiber bereitgestellten OpenPGP-Dienstschlüssel. Ungültige Signaturkonfiguration führt zum Fehler. |
+| `TAXONOMY_GIT_SIGNING_SECRET_KEY_FILE` | `taxonomy.git.signing.secret-key-file` | leer | Pfad zum extern eingebundenen privaten OpenPGP-Schlüssel. Schlüssel außerhalb von Git und Sicherungen halten. |
+| `TAXONOMY_GIT_SIGNING_PASSPHRASE` | `taxonomy.git.signing.passphrase` | leer | Passphrase eines verschlüsselten privaten Schlüssels; über den Secret Store bereitstellen. |
+| `TAXONOMY_GIT_SIGNING_TRUSTED_PUBLIC_KEY_FILES` | `taxonomy.git.signing.trusted-public-key-files` | leer | Kommagetrennte Pfade vertrauenswürdiger öffentlicher OpenPGP-Schlüssel zur Prüfung eingehender Historien. |
+| `TAXONOMY_GIT_SIGNING_TRUSTED_PUBLIC_KEY_DIRECTORY` | `taxonomy.git.signing.trusted-public-key-directory` | leer | Verzeichnis zusätzlicher vertrauenswürdiger öffentlicher OpenPGP-Schlüssel. |
+| `TAXONOMY_GIT_SIGNING_REQUIRE_SIGNATURES` | `taxonomy.git.signing.require-signatures` | `false` | Lehnt bei Aktivierung unsignierte eingehende Commits ab. Vorhandene Signaturen werden auch bei deaktivierter Signierung und Signaturpflicht geprüft. |
+
 ## Datenbank und Suche
 
 Die HSQLDB-Poolvariablen gelten nur im HSQLDB-Profil; PostgreSQL, MSSQL und Oracle haben derzeit feste Profilwerte.

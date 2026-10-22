@@ -40,6 +40,14 @@
 
 **Key takeaway:** Do not increase the Spring test context cache while multiple contexts use `ddl-auto=create` against the same named in-memory HSQLDB. A targeted `@DirtiesContext` only hides the next context transition that can reproduce the stale repository.
 
+## Isolate browser application contexts from the JVM-wide Git bootstrap guard (2026-10-22)
+
+**Problem:** `DatabaseSetupBrowserTest` consumed `GitRepositoryBootstrap.BOOTSTRAPPED` before `ReformulationBrowserTest` started another Spring context. Even with different HSQLDB URLs, the static guard suppressed the second database's initial `draft`, so all four reformulation fixtures failed before reaching the browser.
+
+**Fix:** The existing `ci-app-test-shard-browser` Maven profile uses one fresh Surefire JVM per class (`forkCount=1`, `reuseForks=false`). The regression is the existing two-class sequence, with `-Dsurefire.runOrder=reversealphabetical` to run database setup first.
+
+**Key takeaway:** A different database URL or `@DirtiesContext` does not isolate JVM-global bootstrap/cache state. Keep process isolation for this browser shard and retain the workspace's missing-source checkpoint validation.
+
 ## Do not use an HSTS-preloaded TLD as a Docker HTTP alias (2026-07-18)
 
 **Problem:** The Selenium application container used the single-label network alias `app` and served plain HTTP. Chrome matches that hostname against the HSTS-preloaded `.app` TLD and therefore rewrites `http://app:8080` to HTTPS. HSTS takes precedence over HTTPS-First feature flags, insecure-origin allowlists, and certificate-error options, so the tests fail with `ERR_SSL_PROTOCOL_ERROR` even when those switches are present.
