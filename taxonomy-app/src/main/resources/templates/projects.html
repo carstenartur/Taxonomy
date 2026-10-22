@@ -77,9 +77,15 @@
             </div>
 
             <div id="projectWorkspace" class="d-none">
-                <div class="card card-body mb-3">
-                    <div th:replace="~{fragments/content-language-controls :: controls}"></div>
-                </div>
+                <details id="projectContentLanguages" class="mb-2">
+                    <summary class="small">
+                        <span th:text="#{language.ai}">AI answer language</span> /
+                        <span th:text="#{language.document}">Document language</span>
+                    </summary>
+                    <div class="card card-body mt-2">
+                        <div th:replace="~{fragments/content-language-controls :: controls}"></div>
+                    </div>
+                </details>
                 <section class="card shadow-sm mb-3">
                     <div class="card-body">
                         <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">

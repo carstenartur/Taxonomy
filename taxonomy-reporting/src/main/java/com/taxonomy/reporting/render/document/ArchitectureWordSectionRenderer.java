@@ -143,9 +143,7 @@ public final class ArchitectureWordSectionRenderer {
                 if (edge.metadata() == null && supplemental == null) continue;
                 writer.heading(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId(), 2, null);
                 // One point between evidence fields; body type remains the writer's readable 10pt.
-                if (edge.metadata() != null)
-                    relationshipDetails(edge.metadata(), labels.german()).forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
-                com.taxonomy.export.DiagramPresentation.relationshipEvidenceDetails(supplemental, labels.german())
+                relationshipDetails(edge.metadata(), supplemental, labels.german())
                         .forEach(detail -> writer.paragraph(detail).setSpacingAfter(20));
             }
         }
@@ -177,18 +175,34 @@ public final class ArchitectureWordSectionRenderer {
     }
 
     /** Equal recorded reasons share their value while retaining every source-field label. */
-    private static List<String> relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata, boolean german) {
+    private static List<String> relationshipDetails(com.taxonomy.diagram.DiagramRelationMetadata metadata,
+            Map<String, String> supplemental, boolean german) {
         var labels = german ? List.of("Aufgenommen weil", "Herleitungsbegründung", "Begründung der Aufnahme")
                 : List.of("Included because", "Derivation reason", "Presence reason");
-        var values = Arrays.asList(metadata.includedBecause(), metadata.derivationReason(), metadata.presenceReason());
+        var values = metadata == null ? Arrays.<String>asList(null, null, null)
+                : Arrays.asList(metadata.includedBecause(), metadata.derivationReason(), metadata.presenceReason());
         var grouped = new LinkedHashMap<String, List<String>>();
         for (int i = 0; i < labels.size(); i++) {
             String value = values.get(i);
             if (value != null) grouped.computeIfAbsent(value, ignored -> new ArrayList<>()).add(labels.get(i));
         }
+        // Group only exactly equal values within this relationship. Keep distinct wording,
+        // every source-field label and the frozen graph metadata unchanged.
+        if (supplemental != null) {
+            for (String key : List.of("presenceReason", "decisionComment")) {
+                String value = supplemental.get(key);
+                if (value == null || value.isBlank()) continue;
+                String label = key.equals("presenceReason")
+                        ? (german ? "Gespeicherte Auswahlbegründung" : "Recorded selection reason")
+                        : (german ? "Gespeicherter Prüfkommentar" : "Recorded review comment");
+                grouped.computeIfAbsent(value, ignored -> new ArrayList<>()).add(label);
+            }
+        }
         var result = new ArrayList<String>();
         boolean reasonsWritten = false;
-        for (String detail : com.taxonomy.export.DiagramPresentation.relationshipDetails(metadata, german)) {
+        var details = metadata == null ? List.<String>of()
+                : com.taxonomy.export.DiagramPresentation.relationshipDetails(metadata, german);
+        for (String detail : details) {
             if (labels.stream().anyMatch(label -> detail.startsWith(label + ": "))) {
                 if (!reasonsWritten) {
                     grouped.forEach((value, fields) -> result.add(String.join(", ", fields) + ": " + value));
@@ -198,6 +212,8 @@ public final class ArchitectureWordSectionRenderer {
                 result.add(detail);
             }
         }
+        if (!reasonsWritten)
+            grouped.forEach((value, fields) -> result.add(String.join(", ", fields) + ": " + value));
         return result;
     }
 
