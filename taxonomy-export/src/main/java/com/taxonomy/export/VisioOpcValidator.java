@@ -42,7 +42,7 @@ final class VisioOpcValidator {
 
     static void validate(Map<String, String> parts) {
         try {
-            check(parts.size() <= 64, "Too many OPC parts");
+            check(parts.size() <= VisioPackageValidator.MAX_OPC_PARTS, "Too many OPC parts");
             Map<String, Document> xml = new HashMap<>();
             long bytes = 0;
             for (var entry : parts.entrySet()) {
@@ -127,7 +127,8 @@ final class VisioOpcValidator {
                 validateSchema(PageContentsDocument.Factory.parse(contents));
                 validateShapes(contents, styleIds);
             }
-            check(!pageIds.isEmpty() && pageIds.size() <= 32, "Visio profile requires 1 to 32 pages");
+            check(!pageIds.isEmpty() && pageIds.size() <= VisioPackageValidator.MAX_PAGES,
+                    "Visio profile requires 1 to " + VisioPackageValidator.MAX_PAGES + " pages");
             check(pageTargets.size() == types.values().stream().filter("application/vnd.ms-visio.page+xml"::equals).count(), "Unindexed page contents");
         } catch (Exception e) {
             // This validates server-generated parts, not an uploaded user document.

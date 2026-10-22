@@ -69,8 +69,12 @@ final class VisioEvidencePages {
             if (current.size() < LINES_PER_PAGE) current.add("");
         }
         if (!current.isEmpty()) pages.add(List.copyOf(current));
-        if (document.getPages().size() + pages.size() > 32) {
-            throw new IllegalArgumentException("Complete readable Visio evidence exceeds the 32-page export capacity; select fewer elements. No reasons were truncated.");
+        long existingEvidence = document.getPages().stream().filter(VisioPage::isEvidencePage).count();
+        if (existingEvidence + pages.size() > VisioPackageValidator.MAX_EVIDENCE_PAGES
+                || document.getPages().size() + pages.size() > VisioPackageValidator.MAX_PAGES) {
+            throw new IllegalArgumentException("Complete readable Visio evidence exceeds the "
+                    + VisioPackageValidator.MAX_EVIDENCE_PAGES
+                    + "-page evidence capacity; select fewer elements. No reasons were truncated.");
         }
         var links = new HashMap<String, VisioProperty>();
         entries.forEach(entry -> links.put(entry.key(), entry.properties().get("taxonomy.evidencePage")));

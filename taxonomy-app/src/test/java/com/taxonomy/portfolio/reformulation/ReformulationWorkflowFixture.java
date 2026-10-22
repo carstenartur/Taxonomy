@@ -36,6 +36,9 @@ abstract class ReformulationWorkflowFixture {
     @Autowired WorkspaceManager workspaces;
     @Autowired WorkspaceArchitectureReadPort architecture;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired com.taxonomy.workspace.repository.UserWorkspaceRepository workspaceRows;
+    @Autowired com.taxonomy.workspace.storage.DslGitRepositoryFactory gitRepositories;
+    @Autowired com.taxonomy.dsl.export.TaxDslExportService dslExport;
     @MockitoBean WorkspaceResolver resolver;
     WorkspaceContext context;
     ProjectView project;
@@ -46,8 +49,29 @@ abstract class ReformulationWorkflowFixture {
     static final String ORIGINAL = "Arbeitszeiterfassung\n  <img src=x onerror=alert(1)>";
 
     @BeforeEach void fixture() {
+        // The application bootstrap runs once per JVM, not once per test context.
+        // Own a unique, readable source checkpoint instead of depending on draft
+        // left behind by another context or sharing its JGit pack-cache identity.
+        var source = repositories.createCentralRepository("Reformulation fixture",
+                "reformulation-" + UUID.randomUUID(), null,
+                RepositoryVisibility.PRIVATE, "architect", "draft");
+        var sourceGit = gitRepositories.createCentralRepository(
+                source.getRepositoryId(), source.getStorageRepositoryName());
+        String sourceDsl = dslExport.exportAll("default");
+        String sourceCommit;
+        try {
+            sourceCommit = sourceGit.commitDsl("draft", sourceDsl, "architect", "Reformulation fixture source");
+            assertThat(sourceGit.getDslAtCommit(sourceCommit)).isEqualTo(sourceDsl);
+        } catch (java.io.IOException failure) {
+            throw new AssertionError("Could not create the reformulation fixture checkpoint", failure);
+        }
+        repositories.markProvisioningReady(source.getRepositoryId());
         var workspace = workspaces.createWorkspace("architect", "Reformulation " + UUID.randomUUID(), "Isolation fixture");
+        workspace.setSourceRepositoryId(source.getRepositoryId());
+        workspaceRows.saveAndFlush(workspace);
         workspace = workspaces.provisionWorkspaceRepository("architect", workspace.getWorkspaceId());
+        assertThat(workspace.getBaseCommit()).isEqualTo(sourceCommit);
+        assertThat(workspace.getSourceRepositoryId()).isEqualTo(source.getRepositoryId());
         context = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
         select(context);
         project = projects.createProject(new CreateProjectRequest("P", "Project", "Frozen project context", ProjectStatus.ACTIVE,
