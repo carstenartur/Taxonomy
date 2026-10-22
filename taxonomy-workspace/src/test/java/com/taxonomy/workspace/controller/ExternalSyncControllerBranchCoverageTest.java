@@ -4,6 +4,7 @@ import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.ExternalGitSyncService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.eclipse.jgit.transport.FetchResult;
 import org.eclipse.jgit.transport.PushResult;
@@ -194,6 +195,63 @@ class ExternalSyncControllerBranchCoverageTest {
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(failure.getBody())
                 .containsEntry("error", "CONFIGURATION_FAILED");
+    }
+
+    @Test
+    void selectedOperationsUseOnlySelectedRepositoryAndItsDefaultBranch() throws Exception {
+        RepositoryMembershipService membership = org.mockito.Mockito.mock(RepositoryMembershipService.class);
+        controller = new ExternalSyncController(externalGitSyncService, systemRepositoryService,
+                workspaceResolver, membership);
+        SystemRepository selected = repository();
+        selected.setRepositoryId("selected");
+        selected.setDefaultBranch("review");
+        when(systemRepositoryService.getRepository("selected")).thenReturn(selected);
+        when(membership.canMaintain(selected, "alice")).thenReturn(true);
+        when(membership.canRead(selected, "alice")).thenReturn(true);
+        when(membership.isOwner(selected, "alice")).thenReturn(true);
+        when(fetchResult.getTrackingRefUpdates()).thenReturn(List.of());
+        doReturn(fetchResult).when(externalGitSyncService).fetchFromExternal("selected");
+        doReturn(pushResult).when(externalGitSyncService).pushToExternal("selected", "review");
+        doReturn("selected-commit").when(externalGitSyncService).fullSync("selected", "alice");
+        when(externalGitSyncService.getStatus("selected")).thenReturn(
+                new ExternalGitSyncService.ExternalSyncStatus(true, "https://example.test/selected.git", false,
+                        null, null, "selected-commit"));
+
+        assertThat(controller.fetchFromExternal("selected").getBody()).containsEntry("repositoryId", "selected");
+        assertThat(controller.pushToExternal(null, "selected").getBody()).containsEntry("branch", "review");
+        assertThat(controller.fullSync("selected").getBody()).containsEntry("commitId", "selected-commit");
+        assertThat(controller.getStatus("selected").getBody()).containsEntry("externalUrl", "https://example.test/selected.git");
+        assertThat(controller.configure("https://example.test/changed.git", null, "selected").getBody())
+                .containsEntry("repositoryId", "selected");
+        assertThat(selected.getExternalUrl()).isEqualTo("https://example.test/changed.git");
+        org.mockito.Mockito.verify(externalGitSyncService, org.mockito.Mockito.never()).fetchFromExternal();
+        org.mockito.Mockito.verify(externalGitSyncService, org.mockito.Mockito.never()).pushToExternal("review");
+        org.mockito.Mockito.verify(systemRepositoryService, org.mockito.Mockito.never()).getPrimaryRepository();
+    }
+
+    @Test
+    void explicitRepositoryRequiresMembershipBeforeRemoteWorkOrMetadataDisclosure() throws Exception {
+        RepositoryMembershipService membership = org.mockito.Mockito.mock(RepositoryMembershipService.class);
+        controller = new ExternalSyncController(externalGitSyncService, systemRepositoryService,
+                workspaceResolver, membership);
+        SystemRepository selected = repository();
+        when(systemRepositoryService.getRepository("private")).thenReturn(selected);
+
+        assertThat(controller.fetchFromExternal("private").getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(controller.pushToExternal("draft", "private").getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(controller.fullSync("private").getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(controller.configure("https://example.test/private.git", null, "private").getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(controller.getStatus("private").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        org.mockito.Mockito.verifyNoInteractions(externalGitSyncService);
+    }
+
+    @Test
+    void unknownSelectedStatusDoesNotReturnPrimaryStatus() {
+        when(systemRepositoryService.getRepository("missing"))
+                .thenThrow(new IllegalArgumentException("Architecture repository not found"));
+        assertThat(controller.getStatus("missing").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        org.mockito.Mockito.verifyNoInteractions(externalGitSyncService);
     }
 
     private static SystemRepository repository() {

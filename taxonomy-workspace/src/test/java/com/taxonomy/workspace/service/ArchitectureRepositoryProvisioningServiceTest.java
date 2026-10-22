@@ -1,6 +1,9 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.CommitProvenance;
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.MockedStatic;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
@@ -44,8 +47,15 @@ class ArchitectureRepositoryProvisioningServiceTest {
 
     private ArchitectureRepositoryProvisioningService service;
 
+    // Routing/lifecycle fixtures have no Git objects; real provenance is covered by snapshot tests.
+    private MockedStatic<CommitProvenance> provenanceCapture;
+
+    @AfterEach
+    void closeProvenanceCapture() { if (provenanceCapture != null) provenanceCapture.close(); }
+
     @BeforeEach
     void setUp() {
+        provenanceCapture = org.mockito.Mockito.mockStatic(CommitProvenance.class);
         service = new ArchitectureRepositoryProvisioningService(
                 systemRepositoryService, membershipService, repositoryFactory);
     }
@@ -143,7 +153,7 @@ class ArchitectureRepositoryProvisioningServiceTest {
                 "fork", "central-fork", "reference-fork", RepositoryLifecycleState.ACTIVE);
         when(systemRepositoryService.getRepository("source")).thenReturn(source);
         when(repositoryFactory.getCentralRepository("source")).thenReturn(sourceGit);
-        when(sourceGit.getDslAtHead("main"))
+        when(sourceGit.getDslAtCommit("source-commit"))
                 .thenReturn("meta { language: \"taxdsl\"; }\n");
         when(sourceGit.getHeadCommit("main")).thenReturn("source-commit");
         when(systemRepositoryService.createForkMetadata(

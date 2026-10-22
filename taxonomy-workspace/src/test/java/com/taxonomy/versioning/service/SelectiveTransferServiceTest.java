@@ -12,11 +12,18 @@ import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.signing.SigningTestKeys;
+import com.taxonomy.workspace.signing.SignatureStatus;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -34,6 +41,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
  * <p>Uses an in-memory DslGitRepository — no Spring context required.
  */
 class SelectiveTransferServiceTest {
+    @TempDir Path signingKeys;
 
     private DslGitRepository gitRepo;
     private DslGitRepositoryFactory factory;
@@ -215,7 +223,8 @@ class SelectiveTransferServiceTest {
     }
 
     @Test
-    void applyCopiesOnlySelectedElementsAndRelationsToCurrentBranch() throws IOException {
+    void applyCopiesOnlySelectedElementsAndRelationsToCurrentBranch() throws Exception {
+        gitRepo.withSignatureService(SigningTestKeys.createService(signingKeys), "central");
         String sourceCommit = gitRepo.commitDsl("source", DSL_SOURCE, "tester", "source");
         String targetCommit = gitRepo.commitDsl("target", DSL_TARGET, "tester", "target");
         TransferSelection selection = new TransferSelection(
@@ -228,6 +237,9 @@ class SelectiveTransferServiceTest {
         String commit = transferService.applyTransfer(selection);
 
         assertEquals(commit, gitRepo.getHeadCommit("target"));
+        assertEquals(SignatureStatus.VERIFIED, gitRepo.verifyCommit(commit).status());
+        assertEquals(List.of(sourceCommit, targetCommit), gitRepo.getProvenance(commit).sources().stream()
+                .map(com.taxonomy.workspace.storage.CommitProvenance.Source::commitId).toList());
         String committedDsl = gitRepo.getDslAtHead("target");
         assertTrue(committedDsl.contains("CP-1024"));
         assertTrue(committedDsl.contains("CP-1023 REALIZES CR-1047"));
@@ -236,6 +248,69 @@ class SelectiveTransferServiceTest {
                 .findElement("CP-1023")
                 .orElseThrow();
         assertEquals("Secure Voice", unselectedElement.getTitle());
+    }
+
+    @Test
+    void personalTransferRecordsWorkspaceIdentityForBothSourceProofs() throws Exception {
+        WorkspaceContext context = new WorkspaceContext(
+                "testuser", "personal-workspace", "target", "central-source");
+        DslGitRepository workspace = factory.openWorkspaceRepository("personal-workspace");
+
+        assertTransferRepositoryIdentity(context, workspace, "workspace:personal-workspace");
+
+        assertNull(factory.getCentralRepository("central-source").getHeadCommit("target"));
+    }
+
+    @Test
+    void centralTransferRetainsCatalogIdentityForBothSourceProofs() throws Exception {
+        WorkspaceContext context = new WorkspaceContext(
+                "testuser", null, "target", "selected-central");
+
+        assertTransferRepositoryIdentity(context,
+                factory.getCentralRepository("selected-central"), "selected-central");
+
+        assertNull(factory.getSystemRepository().getHeadCommit("target"));
+    }
+
+    private void assertTransferRepositoryIdentity(WorkspaceContext context,
+                                                   DslGitRepository repository,
+                                                   String expectedRepositoryId) throws Exception {
+        repository.withSignatureService(SigningTestKeys.createService(signingKeys), expectedRepositoryId);
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
+        String source = repository.commitDsl("source", DSL_SOURCE, "tester", "source");
+        String target = repository.commitDsl("target", DSL_TARGET, "tester", "target");
+        TransferSelection selection = new TransferSelection(
+                source, target, Set.of("CP-1024"), Set.of(), TransferSelection.TransferMode.COPY);
+
+        String result = transferService.applyTransfer(selection);
+
+        assertEquals(result, repository.getHeadCommit("target"));
+        assertEquals(SignatureStatus.VERIFIED, repository.verifyCommit(result).status());
+        var evidence = repository.getProvenance(result);
+        assertEquals(List.of(source, target), evidence.sources().stream()
+                .map(com.taxonomy.workspace.storage.CommitProvenance.Source::commitId).toList());
+        assertEquals(List.of(expectedRepositoryId, expectedRepositoryId), evidence.sources().stream()
+                .map(com.taxonomy.workspace.storage.CommitProvenance.Source::repositoryId).toList());
+        assertTrue(repository.getDslAtHead("target").contains("CP-1024"));
+    }
+
+    @Test
+    void cannotLaunderARejectedIncomingObjectThroughSelectiveTransfer() throws Exception {
+        gitRepo.withSignatureService(SigningTestKeys.createService(signingKeys), "central");
+        String source = gitRepo.commitDsl("source", DSL_SOURCE, "tester", "source");
+        String target = gitRepo.commitDsl("target", DSL_TARGET, "tester", "target");
+        byte[] raw = gitRepo.getGitRepository().open(ObjectId.fromString(source), Constants.OBJ_COMMIT).getBytes();
+        String rejected;
+        try (var inserter = gitRepo.getGitRepository().newObjectInserter()) {
+            byte[] tampered = new String(raw, StandardCharsets.UTF_8).replace("\n\nsource", "\n\ntampered")
+                    .getBytes(StandardCharsets.UTF_8);
+            rejected = inserter.insert(Constants.OBJ_COMMIT, tampered).name();
+            inserter.flush();
+        }
+        var selection = new TransferSelection(rejected, target, Set.of("CP-1024"), Set.of(), TransferSelection.TransferMode.COPY);
+        assertThrows(IOException.class, () -> transferService.applyTransfer(selection));
+        assertEquals(target, gitRepo.getHeadCommit("target"));
+        assertEquals(1, gitRepo.getCommitCount("target"));
     }
 
     @Test

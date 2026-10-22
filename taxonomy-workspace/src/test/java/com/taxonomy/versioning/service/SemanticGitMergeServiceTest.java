@@ -2,7 +2,11 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.signing.SigningTestKeys;
+import com.taxonomy.workspace.signing.SignatureStatus;
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
@@ -18,19 +22,27 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.io.IOException;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class SemanticGitMergeServiceTest {
+    @TempDir Path signingKeys;
 
     @Test
     void usesRequestedMessageForOrdinaryMergeCommit() throws Exception {
         try (DslGitRepository repository = ordinaryMergeRepository()) {
+            repository.withSignatureService(SigningTestKeys.createService(signingKeys), "central");
             SemanticGitMergeService.MergeOutcome outcome = new SemanticGitMergeService()
                     .mergeBranches(
                             repository,
@@ -42,6 +54,22 @@ class SemanticGitMergeServiceTest {
             assertThat(outcome.success()).isTrue();
             assertThat(outcome.semanticFallback()).isFalse();
             assertMergeCommit(repository, outcome.commitId(), "Portfolio review completed");
+            assertThat(repository.verifyCommit(outcome.commitId()).status()).isEqualTo(SignatureStatus.VERIFIED);
+        }
+    }
+
+    @Test
+    void signingFailureCannotPublishAnIntermediateMergeWithTheWrongMessage() throws Exception {
+        try (var repository = ordinaryMergeRepository()) {
+            String before = repository.getHeadCommit("bob");
+            var signatures = mock(GitCommitSignatureService.class);
+            doThrow(new IOException("Signing unavailable")).when(signatures)
+                    .sign(any(CommitBuilder.class), anyString(), anyString());
+            repository.withSignatureService(signatures, "central");
+            assertThatThrownBy(() -> new SemanticGitMergeService().mergeBranches(
+                    repository, "alice", "bob", "architect", "Reviewed final message"))
+                    .isInstanceOf(IOException.class);
+            assertThat(repository.getHeadCommit("bob")).isEqualTo(before);
         }
     }
 
@@ -71,6 +99,7 @@ class SemanticGitMergeServiceTest {
     @Test
     void mergesIndependentRequirementContributionsIntoARealMergeCommit() throws Exception {
         try (DslGitRepository repository = new DslGitRepository()) {
+            repository.withSignatureService(SigningTestKeys.createService(signingKeys), "central");
             repository.commitDsl("draft", document("""
                     project P-001 {
                       title: "Architecture";
@@ -117,6 +146,7 @@ class SemanticGitMergeServiceTest {
                     .contains("Reviewed architecture")
                     .contains("Shared target");
             assertMergeCommit(repository, outcome.commitId(), "Merge reviewed requirements");
+            assertThat(repository.verifyCommit(outcome.commitId()).status()).isEqualTo(SignatureStatus.VERIFIED);
         }
     }
 
@@ -163,6 +193,81 @@ class SemanticGitMergeServiceTest {
             assertThat(fileAtCommit(repository, outcome.commitId(), "requirements.md"))
                     .isEqualTo("Source contribution");
             assertThat(fileAtCommit(repository, outcome.commitId(), "README.md")).isEqualTo("base");
+        }
+    }
+
+    @Test
+    void semanticMergeRetainsDistinctSignedTransferProofsInItsParentsWithoutMergingThem() throws Exception {
+        var signatures = SigningTestKeys.createService(signingKeys);
+        try (var repository = new DslGitRepository().withSignatureService(signatures, "central");
+             var transfers = new DslGitRepository().withSignatureService(signatures, "transfer-source")) {
+            String base = document("""
+                    project P-001 {
+                      title: "Architecture";
+                      description: "Initial";
+                    }
+                    """);
+            String aliceDsl = document("""
+                    project P-001 {
+                      title: "Reviewed architecture";
+                      description: "Initial";
+                    }
+                    projectRequirement P-001 REQ-A-001 {
+                      title: "Alice requirement";
+                      text: "Secure voice";
+                    }
+                    """);
+            String bobDsl = document("""
+                    project P-001 {
+                      title: "Architecture";
+                      description: "Shared target";
+                    }
+                    projectRequirement P-001 REQ-B-001 {
+                      title: "Bob requirement";
+                      text: "Offline operation";
+                    }
+                    """);
+            repository.commitDsl("draft", base, "system", "Common signed base");
+            repository.createBranch("alice", "draft");
+            repository.createBranch("bob", "draft");
+            String aliceSource = transfers.commitDsl("alice", aliceDsl, "alice", "Original Alice transfer");
+            String bobSource = transfers.commitDsl("bob", bobDsl, "bob", "Original Bob transfer");
+            var aliceProof = CommitProvenance.capture("pull", transfers, "transfer-source", "alice", aliceSource, null);
+            var bobProof = CommitProvenance.capture("pull", transfers, "transfer-source", "bob", bobSource, null);
+            String aliceHead = repository.commitDsl("alice", aliceDsl, "alice", "Transfer Alice", aliceProof);
+            String bobHead = repository.commitDsl("bob", bobDsl, "bob", "Transfer Bob", bobProof);
+            repository.verifySnapshot(aliceHead);
+            repository.verifySnapshot(bobHead);
+            assertThat(repository.verifyCommit(aliceHead).status()).isEqualTo(SignatureStatus.VERIFIED);
+            assertThat(repository.verifyCommit(bobHead).status()).isEqualTo(SignatureStatus.VERIFIED);
+            assertThat(aliceProof.toBytes()).isNotEqualTo(bobProof.toBytes());
+
+            var service = new SemanticGitMergeService();
+            var preview = service.preview(repository, "alice", "bob");
+            assertThat(preview.success()).isTrue();
+            assertThat(preview.semanticFallback()).isTrue();
+            assertThat(preview.conflicts()).isEmpty();
+            assertThat(repository.getHeadCommit("alice")).isEqualTo(aliceHead);
+            assertThat(repository.getHeadCommit("bob")).isEqualTo(bobHead);
+
+            var merged = service.mergeBranches(repository, "alice", "bob", "architect", "Combine verified transfers");
+            assertThat(merged.success()).isTrue();
+            assertThat(merged.semanticFallback()).isTrue();
+            assertThat(merged.conflicts()).isEmpty();
+            assertThat(repository.verifyCommit(merged.commitId()).status()).isEqualTo(SignatureStatus.VERIFIED);
+            repository.verifySnapshot(merged.commitId());
+            assertThat(repository.getDslAtCommit(merged.commitId()))
+                    .contains("Reviewed architecture", "Shared target", "REQ-A-001", "REQ-B-001");
+            assertThat(repository.getProvenance(merged.commitId())).isNull();
+            assertThat(fileAtCommit(repository, merged.commitId(), CommitProvenance.FILENAME)).isNull();
+            try (var walk = new RevWalk(repository.getGitRepository())) {
+                var commit = walk.parseCommit(ObjectId.fromString(merged.commitId()));
+                assertThat(commit.getParents()).extracting(RevCommit::name).containsExactly(bobHead, aliceHead);
+            }
+            assertThat(repository.getProvenance(aliceHead).toBytes()).isEqualTo(aliceProof.toBytes());
+            assertThat(repository.getProvenance(bobHead).toBytes()).isEqualTo(bobProof.toBytes());
+            repository.getProvenance(aliceHead).verify(signatures);
+            repository.getProvenance(bobHead).verify(signatures);
         }
     }
 

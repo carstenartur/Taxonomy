@@ -222,6 +222,21 @@ class HelpControllerTest {
     }
 
     @Test
+    void modelCommitSigningGuideRendersLocalizedConfigurationAndCustodyExplanation() throws Exception {
+        for (String language : List.of("en", "de")) {
+            mockMvc.perform(get("/help/MODEL_COMMIT_SIGNING").param("lang", language).accept(MediaType.TEXT_HTML))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(containsString("<table>")))
+                    .andExpect(content().string(containsString("taxonomy.git.signing.secret-key-file")))
+                    .andExpect(content().string(containsString("TAXONOMY_GIT_SIGNING_REQUIRE_SIGNATURES")))
+                    .andExpect(content().string(containsString(".taxonomy-provenance.json")))
+                    .andExpect(content().string(containsString(language.equals("de")
+                            ? "Dienstsignatur durch Taxonomy im Auftrag des Benutzers"
+                            : "on behalf of the authenticated user")));
+        }
+    }
+
+    @Test
     void pathTraversalReturns400() throws Exception {
         mockMvc.perform(get("/help/..%2F..%2Fetc%2Fpasswd").accept(MediaType.TEXT_HTML))
                 .andExpect(status().is4xxClientError());

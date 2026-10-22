@@ -1,6 +1,7 @@
 package com.taxonomy.workspace.storage;
 
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.signing.GitCommitSignatureService;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import jakarta.persistence.EntityManagerFactory;
@@ -36,8 +37,9 @@ public class DslStorageConfig {
     @Bean
     public DslGitRepositoryFactory dslGitRepositoryFactory(
             HibernateRepositoryFactory hibernateRepositoryFactory,
-            SystemRepositoryService systemRepositoryService) {
+            SystemRepositoryService systemRepositoryService,
+            GitCommitSignatureService signatures) {
         log.info("Creating DslGitRepositoryFactory backed by jgit-storage-hibernate-core");
-        return new DslGitRepositoryFactory(hibernateRepositoryFactory, systemRepositoryService);
+        return new DslGitRepositoryFactory(hibernateRepositoryFactory, systemRepositoryService, signatures);
     }
 }

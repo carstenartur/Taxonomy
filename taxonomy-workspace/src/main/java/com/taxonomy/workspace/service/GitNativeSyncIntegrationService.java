@@ -3,6 +3,8 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.SyncState;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -166,6 +168,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         DslGitRepository workspaceGit =
                 repositoryFactory.openWorkspaceRepository(context.workspaceId());
         BranchSnapshot sourceSnapshot = snapshot(sourceRepository, sourceBranch);
+        requiredSnapshot(sourceSnapshot, "Source branch has no content: " + sourceBranch);
+        CommitProvenance provenance = CommitProvenance.capture("pull", sourceRepository,
+                sourceMetadata.getRepositoryId(), sourceBranch, sourceSnapshot.head(), integrationBase(workspaceMetadata));
         WorkspaceMergeState state = takeSource ? trackingState(workspaceGit) : initialiseWorkspaceMergeBase(
                 workspaceGit, sourceRepository, sourceSnapshot.dsl(), username, userBranch,
                 workspaceMetadata.getBaseCommit());
@@ -191,7 +196,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 ours,
                 localSnapshot.head(),
                 username,
-                "Semantic pull from " + sourceMetadata.getSlug());
+                "Semantic pull from " + sourceMetadata.getSlug(), provenance);
         trackBase(workspaceGit, state, merge.mergedText(), username);
         portfolioGitPort.materializePortfolio(merge.mergedText(), username, context);
 
@@ -237,6 +242,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         DslGitRepository workspaceGit =
                 repositoryFactory.openWorkspaceRepository(context.workspaceId());
         BranchSnapshot sourceSnapshot = snapshot(sourceRepository, sourceBranch);
+        // Reject an invalid incoming workspace checkpoint before creating synchronization bases.
+        snapshot(workspaceGit, userBranch);
         WorkspaceMergeState state = keepWorkspace ? trackingState(workspaceGit) : initialiseWorkspaceMergeBase(
                 workspaceGit, sourceRepository, sourceSnapshot.dsl(), username, userBranch,
                 workspaceMetadata.getBaseCommit());
@@ -247,6 +254,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         String sourceDsl = sourceSnapshot.dsl();
         BranchSnapshot localSnapshot = snapshot(workspaceGit, userBranch);
         String workspaceDsl = requiredSnapshot(localSnapshot, "Workspace branch has no content: " + userBranch);
+        CommitProvenance provenance = CommitProvenance.capture("publish", workspaceGit,
+                "workspace:" + context.workspaceId(), userBranch, localSnapshot.head(), integrationBase(workspaceMetadata));
 
         TaxDslMergeResult merge = keepWorkspace
                 ? new TaxDslMergeResult(workspaceDsl, java.util.List.of())
@@ -264,7 +273,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 sourceDsl,
                 sourceSnapshot.head(),
                 username,
-                "Semantic publish from workspace " + context.workspaceId());
+                "Semantic publish from workspace " + context.workspaceId(), provenance);
+        CommitProvenance published = CommitProvenance.capture("pull", sourceRepository,
+                sourceMetadata.getRepositoryId(), sourceBranch, sourceCommit, integrationBase(workspaceMetadata));
         String workspaceCommit = commitIfChanged(
                 workspaceGit,
                 userBranch,
@@ -272,7 +283,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 workspaceDsl,
                 localSnapshot.head(),
                 username,
-                "Integrate source changes after publish");
+                "Integrate source changes after publish", published);
         trackBase(workspaceGit, state, merge.mergedText(), username);
 
         WorkspaceContext centralContext = new WorkspaceContext(
@@ -381,6 +392,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         if (baseCommit != null && !baseCommit.isBlank()) {
             // Initial provisioning records the exact fork point. A newer source
             // HEAD is not the common ancestor of independent local/remote edits.
+            sourceRepository.verifySnapshot(baseCommit);
             commonBase = valueOrEmpty(sourceRepository.getDslAtCommit(baseCommit));
         } else {
             // Preserve the compatibility path for metadata without a fork point.
@@ -537,15 +549,30 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                    String expectedHead,
                                    String username,
                                    String message) throws IOException {
+        return commitIfChanged(repository, branch, merged, previous, expectedHead, username, message, null);
+    }
+
+    private String commitIfChanged(DslGitRepository repository, String branch, String merged,
+                                   String previous, String expectedHead, String username,
+                                   String message, CommitProvenance provenance) throws IOException {
         if (expectedHead != null && valueOrEmpty(previous).strip().equals(valueOrEmpty(merged).strip())) {
             return repository.verifyExpectedHead(branch, expectedHead);
         }
-        return repository.commitDslIfHeadMatches(branch, expectedHead, merged, username, message);
+        return provenance == null ? repository.commitDslIfHeadMatches(branch, expectedHead, merged, username, message)
+                : repository.commitDslIfHeadMatches(branch, expectedHead, merged, username, message, provenance);
     }
 
     /** Capture the ref before its content and reject an inconsistent observation. */
     private WorkspaceMergeState trackingState(DslGitRepository repository) throws IOException {
         String head = repository.getHeadCommit(TRACKING_BRANCH);
+        if (head != null) {
+            // This is accepted local bookkeeping, not a new incoming model snapshot.
+            // Keep legacy unsigned bases usable while still rejecting bad signatures.
+            SignatureStatus status = repository.verifyCommit(head).status();
+            if (status != SignatureStatus.UNSIGNED && status != SignatureStatus.VERIFIED) {
+                throw new IOException("Synchronization base rejected by signature validation: " + status);
+            }
+        }
         String dsl = valueOrEmpty(repository.getDslAtHead(TRACKING_BRANCH));
         repository.verifyExpectedHead(TRACKING_BRANCH, head);
         return new WorkspaceMergeState(dsl, head);
@@ -583,6 +610,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
     private BranchSnapshot snapshot(DslGitRepository repository, String branch) throws IOException {
         String head = repository.getHeadCommit(branch);
+        if (head != null) repository.verifySnapshot(head);
         return new BranchSnapshot(head, head == null ? "" : valueOrEmpty(repository.getDslAtCommit(head)));
     }
 
@@ -592,6 +620,13 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     }
 
     private record BranchSnapshot(String head, String dsl) { }
+
+    private static String integrationBase(UserWorkspace workspace) {
+        String integrated = workspace.getLastIntegratedCommit();
+        if (integrated != null && !integrated.isBlank()) return integrated;
+        String forkPoint = workspace.getBaseCommit();
+        return forkPoint == null || forkPoint.isBlank() ? null : forkPoint;
+    }
 
     private static void requireSuccess(String operation,
                                        SemanticGitMergeService.MergeOutcome outcome)

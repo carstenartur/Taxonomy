@@ -96,6 +96,53 @@ class PortfolioVersioningRecoveryIT {
         assertThat(text("versioningError")).isEmpty();
     }
 
+    @ParameterizedTest(name = "{0}: model history reports actual signature status and escapes verification metadata")
+    @ValueSource(strings = {"en", "de"})
+    void modelHistoryShowsVerificationAndSafeServiceAttribution(String locale) {
+        String hostile = "<img src=x onerror=\"window.signatureXss=true\">'&";
+        var commits = new java.util.ArrayList<Map<String, Object>>();
+        // Old servers/records can omit the field entirely.
+        commits.add(Map.of("commitId", "legacy", "author", "alice", "message", "Legacy change"));
+        for (String status : List.of("VERIFIED", "UNTRUSTED", "INVALID", "UNSUPPORTED", "FUTURE_STATUS")) {
+            commits.add(Map.of("commitId", status, "author", "alice", "message", "Model change",
+                    "signature", Map.of("status", status, "signer", hostile, "fingerprint", hostile,
+                            "serviceSignature", true, "reason", hostile)));
+        }
+        commits.add(Map.of("commitId", "external", "message", "External change", "signature",
+                Map.of("status", "VERIFIED", "signer", "External operator", "fingerprint", "ABC123",
+                        "serviceSignature", false)));
+        page.route("GET", PREFIX + "/api/dsl/history", request -> PortfolioClientTestPage.json(200, Map.of("commits", commits)));
+        page.openHtml(PREFIX, "/signature-history", """
+                <!doctype html><html lang="%s"><head><meta charset="UTF-8">
+                <script src="/taxonomy/js/taxonomy-i18n.js"></script>
+                <script src="/taxonomy/js/shared/taxonomy-utils.js"></script>
+                <script src="/taxonomy/js/versioning/taxonomy-versions.js"></script>
+                </head><body><div id="versionsTimeline"></div>
+                <script>TaxonomyI18n.ready().then(function () { TaxonomyVersions.loadTimeline(); });</script>
+                </body></html>
+                """.formatted(locale));
+        wait.until(d -> "loaded".equals(element("versionsTimeline").getDomAttribute("data-state")));
+        var signatures = driver.findElements(By.cssSelector(".commit-signature"));
+        assertThat(signatures).hasSize(7);
+        assertThat(signatures.getFirst().getText()).isEqualTo(locale.equals("de") ? "Nicht signiert" : "Unsigned");
+        String serviceLabel = locale.equals("de") ? "durch Taxonomy im Auftrag des Benutzers" : "by Taxonomy on behalf of the user";
+        String externalLabel = locale.equals("de") ? "Externe Signatur" : "External signature";
+        assertThat(signatures.get(1).findElement(By.tagName("summary")).getText()).contains(serviceLabel);
+        assertThat(signatures.get(1).findElement(By.tagName("summary")).getDomAttribute("title")).contains(hostile);
+        for (int i = 1; i < signatures.size(); i++) {
+            var signature = signatures.get(i);
+            signature.findElement(By.tagName("summary")).click();
+            assertThat(signature.findElements(By.tagName("img"))).isEmpty();
+            if (i < 6) assertThat(signature.getText()).contains(hostile);
+            if (i != 1) assertThat(signature.findElement(By.tagName("summary")).getText())
+                    .contains(externalLabel).doesNotContain(serviceLabel);
+            assertThat(signature.findElement(By.cssSelector(".badge")).getDomAttribute("class").contains("bg-success"))
+                    .isEqualTo(i == 1 || i == 6);
+        }
+        assertThat(signatures.get(5).getDomAttribute("data-signature-status")).isEqualTo("UNSUPPORTED");
+        assertThat(driver.executeScript("return window.signatureXss === true")).isEqualTo(false);
+    }
+
     @ParameterizedTest(name = "{0}: manual refresh preserves deliberately empty drafts = {1}")
     @MethodSource("localesAndEmpty")
     void manualRefreshPreservesExactMessagesAndIndependentBranches(String locale, boolean empty) {

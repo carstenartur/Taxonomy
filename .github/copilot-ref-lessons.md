@@ -40,6 +40,18 @@
 
 **Key takeaway:** Do not increase the Spring test context cache while multiple contexts use `ddl-auto=create` against the same named in-memory HSQLDB. A targeted `@DirtiesContext` only hides the next context transition that can reproduce the stale repository.
 
+## Isolate browser application contexts from the JVM-wide Git bootstrap guard (2026-10-22)
+
+**Problem:** `DatabaseSetupBrowserTest` consumed `GitRepositoryBootstrap.BOOTSTRAPPED` before `ReformulationBrowserTest` started another Spring context. Even with different HSQLDB URLs, the static guard suppressed the second database's initial `draft`, so all four reformulation fixtures failed before reaching the browser.
+
+**Fix:** The existing `ci-app-test-shard-browser` Maven profile uses one fresh Surefire JVM per class (`forkCount=1`, `reuseForks=false`). The regression is the existing two-class sequence, with `-Dsurefire.runOrder=reversealphabetical` to run database setup first.
+
+**Key takeaway:** A different database URL or `@DirtiesContext` does not isolate JVM-global bootstrap/cache state. Keep process isolation for this browser shard and retain the workspace's missing-source checkpoint validation.
+
+## Stabilize native browser clicks before the hit test (2026-10-22)
+
+Bootstrap enables smooth scrolling. A visible, enabled element can still move between `scrollIntoView` and WebDriver's native click, so an interception failure may show a clear target in the later screenshot. Scroll with `behavior:'instant'`, reacquire the element and retry only transient interception or staleness within the existing wait. Keep native clicks: the scenario regression asserts a trusted click after a temporary obstruction and a timeout with no clicks for a permanent obstruction.
+
 ## Do not use an HSTS-preloaded TLD as a Docker HTTP alias (2026-07-18)
 
 **Problem:** The Selenium application container used the single-label network alias `app` and served plain HTTP. Chrome matches that hostname against the HSTS-preloaded `.app` TLD and therefore rewrites `http://app:8080` to HTTPS. HSTS takes precedence over HTTPS-First feature flags, insecure-origin allowlists, and certificate-error options, so the tests fail with `ERR_SSL_PROTOCOL_ERROR` even when those switches are present.
@@ -102,6 +114,14 @@ The `DslGitRepository` uses `HibernateRepository` backed by the same `SessionFac
 The parser and source-range scanner must share delimiter recognition: braces in quoted values or trailing comments are not block structure. Cover header, property and closing-line comments, escaped quotes and LF/CRLF/CR through edit, delete and inverse tests.
 
 Undoing a deletion also needs the original insertion boundary. Recover it from the original Git document and surviving neighbor identities; appending a missing block changes order. Preserve intervening annotations and report a conflict if both placement anchors changed.
+
+### 2026-10-22 — Signing internally constructed model commits
+
+Model-history writers insert `CommitBuilder` objects directly; Git CLI signing settings do not cover them. Sign the complete payload before insertion and the expected-head ref update, including semantic merges and durable checkpoints. A signing failure must not publish an intermediate merge. Signed checkpoint retries must recognize an already published, verified equivalent payload because signature bytes may change with keys or execution context. Keep cross-repository evidence in the signed tree and carry original commit/tree bytes only, so repeated synchronization does not recursively embed older evidence.
+
+Reconcile duplicate OpenPGP certificates by full fingerprint before selecting a signer or verifying commits. Only cryptographically authenticated certificate updates may change expiry, usage or revocation policy; the auto-trusted secret-key copy must obey the same effective policy. Evaluate authenticated signature lifetimes per operation, and require a current binding and reciprocal signature for signing subkeys without falling back from newer restrictions. Test both file orders and forged updates.
+
+Incoming-history verification must exclude ancestry from accepted local heads captured before fetch, never remote-tracking or temporary staging refs. Reuse that boundary through the final merge, prune deleted remote refs, and treat an existing local sync base as accepted bookkeeping rather than a new incoming snapshot. Verify the parent content imported by a revert, and give cherry-picks/reverts fresh evidence without text-merging the reserved metadata file. Cross-repository proofs must use the exact catalog or workspace identity, not a display description.
 
 ### 2026-09-09 — Concurrent checkpoint publication and bounded race tests
 

@@ -161,6 +161,7 @@ public class DslDocumentApiController {
                 entry.put("author", c.author());
                 entry.put("message", c.message());
                 entry.put("timestamp", c.timestamp());
+                entry.put("signature", c.signature());
                 // Resolve documentId from the materialized document (if it exists)
                 entry.put("documentId", documents.findDocumentIdByCommitId(c.commitId()).orElse(null));
                 history.add(entry);

@@ -58,6 +58,19 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_BACKUP_MAX_RETAINED_BYTES` | `taxonomy.backup.jobs.max-retained-bytes` | `68719476736` | 64 GiB retained artifact quota; expired files count until deletion succeeds. |
 | `TAXONOMY_BACKUP_MAX_TEMPORARY_BYTES` | `taxonomy.backup.jobs.max-temporary-bytes` | `77309411328` | 72 GiB temporary quota, reserving 24 GiB per worker. Failed jobs retain reservations until cleanup. Minimum 24 GiB. |
 
+## Model Git commit signatures
+
+These settings apply to Taxonomy's internally generated model commits in personal and central repositories. See [Model commit signing](MODEL_COMMIT_SIGNING.md) for key provisioning, trust and rotation.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_GIT_SIGNING_ENABLED` | `taxonomy.git.signing.enabled` | `false` | Signs new model commits with the operator-provided OpenPGP service key. Invalid signing configuration fails closed. |
+| `TAXONOMY_GIT_SIGNING_SECRET_KEY_FILE` | `taxonomy.git.signing.secret-key-file` | empty | Path to the externally mounted private OpenPGP key. Keep the key outside Git and backups. |
+| `TAXONOMY_GIT_SIGNING_PASSPHRASE` | `taxonomy.git.signing.passphrase` | empty | Passphrase for an encrypted private key; supply through the platform secret store. |
+| `TAXONOMY_GIT_SIGNING_TRUSTED_PUBLIC_KEY_FILES` | `taxonomy.git.signing.trusted-public-key-files` | empty | Comma-separated paths to trusted public OpenPGP keys used to verify incoming history. |
+| `TAXONOMY_GIT_SIGNING_TRUSTED_PUBLIC_KEY_DIRECTORY` | `taxonomy.git.signing.trusted-public-key-directory` | empty | Directory of additional trusted public OpenPGP keys. |
+| `TAXONOMY_GIT_SIGNING_REQUIRE_SIGNATURES` | `taxonomy.git.signing.require-signatures` | `false` | Rejects unsigned incoming commits when enabled. Present signatures are checked even when signing and this requirement are disabled. |
+
 ## Database and Hibernate Search
 
 `TAXONOMY_DATASOURCE_URL` is the placeholder used by the supplied database profiles. `SPRING_DATASOURCE_URL` is Spring Boot's direct binding for the same `spring.datasource.url` property and has higher precedence. Choose one. The HSQLDB-specific pool variables below do not currently alter the fixed pool settings in the PostgreSQL, MSSQL or Oracle profile.

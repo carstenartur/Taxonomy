@@ -2,6 +2,7 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -43,7 +44,7 @@ public class ArchitectureRepositoryProvisioningService {
                 MINIMAL_DSL,
                 ownerId,
                 "Initialize architecture repository",
-                "Could not initialize central repository ");
+                "Could not initialize central repository ", null);
     }
 
     /** Create a durable central fork from the selected source repository/branch. */
@@ -66,11 +67,15 @@ public class ArchitectureRepositoryProvisioningService {
 
         String sourceDsl;
         String sourceCommit;
+        CommitProvenance provenance;
         try {
             DslGitRepository sourceGit =
                     repositoryFactory.getCentralRepository(source.getRepositoryId());
-            sourceDsl = sourceGit.getDslAtHead(sourceBranch);
             sourceCommit = sourceGit.getHeadCommit(sourceBranch);
+            if (sourceCommit == null) throw new IOException("Source branch has no commit");
+            provenance = CommitProvenance.capture("fork", sourceGit, source.getRepositoryId(),
+                    sourceBranch, sourceCommit, null);
+            sourceDsl = sourceGit.getDslAtCommit(sourceCommit);
         } catch (IOException | RuntimeException exception) {
             throw new IllegalStateException(
                     "Could not read source repository " + sourceRepositoryId,
@@ -95,7 +100,7 @@ public class ArchitectureRepositoryProvisioningService {
                 sourceDsl,
                 ownerId,
                 "Fork from " + source.getSlug() + "/" + sourceBranch,
-                "Could not initialize fork repository ");
+                "Could not initialize fork repository ", provenance);
     }
 
     private SystemRepository provisionRepository(
@@ -103,7 +108,8 @@ public class ArchitectureRepositoryProvisioningService {
             String dsl,
             String ownerId,
             String commitMessage,
-            String failurePrefix) {
+            String failurePrefix,
+            CommitProvenance provenance) {
         String repositoryId = metadata.getRepositoryId();
         boolean storageAttempted = false;
         try {
@@ -111,11 +117,12 @@ public class ArchitectureRepositoryProvisioningService {
             storageAttempted = true;
             DslGitRepository git = repositoryFactory.createCentralRepository(
                     repositoryId, metadata.getStorageRepositoryName());
-            git.commitDsl(
+            if (provenance == null) git.commitDsl(
                     metadata.getDefaultBranch(),
                     dsl,
                     ownerId,
                     commitMessage);
+            else git.commitDsl(metadata.getDefaultBranch(), dsl, ownerId, commitMessage, provenance);
             return systemRepositoryService.markProvisioningReady(repositoryId);
         } catch (IOException | RuntimeException exception) {
             if (storageAttempted) {

@@ -2,6 +2,9 @@
 
 Taxonomy stores Architecture DSL and preference history in relational database tables through the released [`jgit-storage-hibernate-core`](https://github.com/carstenartur/jgit-storage-hibernate) library. Taxonomy does not contain a copied implementation of JGit's DFS object, pack, reftable or reflog storage.
 
+For opt-in signatures, trust policy and key rotation in model history, see
+[Model commit signatures](MODEL_COMMIT_SIGNING.md).
+
 ## Responsibility boundary
 
 | Taxonomy owns | `jgit-storage-hibernate-core` owns |

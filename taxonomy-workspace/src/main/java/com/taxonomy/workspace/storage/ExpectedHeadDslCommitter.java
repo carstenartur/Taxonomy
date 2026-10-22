@@ -4,17 +4,14 @@ import com.taxonomy.workspace.service.BranchHeadConflictException;
 
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.lib.TreeFormatter;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 /**
@@ -44,13 +41,7 @@ public final class ExpectedHeadDslCommitter {
 
         PersonIdent actor = personIdent(request.author());
         try (ObjectInserter inserter = repository.newObjectInserter()) {
-            ObjectId blobId = inserter.insert(
-                    Constants.OBJ_BLOB,
-                    request.dslText().getBytes(StandardCharsets.UTF_8));
-            TreeFormatter tree = new TreeFormatter();
-            tree.append(DslGitRepository.DSL_FILENAME,
-                    FileMode.REGULAR_FILE, blobId);
-            ObjectId treeId = inserter.insert(tree);
+            ObjectId treeId = dslRepository.insertDslTree(inserter, request.dslText(), request.provenance());
 
             CommitBuilder commit = new CommitBuilder();
             commit.setTreeId(treeId);
@@ -61,6 +52,7 @@ public final class ExpectedHeadDslCommitter {
                 commit.setParentId(expectedHead);
             }
 
+            dslRepository.signCommit(commit, request.branch());
             ObjectId commitId = inserter.insert(commit);
             inserter.flush();
 
@@ -205,7 +197,12 @@ public final class ExpectedHeadDslCommitter {
             String expectedHeadCommit,
             String dslText,
             String author,
-            String message) {
+            String message,
+            CommitProvenance provenance) {
+
+        public CommitRequest(String branch, String expectedHeadCommit, String dslText, String author, String message) {
+            this(branch, expectedHeadCommit, dslText, author, message, null);
+        }
 
         public CommitRequest {
             branch = normalizeBranch(branch);

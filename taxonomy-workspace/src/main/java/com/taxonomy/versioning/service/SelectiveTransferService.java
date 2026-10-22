@@ -9,6 +9,7 @@ import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.CommitProvenance;
 import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -161,10 +162,18 @@ public class SelectiveTransferService {
 
         String targetBranch = contextNavigationService.getCurrentContext(
                 workspaceResolver.resolveCurrentUsername()).branch();
+        String repositoryId = ctx.workspaceId() == null
+                ? ctx.repositoryId() : "workspace:" + ctx.workspaceId();
+        var sourceEvidence = CommitProvenance.capture("selective-transfer", repo, repositoryId,
+                "detached", selection.sourceContextId(), selection.targetContextId());
+        var targetEvidence = CommitProvenance.capture("selective-transfer", repo, repositoryId,
+                "detached", selection.targetContextId(), null);
+        var provenance = new CommitProvenance(1, "selective-transfer", List.of(
+                sourceEvidence.sources().getFirst(), targetEvidence.sources().getFirst()));
         String commitId = repo.commitDsl(
                 targetBranch, mergedDsl, "system",
                 "Selective transfer: " + selection.selectedElementIds().size() + " elements, "
-                        + selection.selectedRelationIds().size() + " relations");
+                        + selection.selectedRelationIds().size() + " relations", provenance);
 
         log.info("Selective transfer applied: {} elements, {} relations → commit '{}'",
                 selection.selectedElementIds().size(),
@@ -177,6 +186,7 @@ public class SelectiveTransferService {
     // ── Internal helpers ────────────────────────────────────────────
 
     private CanonicalArchitectureModel loadModel(DslGitRepository repo, String commitId) throws IOException {
+        repo.verifySnapshot(commitId);
         String dsl = repo.getDslAtCommit(commitId);
         if (dsl == null) {
             throw new IOException("No DSL content at commit: " + commitId);

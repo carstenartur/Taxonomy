@@ -75,6 +75,7 @@ public class HelpController {
         new String[]{"CATALOGUE_OVERLAY_PROPOSALS", "🧩", "help.toc.CATALOGUE_OVERLAY_PROPOSALS", "help.audience.developers"},
         new String[]{"GIT_INTEGRATION",           "🔀", "help.toc.GIT_INTEGRATION",               "help.audience.developers"},
         new String[]{"JGIT_STORAGE_HIBERNATE",    "🗃️", "help.toc.JGIT_STORAGE_HIBERNATE",        "help.audience.devops"},
+        new String[]{"MODEL_COMMIT_SIGNING",      "🔏", "help.toc.MODEL_COMMIT_SIGNING",          "help.audience.devops"},
         new String[]{"PREFERENCES",               "🎛️", "help.toc.PREFERENCES",                   "help.audience.admins"},
         new String[]{"AI_PROVIDERS",              "🤖", "help.toc.AI_PROVIDERS",                  "help.audience.everyone"},
         new String[]{"COPILOT_AUTOPILOT",         "🚁", "help.toc.COPILOT_AUTOPILOT",             "help.audience.everyone"},

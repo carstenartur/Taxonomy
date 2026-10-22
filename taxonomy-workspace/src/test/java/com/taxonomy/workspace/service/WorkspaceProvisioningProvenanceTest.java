@@ -64,6 +64,11 @@ class WorkspaceProvisioningProvenanceTest {
             assertEquals(destination.getHeadCommit("draft"), ready.getCurrentCommit());
             assertEquals(List.of("draft"), destination.getBranchNames());
             assertEquals(1, destination.getDslHistory("draft").size());
+            var provenance = destination.getProvenance(ready.getCurrentCommit());
+            assertEquals("fork", provenance.operation());
+            assertEquals(id, provenance.sources().getFirst().repositoryId());
+            assertEquals("release/approved", provenance.sources().getFirst().branch());
+            assertEquals(captured, provenance.sources().getFirst().commitId());
             assertEquals(primaryDraft, primary.getHeadCommit("draft"));
             verify(catalog, never()).getPrimaryRepository();
             verify(factory, never()).getSystemRepository();

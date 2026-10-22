@@ -46,6 +46,11 @@ class WorkspaceFactoryRetryRecoveryTest {
             assertEquals(allocated, destination.getHeadCommit(branch));
             assertEquals(1, destination.getDslHistory(branch).size());
             assertEquals(List.of(branch), destination.getBranchNames());
+            var provenance = destination.getProvenance(allocated);
+            assertEquals("fork", provenance.operation());
+            assertEquals("retry-source", provenance.sources().getFirst().repositoryId());
+            assertEquals("release", provenance.sources().getFirst().branch());
+            assertEquals(captured, provenance.sources().getFirst().commitId());
         }
     }
 
