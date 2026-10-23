@@ -481,52 +481,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: junit-ui-contracts, path: 'taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.JavascriptContractTest.xml', if-no-files-found: error, retention-days: 90 }
 
-  ui-system-packages:
-    name: UI system packages / Paketvorbereitung
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      cache-key: ${{ steps.cache-key.outputs.key }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with: { persist-credentials: false }
-      - name: Identify the exact runner image
-        id: cache-key
-        env:
-          PACKAGE_KEY_PREFIX: ${{ runner.os }}-taxonomy-ui-playwright-packages-v1-${{ hashFiles('.github/scripts/install-playwright-github.sh', '.github/package-lock.json') }}
-        run: |
-          : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}"
-          echo "key=${PACKAGE_KEY_PREFIX}-${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
-      - name: Cache UI system packages
-        id: packages
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            .cache/playwright-system-packages/*.deb
-            .cache/playwright-system-packages/SHA256SUMS
-          key: ${{ steps.cache-key.outputs.key }}
-      - name: Set up Java 21
-        if: steps.packages.outputs.cache-hit != 'true'
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with: { java-version: '21', distribution: temurin, cache: maven }
-      - name: Prepare pinned Node and Playwright CLI through Maven
-        if: steps.packages.outputs.cache-hit != 'true'
-        run: ./mvnw -B -f .github/ui-verification-pom.xml process-resources -Pshard
-      - name: UI system packages / Paketinstallation (download only)
-        if: steps.packages.outputs.cache-hit != 'true'
-        timeout-minutes: 8
-        working-directory: .github
-        run: |
-          export PATH="$GITHUB_WORKSPACE/.cache/ui-frontend/node:$PATH"
-          timeout --foreground 470s bash scripts/install-playwright-github.sh --only-download || {
-            status=$?
-            echo "::error title=UI system packages / Paketinstallation::Package download failed (exit $status; 124 means timeout). Check the apt mirror/network, not the browser tests."
-            exit "$status"
-          }
-
   ui-shards:
     name: UI shard / ${{ matrix.shard }}
-    needs: [application, ui-plan, ui-contracts, ui-system-packages]
+    needs: [application, ui-plan, ui-contracts]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -548,36 +505,60 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}-webkit-${{ matrix.requiresWebKit }}
+      - name: Prepare pinned Node and Playwright CLI through Maven
+        run: ./mvnw -B -f .github/ui-verification-pom.xml process-resources -Pshard
+      # Only one shard needs WebKit. Prepare and consume its package cache on
+      # the same runner: independent hosted jobs can receive different images.
+      - name: Identify the exact runner image
+        if: matrix.requiresWebKit == true
+        id: cache-key
+        env:
+          PACKAGE_KEY_PREFIX: ${{ runner.os }}-taxonomy-ui-playwright-packages-v1-${{ hashFiles('.github/scripts/install-playwright-github.sh', '.github/package-lock.json') }}
+        run: |
+          : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}"
+          echo "key=${PACKAGE_KEY_PREFIX}-${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
       - name: Restore UI system packages (exact runner image)
-        id: restored-packages
+        if: matrix.requiresWebKit == true
+        id: packages
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             .cache/playwright-system-packages/*.deb
             .cache/playwright-system-packages/SHA256SUMS
-          key: ${{ needs.ui-system-packages.outputs.cache-key }}
-          fail-on-cache-miss: true
+          key: ${{ steps.cache-key.outputs.key }}
       - name: Check package cache runner compatibility
+        if: matrix.requiresWebKit == true
         env:
-          PACKAGE_KEY: ${{ needs.ui-system-packages.outputs.cache-key }}
-          PACKAGE_CACHE_HIT: ${{ steps.restored-packages.outputs.cache-hit }}
+          PACKAGE_KEY: ${{ steps.cache-key.outputs.key }}
+          PACKAGE_CACHE_HIT: ${{ steps.packages.outputs.cache-hit }}
+          PACKAGE_CACHE_MATCHED_KEY: ${{ steps.packages.outputs.cache-matched-key }}
         run: |
-          [[ "$PACKAGE_CACHE_HIT" == true ]] || {
-            echo "::error title=UI system packages / Paketinstallation::An exact package cache hit is required; prefix restores are not accepted."
-            exit 1
-          }
           : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}"
           [[ "$PACKAGE_KEY" == *"-${ImageOS}-${ImageVersion}" ]] || {
-            echo "::error title=UI system packages / Paketinstallation::Runner image differs from the package preparation job."
+            echo "::error title=UI system packages / Paketinstallation::Package cache key does not match this runner image."
             exit 1
           }
-      - name: Prepare pinned Node and Playwright CLI through Maven
-        run: ./mvnw -B -f .github/ui-verification-pom.xml process-resources -Pshard
-      - name: UI system packages / Paketinstallation (offline)
+          if [[ -n "$PACKAGE_CACHE_MATCHED_KEY" || "$PACKAGE_CACHE_HIT" == true ]]; then
+            [[ "$PACKAGE_CACHE_HIT" == true && "$PACKAGE_CACHE_MATCHED_KEY" == "$PACKAGE_KEY" ]] || {
+              echo "::error title=UI system packages / Paketinstallation::Only an exact package cache hit may be consumed; prefix restores are not accepted."
+              exit 1
+            }
+          fi
+      - name: UI system packages / Paketinstallation (download only)
+        if: matrix.requiresWebKit == true && steps.packages.outputs.cache-hit != 'true'
         timeout-minutes: 8
         working-directory: .github
-        env:
-          TAXONOMY_PLAYWRIGHT_SKIP_WEBKIT: ${{ !matrix.requiresWebKit }}
+        run: |
+          export PATH="$GITHUB_WORKSPACE/.cache/ui-frontend/node:$PATH"
+          timeout --foreground 470s bash scripts/install-playwright-github.sh --only-download || {
+            status=$?
+            echo "::error title=UI system packages / Paketinstallation::Package download failed (exit $status; 124 means timeout). Check the apt mirror/network, not the browser tests."
+            exit "$status"
+          }
+      - name: UI system packages / Paketinstallation (offline)
+        if: matrix.requiresWebKit == true
+        timeout-minutes: 8
+        working-directory: .github
         run: |
           export PATH="$GITHUB_WORKSPACE/.cache/ui-frontend/node:$PATH"
           timeout --foreground 470s bash scripts/install-playwright-github.sh --offline-mode --system-packages-only || {
@@ -585,6 +566,14 @@ jobs:
             echo "::error title=UI system packages / Paketinstallation::Offline package installation failed (exit $status; 124 means timeout). No mirror fallback was attempted."
             exit "$status"
           }
+      - name: Save UI system packages (exact runner image)
+        if: matrix.requiresWebKit == true && steps.packages.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            .cache/playwright-system-packages/*.deb
+            .cache/playwright-system-packages/SHA256SUMS
+          key: ${{ steps.cache-key.outputs.key }}
       - name: Download commit-bound UI application
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: taxonomy-ui-application, path: target/ui-application }

@@ -70,12 +70,18 @@ requires a pre-existing identity provider.
 
 ### GitHub UI system package cache
 
-The `ui-system-packages` job resolves WebKit's missing dependency closure with
-the pinned Playwright CLI and downloads the `.deb` files without installing them.
-The exact cache key includes the installer/lockfile hash and the hosted runner's
+The single `requiresWebKit: true` shard restores or prepares its WebKit system
+packages on its own runner, then installs them offline on that same runner.
+Independent GitHub-hosted jobs may receive different image revisions during a
+rollout; there is no cross-job package producer whose image must match by chance.
+The exact cache key still includes the installer/lockfile hash and that runner's
 `ImageOS` and `ImageVersion` (there is no `runner.image` Actions context field).
-A cache hit skips Node setup and apt entirely. Shards require that exact cache
-and runner image; there is no partial-key restore or online fallback.
+An exact cache hit skips downloads; a cold miss resolves the missing dependency
+closure with the pinned Playwright CLI and downloads the `.deb` files without
+installing them. Partial-key hits and wrong-image cache keys are rejected.
+Only after checksum-verified offline installation succeeds is a newly prepared
+cache saved under that exact key. The five non-WebKit shards neither restore nor
+prepare system packages. There is no online fallback from offline installation.
 
 Package download and offline installation have separately labelled
 **UI system packages / Paketinstallation** steps with an eight-minute budget.
