@@ -185,6 +185,9 @@ async function installerFixture(t) {
   await mkdir(cli, { recursive: true });
   const log = path.join(directory, 'commands.log');
   const cache = path.join(directory, 'packages');
+  // Keep hosted-runner configuration inside the fixture, just like apt and browsers.
+  const mirrorFile = path.join(directory, 'apt-mirrors.txt');
+  await writeFile(mirrorFile, 'https://archive.ubuntu.com/ubuntu/\tpriority:2\n');
   const executable = async (file, content) => {
     await writeFile(file, `#!/usr/bin/env bash\nset -euo pipefail\n${content}`);
     await chmod(file, 0o755);
@@ -216,6 +219,8 @@ fi
         [path.join(repoRoot, '.github', 'scripts', 'install-playwright-github.sh'), ...options], {
           cwd: directory, encoding: 'utf8',
           env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, COMMAND_LOG: log,
+            GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted',
+            TAXONOMY_APT_MIRROR_LIST: mirrorFile,
             TAXONOMY_PLAYWRIGHT_PACKAGES_DIR: cache,
             TAXONOMY_PLAYWRIGHT_SKIP_WEBKIT: 'false',
             TAXONOMY_PLAYWRIGHT_BROWSERS_ONLY: 'false', ...extraEnv }
