@@ -68,6 +68,36 @@ Playwright package versions are declared in `.github/package-lock.json`.
 Keycloak integration uses the image pinned in `.mvn/maven.config`; the test never
 requires a pre-existing identity provider.
 
+### GitHub UI system package cache
+
+The `ui-system-packages` job resolves WebKit's missing dependency closure with
+the pinned Playwright CLI and downloads the `.deb` files without installing them.
+The exact cache key includes the installer/lockfile hash and the hosted runner's
+`ImageOS` and `ImageVersion` (there is no `runner.image` Actions context field).
+A cache hit skips Node setup and apt entirely. Shards require that exact cache
+and runner image; there is no partial-key restore or online fallback.
+
+Package download and offline installation have separately labelled
+**UI system packages / Paketinstallation** steps with an eight-minute budget.
+The command timeout is 470 seconds so it can emit a specific error before the
+step limit. Only the shard with `requiresWebKit: true` installs the cached system
+packages and WebKit; the other shards install only Chromium and Firefox.
+Maven still owns pinned Node/npm setup, browser binaries, scenario selection and
+verification. The additional `process-resources -Pshard` invocation only prepares
+the pinned CLI before the separate package step.
+
+From `.github/`, `scripts/install-playwright-github.sh --only-download` prepares
+the cache; `--offline-mode --system-packages-only` installs it without network
+access. `--skip-webkit` omits WebKit and its system packages, and `--browsers-only`
+leaves system packages to the preceding step. `TAXONOMY_PLAYWRIGHT_PACKAGES_DIR`
+can override the default `.cache/playwright-system-packages` directory at the
+repository root. The offline guarantee covers apt packages, not the separately
+cached Playwright browser downloads.
+
+Validate a cold-cache and a cache-hit workflow run on hosted runners before
+claiming download or installation timing improvements; local contract tests do
+not establish those timings or a complete browser pass.
+
 ## Authoritative commands
 
 ### CI Command

@@ -3,6 +3,7 @@
   "shards": [
     {
       "id": "mobile-admin-and-browser",
+      "requiresWebKit": true,
       "scenarios": [
         "role-state/mobile-admin-webkit",
         "ui/desktop-chromium",
@@ -13,6 +14,7 @@
     },
     {
       "id": "forced-colors-special-and-primary-user",
+      "requiresWebKit": false,
       "scenarios": [
         "role-state/forced-colors-architect-chromium",
         "special-modes/text-spacing-and-offline",
@@ -21,6 +23,7 @@
     },
     {
       "id": "architect-and-a11y-desktop",
+      "requiresWebKit": false,
       "scenarios": [
         "role-state/desktop-architect-firefox",
         "accessibility/desktop"
@@ -28,6 +31,7 @@
     },
     {
       "id": "zoom-200-a11y-tablet-and-primary-architect",
+      "requiresWebKit": false,
       "scenarios": [
         "role-state/zoom-200-user-chromium",
         "accessibility/tablet",
@@ -36,6 +40,7 @@
     },
     {
       "id": "zoom-400-a11y-mobile-and-primary-admin",
+      "requiresWebKit": false,
       "scenarios": [
         "role-state/zoom-400-user-chromium",
         "accessibility/mobile",
@@ -44,6 +49,7 @@
     },
     {
       "id": "desktop-and-landscape-user",
+      "requiresWebKit": false,
       "scenarios": [
         "role-state/desktop-user-chromium",
         "role-state/landscape-user-firefox"

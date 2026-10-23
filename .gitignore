@@ -14,6 +14,8 @@ __pycache__/
 
 # Maven-owned browser tooling is installed locally from package-lock.json
 .github/node_modules/
+.cache/ui-frontend/
+.cache/playwright-system-packages/
 
 # Isolated implementation worktrees and local execution ledgers.
 .worktrees/

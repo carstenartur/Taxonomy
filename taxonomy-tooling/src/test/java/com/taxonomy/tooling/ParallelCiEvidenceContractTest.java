@@ -43,10 +43,11 @@ class ParallelCiEvidenceContractTest {
                 .contains("core:\n    name: Core reactor verification")
                 .contains("observability:\n    name: OpenTelemetry performance budget")
                 .contains("ui-contracts:\n    name: UI contract verification")
+                .contains("ui-system-packages:\n    name: UI system packages / Paketvorbereitung")
                 .contains("ui-shards:\n    name: UI shard / ${{ matrix.shard }}")
                 .contains("plugin-profile:\n    name: Complete plugin packaging profile")
                 .contains("verify:\n    name: Maven verification")
-                .contains("needs: [application, ui-plan, ui-contracts]")
+                .contains("needs: [application, ui-plan, ui-contracts, ui-system-packages]")
                 .contains("needs: [application, production-image, app-test-shards, core, coverage-aggregate, observability, ui-contracts, ui-shards, interoperability-products, plugin-profile]")
                 .contains("if: always()")
                 .contains("name: taxonomy-ui-application")
@@ -145,7 +146,7 @@ class ParallelCiEvidenceContractTest {
 
         String uiShards = workflow.substring(uiShardsStart, finalGateStart);
         assertThat(uiShards)
-                .contains("needs: [application, ui-plan, ui-contracts]")
+                .contains("needs: [application, ui-plan, ui-contracts, ui-system-packages]")
                 .doesNotContain("needs: [core");
 
         String finalGate = workflow.substring(finalGateStart);
