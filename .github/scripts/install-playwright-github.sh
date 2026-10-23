@@ -71,12 +71,31 @@ install_system_packages() (
             echo "System package cache is missing; offline installation cannot continue." >&2
             exit 1
         fi
-        if [[ -s SHA256SUMS ]]; then
+        # Reject any unlisted, modified or symlinked archive before invoking apt.
+        # The manifest and glob order are the same (sorted by filename).
+        shopt -s nullglob
+        archives=(*.deb)
+        mapfile -t listed_archives < <(
+            sed -n -E 's/^[[:xdigit:]]{64}  ([A-Za-z0-9][A-Za-z0-9.+:_-]*\.deb)$/\1/p' SHA256SUMS
+        )
+        if [[ ${#archives[@]} -ne ${#listed_archives[@]} ]]; then
+            echo "Unexpected or unlisted system package archives in the cache." >&2
+            exit 1
+        fi
+        verified_archives=()
+        for index in "${!archives[@]}"; do
+            archive="${archives[index]}"
+            if [[ "$archive" != "${listed_archives[index]}" ||
+                  ! -f "$archive" || -L "$archive" ]]; then
+                echo "Unexpected, unverified or symlinked archive: $archive" >&2
+                exit 1
+            fi
+            verified_archives+=("$packages_dir/$archive")
+        done
+        if [[ ${#verified_archives[@]} -gt 0 ]]; then
             sha256sum --check --strict SHA256SUMS
-            shopt -s nullglob
-            archives=("$packages_dir"/*.deb)
             sudo apt-get "${apt_options[@]}" install --no-download -y --no-install-recommends \
-                -o "Dir::Cache::archives=$packages_dir" "${archives[@]}"
+                -o "Dir::Cache::archives=$packages_dir" "${verified_archives[@]}"
         fi
     else
         timeout --foreground 8m "$playwright_bin" install-deps webkit

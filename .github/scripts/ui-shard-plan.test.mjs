@@ -157,6 +157,7 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
   assert.match(consumers, /--offline-mode --system-packages-only/);
   assert.match(consumers, /TAXONOMY_PLAYWRIGHT_BROWSERS_ONLY: 'true'/);
   assert.match(consumers, /TAXONOMY_PLAYWRIGHT_SKIP_WEBKIT: \$\{\{ !matrix\.requiresWebKit \}\}/);
+  assert.match(consumers, /-webkit-\$\{\{ matrix\.requiresWebKit \}\}/);
   assert.match(workflow, /\{include:\[\.shards\[\] \| \{shard:\.id, requiresWebKit\}\]\}/);
   const compatibility = consumers.split('- name: Check package cache runner compatibility')[1]
     .split('- name: Prepare pinned Node')[0].split('run: |')[1];
@@ -255,6 +256,16 @@ test('offline installation fails closed for missing or corrupted archives withou
   assert.notEqual(result.status, 0);
   assert.equal(result.commands, '');
   assert.match(result.stderr, /UI system packages \/ Paketinstallation/);
+});
+
+test('offline installation rejects unlisted archives before invoking apt', async t => {
+  const fixture = await installerFixture(t);
+  assert.equal((await fixture.run(['--only-download'])).status, 0);
+  await writeFile(path.join(fixture.cache, 'unlisted-extra.deb'), 'unverified bytes');
+  const result = await fixture.run(['--offline-mode', '--system-packages-only']);
+  assert.notEqual(result.status, 0);
+  assert.equal(result.commands, '');
+  assert.match(result.stderr, /Unexpected or unlisted system package archives/);
 });
 
 test('an image with all dependencies installed can prepare and restore an empty package set', async t => {
