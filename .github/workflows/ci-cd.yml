@@ -171,7 +171,7 @@ jobs:
             --build-id "${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${APP_TEST_SHARD}"
       - name: Upload application test shard evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: 'app-test-shard-${{ matrix.shard }}'
           path: target/app-test-shards/
@@ -262,7 +262,7 @@ jobs:
             --commit "$GITHUB_SHA" --source-tree "$source_tree" \
             --build-id "${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${APP_TEST_SHARD}"
       - name: Upload core application test shard evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: app-test-shard-core
@@ -301,7 +301,7 @@ jobs:
           printf '%s\n' "$source_tree" > target/core-reactor-outputs.tree
           sha256sum target/core-reactor-outputs.tar.gz > target/core-reactor-outputs.sha256
       - name: Upload full-reactor class outputs
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: success()
         with:
           name: core-reactor-coverage-inputs
@@ -395,7 +395,7 @@ jobs:
           done
       - name: Upload complete aggregate coverage evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: quality-reports-coverage
           path: target/quality-reports/**

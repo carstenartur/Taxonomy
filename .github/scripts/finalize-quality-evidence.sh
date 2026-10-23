@@ -30,7 +30,7 @@ python3 .github/scripts/generate-quality-site.py \
   --source-tree "$source_tree" --build-id "$build_id" \
   --tool "java=$(java -version 2>&1 | sed -n '1p')" \
   --tool "maven=$(./mvnw -version 2>&1 | sed -n '1p')" \
-  --tool 'codeql-action=configured:github/codeql-action@24c54180a607b1449ed407dd24f251e4e9147c8d' \
+  --tool 'codeql-action=configured:github/codeql-action@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee' \
   --tool 'trivy-action=v0.36.0'
 python3 .github/scripts/verify-quality-publication.py \
   --root target/quality-reports --expected-commit "$GITHUB_SHA"
