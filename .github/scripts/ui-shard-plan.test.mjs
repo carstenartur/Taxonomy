@@ -150,12 +150,29 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
   assert.match(consumers, /actions\/cache\/restore@/);
   assert.match(consumers, /key: \$\{\{ needs\.ui-system-packages\.outputs\.cache-key \}\}/);
   assert.match(consumers, /fail-on-cache-miss: true/);
+  assert.match(consumers, /PACKAGE_CACHE_HIT: \$\{\{ steps\.restored-packages\.outputs\.cache-hit \}\}/);
+  assert.match(consumers, /\[\[ "\$PACKAGE_CACHE_HIT" == true \]\]/);
   assert.doesNotMatch(consumers, /restore-keys:/);
   assert.match(consumers, /timeout-minutes: 8/);
   assert.match(consumers, /--offline-mode --system-packages-only/);
   assert.match(consumers, /TAXONOMY_PLAYWRIGHT_BROWSERS_ONLY: 'true'/);
   assert.match(consumers, /TAXONOMY_PLAYWRIGHT_SKIP_WEBKIT: \$\{\{ !matrix\.requiresWebKit \}\}/);
   assert.match(workflow, /\{include:\[\.shards\[\] \| \{shard:\.id, requiresWebKit\}\]\}/);
+  const compatibility = consumers.split('- name: Check package cache runner compatibility')[1]
+    .split('- name: Prepare pinned Node')[0].split('run: |')[1];
+  for (const [hit, imageVersion, status] of [
+    ['true', '20261012.334.1', 0],
+    ['false', '20261012.334.1', 1],
+    ['true', '20261019.1', 1]
+  ]) {
+    const result = spawnSync('bash', ['-ec', compatibility], {
+      encoding: 'utf8',
+      env: { ...process.env, ImageOS: 'ubuntu24', ImageVersion: imageVersion,
+        PACKAGE_KEY: 'Linux-taxonomy-ui-playwright-packages-v1-hash-ubuntu24-20261012.334.1',
+        PACKAGE_CACHE_HIT: hit }
+    });
+    assert.equal(result.status, status, result.stderr);
+  }
 });
 
 async function installerFixture(t) {

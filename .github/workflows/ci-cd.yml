@@ -549,6 +549,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}
       - name: Restore UI system packages (exact runner image)
+        id: restored-packages
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
@@ -559,7 +560,12 @@ jobs:
       - name: Check package cache runner compatibility
         env:
           PACKAGE_KEY: ${{ needs.ui-system-packages.outputs.cache-key }}
+          PACKAGE_CACHE_HIT: ${{ steps.restored-packages.outputs.cache-hit }}
         run: |
+          [[ "$PACKAGE_CACHE_HIT" == true ]] || {
+            echo "::error title=UI system packages / Paketinstallation::An exact package cache hit is required; prefix restores are not accepted."
+            exit 1
+          }
           : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}"
           [[ "$PACKAGE_KEY" == *"-${ImageOS}-${ImageVersion}" ]] || {
             echo "::error title=UI system packages / Paketinstallation::Runner image differs from the package preparation job."
