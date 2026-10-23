@@ -35,6 +35,18 @@ apt_options=(-o Acquire::Retries=4 -o Acquire::http::Timeout=30
 install_system_packages() (
     trap 'status=$?; echo "::error title=UI system packages / Paketinstallation::Package setup failed (exit $status); browser tests have not started." >&2; exit "$status"' ERR
     echo "UI system packages / Paketinstallation"
+    # A slow Azure mirror can make progress without hitting apt's data timeout.
+    # Prefer the existing official HTTPS archive on disposable hosted runners;
+    # preserve all fallback entries, signed metadata and offline installation.
+    if [[ "$offline_mode" != true && "${GITHUB_ACTIONS:-}" == true &&
+          "${RUNNER_ENVIRONMENT:-}" == github-hosted ]]; then
+        mirrors="${TAXONOMY_APT_MIRROR_LIST:-/etc/apt/apt-mirrors.txt}"
+        if [[ -f "$mirrors" ]]; then
+            sudo sed -i -E \
+                '/^https:\/\/archive\.ubuntu\.com\/ubuntu\/?[[:space:]]/s/([[:space:]])priority:[0-9]+/\1priority:0/' \
+                "$mirrors"
+        fi
+    fi
     if [[ "$only_download" == true ]]; then
         mkdir -p "$packages_dir"
         rm -f "$packages_dir"/*.deb "$packages_dir/SHA256SUMS"

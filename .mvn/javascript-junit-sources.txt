@@ -36,6 +36,7 @@
 .github/scripts/integration-startup.test.mjs
 .github/scripts/integrations-review.test.mjs
 .github/scripts/local-user-management-navigation.test.mjs
+.github/scripts/playwright-apt-mirror.test.mjs
 .github/scripts/plugin-capabilities.test.mjs
 .github/scripts/plugin-distribution-artifact.test.mjs
 .github/scripts/product-demo.test.mjs

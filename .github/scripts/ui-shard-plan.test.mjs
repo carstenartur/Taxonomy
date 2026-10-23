@@ -137,42 +137,95 @@ test('browser shards still install their pinned runtime before executing accepta
   assert.ok(executions.some(step => step.goal === 'install-node-and-npm'));
 });
 
-test('CI prepares packages once, restores an exact image cache and bounds offline setup separately', async () => {
+test('CI prepares packages once, restores an exact image cache and bounds offline setup separately', async t => {
   const workflow = await readFile(path.join(repoRoot, '.github', 'workflows', 'ci-cd.yml'), 'utf8');
-  const producer = workflow.split('\n  ui-system-packages:')[1].split('\n  ui-shards:')[0];
   const consumers = workflow.split('\n  ui-shards:')[1].split('\n  interoperability-products:')[0];
-  assert.match(producer, /hashFiles\('\.github\/scripts\/install-playwright-github\.sh', '\.github\/package-lock\.json'\)/);
-  assert.match(producer, /\$\{ImageOS\}-\$\{ImageVersion\}/);
-  assert.match(producer, /if: steps\.packages\.outputs\.cache-hit != 'true'/);
-  assert.match(producer, /--only-download/);
-  assert.match(producer, /timeout-minutes: 8/);
-  assert.match(consumers, /needs: \[application, ui-plan, ui-contracts, ui-system-packages\]/);
-  assert.match(consumers, /actions\/cache\/restore@/);
-  assert.match(consumers, /key: \$\{\{ needs\.ui-system-packages\.outputs\.cache-key \}\}/);
-  assert.match(consumers, /fail-on-cache-miss: true/);
-  assert.match(consumers, /PACKAGE_CACHE_HIT: \$\{\{ steps\.restored-packages\.outputs\.cache-hit \}\}/);
-  assert.match(consumers, /\[\[ "\$PACKAGE_CACHE_HIT" == true \]\]/);
-  assert.doesNotMatch(consumers, /restore-keys:/);
-  assert.match(consumers, /timeout-minutes: 8/);
-  assert.match(consumers, /--offline-mode --system-packages-only/);
+  assert.doesNotMatch(workflow, /^  ui-system-packages:/m,
+    'Separate hosted jobs can receive different runner image revisions');
+  assert.match(consumers, /needs: \[application, ui-plan, ui-contracts\]/);
+  const step = name => {
+    const parts = consumers.split(`- name: ${name}\n`);
+    assert.equal(parts.length, 2, `Exactly one ${name} step is required`);
+    return parts[1].split('\n      - ')[0];
+  };
+  const identify = step('Identify the exact runner image');
+  const cache = step('Restore UI system packages (exact runner image)');
+  const check = step('Check package cache runner compatibility');
+  const download = step('UI system packages / Paketinstallation (download only)');
+  const offline = step('UI system packages / Paketinstallation (offline)');
+  const save = step('Save UI system packages (exact runner image)');
+  for (const phase of [identify, cache, check, download, offline, save]) {
+    assert.match(phase, /if: matrix\.requiresWebKit == true/,
+      'The other five shards must not restore, prepare or install system packages');
+    assert.doesNotMatch(phase, /continue-on-error:/);
+  }
+  assert.match(identify, /hashFiles\('\.github\/scripts\/install-playwright-github\.sh', '\.github\/package-lock\.json'\)/);
+  assert.match(identify, /\$\{ImageOS\}-\$\{ImageVersion\}/);
+  assert.match(cache, /actions\/cache\/restore@/);
+  assert.match(save, /actions\/cache\/save@/);
+  for (const phase of [cache, save]) {
+    assert.match(phase, /key: \$\{\{ steps\.cache-key\.outputs\.key \}\}/);
+    assert.match(phase, /\.cache\/playwright-system-packages\/SHA256SUMS/);
+  }
+  assert.doesNotMatch(consumers, /restore-keys:|needs\.ui-system-packages/);
+  assert.match(check, /PACKAGE_KEY: \$\{\{ steps\.cache-key\.outputs\.key \}\}/);
+  assert.match(check, /PACKAGE_CACHE_HIT: \$\{\{ steps\.packages\.outputs\.cache-hit \}\}/);
+  assert.match(check, /PACKAGE_CACHE_MATCHED_KEY: \$\{\{ steps\.packages\.outputs\.cache-matched-key \}\}/);
+  for (const phase of [download, save]) {
+    assert.match(phase, /if: matrix\.requiresWebKit == true && steps\.packages\.outputs\.cache-hit != 'true'/);
+  }
+  for (const phase of [download, offline]) {
+    assert.match(phase, /timeout-minutes: 8/);
+    assert.match(phase, /timeout --foreground 470s/);
+  }
+  assert.match(download, /--only-download/);
+  assert.match(offline, /--offline-mode --system-packages-only/);
+  assert.doesNotMatch(offline, /--only-download|apt-get update/);
   assert.match(consumers, /TAXONOMY_PLAYWRIGHT_BROWSERS_ONLY: 'true'/);
   assert.match(consumers, /TAXONOMY_PLAYWRIGHT_SKIP_WEBKIT: \$\{\{ !matrix\.requiresWebKit \}\}/);
   assert.match(consumers, /-webkit-\$\{\{ matrix\.requiresWebKit \}\}/);
   assert.match(workflow, /\{include:\[\.shards\[\] \| \{shard:\.id, requiresWebKit\}\]\}/);
-  const compatibility = consumers.split('- name: Check package cache runner compatibility')[1]
-    .split('- name: Prepare pinned Node')[0].split('run: |')[1];
-  for (const [hit, imageVersion, status] of [
-    ['true', '20261012.334.1', 0],
-    ['false', '20261012.334.1', 1],
-    ['true', '20261019.1', 1]
-  ]) {
-    const result = spawnSync('bash', ['-ec', compatibility], {
-      encoding: 'utf8',
-      env: { ...process.env, ImageOS: 'ubuntu24', ImageVersion: imageVersion,
-        PACKAGE_KEY: 'Linux-taxonomy-ui-playwright-packages-v1-hash-ubuntu24-20261012.334.1',
-        PACKAGE_CACHE_HIT: hit }
+  const phases = ['Prepare pinned Node and Playwright CLI through Maven',
+    'Identify the exact runner image', 'Restore UI system packages (exact runner image)',
+    'Check package cache runner compatibility', 'UI system packages / Paketinstallation (download only)',
+    'UI system packages / Paketinstallation (offline)', 'Save UI system packages (exact runner image)',
+    'Run Maven-owned authoritative UI shard'];
+  const positions = phases.map(name => consumers.indexOf(`- name: ${name}\n`));
+  assert.ok(positions.every((position, index) => position >= 0 &&
+    (index === 0 || position > positions[index - 1])), 'Prepare, verify and consume on the same runner');
+
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'taxonomy-runner-cache-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const output = path.join(directory, 'output');
+  const compatibility = check.split('run: |')[1];
+  for (const imageVersion of ['20261012.334.1', '20261023.334.3']) {
+    await writeFile(output, '');
+    const env = { ...process.env, ImageOS: 'ubuntu24', ImageVersion: imageVersion,
+      PACKAGE_KEY_PREFIX: 'Linux-taxonomy-ui-playwright-packages-v1-hash', GITHUB_OUTPUT: output };
+    const keyResult = spawnSync('bash', ['-ec', identify.split('run: |')[1]], { env, encoding: 'utf8' });
+    assert.equal(keyResult.status, 0, keyResult.stderr);
+    const key = (await readFile(output, 'utf8')).trim().replace(/^key=/, '');
+    assert.equal(key, `${env.PACKAGE_KEY_PREFIX}-ubuntu24-${imageVersion}`);
+    // A cold miss prepares locally; an exact hit skips downloads. A partial hit is never consumed.
+    for (const [hit, matchedKey, status] of [
+      ['', '', 0], ['false', '', 0], ['true', key, 0],
+      ['false', `${key}-partial`, 1], ['true', `${key}-partial`, 1], ['true', '', 1]
+    ]) {
+      const result = spawnSync('bash', ['-ec', compatibility], {
+        encoding: 'utf8', env: { ...env, PACKAGE_KEY: key, PACKAGE_CACHE_HIT: hit, PACKAGE_CACHE_MATCHED_KEY: matchedKey }
+      });
+      assert.equal(result.status, status, result.stderr);
+    }
+    const otherImage = imageVersion === '20261012.334.1' ? '20261023.334.3' : '20261012.334.1';
+    const mismatch = spawnSync('bash', ['-ec', compatibility], {
+      encoding: 'utf8', env: { ...env, PACKAGE_KEY: `${env.PACKAGE_KEY_PREFIX}-ubuntu24-${otherImage}`,
+        PACKAGE_CACHE_HIT: 'true', PACKAGE_CACHE_MATCHED_KEY: key }
     });
-    assert.equal(result.status, status, result.stderr);
+    assert.equal(mismatch.status, 1, mismatch.stderr);
+    const unknownImage = spawnSync('bash', ['-ec', identify.split('run: |')[1]], {
+      encoding: 'utf8', env: { ...env, ImageVersion: '' }
+    });
+    assert.notEqual(unknownImage.status, 0);
   }
 });
 
@@ -185,6 +238,9 @@ async function installerFixture(t) {
   await mkdir(cli, { recursive: true });
   const log = path.join(directory, 'commands.log');
   const cache = path.join(directory, 'packages');
+  // Keep hosted-runner configuration inside the fixture, just like apt and browsers.
+  const mirrorFile = path.join(directory, 'apt-mirrors.txt');
+  await writeFile(mirrorFile, 'https://archive.ubuntu.com/ubuntu/\tpriority:2\n');
   const executable = async (file, content) => {
     await writeFile(file, `#!/usr/bin/env bash\nset -euo pipefail\n${content}`);
     await chmod(file, 0o755);
@@ -216,6 +272,8 @@ fi
         [path.join(repoRoot, '.github', 'scripts', 'install-playwright-github.sh'), ...options], {
           cwd: directory, encoding: 'utf8',
           env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, COMMAND_LOG: log,
+            GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted',
+            TAXONOMY_APT_MIRROR_LIST: mirrorFile,
             TAXONOMY_PLAYWRIGHT_PACKAGES_DIR: cache,
             TAXONOMY_PLAYWRIGHT_SKIP_WEBKIT: 'false',
             TAXONOMY_PLAYWRIGHT_BROWSERS_ONLY: 'false', ...extraEnv }
