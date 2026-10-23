@@ -268,6 +268,22 @@ test('offline installation rejects unlisted archives before invoking apt', async
   assert.match(result.stderr, /Unexpected or unlisted system package archives/);
 });
 
+test('offline installation accepts checksum-listed Debian archives with epoch and tilde versions', async t => {
+  const fixture = await installerFixture(t);
+  assert.equal((await fixture.run(['--only-download'])).status, 0);
+  const filename = 'zz-test_1%3a2~ubuntu1_amd64.deb';
+  await writeFile(path.join(fixture.cache, filename), 'fixture deb versioned');
+  const digest = spawnSync('sha256sum', [filename], {
+    cwd: fixture.cache, encoding: 'utf8'
+  });
+  assert.equal(digest.status, 0, digest.stderr);
+  const manifest = path.join(fixture.cache, 'SHA256SUMS');
+  await writeFile(manifest, (await readFile(manifest, 'utf8')) + digest.stdout);
+  const result = await fixture.run(['--offline-mode', '--system-packages-only']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.commands, /apt-get .*install --no-download/);
+});
+
 test('an image with all dependencies installed can prepare and restore an empty package set', async t => {
   const fixture = await installerFixture(t);
   assert.equal((await fixture.run(['--only-download'], { EMPTY_PACKAGES: 'true' })).status, 0);

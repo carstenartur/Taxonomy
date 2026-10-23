@@ -76,7 +76,7 @@ install_system_packages() (
         shopt -s nullglob
         archives=(*.deb)
         mapfile -t listed_archives < <(
-            sed -n -E 's/^[[:xdigit:]]{64}  ([A-Za-z0-9][A-Za-z0-9.+:_-]*\.deb)$/\1/p' SHA256SUMS
+            sed -n -E 's/^[[:xdigit:]]{64}  ([^/]+\.deb)$/\1/p' SHA256SUMS
         )
         if [[ ${#archives[@]} -ne ${#listed_archives[@]} ]]; then
             echo "Unexpected or unlisted system package archives in the cache." >&2
