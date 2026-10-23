@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Playwright delegates Linux runtime setup to apt. Keep that operation retryable
-# but bounded so a mutable package mirror cannot consume the complete CI job.
-sudo tee /etc/apt/apt.conf.d/99taxonomy-playwright >/dev/null <<'EOF'
-Acquire::Retries "4";
-Acquire::http::Timeout "30";
-Acquire::https::Timeout "30";
-DPkg::Lock::Timeout "120";
-EOF
+only_download=false
+offline_mode=false
+skip_webkit="${TAXONOMY_PLAYWRIGHT_SKIP_WEBKIT:-false}"
+system_packages_only=false
+browsers_only="${TAXONOMY_PLAYWRIGHT_BROWSERS_ONLY:-false}"
+for option in "$@"; do
+    case "$option" in
+        --only-download) only_download=true ;;
+        --offline-mode) offline_mode=true ;;
+        --skip-webkit) skip_webkit=true ;;
+        --system-packages-only) system_packages_only=true ;;
+        --browsers-only) browsers_only=true ;;
+        *) echo "Unknown option: $option" >&2; exit 2 ;;
+    esac
+done
+if [[ "$only_download" == true && ( "$offline_mode" == true || "$browsers_only" == true || "$skip_webkit" == true ) ]] ||
+   [[ "$browsers_only" == true && ( "$offline_mode" == true || "$system_packages_only" == true ) ]]; then
+    echo "Incompatible Playwright installation options." >&2
+    exit 2
+fi
 
 playwright_bin="./node_modules/.bin/playwright"
 if [[ ! -x "${playwright_bin}" ]]; then
@@ -16,10 +28,72 @@ if [[ ! -x "${playwright_bin}" ]]; then
     exit 1
 fi
 
-# The hosted runner already launches Chromium and Firefox, while the acceptance
-# evidence proves that WebKit still needs GTK/GStreamer and related libraries.
-timeout --foreground 20m "${playwright_bin}" install --with-deps webkit
+packages_dir="$(realpath -m "${TAXONOMY_PLAYWRIGHT_PACKAGES_DIR:-../.cache/playwright-system-packages}")"
+apt_options=(-o Acquire::Retries=4 -o Acquire::http::Timeout=30
+    -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120)
 
-# Browser binaries remain pinned by package-lock.json. Avoid repeating OS package
-# setup for Chromium and Firefox after the targeted WebKit dependency install.
-timeout --foreground 20m "${playwright_bin}" install chromium firefox
+install_system_packages() (
+    trap 'status=$?; echo "::error title=UI system packages / Paketinstallation::Package setup failed (exit $status); browser tests have not started." >&2; exit "$status"' ERR
+    echo "UI system packages / Paketinstallation"
+    if [[ "$only_download" == true ]]; then
+        mkdir -p "$packages_dir"
+        rm -f "$packages_dir"/*.deb "$packages_dir/SHA256SUMS"
+        sudo apt-get "${apt_options[@]}" update
+
+        # The pinned Playwright CLI simulates apt's complete dependency closure.
+        # Exit 1 means packages are missing, not that the simulation failed.
+        status=0
+        report=$("$playwright_bin" install-deps --dry-run webkit) || status=$?
+        printf '%s\n' "$report"
+        mapfile -t packages < <(printf '%s\n' "$report" | sed -n 's/^  \([a-z0-9][a-z0-9+.:-]*\)$/\1/p')
+        if [[ "$status" == 1 && ${#packages[@]} -gt 0 &&
+              "$report" == *"Missing system dependencies (${#packages[@]}):"* ]]; then
+            sudo apt-get "${apt_options[@]}" install --download-only -y --no-install-recommends \
+                -o "Dir::Cache::archives=$packages_dir" "${packages[@]}"
+        elif [[ "$status" != 0 || "$report" != "All system dependencies are installed." ]]; then
+            echo "Unable to resolve the pinned Playwright system packages." >&2
+            exit 1
+        fi
+        cd "$packages_dir"
+        shopt -s nullglob
+        archives=(*.deb)
+        if [[ ${#packages[@]} -gt 0 && ${#archives[@]} == 0 ]]; then
+            echo "apt did not retain the downloaded system packages." >&2
+            exit 1
+        fi
+        : > SHA256SUMS
+        if [[ ${#archives[@]} -gt 0 ]]; then
+            sha256sum -- "${archives[@]}" > SHA256SUMS
+        fi
+    elif [[ "$offline_mode" == true ]]; then
+        cd "$packages_dir"
+        if [[ ! -f SHA256SUMS ]]; then
+            echo "System package cache is missing; offline installation cannot continue." >&2
+            exit 1
+        fi
+        if [[ -s SHA256SUMS ]]; then
+            sha256sum --check --strict SHA256SUMS
+            shopt -s nullglob
+            archives=("$packages_dir"/*.deb)
+            sudo apt-get "${apt_options[@]}" install --no-download -y --no-install-recommends \
+                -o "Dir::Cache::archives=$packages_dir" "${archives[@]}"
+        fi
+    else
+        timeout --foreground 8m "$playwright_bin" install-deps webkit
+    fi
+)
+
+# Hosted runners already support Chromium/Firefox. Only WebKit needs extra apt
+# packages. CI prepares those once, installs offline, then lets Maven fetch binaries.
+if [[ "$browsers_only" != true && "$skip_webkit" != true ]]; then
+    install_system_packages
+fi
+if [[ "$only_download" == true || "$system_packages_only" == true ]]; then
+    exit 0
+fi
+
+browsers=(chromium firefox)
+if [[ "$skip_webkit" != true ]]; then
+    browsers+=(webkit)
+fi
+timeout --foreground 8m "$playwright_bin" install "${browsers[@]}"

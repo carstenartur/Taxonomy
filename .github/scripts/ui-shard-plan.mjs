@@ -45,6 +45,12 @@ export function validateShardPlan(plan, expectedScenarioKeys) {
     throw new Error(
       `UI shard plan assigned ${assigned.size} scenarios, expected ${expected.size}`);
   }
+  for (const shard of plan.shards) {
+    if (typeof shard.requiresWebKit !== 'boolean' ||
+        shard.requiresWebKit !== shard.scenarios.some(key => key.endsWith('-webkit'))) {
+      throw new Error(`UI shard ${shard.id} requiresWebKit must match its browser scenarios`);
+    }
+  }
   return plan;
 }
 
