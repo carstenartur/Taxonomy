@@ -21,6 +21,45 @@ SVG und Vektor-PDF verwenden das vollständige deterministische Serverlayout der
 
 Technische Entscheidung: [ADR 0005](../adr/0005-private-architecture-editor.md). [English guide](../en/ARCHITECTURE_EDITOR.md).
 
+### Brennglas und Anordnung
+
+Das **Architektur-Brennglas** im aktuellen bearbeitbaren Arbeitsbereich einschalten.
+Langsam über Elemente fahren oder ein Element auswählen und **Auswahl untersuchen**
+wählen. Bei Touch den Finger kurz über einem Element halten. Der Fokus bestimmt
+die Ausgangselemente; mögliche Endpunkte können im gesamten aktuellen Modell
+liegen, auch bei neu angelegten Elementen. Pfeiltasten und Zoom bleiben verfügbar,
+während das Brennglas die Zeigerbewegung verwendet.
+
+An jedem untersuchten Element ist erkennbar, ob die Untersuchung vorgemerkt, aktiv,
+bewertet, ungeprüft, fehlgeschlagen oder veraltet ist. Das voreingestellte Limit
+beträgt 16 Untersuchungen pro Seitensitzung und lässt sich von 1 bis 128 einstellen.
+**Neue Untersuchungen pausieren** lässt eine laufende Anfrage noch enden. Mit der
+KI-Option kann der konfigurierte generative Anbieter verwendet werden. Lokaler
+Betrieb sowie nicht verfügbare oder simulierte Anbieter lassen Kandidaten
+ausdrücklich ungeprüft. Quellen sind die kanonischen Elementtexte und zugeordneten
+Anforderungen; externe Systeme und tatsächlich betriebene Verbindungen werden
+dadurch nicht automatisch ermittelt.
+
+Gestrichelte Pfeile und die Vorschlagsliste öffnen einen festen Prüfbereich mit
+vollständiger Begründung, Methode, untersuchter Revision und Quellenauszügen.
+**Beziehung übernehmen** ist die Bestätigung: Ein protokollierter Befehl speichert
+Beziehung, Begründung und Herkunft ohne zweiten Dialog. **Vorschlag verwerfen**
+gilt nur für diese Untersuchung. **Rückgängig** verwendet die angenommene Operation;
+nach dem Neuladen stehen Rückgängig/Wiederholen in der Historie bereit. Ein erneuter
+Versuch nach Netzwerkfehlern behält dieselbe Befehlsidentität. Bei geändertem
+Architekturstand veralten andere Vorschläge und müssen vor der Übernahme erneut
+untersucht werden. Vorschläge sind vorübergehend, angenommene Beziehungen und
+Belege dauerhaft.
+
+**Stabile Reihenfolge** verwendet die bisherige Anordnung. **Kreuzungen reduzieren**
+und **Ausdrücklich neu anordnen** berechnen eine deterministische Heuristik ohne
+Garantie auf einen kreuzungsfreien Graphen. Die Reihenfolge wird an die gewählte
+Arbeitsbereichsrevision gebunden. Übernahme oder Rücknahme einer Beziehung behalten
+dadurch Positionen und Ausschnitt bei. Erneutes Anordnen berücksichtigt spätere
+Änderungen. Die URL enthält Strategie und Referenzrevision; SVG und PDF verwenden
+dieselbe Serveranordnung mit dem aktuell angezeigten Modell. Vorschlagspfeile
+werden nicht exportiert.
+
 ### Neutrale Pakete und Anforderungszuordnungen
 
 Der Bereich **Pakete** erstellt, benennt, beschreibt, verschiebt und löscht

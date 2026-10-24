@@ -16,6 +16,13 @@ public interface ArchitectureEditorExportPort {
 
     ExportDocument read(RepositoryContext context, String commit, Long revision) throws IOException;
 
+    default ExportDocument read(RepositoryContext context, String commit, Long revision,
+            com.taxonomy.diagram.DiagramLayout.Strategy strategy, Long layoutRevision) throws IOException {
+        if (strategy != com.taxonomy.diagram.DiagramLayout.Strategy.STABLE || layoutRevision != null)
+            throw new IllegalArgumentException("This export adapter does not support the selected layout");
+        return read(context, commit, revision);
+    }
+
     record ExportDocument(
             String repositoryId,
             String workspaceScopeKey,

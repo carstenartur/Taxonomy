@@ -58,10 +58,22 @@ public class ArchitectureEditorController {
             @Parameter(description = "Exact retained Git checkpoint SHA; omit to read semantic workspace state")
             @RequestParam(required = false) String commit,
             @Parameter(description = "Retained semantic revision to read; distinct from a Git checkpoint SHA")
-            @RequestParam(required = false) Long revision) throws IOException {
+            @RequestParam(required = false) Long revision,
+            @Parameter(description = "Server layout: stable (default) or reduce-crossings")
+            @RequestParam(required = false) String layout,
+            @Parameter(description = "Optional retained workspace revision supplying the explicit optimized ordering")
+            @RequestParam(required = false) Long layoutRevision) throws IOException {
+        var strategy = com.taxonomy.diagram.DiagramLayout.Strategy.fromId(layout);
         RepositoryContext context = readContext(repositoryId, workspaceScopeKey, branch);
         var document = service.read(context, commit, revision);
-        return documentResponse(document).body(projection.project(document, mayEdit()));
+        ArchitectureEditorProjection.requireLayoutRevision(document, strategy, layoutRevision);
+        var reference = layoutRevision == null ? null : service.read(context, null, layoutRevision);
+        return documentResponse(document).body(projection.project(document, mayEdit(), strategy, reference));
+    }
+
+    public ResponseEntity<ArchitectureEditorProjection.View> read(String repositoryId, String workspaceScopeKey,
+            String branch, String commit, Long revision) throws IOException {
+        return read(repositoryId, workspaceScopeKey, branch, commit, revision, null, null);
     }
 
     @PostMapping("/api/architecture/editor/preview")
@@ -181,7 +193,7 @@ public class ArchitectureEditorController {
             case "CREATE_ELEMENT" -> new SemanticCommand(new CreateArchitectureElement("arch-" + body.metadata().commandId(), body.type(), body.properties()));
             case "UPDATE_ELEMENT" -> new SemanticCommand(new UpdateArchitectureElement(body.id(), body.type(), body.properties()));
             case "DELETE_ELEMENT" -> new SemanticCommand(new DeleteArchitectureElement(body.id()));
-            case "CREATE_RELATION" -> new SemanticCommand(new CreateArchitectureRelation(relation(body), body.status()));
+            case "CREATE_RELATION" -> new SemanticCommand(new CreateArchitectureRelation(relation(body), body.status(), body.properties()));
             case "UPDATE_RELATION" -> new SemanticCommand(new UpdateArchitectureRelation(relation(body), body.status()));
             case "DELETE_RELATION" -> new SemanticCommand(new DeleteArchitectureRelation(relation(body)));
             case "MOVE_ELEMENT" -> new SemanticCommand(new MoveOrGroupElement(body.id(), body.parentId()));

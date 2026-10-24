@@ -21,6 +21,39 @@ SVG and vector PDF use the complete deterministic server layout at the displayed
 
 Implementation decision: [ADR 0005](../adr/0005-private-architecture-editor.md). [Deutsche Anleitung](../de/ARCHITECTURE_EDITOR.md).
 
+### Focus lens and arrangement
+
+Enable **Architecture focus lens** in a current editable workspace. Slowly sweep
+over elements, or select an element and choose **Investigate selection**. A touch
+hold works as well. The lens chooses starting elements; possible endpoints can be
+anywhere in the current model, including newly created elements. Arrow keys and
+zoom controls remain available while the lens owns pointer movement.
+
+Each element shows whether investigation is queued, running, assessed, unassessed,
+failed or stale. The default limit is 16 investigations per page session (adjustable
+from 1 to 128); **Pause new investigations** lets the current request finish.
+With the AI option selected, an investigation can use the configured generative
+provider. Local-only, unavailable and mock providers leave candidates explicitly
+unassessed. The current sources are canonical element text and mapped requirements;
+the lens does not discover external systems or verify deployed connections.
+
+Dashed arrows and the proposal list open a pinned review with the full rationale,
+method, source revision and quoted evidence. **Accept relationship** is the
+confirmation: it stores one audited relation, its rationale and provenance, without
+a second dialog. **Dismiss proposal** applies to this investigation only. **Undo**
+uses the accepted operation; history offers undo/redo after reload. Network retries
+retain the same operation identity. A changed revision makes other proposals stale
+and requires a fresh investigation before acceptance. Suggestions themselves are
+temporary; accepted relationships and evidence are durable.
+
+**Stable order** preserves the default arrangement. **Reduce crossings**, followed
+by **Rearrange explicitly**, computes a deterministic heuristic arrangement; it
+does not guarantee a crossing-free graph. That ordering is pinned to the chosen
+workspace revision, so accepting or undoing a relation keeps positions and the
+camera stable. Rearrange again to optimize for subsequent changes. The URL records
+the strategy and reference revision; SVG and PDF use that same server ordering
+with the currently displayed model. Ghost suggestions are excluded from exports.
+
 ### Neutral packages and requirement mappings
 
 The **Packages** panel creates, renames, describes, moves and deletes organization

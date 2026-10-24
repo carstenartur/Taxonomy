@@ -34,7 +34,7 @@ class ArchitectureEditorBoundaryTest {
     @Test
     void rendererAndSessionCannotPerformTransportOrPersistCanvasState() throws Exception {
         Path js = Path.of("src/main/resources/static/js");
-        for (String file : java.util.List.of("architecture-editor.js", "architecture-editor-renderer.js")) {
+        for (String file : java.util.List.of("architecture-editor.js", "architecture-editor-renderer.js", "architecture-focus.js")) {
             String source = Files.readString(js.resolve(file));
             assertThat(source).doesNotContain("fetch(", "XMLHttpRequest", "localStorage", "sessionStorage", "sendJson(");
         }

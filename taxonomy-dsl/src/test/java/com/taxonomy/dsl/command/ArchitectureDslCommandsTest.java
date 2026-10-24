@@ -32,6 +32,31 @@ class ArchitectureDslCommandsTest {
     private static final RelationKey CONTAINS = new RelationKey("arch-system", "CONTAINS", "arch-component");
 
     @Test
+    void focusProvenanceAndQuotedEvidenceRoundtripAsOneUndoableRelationBlock() {
+        String evidence = "[{\"elementId\":\"arch-system\",\"field\":\"description\",\"quote\":\"Quoted \\\"source\\\" C:\\\\docs { # literal }\"}]";
+        var properties = Map.of("provenance", "architecture-focus", "x-focus-rationale", "Hypothesis " + "r".repeat(1500),
+                "x-focus-evidence", evidence, "x-focus-revision", "42", "x-focus-method", "LOCAL_CANDIDATES",
+                "x-focus-source-hash", "a".repeat(64));
+        var result = commands.apply(MODEL, new CreateArchitectureRelation(CONTAINS, "accepted", properties));
+        assertThat(result.changedIds()).containsExactly("relation:" + CONTAINS.id());
+        assertThat(result.dsl()).startsWith(MODEL);
+        var relation = commands.model(result.dsl()).getRelations().getFirst();
+        assertThat(relation.getStatus()).isEqualTo("accepted");
+        assertThat(relation.getProvenance()).isEqualTo("architecture-focus");
+        assertThat(relation.getExtensions()).containsEntry("x-focus-evidence", evidence)
+                .containsEntry("x-focus-rationale", properties.get("x-focus-rationale"))
+                .containsEntry("x-focus-revision", "42").containsEntry("x-focus-method", "LOCAL_CANDIDATES")
+                .containsEntry("x-focus-source-hash", "a".repeat(64));
+        String undone = commands.inverse(result.dsl(), MODEL, result.dsl()).dsl();
+        assertThat(undone).isEqualTo(MODEL);
+        assertThat(commands.inverse(undone, result.dsl(), undone).dsl()).isEqualTo(result.dsl());
+        var legacy = commands.model(commands.apply(MODEL, new CreateArchitectureRelation(CONTAINS, null)).dsl()).getRelations().getFirst();
+        assertThat(legacy.getStatus()).isEqualTo("proposed");
+        assertThat(legacy.getProvenance()).isNull();
+        assertThat(legacy.getExtensions()).isEmpty();
+    }
+
+    @Test
     void editPreservesUnrelatedBytesCommentsIdentityAndUnknownProperties() {
         var update = new UpdateArchitectureElement("arch-system", null, Map.of("title", "New name", "description", "Quoted \"text\"\nNext line"));
         var result = commands.apply(MODEL, update);

@@ -74,7 +74,29 @@ public sealed interface ArchitectureCommand {
         public String id() { return sourceId + " " + relationType + " " + targetId; }
     }
 
-    record CreateArchitectureRelation(RelationKey relation, String status) implements ArchitectureCommand {}
+    record CreateArchitectureRelation(RelationKey relation, String status, Map<String, String> properties)
+            implements ArchitectureCommand {
+        public CreateArchitectureRelation {
+            properties = copyProperties(properties);
+            var allowed = java.util.Set.of("provenance", "x-focus-rationale", "x-focus-evidence",
+                    "x-focus-revision", "x-focus-method", "x-focus-source-hash");
+            properties.forEach((key, value) -> {
+                if (!allowed.contains(key)) throw new ArchitectureDslCommands.CommandProblem("READ_ONLY_PROPERTY", key,
+                        "Property is not editable on a created relation", List.of());
+                if (value.length() > 8000) throw new ArchitectureDslCommands.CommandProblem("VALUE_TOO_LONG", key,
+                        "Property exceeds 8000 characters", List.of());
+                if (value.chars().anyMatch(character -> Character.isISOControl(character)
+                        || character == 0xfffe || character == 0xffff)) {
+                    throw new ArchitectureDslCommands.CommandProblem("INVALID_VALUE", key,
+                            "Property contains unsupported control characters", List.of());
+                }
+            });
+        }
+
+        public CreateArchitectureRelation(RelationKey relation, String status) {
+            this(relation, status, Map.of());
+        }
+    }
     record UpdateArchitectureRelation(RelationKey relation, String status) implements ArchitectureCommand {}
     record DeleteArchitectureRelation(RelationKey relation) implements ArchitectureCommand {}
 
