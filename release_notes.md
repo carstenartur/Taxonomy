@@ -12,6 +12,25 @@ Feature descriptions below retain their documented scope. A merged implementatio
 
 ## Product highlights
 
+### Architecture focus lens and optional crossing reduction
+
+The architecture editor can investigate selected or swept elements through an
+explicitly enabled focus lens. A bounded queue shows actual investigation states,
+supports pause and an investigation budget, and discards stale responses after a
+context or revision change. Suggested directed relations appear as separate
+overlays with their method, rationale and matching source excerpts. Local text
+matches remain labelled unassessed; a suggestion is not evidence that a deployed
+relationship exists.
+
+Accepting a suggestion performs one existing semantic command and retains its
+provenance. Semantic undo uses the accepted operation identity. Investigation,
+acceptance and undo keep the current layout stable. An explicit crossing-reduction
+strategy is available alongside stable ordering; exact-revision SVG/PDF exports
+use the same ordering reference. Crossing reduction is a heuristic, not a
+guarantee of a crossing-free diagram. The existing renderer limits and ordinary
+requirement-analysis workflow remain in place. See the
+[focus-lens design](docs/superpowers/specs/2026-10-24-architecture-focus-design.md).
+
 ### Guided product demo without live AI
 
 Entering `produktdemo` in the analysis field and selecting **Analyze** creates an
@@ -215,6 +234,16 @@ visible; English-model success is not evidence of equivalent German retrieval qu
 
 Custom OpenAI-compatible provider configuration and diagnostics also provide clearer validation and failure reporting.
 
+Graph semantic search additionally requires a proven relation source for the
+selected repository, scope and branch. The existing central/default-branch legacy
+fallback retains relation KNN. A current, exactly empty branch projection can
+return catalogue node hits with empty relation statistics. A nonempty projection
+without branch/commit-bound relation vectors, an unready source, or a source/head
+change during the search returns explicit unavailability. Global `graphReady`
+reports model/index prerequisites; it does not certify every selected branch.
+Complete branch semantic indexing remains follow-up work in
+[#741](https://github.com/carstenartur/Taxonomy/issues/741).
+
 ### Responsive and accessible task interaction
 
 Navigation and task controls remain discoverable at narrow widths and 200–400% zoom. Overlays cannot silently hide the required action surface, disclosures use collision-safe identities, keyboard order follows visual order, and shared semantic helpers keep role and accessibility state consistent.
@@ -244,6 +273,15 @@ Analysis-draft autosaves are serialized. Multiple browser changes that arrive du
 
 The PostgreSQL schema removes the redundant non-unique relation-projection checkpoint index through immutable migration V18 while preserving the equivalent constraint-owned unique index. The JPA mapping no longer recreates the removed index when schema update is enabled, and Testcontainers coverage proves the resulting index state.
 
+Relationship hypotheses and their evidence retain explicit branch authority in
+addition to repository and workspace identity. The selected branch applies to
+reads, review, analysis-session linking, counts and publication. A hypothesis may
+exist independently on two branches without one branch accepting or modifying
+the other's row. Evidence is constrained to its parent's full authority tuple.
+The upgrade derives legacy branches only from consistent recorded project or
+analysis-snapshot links. Missing or conflicting provenance stops migration with
+bounded diagnostics and retains the data for operator correction.
+
 ### Integrated multi-repository technical foundation
 
 Taxonomy 1.5.1 includes the repository-scoped storage, context, and service foundation needed for future multi-repository operation. This is not yet a generally supported public multi-repository product surface. The `/api/repositories/**` API remains disabled by default, and the broader tenancy, recovery, authority, cache, UX, and end-to-end isolation programme remains tracked separately. The established primary-repository/workspace behaviour is the supported default for 1.5.1.
@@ -256,6 +294,18 @@ and address quadratic forward-reference resolution. Maven Enforcer rejects the
 affected compile/runtime dependencies even when a BOM version is overridden.
 See the upstream [2.22.3](https://github.com/FasterXML/jackson/wiki/Jackson-Release-2.22.3)
 and [3.1.7](https://github.com/FasterXML/jackson/wiki/Jackson-Release-3.1.7) release notes.
+
+### Keycloak access-token audience validation
+
+REST bearer validation requires the configured application audience as well as
+the existing issuer, signature and lifetime checks. The default audience follows
+`KEYCLOAK_CLIENT_ID` (`taxonomy-app` by default); deployments with a distinct API
+audience can use Spring's standard resource-server audience setting. A token for
+another application, a missing audience or an `azp` claim alone is insufficient.
+The supplied realms include explicit access-token audience mappers. Existing
+Keycloak realms must be updated before upgrading API clients; see the
+[Keycloak migration guide](docs/en/KEYCLOAK_MIGRATION.md). Browser login and the
+existing principal identity modes remain unchanged.
 
 ### Stable LLM quotas after authorization
 
@@ -382,6 +432,15 @@ waits for the completed publish state, strengthening the evidence used by these 
 
 Maven remains the canonical verification entry point. Deterministic repository policy is owned by JUnit/Failsafe or dependency-free Java tooling, including workflow test authority, documentation links, aggregate reactor coverage, dependency alignment, immutable supply-chain references, packaged dependency hygiene, frontend API boundaries, release version state, request ancestry, CodeQL SARIF enforcement, and SBOM/VEX companion generation.
 
+Split CI now assigns JavaScript contracts and packaged plugin integration tests
+to one authoritative lane each and consumes their original reports in the final
+evidence. Companion plugin/database runs avoid repeating upstream unit suites;
+standalone verification keeps its normal coverage. An opt-in JUnit Platform
+discovery filter removes inherited duplicate methods from the two selected
+reformulation subclasses while retaining their own cases and the original base
+suite. Required checks, assertions and coverage thresholds remain in force. See
+[test execution ownership](docs/superpowers/specs/2026-10-24-test-execution-ownership-design.md).
+
 A bounded set of existing Python release adapters and evidence generators remains in 1.5.1 under Maven/JUnit-owned positive and negative contracts. Remaining adapter migration and release-manifest work is tracked in [#629](https://github.com/carstenartur/Taxonomy/issues/629); [#673](https://github.com/carstenartur/Taxonomy/issues/673) was closed for delivered foundations only, not for complete Python removal. This release introduces no new Python tooling and does not represent retained adapters as product runtime dependencies.
 
 The Java/Maven-only reproducibility requirement is **not yet fulfilled**. The current [Maven verification inventory](docs/dev/MAVEN_VERIFICATION.md) lists remaining container/Helm prerequisites, checks outside root `verify`, conditional integration lanes and post-test evidence rules. Neither the `ci` profile alone nor `test-local` proves all Actions checks were reproduced. This is a known delivery gap, not a passed release criterion.
@@ -428,6 +487,8 @@ Apply these instructions only to published 1.5.1 assets with matching source and
 14. Follow the corrected [backup/restore procedure](docs/en/CONTAINER_IMAGE.md#5-persistence-and-backup), which resolves the actual Compose service volume. Restore acceptance must include users, workspace state, search and Git history.
 15. Use PostgreSQL's managed migration path for external production databases. MSSQL and Oracle remain compatibility profiles pending complete production qualification; switching a profile is not a cross-database data migration. Never use `ddl-auto=create` to upgrade an existing database.
 16. File-backed HSQLDB upgrades from 1.3 prepare required repository and portfolio tenant fields before Hibernate starts. Keep schema migration enabled and resolve reported provenance/key conflicts from a restored stopped-writer backup; do not bypass the checks or reassign historical data to the current branch. See the [database upgrade guidance](docs/en/DATABASE_SETUP.md#hsqldb-default).
+17. For Keycloak REST clients, configure access-token audience mappers before the upgrade. The expected audience defaults to `KEYCLOAK_CLIENT_ID`; custom client IDs and separate API audiences require matching provider and application configuration. Existing tokens without the intended audience will be rejected. See the [migration guide](docs/en/KEYCLOAK_MIGRATION.md).
+18. Test the hypothesis branch migration on the restored database. Repair reported missing or conflicting recorded links from trustworthy historical evidence before restarting. Do not assign an arbitrary branch or delete hypotheses/evidence to make an upgrade pass; any archival/removal requires a separate operator decision. The [database setup guide](docs/en/DATABASE_SETUP.md) describes the supported migration paths and compatibility limits.
 
 ## Verification boundary
 
