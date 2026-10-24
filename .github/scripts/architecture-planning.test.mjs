@@ -16,6 +16,7 @@ class Element {
     addEventListener(type, callback) { this.events[type] = callback.bind(this); }
     setAttribute(key, value) { this.attributes[key] = value; }
     querySelectorAll() { return this.children.filter(c => c.dataset.planningField); }
+    contains(node) { return this === node || this.children.some(child => child.contains(node)); }
     reportValidity() { return true; }
     setCustomValidity(value) { this.validationMessage = value; }
     focus() { this.focused = true; }
@@ -81,7 +82,7 @@ test('malformed namespace is visible and cannot be overwritten through the profi
     assert.equal(f.ids.editorPlanningStatus.textContent,'invalid');
 });
 
-// Run both production UI modules together: do not replace the panel's stage callback.
+// Run the production planning, focus and editor modules together: do not replace the panel's stage callback.
 // Only browser rendering and the remote API boundary are fixtures, not retry logic.
 async function editorFixture(conflictAt) {
     const html = fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/templates/architecture-editor.html'), 'utf8');
@@ -127,14 +128,15 @@ async function editorFixture(conflictAt) {
     const document = {getElementById:id => {
         assert.ok(ids[id], `Production template is missing ${id}`);
         return ids[id];
-    }, createElement:tag => new Element(tag), querySelectorAll:() => []};
+    }, createElement:tag => new Element(tag), querySelectorAll:() => [], documentElement:{lang:'en'}, activeElement:null};
     const window = {confirm:() => true, addEventListener:() => {}, ArchitectureEditorApi:api,
         TaxonomyI18n:{t:key => key, ready:() => Promise.resolve()},
-        ArchitectureEditorRenderer:() => ({render(){},select(){},focus(){},fit(){}})};
-    const sandbox = vm.createContext({window,document,URL,URLSearchParams,AbortController,
+        ArchitectureEditorRenderer:() => ({render(){},select(){},focus(){},fit(){},presentFocus(){}})};
+    const sandbox = vm.createContext({window,document,URL,URLSearchParams,AbortController,setTimeout,clearTimeout,
         crypto:{randomUUID:() => `00000000-0000-4000-8000-${String(++sequence).padStart(12,'0')}`},
         location:{href:'https://example.invalid/architecture/editor',search:''},
         history:{replaceState(){},pushState(){}}});
+    vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-focus.js'), 'utf8'), sandbox);
     vm.runInContext(source, sandbox);
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-editor.js'), 'utf8'), sandbox);
     await settleUi();
