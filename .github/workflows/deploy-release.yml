@@ -593,21 +593,18 @@ jobs:
           fi
 
           docker buildx imagetools inspect "${repository}@${ONNX_IMAGE_DIGEST}" >/dev/null
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          evidence = json.loads(Path('target/release-onnx-image-evidence.json').read_text())
-          expected_image = f"ghcr.io/{os.environ['GITHUB_REPOSITORY_OWNER']}/taxonomy@{os.environ['ONNX_IMAGE_DIGEST']}"
-          if (evidence.get('digest') != os.environ['ONNX_IMAGE_DIGEST']
-                  or evidence.get('image') != expected_image
-                  or evidence.get('imageVariant') != 'onnx'
-                  or evidence.get('sourceCommit') != os.environ['RELEASE_SOURCE_SHA']
-                  or evidence.get('releaseVersion') != os.environ['RELEASE_VERSION']
-                  or evidence.get('scan', {}).get('result') != 'passed'):
-              raise SystemExit('ONNX release image evidence does not match the scanned release variant')
-          PY
+          jq -e --slurp \
+            --arg digest "$ONNX_IMAGE_DIGEST" \
+            --arg image "${repository}@${ONNX_IMAGE_DIGEST}" \
+            --arg source "$RELEASE_SOURCE_SHA" \
+            --arg version "$RELEASE_VERSION" '
+              length == 1 and (.[0] |
+                .digest == $digest and .image == $image and .imageVariant == "onnx" and
+                .sourceCommit == $source and .releaseVersion == $version and .scan.result == "passed")
+            ' target/release-onnx-image-evidence.json >/dev/null || {
+              echo "::error::ONNX release image evidence does not match the scanned release variant"
+              exit 1
+            }
 
           is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
           git fetch origin "refs/heads/main:refs/remotes/origin/main" --force

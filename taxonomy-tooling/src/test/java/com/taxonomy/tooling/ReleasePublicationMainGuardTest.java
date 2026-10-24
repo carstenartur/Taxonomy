@@ -140,7 +140,7 @@ class ReleasePublicationMainGuardTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"missing", "standard-digest", "variant", "source", "scan", "release"})
+    @ValueSource(strings = {"missing", "standard-digest", "image", "variant", "source", "scan", "release", "malformed", "missing-scan", "multiple-documents"})
     void invalidOnnxEvidencePreventsPublication(String problem, @TempDir Path root) throws Exception {
         Fixture fixture = fixture(root, "unchanged");
         Path evidence = fixture.work().resolve("target/release-onnx-image-evidence.json");
@@ -148,6 +148,10 @@ class ReleasePublicationMainGuardTest {
         switch (problem) {
             case "missing" -> Files.delete(evidence);
             case "standard-digest" -> Files.writeString(evidence, payload.replace(ONNX_IMAGE_DIGEST, IMAGE_DIGEST));
+            case "image" -> Files.writeString(evidence, payload.replace("ghcr.io/release-guard-test/taxonomy@", "ghcr.io/wrong-owner/taxonomy@"));
+            case "multiple-documents" -> Files.writeString(evidence, payload + payload);
+            case "malformed" -> Files.writeString(evidence, "{invalid JSON");
+            case "missing-scan" -> Files.writeString(evidence, payload.replace("\"result\":\"passed\"", "\"other\":\"passed\""));
             case "variant" -> Files.writeString(evidence, payload.replace("onnx", "standard"));
             case "source" -> Files.writeString(evidence, payload.replace(fixture.releaseSha(), "0".repeat(40)));
             case "scan" -> Files.writeString(evidence, payload.replace("passed", "failed"));
