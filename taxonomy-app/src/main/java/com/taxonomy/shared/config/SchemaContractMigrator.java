@@ -321,10 +321,34 @@ final class SchemaContractMigrator {
         return c.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("microsoft");
     }
     private void ensureBranchUnique(Connection c, TableRef table, String name, List<String> columns) throws SQLException {
-        if (uniqueIndexes(c, table).stream().noneMatch(index -> index.columns().equals(columns))) {
+        List<IndexDefinition> indexes = isSqlServer(c) ? sqlServerBranchUniqueIndexes(c, table) : uniqueIndexes(c, table);
+        if (indexes.stream().noneMatch(index -> index.columns().equals(columns))) {
             execute(c, "ALTER TABLE " + qualified(c, table) + " ADD CONSTRAINT " + name
                     + " UNIQUE (" + String.join(",", columns) + ")");
         }
+    }
+    private List<IndexDefinition> sqlServerBranchUniqueIndexes(Connection c, TableRef table) throws SQLException {
+        Map<String, Map<Short, String>> indexes = new LinkedHashMap<>();
+        try (PreparedStatement query = c.prepareStatement("""
+                SELECT i.name, ic.key_ordinal, col.name
+                FROM sys.indexes i
+                JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
+                JOIN sys.columns col ON col.object_id=ic.object_id AND col.column_id=ic.column_id
+                JOIN sys.tables t ON t.object_id=i.object_id
+                JOIN sys.schemas s ON s.schema_id=t.schema_id
+                WHERE s.name=? AND t.name=? AND i.is_unique=1 AND i.has_filter=0
+                  AND i.is_disabled=0 AND i.is_hypothetical=0 AND ic.key_ordinal>0
+                """)) {
+            query.setString(1, table.schema());
+            query.setString(2, table.name());
+            try (ResultSet rs = query.executeQuery()) {
+                while (rs.next()) indexes.computeIfAbsent(rs.getString(1), unused -> new TreeMap<>())
+                        .put(rs.getShort(2), rs.getString(3).toLowerCase(Locale.ROOT));
+            }
+        }
+        return indexes.entrySet().stream()
+                .map(entry -> new IndexDefinition(entry.getKey(), List.copyOf(entry.getValue().values())))
+                .toList();
     }
     private void branchNotNull(Connection c, TableRef table, String column) throws SQLException {
         try (ResultSet columns = c.getMetaData().getColumns(table.catalog(), table.schema(), table.name(), "%")) {
@@ -345,18 +369,47 @@ final class SchemaContractMigrator {
     private boolean hasExactBranchForeignKey(Connection c, TableRef source, TableRef target,
             List<String> sourceColumns, List<String> targetColumns) throws SQLException {
         Map<String, Map<Short, String>> keys = new LinkedHashMap<>();
-        try (ResultSet rs = c.getMetaData().getImportedKeys(source.catalog(), source.schema(), source.name())) {
-            while (rs.next()) {
-                if (!target.name().equalsIgnoreCase(rs.getString("PKTABLE_NAME"))
-                        || !Objects.equals(target.schema(), rs.getString("PKTABLE_SCHEM"))) continue;
-                keys.computeIfAbsent(rs.getString("FK_NAME"), unused -> new TreeMap<>())
-                        .put(rs.getShort("KEY_SEQ"), rs.getString("FKCOLUMN_NAME").toLowerCase(Locale.ROOT)
-                                + ":" + rs.getString("PKCOLUMN_NAME").toLowerCase(Locale.ROOT));
+        if (c.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("oracle")) {
+            // Oracle JDBC imported-key metadata filters parent constraints to P,
+            // omitting this FK's UNIQUE parent key. Inspect its actual column pairs.
+            try (PreparedStatement query = c.prepareStatement("""
+                    SELECT f.constraint_name, fc.position, fc.column_name, pc.column_name
+                    FROM all_constraints f
+                    JOIN all_constraints p ON p.owner=f.r_owner AND p.constraint_name=f.r_constraint_name
+                    JOIN all_cons_columns fc ON fc.owner=f.owner AND fc.constraint_name=f.constraint_name
+                      AND fc.table_name=f.table_name
+                    JOIN all_cons_columns pc ON pc.owner=p.owner AND pc.constraint_name=p.constraint_name
+                      AND pc.table_name=p.table_name AND pc.position=fc.position
+                    WHERE f.constraint_type='R' AND f.status='ENABLED' AND p.constraint_type IN ('P','U')
+                      AND f.owner=? AND f.table_name=? AND p.owner=? AND p.table_name=?
+                    """)) {
+                query.setString(1, source.schema());
+                query.setString(2, source.name());
+                query.setString(3, target.schema());
+                query.setString(4, target.name());
+                try (ResultSet rs = query.executeQuery()) {
+                    while (rs.next()) keys.computeIfAbsent(rs.getString(1), unused -> new TreeMap<>())
+                            .put(rs.getShort(2), rs.getString(3).toLowerCase(Locale.ROOT)
+                                    + ":" + rs.getString(4).toLowerCase(Locale.ROOT));
+                }
+            }
+        } else {
+            try (ResultSet rs = c.getMetaData().getImportedKeys(source.catalog(), source.schema(), source.name())) {
+                while (rs.next()) {
+                    if (!target.name().equalsIgnoreCase(rs.getString("PKTABLE_NAME"))
+                            || !Objects.equals(target.schema(), rs.getString("PKTABLE_SCHEM"))) continue;
+                    keys.computeIfAbsent(rs.getString("FK_NAME"), unused -> new TreeMap<>())
+                            .put(rs.getShort("KEY_SEQ"), rs.getString("FKCOLUMN_NAME").toLowerCase(Locale.ROOT)
+                                    + ":" + rs.getString("PKCOLUMN_NAME").toLowerCase(Locale.ROOT));
+                }
             }
         }
         List<String> expected = new ArrayList<>();
         for (int i = 0; i < sourceColumns.size(); i++) expected.add(sourceColumns.get(i) + ":" + targetColumns.get(i));
-        return keys.values().stream().anyMatch(key -> List.copyOf(key.values()).equals(expected));
+        // Hibernate may order the same four source/target pairs differently.
+        // Compare the complete mapping, retaining cardinality and each pairing.
+        return keys.values().stream().anyMatch(key -> key.size() == expected.size()
+                && new LinkedHashSet<>(key.values()).equals(new LinkedHashSet<>(expected)));
     }
     private void ensureBinaryBranchCollation(Connection c, TableRef parent, TableRef evidence) throws SQLException {
         if (!isSqlServer(c)) return;
@@ -379,12 +432,23 @@ final class SchemaContractMigrator {
                 for (String name : foreignKeys) execute(c, "ALTER TABLE " + qualified(c, evidence)
                         + " DROP CONSTRAINT " + quoted(c, name));
             }
-            for (IndexDefinition index : uniqueIndexes(c, table)) if (index.columns().contains("branch_name"))
-                dropConstraintOrIndex(c, table, index.name());
-            // Hibernate's scope index may include branch_name too.
+            // Discover actual SQL Server dependencies, including Hibernate-created
+            // unique keys and non-unique scope indexes, before changing collation.
             Set<String> indexes = new LinkedHashSet<>();
-            try (ResultSet rs = c.getMetaData().getIndexInfo(table.catalog(), table.schema(), table.name(), false, false)) {
-                while (rs.next()) if ("branch_name".equalsIgnoreCase(rs.getString("COLUMN_NAME"))) indexes.add(rs.getString("INDEX_NAME"));
+            try (PreparedStatement query = c.prepareStatement("""
+                    SELECT DISTINCT i.name
+                    FROM sys.indexes i
+                    JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
+                    JOIN sys.columns col ON col.object_id=ic.object_id AND col.column_id=ic.column_id
+                    JOIN sys.tables t ON t.object_id=i.object_id
+                    JOIN sys.schemas s ON s.schema_id=t.schema_id
+                    WHERE s.name=? AND t.name=? AND col.name='branch_name' AND i.name IS NOT NULL
+                    """)) {
+                query.setString(1, table.schema());
+                query.setString(2, table.name());
+                try (ResultSet rs = query.executeQuery()) {
+                    while (rs.next()) indexes.add(rs.getString(1));
+                }
             }
             for (String index : indexes) dropConstraintOrIndex(c, table, index);
             execute(c, "ALTER TABLE " + qualified(c, table)
