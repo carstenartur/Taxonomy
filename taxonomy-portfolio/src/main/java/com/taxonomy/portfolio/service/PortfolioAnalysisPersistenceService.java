@@ -608,7 +608,7 @@ public class PortfolioAnalysisPersistenceService {
                                 WorkspaceContext context) {
         hypothesisLinks.linkSnapshot(
                 PortfolioScope.repositoryId(context), PortfolioScope.workspaceId(context),
-                analysisSessionId, projectId, requirementId, snapshotId);
+                PortfolioScope.branch(context), analysisSessionId, projectId, requirementId, snapshotId);
     }
 
     private RequirementAnalysisJob requireJob(String jobId,

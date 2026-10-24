@@ -8,7 +8,7 @@ import com.taxonomy.relations.service.GraphSearchService;
 import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.search.LocalOnnxIndexInitializer;
 import com.taxonomy.error.SearchUnavailableException;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -47,7 +47,7 @@ class SearchFacadeReadinessRaceTest {
             case "hybrid" -> when(hybrid.hybridSearch("query", 10)).thenAnswer(call -> {
                 nodeReady.set(false); return List.of();
             });
-            case "graph" -> when(graph.graphSearch("query", 10, WorkspaceContext.SHARED)).thenAnswer(call -> {
+            case "graph" -> when(graph.graphSearch("query", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"))).thenAnswer(call -> {
                 state.set(LocalOnnxIndexInitializer.State.PARTIAL);
                 return new GraphSearchResult(List.of(), Map.of(), Map.of(), "completed");
             });
@@ -59,7 +59,7 @@ class SearchFacadeReadinessRaceTest {
                 case "semantic" -> facade.semanticSearch("query", 10);
                 case "similar" -> facade.findSimilarNodes("BP", 10);
                 case "hybrid" -> facade.hybridSearch("query", 10);
-                case "graph" -> facade.graphSearch("query", 10, WorkspaceContext.SHARED);
+                case "graph" -> facade.graphSearch("query", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
                 default -> throw new AssertionError(mode);
             }
         }).isInstanceOf(SearchUnavailableException.class);
@@ -67,7 +67,7 @@ class SearchFacadeReadinessRaceTest {
             case "semantic" -> verify(embeddings).semanticSearch("query", 10);
             case "similar" -> verify(embeddings).findSimilarNodes("BP", 10);
             case "hybrid" -> verify(hybrid).hybridSearch("query", 10);
-            case "graph" -> verify(graph).graphSearch("query", 10, WorkspaceContext.SHARED);
+            case "graph" -> verify(graph).graphSearch("query", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
             default -> throw new AssertionError(mode);
         }
     }

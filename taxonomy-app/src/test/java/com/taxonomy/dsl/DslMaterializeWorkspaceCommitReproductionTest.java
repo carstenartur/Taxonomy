@@ -102,7 +102,10 @@ class DslMaterializeWorkspaceCommitReproductionTest {
                         .with(user(OWNER).roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workspaceId").value(workspaceId))
+                .andExpect(jsonPath("$.currentBranch").value("main"))
                 .andExpect(jsonPath("$.provisioningStatus").value("READY"));
+        var selectedHead = gitRepositories.getWorkspaceRepository(workspaceId).getHeadCommitInfo("main");
+        assertThat(selectedHead).isNotNull();
 
         log.info("Backend materialization reproduction: fetching real catalogue endpoints");
         var catalogue = mvc.perform(get("/api/taxonomy").header(HEADER, workspaceId)
@@ -140,7 +143,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
                 .andExpect(jsonPath("$.relationsCreated").value(0))
                 .andExpect(jsonPath("$.hypothesesCreated").value(2))
                 .andExpect(jsonPath("$.documentId").isNumber())
-                .andExpect(jsonPath("$.viewContext.basedOnBranch").value("draft"))
+                .andExpect(jsonPath("$.viewContext.basedOnBranch").value("main"))
                 .andExpect(jsonPath("$.viewContext.includesProvisionalRelations").value(true))
                 .andExpect(jsonPath("$.viewContext.projectionStale").isBoolean())
                 .andExpect(jsonPath("$.viewContext.indexStale").isBoolean())
@@ -148,18 +151,17 @@ class DslMaterializeWorkspaceCommitReproductionTest {
         log.info("Backend materialization reproduction: materialize response returned after service commit");
         assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
         JsonNode body = JSON.readTree(materialized.getResponse().getContentAsString());
-        // Explicit provisioning creates main, while this compatibility endpoint
-        // defaults its response context to draft when no branch was supplied.
-        // Keep that exact existing behavior visible instead of supplying a branch.
+        // Omitting the optional branch must use the selected workspace's main
+        // branch consistently in the response and all committed projections.
         assertThat(body.path("viewContext")).isEqualTo(JSON.readTree("""
-                {"basedOnCommit":null,"basedOnBranch":"draft","commitTimestamp":null,
+                {"basedOnCommit":"%s","basedOnBranch":"main","commitTimestamp":"%s",
                  "includesProvisionalRelations":true,"projectionStale":false,"indexStale":false}
-                """));
+                """.formatted(selectedHead.commitId(), selectedHead.timestamp())));
         long documentId = body.path("documentId").asLong();
         assertThat(documents.findById(documentId)).hasValueSatisfying(document -> {
             assertThat(document.getPath()).isEqualTo(PATH);
             assertThat(document.getRawContent()).isEqualTo(dsl);
-            assertThat(document.getBranch()).isNull();
+            assertThat(document.getBranch()).isEqualTo("main");
             assertThat(document.getCommitId()).isNull();
         });
 
@@ -184,6 +186,7 @@ class DslMaterializeWorkspaceCommitReproductionTest {
             assertThat(row.path("status").asText()).isEqualTo("PROVISIONAL");
             assertThat(row.path("confidence").asDouble()).isEqualTo(0.82);
             assertThat(row.path("workspaceId").asText()).isEqualTo(workspaceId);
+            assertThat(row.path("branchName").asText()).isEqualTo("main");
             assertThat(row.path("ownerUsername").asText()).isEqualTo(OWNER);
             assertThat(row.path("repositoryId").asText()).isEqualTo(primary.getRepositoryId());
         }

@@ -86,6 +86,8 @@ class ProductionCurrentBackupIT {
                 context.getBean(BackupAuthorizationService.class).authorize(alice.id(), request),
                 root.resolve("direct-capture-" + suffix), ArchiveProgress.NONE)) {
             assertThat(captured.manifest().entries()).isNotEmpty();
+            assertThat(captured.manifest().components()).filteredOn(component -> component.id().value().equals("knowledge"))
+                    .singleElement().extracting(BackupManifest.Component::version).isEqualTo(2);
             assertThat(captured.manifest().requiredFeatures()).contains("source-database-family-v1");
             try (var proof = captured.openEntry("verification/capture.json")) {
                 var sourceDatabase = com.taxonomy.exchange.backup.PortableRows.json().readTree(proof).get("sourceDatabase");
@@ -100,6 +102,7 @@ class ProductionCurrentBackupIT {
         Path archive = root.resolve("download-"+suffix+".taxbackup");
         try (var download=jobs.download(id,alice.id()); var output=Files.newOutputStream(archive)) { download.writeTo(output); }
         var versions=new HashMap<BackupComponentId,Integer>(); for(var owner:BackupCoverageInventory.load().categories()) versions.put(owner.owner(),1);
+        versions.put(new BackupComponentId("knowledge"),2);
         versions.put(new BackupComponentId("capture-proof"),1);
         try(var verified=new BackupArchiveReader(ArchiveProtectionProvider.unprotected(),ArchiveLimits.defaults(),
                 context.getEnvironment().getProperty("info.app.version"),versions,context.getBean(BackupFeaturePrerequisites.class)).verify(archive)) {

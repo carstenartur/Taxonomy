@@ -21,6 +21,11 @@ class OracleHypothesisSessionColumnMigratorOracleIT extends OracleHypothesisSess
             .withPassword("taxonomy")
             .withStartupTimeout(Duration.ofMinutes(3));
 
+    @org.junit.jupiter.api.Test
+    void retainedHypothesisBranchAuthority() throws Exception {
+        HypothesisBranchMigrationContract.verify(database());
+    }
+
     @Override
     DataSource database() {
         return new DriverManagerDataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword());

@@ -7,10 +7,35 @@ import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.GraphSearchService;
+import com.taxonomy.relations.service.GraphSearchAuthorityService;
+import com.taxonomy.relations.model.RelationDecisionProjection;
+import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
+import com.taxonomy.relations.repository.RelationDecisionProjectionRepository;
+import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
+import com.taxonomy.relations.service.RelationProjectionReadService;
+import com.taxonomy.relations.service.RelationProjectionRecoveryService;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.error.SearchUnavailableException;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import java.util.HashMap;
+import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import com.taxonomy.search.config.HibernateSearchAnalysisConfigurer;
 import com.taxonomy.search.config.SpringContextHolder;
 import com.taxonomy.workspace.service.SystemRepositoryService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.cfg.Configuration;
@@ -41,9 +66,13 @@ class EmbeddingModelKnnIsolationTest {
     private static final String LEGACY_NODE = "fixture-untagged";
     private static final String QUERY_NODE = "fixture-query-source";
     private static final String CURRENT_REPOSITORY = "fixture-model-isolation-repository";
-    private static final WorkspaceContext CENTRAL_CONTEXT =
-            new WorkspaceContext("fixture-user", null, "draft", CURRENT_REPOSITORY);
+    private static final RepositoryContext CENTRAL_CONTEXT =
+            RepositoryContext.centralRead(CURRENT_REPOSITORY, "draft", "fixture-user");
 
+    private final Map<RepositoryContext, String> heads = new HashMap<>();
+    private RelationProjectionReadService relationReads;
+    private RelationBranchProjectionReadinessService readiness;
+    private final RelationProjectionRecoveryService recovery = mock(RelationProjectionRecoveryService.class);
     private final FixtureEmbeddingService embeddings = new FixtureEmbeddingService();
     private GenericApplicationContext context;
     private ApplicationContext previousBridgeContext;
@@ -65,6 +94,9 @@ class EmbeddingModelKnnIsolationTest {
         Configuration configuration = new Configuration()
                 .addAnnotatedClass(TaxonomyNode.class)
                 .addAnnotatedClass(TaxonomyRelation.class)
+                .addAnnotatedClass(SystemRepository.class)
+                .addAnnotatedClass(RelationDecisionProjection.class)
+                .addAnnotatedClass(RelationDecisionProjectionCheckpoint.class)
                 .setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
                 .setProperty("hibernate.connection.url", "jdbc:hsqldb:mem:embedding-model-knn-isolation")
                 .setProperty("hibernate.connection.username", "sa")
@@ -81,8 +113,35 @@ class EmbeddingModelKnnIsolationTest {
         factory = configuration.buildSessionFactory();
         entityManager = factory.createEntityManager();
         ReflectionTestUtils.setField(embeddings, "entityManager", entityManager);
-        graphSearch = new GraphSearchService(embeddings);
-        ReflectionTestUtils.setField(graphSearch, "entityManager", entityManager);
+        var shared = SharedEntityManagerCreator.createSharedEntityManager(factory);
+        var repositories = new JpaRepositoryFactory(shared);
+        WorkspaceDslReadPort reads = selected -> {
+            var read = mock(WorkspaceDslReadPort.RepositoryRead.class);
+            try { when(read.currentHead()).thenAnswer(call -> heads.get(selected)); }
+            catch (java.io.IOException impossible) { throw new AssertionError(impossible); }
+            return read;
+        };
+        readiness = new RelationBranchProjectionReadinessService(reads,
+                repositories.getRepository(RelationDecisionProjectionRepository.class),
+                repositories.getRepository(RelationDecisionProjectionCheckpointRepository.class));
+        var repositoryService = mock(SystemRepositoryService.class);
+        var primary = new SystemRepository();
+        primary.setRepositoryId(CURRENT_REPOSITORY);
+        primary.setDefaultBranch("draft");
+        when(repositoryService.getPrimaryRepository()).thenReturn(primary);
+        var nodeRepository = repositories.getRepository(TaxonomyNodeRepository.class);
+        var legacyRelations = new TaxonomyRelationService(
+                repositories.getRepository(TaxonomyRelationRepository.class), nodeRepository, repositoryService);
+        relationReads = new RelationProjectionReadService(readiness, recovery, legacyRelations,
+                nodeRepository, repositoryService);
+        heads.put(CENTRAL_CONTEXT, "a".repeat(40));
+        graphSearch = new GraphSearchService(embeddings,
+                new GraphSearchAuthorityService(relationReads, readiness, new JpaTransactionManager(factory)));
+        ReflectionTestUtils.setField(graphSearch, "entityManager", shared);
+        var proxy = new ProxyFactory(graphSearch);
+        proxy.addAdvice(new TransactionInterceptor(new JpaTransactionManager(factory),
+                new AnnotationTransactionAttributeSource()));
+        graphSearch = (GraphSearchService) proxy.getProxy();
 
         entityManager.getTransaction().begin();
         TaxonomyNode current = node(CURRENT_NODE, "Current profile", "BP");
@@ -182,22 +241,142 @@ class EmbeddingModelKnnIsolationTest {
     }
 
     @Test
-    void repositoryAndWorkspaceRestrictionsApplyBeforeTheKnnCandidateBudget() {
-        var selected = new WorkspaceContext("fixture-user", "fixture-selected-workspace", "draft", CURRENT_REPOSITORY);
-        var result = graphSearch.graphSearch("authored query", 1, selected);
-
-        assertThat(result.getRelationCountByRoot()).containsExactlyInAnyOrderEntriesOf(Map.of("BP", 2L));
-        assertThat(result.getTopRelationTypes())
-                .containsExactlyInAnyOrderEntriesOf(Map.of("SUPPORTS", 1L, "REALIZES", 1L));
+    void readyGraphSearchRejectsUnprovedBranchVectorsAndStaleHeads() {
+        var main = RepositoryContext.workspace(CURRENT_REPOSITORY, "fixture-selected-workspace", "main", "fixture-user");
+        var draft = RepositoryContext.workspace(CURRENT_REPOSITORY, "fixture-selected-workspace", "draft", "fixture-user");
+        project(main, "b".repeat(40), RelationType.SUPPORTS);
+        project(draft, "c".repeat(40), RelationType.DEPENDS_ON);
+        assertThat(graphSearch.graphSearch("authored query", 1, CENTRAL_CONTEXT).getTopRelationTypes())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("SUPPORTS", 1L));
+        assertThat(readiness.inspect(main).rows()).hasSize(1);
+        assertThat(readiness.inspect(draft).rows()).hasSize(1);
+        assertAll(
+                () -> assertThatThrownBy(() -> graphSearch.graphSearch("authored query", 1, main))
+                        .isInstanceOf(SearchUnavailableException.class),
+                () -> assertThatThrownBy(() -> graphSearch.graphSearch("authored query", 1, draft))
+                        .isInstanceOf(SearchUnavailableException.class),
+                () -> {
+                    heads.put(draft, "d".repeat(40));
+                    assertThatThrownBy(() -> graphSearch.graphSearch("authored query", 1, draft))
+                            .isInstanceOf(SearchUnavailableException.class);
+                });
     }
 
     @Test
-    void anEmptyRepositoryCannotReceiveAnotherRepositorysGraphStatistics() {
-        var empty = new WorkspaceContext("fixture-user", null, "draft", "fixture-empty-repository");
-        var result = graphSearch.graphSearch("authored query", 1, empty);
-
+    void exactEmptyProjectionReturnsGlobalNodesWithoutLegacyRelationStatistics() {
+        var selected = RepositoryContext.workspace(CURRENT_REPOSITORY, "empty-workspace", "draft", "fixture-user");
+        project(selected, "e".repeat(40), null);
+        var result = graphSearch.graphSearch("authored query", 1, selected);
+        assertThat(result.getMatchedNodes()).extracting(TaxonomyNodeDto::getCode).containsExactly(CURRENT_NODE);
         assertThat(result.getRelationCountByRoot()).isEmpty();
         assertThat(result.getTopRelationTypes()).isEmpty();
+    }
+
+    @Test
+    void unprovedWorkspaceNondefaultAndForkScopesDoNotInheritLegacyAuthority() {
+        var workspace = RepositoryContext.workspace(CURRENT_REPOSITORY, "unbuilt-workspace", "draft", "fixture-user");
+        var nondefault = RepositoryContext.centralRead(CURRENT_REPOSITORY, "main", "fixture-user");
+        var fork = new RepositoryContext(CURRENT_REPOSITORY, null, "draft", "fixture-user", RepositoryScope.FORK);
+        for (var selected : List.of(workspace, nondefault, fork)) {
+            heads.put(selected, "a".repeat(40));
+            assertThatThrownBy(() -> graphSearch.graphSearch("authored query", 1, selected))
+                    .isInstanceOf(SearchUnavailableException.class);
+        }
+    }
+
+    @Test
+    void fallbackBecomingProjectionAtTheSameHeadDuringInferenceRejects() {
+        try {
+            expectUnavailableDuringInference(CENTRAL_CONTEXT,
+                    () -> project(CENTRAL_CONTEXT, "a".repeat(40), null));
+        } finally {
+            var writer = factory.createEntityManager();
+            writer.getTransaction().begin();
+            writer.createQuery("delete from RelationDecisionProjectionCheckpoint c where c.repositoryId = :repository and c.workspaceId is null and c.branch = 'draft'")
+                    .setParameter("repository", CURRENT_REPOSITORY).executeUpdate();
+            writer.getTransaction().commit();
+            writer.close();
+        }
+    }
+
+    @Test
+    void fallbackRecoveryBeginningDuringInferenceRejects() {
+        try {
+            expectUnavailableDuringInference(CENTRAL_CONTEXT,
+                    () -> when(recovery.pendingCount(CENTRAL_CONTEXT)).thenReturn(1L));
+        } finally {
+            reset(recovery);
+        }
+    }
+
+    @Test
+    void fallbackHeadAdvancingDuringInferenceRejects() {
+        try {
+            expectUnavailableDuringInference(CENTRAL_CONTEXT,
+                    () -> heads.put(CENTRAL_CONTEXT, "f".repeat(40)));
+        } finally {
+            heads.put(CENTRAL_CONTEXT, "a".repeat(40));
+        }
+    }
+
+    @Test
+    void sameHeadCheckpointChangeDuringInferenceCannotReuseManagedAuthority() {
+        var selected = RepositoryContext.workspace(CURRENT_REPOSITORY, "fresh-checkpoint", "draft", "fixture-user");
+        project(selected, "1".repeat(40), null);
+        expectUnavailableDuringInference(selected, () -> {
+            // A separately committed corrupt checkpoint at the same head must
+            // be observed rather than the formerly managed READY/count=0 token.
+            var writer = factory.createEntityManager();
+            writer.getTransaction().begin();
+            var checkpoint = writer.createQuery("select c from RelationDecisionProjectionCheckpoint c where c.workspaceId = 'fresh-checkpoint'",
+                    RelationDecisionProjectionCheckpoint.class).getSingleResult();
+            checkpoint.setRelationCount(1);
+            writer.getTransaction().commit();
+            writer.close();
+        });
+    }
+
+    private void expectUnavailableDuringInference(RepositoryContext selected, Runnable transition) {
+        var inferred = new java.util.concurrent.atomic.AtomicBoolean();
+        embeddings.onQuery = () -> {
+            inferred.set(true);
+            transition.run();
+        };
+        try {
+            assertThatThrownBy(() -> graphSearch.graphSearch("authored query", 1, selected))
+                    .isInstanceOf(SearchUnavailableException.class);
+            assertThat(inferred).as("source was supported before inference").isTrue();
+        } finally {
+            embeddings.onQuery = () -> {};
+        }
+    }
+
+    private void project(RepositoryContext selected, String head, RelationType type) {
+        heads.put(selected, head);
+        var writer = factory.createEntityManager();
+        writer.getTransaction().begin();
+        var checkpoint = new RelationDecisionProjectionCheckpoint();
+        checkpoint.setRepositoryId(selected.repositoryId());
+        checkpoint.setWorkspaceId(selected.workspaceId());
+        checkpoint.setBranch(selected.branch());
+        checkpoint.setAuthoritativeCommitId(head);
+        checkpoint.setRelationCount(type == null ? 0 : 1);
+        writer.persist(checkpoint);
+        if (type != null) {
+            var row = new RelationDecisionProjection();
+            row.setRepositoryId(selected.repositoryId());
+            row.setWorkspaceId(selected.workspaceId());
+            row.setBranch(selected.branch());
+            row.setAuthoritativeCommitId(head);
+            row.setSourceCode(CURRENT_NODE);
+            row.setTargetCode(QUERY_NODE);
+            row.setRelationType(type);
+            row.setRelationPresent(true);
+            row.setCausationId("fixture");
+            writer.persist(row);
+        }
+        writer.getTransaction().commit();
+        writer.close();
     }
 
     private static TaxonomyNode node(String code, String name, String root) {
@@ -228,10 +407,16 @@ class EmbeddingModelKnnIsolationTest {
     private static class FixtureEmbeddingService extends LocalEmbeddingService {
         private boolean indexing = true;
         private String documentKey;
+        private Runnable onQuery = () -> {};
 
         @Override public boolean isEnabled() { return true; }
         @Override public boolean isAvailable() { return true; }
-        @Override public float[] embedQuery(String text) { return vector(1, 0); }
+        @Override public float[] embedQuery(String text) {
+            Runnable action = onQuery;
+            onQuery = () -> {};
+            action.run();
+            return vector(1, 0);
+        }
         @Override public String embeddingIndexKey() { return indexing ? documentKey : CURRENT_KEY; }
 
         @Override

@@ -13,6 +13,7 @@ import com.taxonomy.versioning.controller.DslApiController;
 import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
 import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +49,8 @@ class DslDocumentApiControllerContractTest {
         mvc = MockMvcBuilders.standaloneSetup(controller,new DslApiController(dslOps,workspace,resolver)).build();
         when(workspace.resolveCurrentUsername()).thenReturn("alice");
         when(workspace.resolveCurrentContext()).thenReturn(context);
+        when(workspace.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.workspace("repo-a", "workspace", "review", "alice"));
     }
     @Test
     void exportPreservesTextContentAndNamespaceDefaultAndOverride() throws Exception {
@@ -69,17 +72,18 @@ class DslDocumentApiControllerContractTest {
         verify(state).ensureWorkspaceState("alice");
     }
     @Test
-    void materializePreservesBodyParametersDefaultBranchAndInvalidEnvelope() throws Exception {
+    void materializePreservesBodyParametersSelectedBranchAndInvalidEnvelope() throws Exception {
         when(documents.materialize("dsl",null,null,null)).thenReturn(result(true));
+        when(dslOps.getViewContext("review")).thenReturn(view);
         mvc.perform(post("/api/dsl/materialize").contentType(MediaType.TEXT_PLAIN).content("dsl"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.valid").value(true)).andExpect(jsonPath("$.errors").isArray())
                 .andExpect(jsonPath("$.warnings[0]").value("warning")).andExpect(jsonPath("$.relationsCreated").value(2))
-                .andExpect(jsonPath("$.hypothesesCreated").value(1)).andExpect(jsonPath("$.documentId").value(42));
-        verify(dslOps).getViewContext("draft");
+                .andExpect(jsonPath("$.hypothesesCreated").value(1)).andExpect(jsonPath("$.documentId").value(42))
+                .andExpect(jsonPath("$.viewContext.basedOnBranch").value("review"));
         when(documents.materialize("invalid","file","review","commit")).thenReturn(result(false));
         mvc.perform(post("/api/dsl/materialize").content("invalid").param("path","file").param("branch","review").param("commitId","commit"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.valid").value(false)).andExpect(jsonPath("$.errors[0]").value("invalid"));
-        verify(dslOps).getViewContext("review");
+        verify(dslOps,times(2)).getViewContext("review");
         mvc.perform(post("/api/dsl/materialize")).andExpect(status().isBadRequest());
     }
     @Test

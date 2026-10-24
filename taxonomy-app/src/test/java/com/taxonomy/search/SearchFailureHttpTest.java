@@ -4,12 +4,13 @@ import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.catalog.service.SearchService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.relations.service.GraphSearchService;
+import com.taxonomy.relations.service.GraphSearchAuthorityService;
 import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.search.controller.SearchApiController;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.shared.config.GlobalExceptionHandler;
 import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import jakarta.persistence.EntityManager;
 import org.hibernate.search.mapper.orm.Search;
@@ -29,6 +30,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 
 /** Real search services, facade, controller and exception translation; no native model or remote provider. */
 class SearchFailureHttpTest {
+    private final GraphSearchAuthorityService authority = mock(GraphSearchAuthorityService.class);
     private final EntityManager manager = mock(EntityManager.class);
     private final LocalEmbeddingService embeddings = spy(new LocalEmbeddingService());
     private final WorkspaceResolver workspaces = mock(WorkspaceResolver.class);
@@ -49,9 +51,9 @@ class SearchFailureHttpTest {
         ReflectionTestUtils.setField(embeddings, "entityManager", manager);
         var facade = new SearchFacade(taxonomy, fullText,
                 new HybridSearchService(fullText, embeddings), embeddings,
-                new GraphSearchService(embeddings), initializer);
+                new GraphSearchService(embeddings, authority), initializer);
         when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
-        when(workspaces.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         var messages = new ResourceBundleMessageSource();
         messages.setBasenames("i18n/messages_search", "i18n/messages");
         messages.setDefaultEncoding("UTF-8");
@@ -91,6 +93,19 @@ class SearchFailureHttpTest {
     }
 
     @Test
+    void globallyReadyGraphWithUnavailableScopeReturnsSanitized503() throws Exception {
+        when(authority.inspect(any())).thenThrow(new com.taxonomy.error.SearchUnavailableException());
+        mvc.perform(get("/api/search/graph").param("q", "private-business-query"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message").value(
+                        "Search is temporarily unavailable. Please try again."))
+                .andExpect(jsonPath("$.matchedNodes").doesNotExist())
+                .andExpect(content().string(not(containsString("private-"))));
+        verify(embeddings, never()).embedQuery(anyString());
+    }
+
+    @Test
     void similarNodeBackendFailureReturns503() throws Exception {
         when(manager.createQuery(anyString(), eq(com.taxonomy.catalog.model.TaxonomyNode.class)))
                 .thenThrow(new IllegalStateException("private-database-response"));
@@ -101,7 +116,7 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceDenialKeepsIts403Meaning() throws Exception {
-        when(workspaces.resolveCurrentContext())
+        when(workspaces.resolveCurrentRepositoryContext())
                 .thenThrow(new AccessDeniedException("private-workspace"));
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isForbidden())
@@ -111,11 +126,15 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceFailureReturns503BeforeRetrieval() throws Exception {
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(RepositoryContext.workspace(
+                "fixture-repository", "fixture-workspace", "draft", "test-user"));
         doThrow(new IllegalStateException("private-workspace"))
                 .when(repository).ensureWorkspaceState("test-user");
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(content().string(not(containsString("private-"))));
+        verify(repository).ensureWorkspaceState("test-user");
+        verifyNoInteractions(authority);
         verify(embeddings, never()).embedQuery(anyString());
     }
 }

@@ -28,15 +28,68 @@ class RestoreSchemaMigrationTest {
         for (String table : List.of("source_artifact", "source_version", "source_fragment", "user_workspace", "app_user", "app_principal", "principal_binding", "backup_capability_grant", "git_packs", "workspace_git_reflog_provenance", "analysis_cluster_call", "analysis_cluster_attempt"))
             assertThat(rows.queryForObject("select count(*) from " + table, Long.class)).as(table).isZero();
         assertThat(rows.queryForObject("select count(*) from principal_installation", Long.class)).isEqualTo(1);
-        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(12);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"success\"=true", Long.class)).isEqualTo(13);
         assertReasonLengthColumn(target);
         assertLanguageColumn(target);
         assertRelationLedgerColumns(target);
+        assertHypothesisAuthorityColumns(target);
         assertThat(source.queryForObject("select id from active_marker", Integer.class)).isEqualTo(42);
         assertThat(tableNames(active)).containsExactly("ACTIVE_MARKER");
         rows.execute("alter table source_artifact drop column canonical_identifier");
         assertThatThrownBy(() -> RestoreSchemaMigration.openValidatedFactory(active, target, model(), () -> {}))
                 .isInstanceOf(IOException.class).hasMessage("Staged restore schema validation failed");
+    }
+    @Test void restoredHypothesesKeepBranchIdentityAndRejectForeignEvidenceAuthority() throws Exception {
+        var active = database(); var target = database();
+        RestoreSchemaMigration.bootstrap(active, target, () -> {});
+        var rows = new JdbcTemplate(target);
+        insertHypothesis(rows, 1, "main");
+        insertHypothesis(rows, 2, "draft");
+        assertThat(rows.queryForList("select branch_name from relation_hypothesis order by id", String.class))
+                .containsExactly("main", "draft");
+        assertThatThrownBy(() -> insertHypothesis(rows, 3, "main"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        insertEvidence(rows, 1, "repository", "WORKSPACE:workspace", "main");
+        for (var authority : List.of(
+                List.of("foreign-repository", "WORKSPACE:workspace", "main"),
+                List.of("repository", "WORKSPACE:foreign-workspace", "main"),
+                List.of("repository", "WORKSPACE:workspace", "draft"))) {
+            assertThatThrownBy(() -> insertEvidence(rows, 2, authority.get(0), authority.get(1), authority.get(2)))
+                    .as("evidence must match its exact parent authority: %s", authority)
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+        assertThat(rows.queryForObject("select count(*) from relation_evidence", Long.class)).isEqualTo(1);
+        assertHypothesisAuthorityColumns(target);
+    }
+    @Test void oldStagedHypothesesWithoutRecordedBranchFailWithoutLosingEvidence() throws Exception {
+        var target = database();
+        migrateBusinessSchema(target, "1");
+        PrincipalSchemaMigration.migrate(target);
+        migrateBusinessSchema(target, "12");
+        var rows = new JdbcTemplate(target);
+        rows.execute("""
+                insert into relation_hypothesis (id, repository_id, workspace_id, workspace_scope_key,
+                    source_node_id, target_node_id, relation_type, status, analysis_session_scope_key, created_at)
+                values (1, 'repository', 'workspace', 'WORKSPACE:workspace', 'A', 'B', 'DEPENDS_ON',
+                    'PROPOSED', '__unspecified__', timestamp '2026-01-01 12:00:00')
+                """);
+        rows.execute("""
+                insert into relation_evidence (id, hypothesis_id, evidence_type, summary, created_at)
+                values (1, 1, 'MANUAL', 'retained evidence', timestamp '2026-01-01 12:00:00')
+                """);
+        var hypothesis = rows.queryForMap("select * from relation_hypothesis where id=1");
+        var evidence = rows.queryForMap("select * from relation_evidence where id=1");
+
+        assertThatThrownBy(() -> migrateBusinessSchema(target, "13"))
+                .isInstanceOf(org.flywaydb.core.api.FlywayException.class);
+
+        assertThat(rows.queryForMap("select * from relation_hypothesis where id=1"))
+                .containsAllEntriesOf(hypothesis).containsEntry("BRANCH_NAME", null);
+        assertThat(rows.queryForMap("select * from relation_evidence where id=1"))
+                .containsAllEntriesOf(evidence);
+        assertThat(rows.queryForObject("select count(*) from \"restore_business_schema_history\" where \"version\"='13' and \"success\"=true", Long.class))
+                .isZero();
     }
     @Test void reasonLengthMigrationPreservesUnknownLegacyJobsAndEnforcesRecordedValues() throws Exception {
         var target = database();
@@ -219,6 +272,38 @@ class RestoreSchemaMigrationTest {
                 assertThat(columns.next()).isFalse();
             }
         }
+    }
+    private static void assertHypothesisAuthorityColumns(javax.sql.DataSource database) throws Exception {
+        for (var table : Map.of("RELATION_HYPOTHESIS", List.of("BRANCH_NAME"),
+                "RELATION_EVIDENCE", List.of("REPOSITORY_ID", "WORKSPACE_SCOPE_KEY", "BRANCH_NAME")).entrySet()) {
+            for (String name : table.getValue()) {
+                try (var connection = database.getConnection();
+                     var columns = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(), table.getKey(), name)) {
+                    assertThat(columns.next()).as("restored authority column %s.%s", table.getKey(), name).isTrue();
+                    assertThat(columns.getInt("DATA_TYPE")).isEqualTo(java.sql.Types.VARCHAR);
+                    assertThat(columns.getInt("COLUMN_SIZE")).isEqualTo(255);
+                    assertThat(columns.getInt("NULLABLE")).isEqualTo(java.sql.DatabaseMetaData.columnNoNulls);
+                    assertThat(columns.getString("COLUMN_DEF")).isNull();
+                    assertThat(columns.next()).isFalse();
+                }
+            }
+        }
+    }
+    private static void insertHypothesis(JdbcTemplate rows, long id, String branch) {
+        rows.update("""
+                insert into relation_hypothesis (id, repository_id, workspace_id, workspace_scope_key,
+                    branch_name, source_node_id, target_node_id, relation_type, status,
+                    analysis_session_id, analysis_session_scope_key, created_at)
+                values (?, 'repository', 'workspace', 'WORKSPACE:workspace', ?, 'A', 'B', 'DEPENDS_ON',
+                    'PROPOSED', 'same-session', 'same-session', timestamp '2026-01-01 12:00:00')
+                """, id, branch);
+    }
+    private static void insertEvidence(JdbcTemplate rows, long id, String repository, String workspaceScope, String branch) {
+        rows.update("""
+                insert into relation_evidence (id, hypothesis_id, repository_id, workspace_scope_key,
+                    branch_name, evidence_type, created_at)
+                values (?, 1, ?, ?, ?, 'MANUAL', timestamp '2026-01-01 12:00:00')
+                """, id, repository, workspaceScope, branch);
     }
     private static void migrateBusinessSchema(javax.sql.DataSource database, String target) {
         Flyway.configure().dataSource(database).table("restore_business_schema_history")

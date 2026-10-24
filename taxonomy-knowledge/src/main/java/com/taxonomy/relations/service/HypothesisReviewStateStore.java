@@ -38,10 +38,10 @@ public class HypothesisReviewStateStore {
             RepositoryContext context) {
         RepositoryContext tenant = requireWritableContext(context);
         RelationHypothesis hypothesis = repository
-                .findByIdInRepositoryWorkspace(
+                .findByIdInRepositoryWorkspaceAndBranch(
                         tenant.repositoryId(),
                         Objects.requireNonNull(hypothesisId, "hypothesisId"),
-                        tenant.workspaceId())
+                        tenant.workspaceId(), tenant.branch())
                 .orElseThrow(() -> notFound(hypothesisId));
         return HypothesisSnapshot.from(hypothesis);
     }
@@ -54,10 +54,10 @@ public class HypothesisReviewStateStore {
             HypothesisStatus targetStatus) {
         RepositoryContext tenant = requireWritableContext(context);
         RelationHypothesis hypothesis = repository
-                .findByIdInRepositoryWorkspace(
+                .findByIdInRepositoryWorkspaceAndBranch(
                         tenant.repositoryId(),
                         Objects.requireNonNull(hypothesisId, "hypothesisId"),
-                        tenant.workspaceId())
+                        tenant.workspaceId(), tenant.branch())
                 .orElseThrow(() -> notFound(hypothesisId));
         entityManager.lock(hypothesis, LockModeType.PESSIMISTIC_WRITE);
         if (hypothesis.getStatus() != expectedStatus) {

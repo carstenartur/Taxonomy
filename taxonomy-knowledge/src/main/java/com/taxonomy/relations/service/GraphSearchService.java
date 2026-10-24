@@ -8,7 +8,8 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.relations.service.RelationProjectionReadService.ReadModel;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.search.mapper.orm.Search;
@@ -25,7 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/** Graph-semantic search with explicit repository and workspace relation visibility. */
+/** Graph-semantic search gated by the exact canonical relation source. */
 @Service
 public class GraphSearchService {
 
@@ -36,6 +37,7 @@ public class GraphSearchService {
             MAX_NODE_RESULTS * RELATIONS_PER_NODE_RESULT;
 
     private final LocalEmbeddingService embeddingService;
+    private final GraphSearchAuthorityService authority;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -43,14 +45,16 @@ public class GraphSearchService {
     @Autowired
     private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
 
-    public GraphSearchService(LocalEmbeddingService embeddingService) {
+    public GraphSearchService(LocalEmbeddingService embeddingService,
+                              GraphSearchAuthorityService authority) {
         this.embeddingService = embeddingService;
+        this.authority = authority;
     }
 
     @Transactional(readOnly = true)
     public GraphSearchResult graphSearch(String queryText,
                                          int maxResults,
-                                         WorkspaceContext workspaceContext) {
+                                         RepositoryContext context) {
         catalogueRuntimePolicy.requireGlobalIndexAllowed();
         if (maxResults <= 0) {
             return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
@@ -62,9 +66,8 @@ public class GraphSearchService {
 
         int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
         int relationLimit = safeRelationLimit(nodeLimit);
-        WorkspaceContext context = workspaceContext != null
-                ? workspaceContext : WorkspaceContext.SHARED;
         try {
+            var source = authority.inspect(context);
             float[] queryVector = embeddingService.embedQuery(queryText);
             String indexKey = embeddingService.embeddingIndexKey();
             SearchSession session = Search.session(entityManager);
@@ -77,17 +80,13 @@ public class GraphSearchService {
                     .map(this::toFlatDto)
                     .collect(Collectors.toList());
 
-            List<TaxonomyRelation> relationHits = session.search(TaxonomyRelation.class)
+            List<TaxonomyRelation> relationHits = source.readModel() == ReadModel.PROJECTION
+                    ? List.of() : session.search(TaxonomyRelation.class)
                     .where(f -> f.knn(relationLimit).field("embedding").matching(queryVector)
                             .filter(f.bool()
                                     .must(f.match().field("embeddingModel").matching(indexKey))
                                     .must(f.match().field("repositoryId").matching(context.repositoryId()))
-                                    .must(context.workspaceId() != null
-                                            ? f.bool()
-                                                    .should(f.match().field("workspaceId")
-                                                            .matching(context.workspaceId()))
-                                                    .should(f.not(f.exists().field("workspaceId")))
-                                            : f.not(f.exists().field("workspaceId")))))
+                                    .must(f.not(f.exists().field("workspaceId")))))
                     .fetchHits(relationLimit);
 
             Map<String, Long> relationCountByRoot = relationHits.stream()
@@ -103,6 +102,7 @@ public class GraphSearchService {
                             Collectors.counting()));
 
             String summary = buildSummary(relationCountByRoot, topRelationTypes, queryText);
+            authority.verifyUnchanged(context, source);
             log.debug("Graph search completed with {} node hits and {} relation hits",
                     nodeHits.size(), relationHits.size());
             return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);

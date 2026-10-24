@@ -63,14 +63,14 @@ class HypothesisCommitBoundaryTest {
                 new DslWorkspacePublicationAdapter(repositoryFactory),
                 org.mockito.Mockito.mock(com.taxonomy.workspace.service.WorkspaceRepositoryContextPort.class));
         context = RepositoryContext.workspace(
-                "repo-a", "workspace-a", "draft", "alice");
+                "repo-a", "workspace-a", "main", "alice");
         hypothesis = new RelationHypothesisDto(
                 "CP-1023", "Communication Capability",
                 "CR-1047", "Infrastructure Services",
                 "REALIZES", 0.82, "Architecture compatibility rule");
 
-        when(hypothesisRepository.existsInRepositoryWorkspaceSession(
-                anyString(), anyString(), anyString(), anyString(), anyString(), any()))
+        when(hypothesisRepository.existsInRepositoryWorkspaceSessionAndBranch(
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), anyString()))
                 .thenReturn(false);
         when(hypothesisRepository.save(any(RelationHypothesis.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -106,10 +106,23 @@ class HypothesisCommitBoundaryTest {
 
         verify(repositoryFactory).resolveRepository(context);
         verify(workspaceRepository).commitDsl(
-                org.mockito.ArgumentMatchers.eq("draft"),
+                org.mockito.ArgumentMatchers.eq("main"),
                 org.mockito.ArgumentMatchers.contains("analysis-session:analysis-1"),
                 org.mockito.ArgumentMatchers.eq("alice"),
                 org.mockito.ArgumentMatchers.contains("analysis-1"));
+    }
+
+    @Test
+    void acceptedStatusStillPublishesToSelectedBranch() throws Exception {
+        var persisted=service.persistFromAnalysis(List.of(hypothesis), "accepted-input", context).getFirst();
+        persisted.setId(42L);
+        when(hypothesisRepository.findByIdInRepositoryWorkspaceAndBranch(
+                context.repositoryId(),42L,context.workspaceId(),context.branch())).thenReturn(Optional.of(persisted));
+        service.accept(42L,context);
+        verify(workspaceRepository).commitDsl(org.mockito.ArgumentMatchers.eq("main"),
+                org.mockito.ArgumentMatchers.contains("status: accepted"),org.mockito.ArgumentMatchers.eq("alice"),
+                org.mockito.ArgumentMatchers.contains("accepted-42"));
+        verify(workspaceRepository,never()).commitDsl(org.mockito.ArgumentMatchers.eq("accepted"),anyString(),anyString(),anyString());
     }
 
     @Test
@@ -155,7 +168,7 @@ class HypothesisCommitBoundaryTest {
                 .hasCause(failure);
         verify(repositoryFactory).resolveRepository(context);
         verify(workspaceRepository).commitDsl(
-                org.mockito.ArgumentMatchers.eq("draft"),
+                org.mockito.ArgumentMatchers.eq("main"),
                 org.mockito.ArgumentMatchers.contains("analysis-session:analysis-failure"),
                 org.mockito.ArgumentMatchers.eq("alice"),
                 org.mockito.ArgumentMatchers.contains("analysis-failure"));
@@ -181,7 +194,7 @@ class HypothesisCommitBoundaryTest {
         assertThat(persisted.get(0).getWorkspaceId()).isEqualTo("workspace-a");
         verify(repositoryFactory).resolveRepository(context);
         verify(workspaceRepository).commitDsl(
-                org.mockito.ArgumentMatchers.eq("draft"),
+                org.mockito.ArgumentMatchers.eq("main"),
                 org.mockito.ArgumentMatchers.contains("analysis-session:analysis-committed"),
                 org.mockito.ArgumentMatchers.eq("alice"),
                 org.mockito.ArgumentMatchers.contains("analysis-committed"));

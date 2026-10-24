@@ -2,7 +2,7 @@ package com.taxonomy.search.controller;
 
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.StaticMessageSource;
@@ -22,11 +22,14 @@ class SearchWorkspaceFailureTest {
     void failedWorkspaceSetupDoesNotSilentlySearchSharedRelations() {
         when(search.isInitialized()).thenReturn(true);
         when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.workspace("fixture-repository", "workspace-a", "draft", "test-user"));
         doThrow(new IllegalStateException("private-workspace-details"))
                 .when(repository).ensureWorkspaceState("test-user");
         assertThatThrownBy(() -> controller.graphSearch("query", 10))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Search is temporarily unavailable.").hasNoCause();
+        verify(repository).ensureWorkspaceState("test-user");
         verify(search, never()).graphSearch(anyString(), anyInt(), any());
     }
 
@@ -35,8 +38,9 @@ class SearchWorkspaceFailureTest {
         when(search.isInitialized()).thenReturn(true);
         when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
         var denied = new AccessDeniedException("private-workspace-details");
-        when(workspaces.resolveCurrentContext()).thenThrow(denied);
+        when(workspaces.resolveCurrentRepositoryContext()).thenThrow(denied);
         assertThatThrownBy(() -> controller.graphSearch("query", 10)).isSameAs(denied);
+        verifyNoInteractions(repository);
         verify(search, never()).graphSearch(anyString(), anyInt(), any());
     }
 
@@ -47,15 +51,31 @@ class SearchWorkspaceFailureTest {
         assertThatThrownBy(() -> controller.graphSearch("query", 10))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Search is temporarily unavailable.").hasNoCause();
+        verifyNoInteractions(repository);
         verify(search, never()).graphSearch(anyString(), anyInt(), any());
     }
 
     @Test
-    void explicitlyResolvedSharedContextRemainsSupported() {
+    void explicitlyResolvedCanonicalCentralContextRemainsSupported() {
         when(search.isInitialized()).thenReturn(true);
         when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
-        when(workspaces.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
+        var central = RepositoryContext.centralRead("fixture-repository", "draft", "test-user");
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(central);
         controller.graphSearch("query", 10);
-        verify(search).graphSearch("query", 10, WorkspaceContext.SHARED);
+        verify(search).graphSearch("query", 10, central);
+        verifyNoInteractions(repository);
     }
+    @Test
+    void canonicalForkScopeReachesFacadeWithoutBecomingCentral() {
+        when(search.isInitialized()).thenReturn(true);
+        when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
+        var fork = new RepositoryContext("fixture-repository", null, "draft", "test-user",
+                com.taxonomy.workspace.service.RepositoryScope.FORK);
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(fork);
+        controller.graphSearch("query", 10);
+        verify(repository).ensureWorkspaceState("test-user");
+        verify(search).graphSearch("query", 10, fork);
+        verify(workspaces, never()).resolveCurrentContext();
+    }
+
 }

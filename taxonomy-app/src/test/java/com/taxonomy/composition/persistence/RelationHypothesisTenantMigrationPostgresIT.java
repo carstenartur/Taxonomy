@@ -34,6 +34,46 @@ class RelationHypothesisTenantMigrationPostgresIT {
             .withPassword("taxonomy");
 
     @Test
+    void v43RetainsRecordedSnapshotAndProjectBranchAndExactEvidence() throws Exception {
+        DataSource ds=isolatedDataSource("hypothesis_branch_v43");
+        migrateJgit(ds);
+        migrateApplicationTo(ds,"13");
+        AnalysisArtifactTenantPostgresMigrationIT.insertScopedRequirementAndLegacyAnalysisHistory(ds);
+        migrateApplicationTo(ds,"42");
+        insertScopedHypothesis(ds,"primary-repository",null,"snapshot-session","recorded");
+        insertScopedHypothesis(ds,"primary-repository",null,"project-session","recorded");
+        execute(ds,"UPDATE relation_hypothesis SET analysis_snapshot_id='snapshot-legacy' WHERE analysis_session_id='snapshot-session'");
+        execute(ds,"UPDATE relation_hypothesis SET project_id=4101 WHERE analysis_session_id='project-session'");
+        execute(ds,"INSERT INTO relation_evidence(hypothesis_id,evidence_type,created_at) SELECT id,'analysis-rule',current_timestamp FROM relation_hypothesis");
+        migrateApplicationTo(ds,"43");
+        migrateApplicationTo(ds,"43");
+        assertThat(singleLong(ds,"SELECT COUNT(*) FROM relation_hypothesis WHERE branch_name='main'")).isEqualTo(2);
+        assertThat(singleLong(ds,"SELECT COUNT(*) FROM relation_evidence WHERE branch_name='main' AND repository_id='primary-repository' AND workspace_scope_key='__shared__'")).isEqualTo(2);
+        assertThatThrownBy(()->execute(ds,"UPDATE relation_evidence SET branch_name='draft'"))
+                .isInstanceOf(SQLException.class);
+        execute(ds,"INSERT INTO relation_hypothesis(repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key,status,applied_in_current_analysis,created_at) SELECT repository_id,workspace_scope_key,'draft',source_node_id,target_node_id,relation_type,analysis_session_scope_key,status,applied_in_current_analysis,created_at FROM relation_hypothesis WHERE analysis_session_id='project-session'");
+        assertThatThrownBy(()->execute(ds,"INSERT INTO relation_hypothesis(repository_id,workspace_scope_key,branch_name,source_node_id,target_node_id,relation_type,analysis_session_scope_key,status,applied_in_current_analysis,created_at) SELECT repository_id,workspace_scope_key,'main',source_node_id,target_node_id,relation_type,analysis_session_scope_key,status,applied_in_current_analysis,created_at FROM relation_hypothesis WHERE analysis_session_id='project-session'"))
+                .isInstanceOf(SQLException.class);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"missing", "dangling", "conflicting"})
+    void v43RejectsUnprovedOrConflictingRecordedAuthorityWithoutDeletingData(String reason) throws Exception {
+        DataSource ds=isolatedDataSource("hypothesis_branch_bad_"+reason);
+        migrateJgit(ds);
+        migrateApplicationTo(ds,"13");
+        AnalysisArtifactTenantPostgresMigrationIT.insertScopedRequirementAndLegacyAnalysisHistory(ds);
+        migrateApplicationTo(ds,"42");
+        insertScopedHypothesis(ds,"primary-repository",null,"unproved-session","recorded");
+        if(reason.equals("dangling")) execute(ds,"UPDATE relation_hypothesis SET analysis_snapshot_id='missing-snapshot'");
+        if(reason.equals("conflicting")) execute(ds,"UPDATE relation_hypothesis SET analysis_snapshot_id='snapshot-legacy', workspace_id='other', workspace_scope_key='other'");
+        assertThatThrownBy(()->migrateApplicationTo(ds,"43"))
+                .hasStackTraceContaining("Hypothesis branch authority unresolved")
+                .hasStackTraceContaining("Data retained");
+        assertThat(singleLong(ds,"SELECT COUNT(*) FROM relation_hypothesis")).isEqualTo(1);
+    }
+
+    @Test
     void preservesCanonicalCentralAndWorkspaceRepositoryProvenanceAndLocalUniqueness()
             throws Exception {
         DataSource dataSource = isolatedDataSource("hypothesis_tenant_upgrade");

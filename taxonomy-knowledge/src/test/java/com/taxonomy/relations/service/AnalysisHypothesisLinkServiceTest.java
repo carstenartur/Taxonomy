@@ -17,16 +17,16 @@ class AnalysisHypothesisLinkServiceTest {
         var first = mock(RelationHypothesis.class);
         var second = mock(RelationHypothesis.class);
         var selected = List.of(first, second);
-        when(repository.findByAnalysisSessionIdInRepositoryWorkspace("repo-a", "workspace-a", "session-a"))
+        when(repository.findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("repo-a", "workspace-a", "session-a", "draft"))
                 .thenReturn(selected);
         new AnalysisHypothesisLinkService(repository).linkSnapshot(
-                "repo-a", "workspace-a", "session-a", 31L, 41L, "snapshot-a");
+                "repo-a", "workspace-a", "draft", "session-a", 31L, 41L, "snapshot-a");
         for (var hypothesis : selected) {
             verify(hypothesis).setProjectId(31L);
             verify(hypothesis).setRequirementId(41L);
             verify(hypothesis).setAnalysisSnapshotId("snapshot-a");
         }
-        verify(repository).findByAnalysisSessionIdInRepositoryWorkspace("repo-a", "workspace-a", "session-a");
+        verify(repository).findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("repo-a", "workspace-a", "session-a", "draft");
         verify(repository).saveAll(selected);
         verifyNoMoreInteractions(repository);
     }
@@ -35,10 +35,10 @@ class AnalysisHypothesisLinkServiceTest {
     void emptyProjectionDoesNotCreateHypotheses() {
         var repository = mock(RelationHypothesisRepository.class);
         List<RelationHypothesis> selected = List.of();
-        when(repository.findByAnalysisSessionIdInRepositoryWorkspace("repo-a", null, null)).thenReturn(selected);
-        new AnalysisHypothesisLinkService(repository).linkSnapshot("repo-a", null, null, 31L, 41L, "snapshot-a");
+        when(repository.findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("repo-a", null, null, "draft")).thenReturn(selected);
+        new AnalysisHypothesisLinkService(repository).linkSnapshot("repo-a", null, "draft", null, 31L, 41L, "snapshot-a");
         verify(repository).saveAll(selected);
-        verify(repository).findByAnalysisSessionIdInRepositoryWorkspace("repo-a", null, null);
+        verify(repository).findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("repo-a", null, null, "draft");
         verifyNoMoreInteractions(repository);
     }
 
@@ -46,10 +46,10 @@ class AnalysisHypothesisLinkServiceTest {
     void readFailureReachesTheTransactionalCallerWithoutSaving() {
         var repository = mock(RelationHypothesisRepository.class);
         var failure = new IllegalStateException("projection unavailable");
-        when(repository.findByAnalysisSessionIdInRepositoryWorkspace("r", "w", "s")).thenThrow(failure);
+        when(repository.findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("r", "w", "s", "draft")).thenThrow(failure);
         assertThatThrownBy(() -> new AnalysisHypothesisLinkService(repository)
-                .linkSnapshot("r", "w", "s", 1L, 2L, "snapshot")).isSameAs(failure);
-        verify(repository).findByAnalysisSessionIdInRepositoryWorkspace("r", "w", "s");
+                .linkSnapshot("r", "w", "draft", "s", 1L, 2L, "snapshot")).isSameAs(failure);
+        verify(repository).findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("r", "w", "s", "draft");
         verifyNoMoreInteractions(repository);
     }
 
@@ -58,16 +58,16 @@ class AnalysisHypothesisLinkServiceTest {
         var repository = mock(RelationHypothesisRepository.class);
         var selected = List.of(mock(RelationHypothesis.class));
         var failure = new IllegalStateException("write unavailable");
-        when(repository.findByAnalysisSessionIdInRepositoryWorkspace("r", "w", "s")).thenReturn(selected);
+        when(repository.findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("r", "w", "s", "draft")).thenReturn(selected);
         when(repository.saveAll(selected)).thenThrow(failure);
         assertThatThrownBy(() -> new AnalysisHypothesisLinkService(repository)
-                .linkSnapshot("r", "w", "s", 1L, 2L, "snapshot")).isSameAs(failure);
+                .linkSnapshot("r", "w", "draft", "s", 1L, 2L, "snapshot")).isSameAs(failure);
     }
 
     @Test
     void joinsExistingTransactionInsteadOfCommittingSeparately() throws Exception {
         var method = AnalysisHypothesisLinkService.class.getMethod("linkSnapshot",
-                String.class, String.class, String.class, Long.class, Long.class, String.class);
+                String.class, String.class, String.class, String.class, Long.class, Long.class, String.class);
         assertThat(method.getAnnotation(Transactional.class).propagation()).isEqualTo(Propagation.REQUIRED);
     }
 }

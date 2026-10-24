@@ -950,11 +950,13 @@ Screenshots der einzelnen Suchmodi in Aktion:
 
 ![Graph-Suche-Ergebnisse](../images/32-search-graph.png)
 
+Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltungsbereich und den exakten Branch-Head. Beziehungsähnlichkeit ist nur für den zentralen Standardbranch im Migrationsbetrieb verfügbar, solange der kanonische Beziehungsleser seinen Legacy-Fallback erlaubt. Eine nachweislich leere Branch-Projektion liefert globale Knotentreffer mit leeren Beziehungsstatistiken. Nichtleere Branch-Projektionen und nicht bereite Geltungsbereiche liefern HTTP 503 statt unvollständiger Graph-Ergebnisse. Der Status `graphReady` beschreibt die globalen Modell-/Indexvoraussetzungen; eine sichtbare Graph-Option garantiert daher keine Suche im ausgewählten Geltungsbereich. Semantische Branch-Indizierung bleibt Folgearbeit (#741).
+
 ### Embedding-Status
 
 Das Badge **🧠 Embeddings** im Menü **Status** zeigt an, ob semantische Embeddings verfügbar sind:
 
-- **🧠 Embeddings: N nodes** (blau) — Embeddings sind geladen; die Modi Semantic, Hybrid und Graph sind aktiviert.
+- **🧠 Embeddings: N nodes** (blau) — Embeddings sind geladen; die Modusverfügbarkeit hängt zusätzlich vom Indexstatus ab, und Graph prüft bei jeder Anfrage den ausgewählten Geltungsbereich.
 - **🧠 Embeddings: unavailable** (grau) — Embeddings nicht geladen; nur die Volltextsuche ist verfügbar.
 
 Wenn Embeddings nicht verfügbar sind, sind die Optionen Semantic, Hybrid und Graph im Modusauswahl-Menü ausgegraut.

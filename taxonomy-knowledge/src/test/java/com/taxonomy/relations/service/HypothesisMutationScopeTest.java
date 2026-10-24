@@ -26,6 +26,16 @@ import static org.mockito.Mockito.when;
 class HypothesisMutationScopeTest {
 
     @Test
+    void repositoryContractsExposeNoContextlessReadsOrDeletion() {
+        assertThat(java.util.Arrays.stream(RelationHypothesisRepository.class.getMethods())
+                .map(java.lang.reflect.Method::getName)).doesNotContain(
+                "findAll", "findById", "count", "delete", "deleteById", "deleteAll", "findByAnalysisSessionId");
+        assertThat(java.util.Arrays.stream(RelationEvidenceRepository.class.getMethods())
+                .map(java.lang.reflect.Method::getName)).doesNotContain(
+                "findAll", "findById", "count", "delete", "deleteById", "deleteAll", "findByHypothesisId");
+    }
+
+    @Test
     void centralReadAnalysisFailsBeforeAnyPersistenceOrGitAccess() {
         RelationHypothesisRepository hypotheses =
                 mock(RelationHypothesisRepository.class);
@@ -75,20 +85,20 @@ class HypothesisMutationScopeTest {
         RelationHypothesis provisional = hypothesis(
                 5L, HypothesisStatus.PROVISIONAL);
 
-        when(hypotheses.findByIdInRepositoryWorkspace(
-                "repo-a", 1L, "workspace-a"))
+        when(hypotheses.findByIdInRepositoryWorkspaceAndBranch(
+                "repo-a", 1L, "workspace-a", "draft"))
                 .thenReturn(Optional.of(acceptedForAccept));
-        when(hypotheses.findByIdInRepositoryWorkspace(
-                "repo-a", 2L, "workspace-a"))
+        when(hypotheses.findByIdInRepositoryWorkspaceAndBranch(
+                "repo-a", 2L, "workspace-a", "draft"))
                 .thenReturn(Optional.of(rejectedForAccept));
-        when(hypotheses.findByIdInRepositoryWorkspace(
-                "repo-a", 3L, "workspace-a"))
+        when(hypotheses.findByIdInRepositoryWorkspaceAndBranch(
+                "repo-a", 3L, "workspace-a", "draft"))
                 .thenReturn(Optional.of(acceptedForReject));
-        when(hypotheses.findByIdInRepositoryWorkspace(
-                "repo-a", 4L, "workspace-a"))
+        when(hypotheses.findByIdInRepositoryWorkspaceAndBranch(
+                "repo-a", 4L, "workspace-a", "draft"))
                 .thenReturn(Optional.of(rejectedForReject));
-        when(hypotheses.findByIdInRepositoryWorkspace(
-                "repo-a", 5L, "workspace-a"))
+        when(hypotheses.findByIdInRepositoryWorkspaceAndBranch(
+                "repo-a", 5L, "workspace-a", "draft"))
                 .thenReturn(Optional.of(provisional));
         when(hypotheses.save(provisional)).thenReturn(provisional);
 
@@ -137,6 +147,7 @@ class HypothesisMutationScopeTest {
         RelationHypothesis hypothesis = new RelationHypothesis();
         hypothesis.setId(id);
         hypothesis.setRepositoryId("repo-a");
+        hypothesis.setBranchName("draft");
         hypothesis.setSourceNodeId("BP");
         hypothesis.setTargetNodeId("CP");
         hypothesis.setRelationType(RelationType.REALIZES);

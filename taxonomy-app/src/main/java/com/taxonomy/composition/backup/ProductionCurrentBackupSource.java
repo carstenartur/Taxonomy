@@ -117,8 +117,9 @@ public final class ProductionCurrentBackupSource implements BackupCaptureSource 
         for(var owner:owners) {
             // ApplicationBackupComponent has already verified its exact owned coverage.
             var owned=delegates.stream().filter(d->d.componentId().equals(owner)).toList();
-            var contributor=new CompositeBackupDataContributor(owner,1,inventory,owned);contributors.add(contributor);
-            components.put(owner,new BackupSnapshotCoordinator.CaptureComponent(1,BackupCompleteness.COMPLETE,
+            int version=owner.value().equals("knowledge")?KnowledgeBackupContributor.SCHEMA_VERSION:1;
+            var contributor=new CompositeBackupDataContributor(owner,version,inventory,owned);contributors.add(contributor);
+            components.put(owner,new BackupSnapshotCoordinator.CaptureComponent(version,BackupCompleteness.COMPLETE,
                     owner.value().equals("portfolio")?Set.of(new BackupComponentId("workspace")):Set.of()));
         }
         BackupSnapshotCoordinator.Inventory discovery=new BackupSnapshotCoordinator.Inventory() {

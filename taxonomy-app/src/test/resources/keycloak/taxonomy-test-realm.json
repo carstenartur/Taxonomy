@@ -35,6 +35,18 @@
       "defaultClientScopes": ["basic", "profile", "email", "roles"],
       "protocolMappers": [
         {
+          "name": "taxonomy API audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "taxonomy-app",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
           "name": "preferred username",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-property-mapper",
@@ -82,6 +94,18 @@
       "defaultClientScopes": ["basic", "profile"],
       "protocolMappers": [
         {
+          "name": "taxonomy API audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "taxonomy-app",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
           "name": "preferred username",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-property-mapper",
@@ -112,6 +136,18 @@
       "fullScopeAllowed": false,
       "defaultClientScopes": ["basic", "profile"],
       "protocolMappers": [
+        {
+          "name": "taxonomy API audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "taxonomy-app",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        },
         {
           "name": "preferred username",
           "protocol": "openid-connect",

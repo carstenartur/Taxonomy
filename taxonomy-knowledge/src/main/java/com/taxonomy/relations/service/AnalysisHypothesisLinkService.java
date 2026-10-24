@@ -15,10 +15,10 @@ public class AnalysisHypothesisLinkService implements AnalysisHypothesisLinkPort
 
     @Override
     @Transactional
-    public void linkSnapshot(String repositoryId, String workspaceId, String analysisSessionId,
+    public void linkSnapshot(String repositoryId, String workspaceId, String branchName, String analysisSessionId,
                              Long projectId, Long requirementId, String snapshotId) {
-        var selected = hypotheses.findByAnalysisSessionIdInRepositoryWorkspace(
-                repositoryId, workspaceId, analysisSessionId);
+        var selected = hypotheses.findByAnalysisSessionIdInRepositoryWorkspaceAndBranch(
+                repositoryId, workspaceId, analysisSessionId, branchName);
         for (var hypothesis : selected) {
             hypothesis.setProjectId(projectId);
             hypothesis.setRequirementId(requirementId);

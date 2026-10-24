@@ -2,7 +2,9 @@ package com.taxonomy.backup.runtime;
 
 import com.taxonomy.backup.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.taxonomy.catalog.backup.KnowledgeBackupContributor;
+import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.catalog.model.*;
 import com.taxonomy.relations.model.*;
 import com.taxonomy.model.*;
@@ -15,6 +17,7 @@ import org.springframework.orm.jpa.hibernate.SpringBeanContainer;
 import org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import static com.taxonomy.backup.runtime.CurrentStateExportIT.*;
@@ -68,6 +71,45 @@ class KnowledgeExportIT {
         }
     }
 
+    @Test void unlinkedBranchOverlapRetainsRecordedAuthorityAndExactEvidenceParents() throws Exception {
+        try (var f = new Fixture()) {
+            var main = f.hypothesis("repo-a", "private-a", "main", "same-session");
+            var draft = f.hypothesis("repo-a", "private-a", "draft", "same-session");
+            var mainId = new SourceRecordId("knowledge.hypothesis", main.getId().toString());
+            var draftId = new SourceRecordId("knowledge.hypothesis", draft.getId().toString());
+            f.evidence(main, "MAIN-EVIDENCE"); f.evidence(draft, "DRAFT-EVIDENCE");
+            var contributor = f.contributor(Set.of(draftId));
+            var history = new Contents();
+            contributor.write(snapshot(BackupProfile.REPOSITORY_HISTORY, SCOPE), history);
+
+            var hypotheses = records(history, "hypothesis");
+            assertThat(hypotheses).extracting(row -> row.path("sourceId").path("value").asText(),
+                            row -> row.path("branchName").asText())
+                    .containsExactlyInAnyOrder(tuple(mainId.value(), "main"), tuple(draftId.value(), "draft"));
+            assertThat(hypotheses).allSatisfy(row -> {
+                assertThat(row.path("project").isNull()).isTrue();
+                assertThat(row.path("requirement").isNull()).isTrue();
+                assertThat(row.path("analysisSnapshot").isNull()).isTrue();
+            });
+            assertThat(records(history, "evidence")).extracting(row -> row.path("hypothesis").path("kind").asText(),
+                            row -> row.path("hypothesis").path("value").asText(),
+                            row -> row.path("summary").asText())
+                    .containsExactlyInAnyOrder(tuple("knowledge.hypothesis", mainId.value(), "MAIN-EVIDENCE"),
+                            tuple("knowledge.hypothesis", draftId.value(), "DRAFT-EVIDENCE"));
+            assertThat(contributor.schemaVersion()).isEqualTo(2);
+
+            var current = new Contents();
+            contributor.write(snapshot(BackupProfile.CURRENT_STATE, SCOPE), current);
+            assertThat(records(current, "hypothesis")).extracting(row -> row.path("sourceId").path("value").asText(),
+                            row -> row.path("branchName").asText())
+                    .containsExactly(tuple(draftId.value(), "draft"));
+            assertThat(records(current, "evidence")).extracting(row -> row.path("hypothesis").path("kind").asText(),
+                            row -> row.path("hypothesis").path("value").asText(),
+                            row -> row.path("summary").asText())
+                    .containsExactly(tuple("knowledge.hypothesis", draftId.value(), "DRAFT-EVIDENCE"));
+        }
+    }
+
     @Test void brokenCatalogueHierarchyFailsBeforeWritingAnyEntry() throws Exception {
         try (var f = new Fixture()) {
             f.rows.jdbc.update("update taxonomy_node set parent_code='MISSING' where code='A'");
@@ -115,6 +157,15 @@ class KnowledgeExportIT {
         assertThat(output.entries).isEmpty();
     }
 
+    private static List<JsonNode> records(Contents output, String kind) throws IOException {
+        var lines = new String(output.entries.get("data/knowledge/" + kind + ".ndjson"), StandardCharsets.UTF_8).lines().toList();
+        var json = PortableRows.json();
+        assertThat(json.readValue(lines.getFirst(), PortableRows.Header.class).schemaVersion()).isEqualTo(1);
+        var records = new ArrayList<JsonNode>();
+        for (String line : lines.subList(1, lines.size())) records.add(json.readTree(line));
+        return records;
+    }
+
     static final class Fixture implements AutoCloseable {
         final CurrentStateExportIT.Fixture rows;
         final TaxonomyNode a, b;
@@ -138,7 +189,11 @@ class KnowledgeExportIT {
             }
         }
         RelationHypothesis hypothesis(String repository, String workspace, String session) {
+            return hypothesis(repository, workspace, "draft", session);
+        }
+        RelationHypothesis hypothesis(String repository, String workspace, String branch, String session) {
             var h = new RelationHypothesis(); h.setRepositoryId(repository); h.setWorkspaceId(workspace);
+            h.setBranchName(branch);
             h.setSourceNodeId("A"); h.setTargetNodeId("B"); h.setRelationType(RelationType.DEPENDS_ON); h.setAnalysisSessionId(session); return persist(h);
         }
         void evidence(RelationHypothesis hypothesis, String text) {

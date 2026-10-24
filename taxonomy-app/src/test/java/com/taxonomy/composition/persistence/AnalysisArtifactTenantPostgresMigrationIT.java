@@ -100,7 +100,7 @@ class AnalysisArtifactTenantPostgresMigrationIT {
                 .isInstanceOf(SQLException.class);
     }
 
-    private static void insertScopedRequirementAndLegacyAnalysisHistory(
+    static void insertScopedRequirementAndLegacyAnalysisHistory(
             DataSource dataSource) throws SQLException {
         insertRepository(dataSource);
         execute(dataSource, """

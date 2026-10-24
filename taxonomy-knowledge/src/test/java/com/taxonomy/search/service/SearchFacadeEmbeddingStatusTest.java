@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -102,7 +102,7 @@ class SearchFacadeEmbeddingStatusTest {
         when(indexInitializer.isNodeSearchReady()).thenReturn(true);
         when(indexInitializer.getState()).thenReturn(state);
 
-        assertThatThrownBy(() -> facade.graphSearch("communications", 10, WorkspaceContext.SHARED))
+        assertThatThrownBy(() -> facade.graphSearch("communications", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system")))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Search is temporarily unavailable.");
         verifyNoInteractions(graphSearchService);
     }
@@ -114,10 +114,10 @@ class SearchFacadeEmbeddingStatusTest {
         when(indexInitializer.isNodeSearchReady()).thenReturn(true);
         when(indexInitializer.getState()).thenReturn(LocalOnnxIndexInitializer.State.READY);
 
-        facade.graphSearch("communications", 10, WorkspaceContext.SHARED);
+        facade.graphSearch("communications", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
 
         assertThat(facade.getEmbeddingStatus()).containsEntry("graphReady", true);
-        verify(graphSearchService).graphSearch("communications", 10, WorkspaceContext.SHARED);
+        verify(graphSearchService).graphSearch("communications", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
     }
 
     @Test

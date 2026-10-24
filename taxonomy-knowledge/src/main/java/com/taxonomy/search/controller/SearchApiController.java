@@ -5,7 +5,8 @@ import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -101,7 +102,7 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.getEmbeddingStatus());
     }
 
-    @Operation(summary = "Graph-semantic search", description = "Combines node and relation KNN queries with explicit workspace relation visibility.", tags = {"Search"})
+    @Operation(summary = "Graph-semantic search", description = "Checks the canonical selected branch source. Legacy fallback supports relation KNN; proven empty projections support node results. Unsupported or unready scopes return 503. graphReady reports global prerequisites only.", tags = {"Search"})
     @GetMapping("/search/graph")
     public ResponseEntity<GraphSearchResult> graphSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
@@ -109,7 +110,7 @@ public class SearchApiController {
         ResponseEntity<GraphSearchResult> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(searchFacade.graphSearch(q, maxResults, currentWorkspaceContext()));
+        return ResponseEntity.ok(searchFacade.graphSearch(q, maxResults, currentRepositoryContext()));
     }
 
     @SuppressWarnings("unchecked")
@@ -135,12 +136,16 @@ public class SearchApiController {
         return null;
     }
 
-    private WorkspaceContext currentWorkspaceContext() {
+    private RepositoryContext currentRepositoryContext() {
         try {
             String username = workspaceResolver.resolveCurrentUsername();
-            repositoryStateService.ensureWorkspaceState(username);
-            WorkspaceContext context = workspaceResolver.resolveCurrentContext();
+            RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
             if (context == null) throw new SearchUnavailableException();
+            // The interceptor validates explicit central reads before this lookup.
+            // Reading that canonical source must not create workspace state.
+            if (context.scope() != RepositoryScope.CENTRAL_READ) {
+                repositoryStateService.ensureWorkspaceState(username);
+            }
             return context;
         } catch (AccessDeniedException denied) {
             throw denied;

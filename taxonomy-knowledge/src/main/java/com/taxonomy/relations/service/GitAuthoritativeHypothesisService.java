@@ -178,10 +178,10 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
         List<RelationHypothesis> candidates = normalizedSession == null
                 ? newlyPersisted
                 : hypothesisRepository
-                        .findByAnalysisSessionIdInRepositoryWorkspace(
+                        .findByAnalysisSessionIdInRepositoryWorkspaceAndBranch(
                                 context.repositoryId(),
                                 context.workspaceId(),
-                                normalizedSession);
+                                normalizedSession, context.branch());
         for (RelationHypothesisDto dto : hypotheses) {
             if (dto == null) {
                 continue;

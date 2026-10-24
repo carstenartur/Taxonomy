@@ -50,11 +50,12 @@ public class ArchitectureSummaryService {
      * Build the architecture summary from current data.
      */
     @Transactional(readOnly = true)
-    public ArchitectureSummary buildSummary() {
+    public ArchitectureSummary buildSummary(com.taxonomy.workspace.service.RepositoryContext context) {
         List<TaxonomyNode> allNodes = nodeRepository.findAll();
         int totalRelations = (int) relationRepository.count();
         int totalProposals = (int) proposalRepository.count();
-        int totalHypotheses = (int) hypothesisRepository.count();
+        int totalHypotheses = (int) hypothesisRepository.countVisibleInRepositoryWorkspaceAndBranch(
+                context.repositoryId(), context.workspaceId(), context.branch());
 
         // Coverage stats
         Map<String, Integer> coverageCounts = new HashMap<>();

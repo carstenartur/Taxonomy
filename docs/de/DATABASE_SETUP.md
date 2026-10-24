@@ -506,3 +506,58 @@ Der Workflow `Database Compatibility` führt bei relevanten Pull Requests die
 PostgreSQL-Diagnose- und Selenium-Tests aus, wöchentlich alle sechs Szenarien und
 bei manueller Ausführung die ausgewählte Datenbankfamilie. Die lokalen Befehle
 stehen in [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+
+### Branch-Zuordnung von Hypothesen beim Upgrade auf 1.5.1
+
+V43 (PostgreSQL) und der portable Schemavertrag verlangen für jede
+Relationshypothese einen ausdrücklich gespeicherten Branch. Ein bereits
+vorhandener Branch bleibt beim Neustart maßgeblich. Fehlt er, darf die Migration
+nur den verknüpften Analyse-Snapshot oder das verknüpfte Projekt verwenden:
+Repository, Workspace und kanonischer Portfolio-Scope müssen übereinstimmen.
+Gleiche Analyse-Session-Zeichenfolgen, der aktuelle Workspace-Branch, der
+Repository-Standardbranch oder der Review-Status belegen keine historische
+Zuordnung. Evidenz übernimmt die geprüfte Repository-/Workspace-/Branch-Zuordnung
+des Elternsatzes; ein zusammengesetzter Fremdschlüssel sichert sie ab.
+Die zentrale Basis ist aus einem Workspace nur im ausgewählten Branch lesbar;
+Änderungen bleiben auf den exakten Workspace beschränkt.
+
+Fehlende, ungültige oder widersprüchliche Herkunftsbezüge stoppen den Start,
+ohne Hypothesen oder Evidenz zu löschen. Die Meldung nennt begrenzte Zähler je
+Fehlergrund und höchstens 20 numerische IDs. Die IDs bezeichnen Hypothesen;
+bei einem Evidenz-Fehlergrund bezeichnen sie Evidenzsätze. Vorgehen zur Behebung:
+
+1. Alle schreibenden Instanzen gestoppt lassen und eine geprüfte Vollsicherung
+   aufbewahren.
+2. Die gemeldeten IDs offline prüfen. Gespeicherte Snapshot-/Projektbezüge und
+   kanonische Repository-/Workspace-/Branch-Zuordnungen aus verlässlichen
+   historischen Aufzeichnungen oder Sicherungen wiederherstellen. Nur beweisbare
+   Zuordnungen korrigieren; niemals pauschal `draft` oder den aktuellen Branch
+   eintragen.
+3. Widersprüchliche Evidenzschlüssel erst nach Prüfung des historischen
+   Elternbezugs korrigieren. Anschließend den Start wiederholen; weitere
+   Konflikte werden erneut in begrenzter Form gemeldet.
+4. Ist die ursprüngliche Zuordnung nicht wiederherstellbar, erfordern Export,
+   Archivierung oder Entfernung betroffener Hypothesen **einschließlich ihrer
+   abhängigen Evidenz** eine ausdrückliche Betreiberentscheidung und eine
+   aufbewahrte Sicherung. Die Migration löscht nicht automatisch. Weder die
+   Migration umgehen noch die veröffentlichte V7 ändern.
+
+Das Upgrade einer bestehenden HSQLDB bereitet diesen Vertrag vor Hibernate vor.
+Die ausgelieferten Oracle- und SQL-Server-Kompatibilitätsprofile deaktivieren
+Flyway; ihr portabler Initialisierer läuft ebenfalls vor Hibernate. Der normale
+Runner wiederholt die idempotenten Prüfungen. Unterbrochene DDL-Phasen lassen
+sich fortsetzen, auch bei Oracles eigenständig bestätigter DDL. Die bestehenden
+nativen Kompatibilitätsprüfungen bleiben erforderlich; lokale HSQLDB-Ergebnisse
+qualifizieren weder Oracle noch SQL Server.
+
+SQL Server speichert neue Branch-Schlüssel als Unicode mit binärem
+`BIN2`-Vergleich. Damit bleiben `Main`, `main` und nicht-ASCII-Git-Refs
+unterscheidbar. Bereits vor dieser Änderung überschritt die deklarierte maximale
+Breite des exakten Geschäftsschlüssels das Limit für nicht gruppierte Indizes.
+Variable Deklarationen dürfen breiter sein, die tatsächlich indizierte
+Schlüsselkombination darf jedoch **1.700 Bytes** nicht überschreiten. Die Migration
+behält exakte Schlüssel bei und bricht bei Fehlern ab; sie ersetzt die Zuordnung
+nicht durch verlustbehaftete Werte oder Hashes. Vor Verwendung dieses Profils die
+native Prüfung und tatsächlichen Schlüssellängen prüfen. Siehe Microsofts
+[Kapazitätsgrenzen](https://learn.microsoft.com/en-us/sql/sql-server/maximum-capacity-specifications-for-sql-server?view=sql-server-ver17)
+und [Sortierung und Unicode](https://learn.microsoft.com/en-us/sql/relational-databases/collations/collation-and-unicode-support/).

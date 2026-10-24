@@ -70,7 +70,7 @@ class HypothesisLegacyRepositoryRoutingTest {
         when(systemRepositoryService.getRepository("repo-b"))
                 .thenReturn(selectedRepository);
         when(selectedRepository.getRepositoryId()).thenReturn("repo-b");
-        when(hypothesisRepository.findCentralByRepository("repo-b"))
+        when(hypothesisRepository.findCentralByRepositoryAndBranch("repo-b", "main"))
                 .thenReturn(List.of());
 
         assertThat(service.findAll(new WorkspaceContext(
@@ -79,7 +79,7 @@ class HypothesisLegacyRepositoryRoutingTest {
 
         verify(systemRepositoryService).getRepository("repo-b");
         verify(systemRepositoryService, never()).getPrimaryRepository();
-        verify(hypothesisRepository).findCentralByRepository("repo-b");
+        verify(hypothesisRepository).findCentralByRepositoryAndBranch("repo-b", "main");
     }
 
     @Test
@@ -103,7 +103,7 @@ class HypothesisLegacyRepositoryRoutingTest {
         when(systemRepositoryService.getPrimaryRepository())
                 .thenReturn(primaryRepository);
         when(primaryRepository.getRepositoryId()).thenReturn("primary-repo");
-        when(hypothesisRepository.findCentralByRepository("primary-repo"))
+        when(hypothesisRepository.findCentralByRepositoryAndBranch("primary-repo", "draft"))
                 .thenReturn(List.of());
 
         assertThat(service.findAll(new WorkspaceContext(
@@ -112,6 +112,6 @@ class HypothesisLegacyRepositoryRoutingTest {
 
         verify(systemRepositoryService).getPrimaryRepository();
         verify(systemRepositoryService, never()).getRepository("legacy-primary");
-        verify(hypothesisRepository).findCentralByRepository("primary-repo");
+        verify(hypothesisRepository).findCentralByRepositoryAndBranch("primary-repo", "draft");
     }
 }

@@ -3,7 +3,7 @@ package com.taxonomy;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.relations.service.GraphSearchService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -43,14 +43,14 @@ class GraphSearchTests {
     void graphSearchDoesNotFabricateCompletedResultsWhenModelIsUnavailable() {
         assertThat(embeddingService.isAvailable()).isFalse();
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> graphSearchService.graphSearch(
-                "satellite communications", 10, WorkspaceContext.SHARED))
+                "satellite communications", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system")))
                 .isInstanceOf(com.taxonomy.error.SearchUnavailableException.class);
     }
 
     @Test
     void zeroRequestedResultsRetainAllRequiredGraphFields() {
         GraphSearchResult result = graphSearchService.graphSearch(
-                "business process management", 0, WorkspaceContext.SHARED);
+                "business process management", 0, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         assertThat(result.getMatchedNodes()).isNotNull();
         assertThat(result.getRelationCountByRoot()).isNotNull();
         assertThat(result.getTopRelationTypes()).isNotNull();
@@ -59,14 +59,14 @@ class GraphSearchTests {
 
     @Test
     void zeroRequestedResultsExplainThatNoSearchWasRequested() {
-        GraphSearchResult result = graphSearchService.graphSearch("anything", 0, WorkspaceContext.SHARED);
+        GraphSearchResult result = graphSearchService.graphSearch("anything", 0, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         assertThat(result.getSummary()).isEqualTo("No graph search results were requested.");
         assertThat(result.getMatchedNodes()).isEmpty();
     }
 
     @Test
     void negativeRequestedResultsRemainEmptyWithoutInference() {
-        GraphSearchResult result = graphSearchService.graphSearch("network services", -1, WorkspaceContext.SHARED);
+        GraphSearchResult result = graphSearchService.graphSearch("network services", -1, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         assertThat(result.getMatchedNodes()).isEmpty();
         assertThat(result.getRelationCountByRoot()).isEmpty();
     }
