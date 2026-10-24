@@ -94,12 +94,21 @@ public final class HypothesisBranchMigrationContract {
     }
 
     private static void verifyCommittedPhaseRecovery(DataSource database) throws Exception {
+        String indexFilter;
+        try (Connection connection=database.getConnection()) {
+            indexFilter=connection.getMetaData().getDatabaseProductName().contains("Microsoft")
+                    ? " WHERE repository_id IS NOT NULL AND workspace_scope_key IS NOT NULL AND analysis_session_scope_key IS NOT NULL" : "";
+        }
         for(String phase:List.of(" ADD branch_name "," SET branch_name=?", " ADD CONSTRAINT uq_hypothesis_parent_scope", " ADD CONSTRAINT uq_hypothesis_branch_session_relation", " DROP CONSTRAINT "," ADD CONSTRAINT fk_evidence_hypothesis_scope")) {
             reset(database);
             createLegacy(database);
             sql(database,"ALTER TABLE relation_hypothesis ADD workspace_scope_key VARCHAR(255)");
             sql(database,"ALTER TABLE relation_hypothesis ADD analysis_session_scope_key VARCHAR(255)");
-            sql(database,"ALTER TABLE relation_hypothesis ADD CONSTRAINT uq_old_hypothesis UNIQUE(repository_id,workspace_scope_key,source_node_id,target_node_id,relation_type,analysis_session_scope_key)");
+            // Keep the committed-drop phase as a constraint; another phase covers an ordinary index.
+            String legacyColumns="(repository_id,workspace_scope_key,source_node_id,target_node_id,relation_type,analysis_session_scope_key)";
+            sql(database,(phase.equals(" ADD CONSTRAINT uq_hypothesis_parent_scope")
+                    ? "CREATE UNIQUE INDEX uq_old_hypothesis ON relation_hypothesis"+legacyColumns+indexFilter
+                    : "ALTER TABLE relation_hypothesis ADD CONSTRAINT uq_old_hypothesis UNIQUE"+legacyColumns));
             String scope=new RepositoryTenantIdentity("repo","CENTRAL","main").scopeKey();
             sql(database,"INSERT INTO arch_project VALUES(10,'repo',NULL,'CENTRAL','main','"+scope+"')");
             sql(database,"INSERT INTO relation_hypothesis(id,repository_id,source_node_id,target_node_id,relation_type,project_id) VALUES(1,'repo','BP','CP','SUPPORTS',10)");

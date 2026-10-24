@@ -198,6 +198,8 @@ final class SchemaContractMigrator {
         // Preflight above precedes constraint changes; reruns complete each committed DDL phase.
         ensureBinaryBranchCollation(connection, table, evidence);
         assertNoHypothesisDuplicates(connection, table);
+        // Obsolete keys must not block SQL Server's authority-column NOT NULL changes.
+        replaceLegacyHypothesisUniqueIndexes(connection, table);
         for (String column : List.of("repository_id", "workspace_scope_key", "analysis_session_scope_key", "branch_name")) {
             branchNotNull(connection, table, column);
         }
@@ -206,8 +208,6 @@ final class SchemaContractMigrator {
         ensureBranchUnique(connection, table, "uq_hypothesis_branch_session_relation",
                 List.of("repository_id", "workspace_scope_key", "branch_name", "source_node_id",
                         "target_node_id", "relation_type", "analysis_session_scope_key"));
-        replaceLegacyUniqueIndexes(connection, table, "relation_hypothesis",
-                List.of(HYPOTHESIS_LEGACY_COLUMNS, HYPOTHESIS_TARGET_COLUMNS));
         if (evidence != null) {
             for (String column : List.of("hypothesis_id", "repository_id", "workspace_scope_key", "branch_name")) {
                 branchNotNull(connection, evidence, column);
@@ -328,6 +328,10 @@ final class SchemaContractMigrator {
         }
     }
     private List<IndexDefinition> sqlServerBranchUniqueIndexes(Connection c, TableRef table) throws SQLException {
+        return sqlServerBranchUniqueIndexes(c, table, true);
+    }
+    private List<IndexDefinition> sqlServerBranchUniqueIndexes(
+            Connection c, TableRef table, boolean enforcingOnly) throws SQLException {
         Map<String, Map<Short, String>> indexes = new LinkedHashMap<>();
         try (PreparedStatement query = c.prepareStatement("""
                 SELECT i.name, ic.key_ordinal, col.name
@@ -336,9 +340,9 @@ final class SchemaContractMigrator {
                 JOIN sys.columns col ON col.object_id=ic.object_id AND col.column_id=ic.column_id
                 JOIN sys.tables t ON t.object_id=i.object_id
                 JOIN sys.schemas s ON s.schema_id=t.schema_id
-                WHERE s.name=? AND t.name=? AND i.is_unique=1 AND i.has_filter=0
-                  AND i.is_disabled=0 AND i.is_hypothetical=0 AND ic.key_ordinal>0
-                """)) {
+                WHERE s.name=? AND t.name=? AND i.is_unique=1
+                  AND i.is_hypothetical=0 AND ic.key_ordinal>0
+                """ + (enforcingOnly ? " AND i.has_filter=0 AND i.is_disabled=0" : ""))) {
             query.setString(1, table.schema());
             query.setString(2, table.name());
             try (ResultSet rs = query.executeQuery()) {
@@ -472,6 +476,41 @@ final class SchemaContractMigrator {
                 + " WHERE workspace_id IS NOT NULL AND TRIM(workspace_id) = ''");
         execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET workspace_scope_key = " + workspaceScopeExpression());
+    }
+
+    private void replaceLegacyHypothesisUniqueIndexes(Connection c, TableRef table) throws SQLException {
+        List<Set<String>> legacyColumns = List.of(HYPOTHESIS_LEGACY_COLUMNS, HYPOTHESIS_TARGET_COLUMNS);
+        if (!isSqlServer(c)) {
+            replaceLegacyUniqueIndexes(c, table, "relation_hypothesis", legacyColumns);
+            return;
+        }
+        // Filtered and disabled legacy keys still physically depend on these columns.
+        for (IndexDefinition index : sqlServerBranchUniqueIndexes(c, table, false)) {
+            Set<String> columns = new LinkedHashSet<>(index.columns());
+            if (legacyColumns.stream().noneMatch(expected -> expected.size() == index.columns().size()
+                    && expected.equals(columns))) continue;
+            boolean constraint;
+            try (PreparedStatement query = c.prepareStatement("""
+                    SELECT i.is_unique_constraint, i.is_primary_key
+                    FROM sys.indexes i
+                    JOIN sys.tables t ON t.object_id=i.object_id
+                    JOIN sys.schemas s ON s.schema_id=t.schema_id
+                    WHERE s.name=? AND t.name=? AND i.name=?
+                    """)) {
+                query.setString(1, table.schema());
+                query.setString(2, table.name());
+                query.setString(3, index.name());
+                try (ResultSet rs = query.executeQuery()) {
+                    if (!rs.next()) throw new SQLException("Missing SQL Server hypothesis unique index: " + index.name());
+                    constraint = rs.getBoolean(1) || rs.getBoolean(2);
+                }
+            }
+            execute(c, constraint
+                    ? "ALTER TABLE " + qualified(c, table) + " DROP CONSTRAINT " + quoted(c, index.name())
+                    : "DROP INDEX " + quoted(c, index.name()) + " ON " + qualified(c, table));
+            log.info("Dropped legacy unique constraint/index {} on relation_hypothesis columns {}",
+                    index.name(), index.columns());
+        }
     }
 
     private void replaceLegacyUniqueIndexes(
