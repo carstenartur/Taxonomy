@@ -35,8 +35,12 @@ analysis:
 
 image:
   repository: ghcr.io/carstenartur/taxonomy
-  # Source-tree rendering requires vX.Y.Z or sha-<commit>. A packaged release
-  # chart derives v<appVersion> when both tag and digest remain empty.
+  # The ONNX overlay selects onnx and enables the bundled model configuration.
+  # This suffix affects derived release tags; explicit tags/digests are used as given.
+  variant: standard
+  # Source-tree rendering requires vX.Y.Z or sha-<commit> (optionally -onnx).
+  # Packaged releases derive v<appVersion> or v<appVersion>-onnx for the selected
+  # variant when both tag and digest remain empty.
   tag: ""
   digest: ""
   pullPolicy: IfNotPresent

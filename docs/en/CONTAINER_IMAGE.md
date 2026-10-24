@@ -32,6 +32,60 @@ docker run --rm -p 8080:8080 \
 
 Open <http://localhost:8080> and sign in as `admin` with the password supplied above. There is no reusable development password. When the variable is intentionally omitted outside production, the generated credential remains inside the container in the owner-only temporary file whose path is logged; supplying the value explicitly is simpler for an ephemeral container.
 
+### Bundled ONNX variant
+
+The optional `-onnx` variant includes the pinned, quantized
+`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` bundle under
+`/opt/taxonomy/models/multilingual-minilm` (about **130 MB extra, uncompressed**).
+It runs CPU embeddings, semantic search and semantic scoring without an API key
+or runtime model download. It does not generate explanations or provide a
+generative Copilot. Standard tags and their defaults remain unchanged.
+
+The corresponding tags are `latest-onnx`, `main-onnx`, `vX.Y.Z-onnx` and
+`sha-<commit>-onnx` in the same GHCR repository. Publication follows successful
+verification on `main` or a release tag; a feature-branch build does not make
+these tags available. Pin the verified ONNX image digest in production.
+
+For local evaluation, generate a unique administrator password (or set your own
+unique value first) and keep it in the current shell for login:
+
+```bash
+export TAXONOMY_ADMIN_PASSWORD="${TAXONOMY_ADMIN_PASSWORD:-$(openssl rand -hex 24)}"
+docker run --rm --name taxonomy-onnx --memory=2g \
+  -p 127.0.0.1:8080:8080 \
+  -e TAXONOMY_ADMIN_PASSWORD \
+  ghcr.io/carstenartur/taxonomy:latest-onnx
+```
+
+Open <http://localhost:8080> as `admin` with that password. To build this variant
+from the checked-out source instead:
+
+```bash
+docker build --target onnx -t taxonomy:local-onnx .
+# Use taxonomy:local-onnx as the image in the docker run command above.
+```
+
+The image sets `LLM_PROVIDER=LOCAL_ONNX`, enables embeddings with profile
+`MULTILINGUAL_MINILM_L12`, points the model directory at the bundled files and
+sets `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false`. Native CPU execution uses
+`RUST_FLAVOR=cpu`; the writable runtime cache is `/tmp/djl-cache`
+(`DJL_CACHE_DIR`). Keep `/tmp` writable, including when using a read-only root
+filesystem; no model-directory write access or model volume is needed.
+
+The JVM defaults for this variant are `-XX:+UseSerialGC -Xss512k -Xmx768m
+-XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp`. The **2 GiB container limit**
+is a starting point based on a historical whole-application observation of about
+1,504 MiB, not a guarantee for every workload. Native inference, Lucene and other
+process memory are outside the Java heap; measure the actual deployment.
+
+Bundling removes the download step, but model loading and catalogue/semantic-index
+initialization still run at startup. Application readiness at
+`/actuator/health/readiness` and catalogue progress at `/api/status/startup` do
+not prove semantic readiness. Check `/api/embedding/status` for
+`semanticReady: true` before relying on semantic results; `/api/ai-status` alone
+does not establish that capability. Use the deployment's normal authentication
+for application status endpoints.
+
 ### Cloud LLM
 
 ```bash
@@ -83,6 +137,43 @@ The stack contains:
 |---|---|
 | `taxonomy` | Application on internal port 8080, built from the checked-out source |
 | `caddy` | HTTPS reverse proxy on ports 80 and 443 |
+
+### Compose and Helm with the bundled model
+
+For a source-built production stack, configure `.env` as above, then apply the
+[ONNX Compose overlay](../../docker-compose.onnx.yml):
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.onnx.yml up -d --build
+```
+
+The overlay selects build target `onnx`, enables the bundled model even if
+`.env` or the base configuration disables embeddings or leaves the provider/model
+path empty, sets the JVM/cache options and a 2 GiB starting memory limit, and
+uses the image's `curl` for application readiness. Caddy and persistent data
+configuration continue to come from the production stack.
+
+For Kubernetes, apply [values-onnx.yaml](../../deploy/helm/taxonomy/values-onnx.yaml)
+after your ordinary deployment values. The existing database/admin Secret and
+other chart prerequisites still apply; see the [chart guide](../../deploy/helm/taxonomy/README.md).
+Use the verified digest **of the ONNX variant**, supplied in `ONNX_IMAGE_DIGEST`
+with its `sha256:` prefix:
+
+```bash
+helm upgrade --install taxonomy deploy/helm/taxonomy \
+  -f your-deployment-values.yaml \
+  -f deploy/helm/taxonomy/values-onnx.yaml \
+  --set-string image.digest="$ONNX_IMAGE_DIGEST"
+```
+
+The overlay overrides the base chart's disabled/empty model configuration and
+`JAVA_OPTS`, sets `image.variant=onnx` and uses the chart's writable `/tmp` mount
+for native libraries and cache. It preserves the read-only root filesystem.
+For a verified tag instead of a digest, set `image.tag=vX.Y.Z-onnx` or
+`image.tag=sha-<commit>-onnx`; configure only one of tag and digest. Packaged
+release charts derive `v<appVersion>-onnx` when both are empty; source snapshot
+charts require an explicit tag or digest. A standard-image digest does not
+contain the bundled model even when `image.variant=onnx` is set.
 
 ### Use the published image instead
 

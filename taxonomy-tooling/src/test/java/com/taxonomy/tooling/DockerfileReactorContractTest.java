@@ -82,6 +82,22 @@ class DockerfileReactorContractTest {
                 .contains("- name: Verify production Docker image build")
                 .contains("if: github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true'")
                 .contains("verify -Pimage");
+        String imageJob = workflow.substring(workflow.indexOf("\n  production-image:"),
+                workflow.indexOf("\n  app-test-plan:"));
+        // Two existing 25-minute build limits plus 10-minute cold-start readiness
+        // need room inside the job budget for setup, inspection and cleanup.
+        assertThat(imageJob).contains("timeout-minutes: 75",
+                "taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java \\",
+                "taxonomy-build/src/test/java/com/taxonomy/build/ExternalDriverSupport.java \\",
+                ".github/ui-verification-pom.xml \\",
+                ".github/scripts/download-embedding-model.sh \\",
+                "deploy/container/onnx \\");
+        String verificationPom = Files.readString(root.resolve(".github/ui-verification-pom.xml"));
+        String imageProfile = verificationPom.substring(verificationPom.indexOf("<id>image</id>"),
+                verificationPom.indexOf("</profile>", verificationPom.indexOf("<id>image</id>")));
+        assertThat(imageProfile).contains("<skipITs>false</skipITs>",
+                "<include>**/ProductionImageIT.java</include>",
+                "<taxonomy.production.image.skip>false</taxonomy.production.image.skip>");
         assertThat(Files.readString(root.resolve("taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java")))
                 .contains("\"docker\",\"build\"")
                 .contains("VCS_REF=")

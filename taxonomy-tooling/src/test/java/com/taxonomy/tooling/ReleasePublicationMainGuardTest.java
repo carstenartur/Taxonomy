@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Run the actual final publication shell against a local Git remote. */
 class ReleasePublicationMainGuardTest {
     private static final String IMAGE_DIGEST = "sha256:" + "a".repeat(64);
+    private static final String ONNX_IMAGE_DIGEST = "sha256:" + "b".repeat(64);
 
     @Test
     void unchangedMainPublishesFromTheDetachedReleaseSource(@TempDir Path root)
@@ -44,7 +45,7 @@ class ReleasePublicationMainGuardTest {
         Result result = publish(fixture);
 
         assertThat(Files.readAllLines(root.resolve("checks")))
-                .startsWith("notes", "assets", "image-inspection", "draft-state");
+                .startsWith("notes", "assets", "image-inspection", "image-inspection", "draft-state");
         assertThat(result.exitCode()).as(problem + ": " + result.output()).isNotZero();
         assertThat(Files.readString(root.resolve("effects")))
                 .as("no publication or deployment after %s", problem).isEmpty();
@@ -92,7 +93,9 @@ class ReleasePublicationMainGuardTest {
                   printf '%s\n' taxonomy-1.5.0-distribution.tar.gz \
                     taxonomy-1.5.0-distribution.tar.gz.sha256 \
                     taxonomy-1.5.0-image-evidence.json taxonomy-1.5.0-image-trivy.sarif \
-                    taxonomy-1.5.0-release.sha256
+                    taxonomy-1.5.0-release.sha256 \
+                    taxonomy-1.5.0-onnx-image-evidence.json taxonomy-1.5.0-onnx-image-trivy.sarif \
+                    taxonomy-1.5.0-onnx-release.sha256
                 elif [[ "$1 $2" == "release view" && "$5" == "isDraft" ]]; then
                   printf 'draft-state\\n' >> "$TEST_CHECKS"
                   cat "$TEST_DRAFT_STATE"
@@ -114,28 +117,114 @@ class ReleasePublicationMainGuardTest {
         Files.createDirectories(work.resolve("target"));
         Files.writeString(work.resolve("target/release-image-evidence.json"),
                 "{\"digest\":\"" + IMAGE_DIGEST + "\"}\n");
+        Files.writeString(work.resolve("target/release-onnx-image-evidence.json"), """
+                {"digest":"%s","image":"ghcr.io/release-guard-test/taxonomy@%s",
+                 "imageVariant":"onnx","sourceCommit":"%s","releaseVersion":"1.5.0",
+                 "scan":{"result":"passed"}}
+                """.formatted(ONNX_IMAGE_DIGEST, ONNX_IMAGE_DIGEST, releaseSha));
         Map<String, String> environment = new HashMap<>();
         environment.put("PATH", bin + ":" + System.getenv("PATH"));
         environment.put("GITHUB_REPOSITORY_OWNER", "release-guard-test");
         environment.put("RELEASE_VERSION", "1.5.0");
         environment.put("IMAGE_DIGEST", IMAGE_DIGEST);
+        environment.put("ONNX_IMAGE_DIGEST", ONNX_IMAGE_DIGEST);
+        environment.put("RELEASE_SOURCE_SHA", releaseSha);
         environment.put("EXPECTED_MAIN_SHA", problem.equals("missing-expected-sha") ? "" : expectedMain);
         environment.put("RELEASE_NOTES_VALIDATOR", bin.resolve("notes-validator").toString());
         environment.put("RENDER_DEPLOY_HOOK_URL", "https://deployment.invalid/release");
         environment.put("TEST_EFFECTS", root.resolve("effects").toString());
         environment.put("TEST_CHECKS", root.resolve("checks").toString());
         environment.put("TEST_DRAFT_STATE", root.resolve("draft-state").toString());
+        environment.put("RUNNER_TEMP", root.toString());
         return new Fixture(work, releaseSha, expectedMain, environment);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"missing", "standard-digest", "image", "variant", "source", "scan", "release", "malformed", "missing-scan", "multiple-documents"})
+    void invalidOnnxEvidencePreventsPublication(String problem, @TempDir Path root) throws Exception {
+        Fixture fixture = fixture(root, "unchanged");
+        Path evidence = fixture.work().resolve("target/release-onnx-image-evidence.json");
+        String payload = Files.readString(evidence);
+        switch (problem) {
+            case "missing" -> Files.delete(evidence);
+            case "standard-digest" -> Files.writeString(evidence, payload.replace(ONNX_IMAGE_DIGEST, IMAGE_DIGEST));
+            case "image" -> Files.writeString(evidence, payload.replace("ghcr.io/release-guard-test/taxonomy@", "ghcr.io/wrong-owner/taxonomy@"));
+            case "multiple-documents" -> Files.writeString(evidence, payload + payload);
+            case "malformed" -> Files.writeString(evidence, "{invalid JSON");
+            case "missing-scan" -> Files.writeString(evidence, payload.replace("\"result\":\"passed\"", "\"other\":\"passed\""));
+            case "variant" -> Files.writeString(evidence, payload.replace("onnx", "standard"));
+            case "source" -> Files.writeString(evidence, payload.replace(fixture.releaseSha(), "0".repeat(40)));
+            case "scan" -> Files.writeString(evidence, payload.replace("passed", "failed"));
+            case "release" -> Files.writeString(evidence, payload.replace("1.5.0", "1.4.0"));
+            default -> throw new IllegalArgumentException(problem);
+        }
+        Result result = publish(fixture);
+        assertThat(result.exitCode()).as(result.output()).isNotZero();
+        assertThat(Files.readString(root.resolve("effects"))).isEmpty();
+    }
+
+    @Test
+    void evidenceBindingWritesSeparateDigestBoundVariantArtifacts(@TempDir Path root) throws Exception {
+        Fixture fixture = fixture(root, "unchanged");
+        executable(root.resolve("bin/gh"), "#!/usr/bin/env bash\nexit 0\n");
+        Path chart = fixture.work().resolve("deploy/helm/taxonomy");
+        Files.createDirectories(chart);
+        Files.writeString(chart.resolve("Chart.yaml"), "fixture chart");
+        executable(root.resolve("bin/helm"), """
+                #!/usr/bin/env bash
+                set -euo pipefail
+                digest=''
+                for arg in "$@"; do
+                  if [[ "$arg" == image.digest=* ]]; then digest="${arg#image.digest=}"; fi
+                done
+                if [[ "$digest" == "$ONNX_IMAGE_DIGEST" && "$*" != *values-onnx.yaml* ]]; then
+                  echo 'ONNX manifest must apply the ONNX values overlay' >&2
+                  exit 1
+                fi
+                printf 'image: "ghcr.io/%s/taxonomy@%s"\n' "$GITHUB_REPOSITORY_OWNER" "$digest"
+                printf 'readOnlyRootFilesystem: true\nrunAsUser: 10001\n'
+                """);
+        Files.writeString(fixture.work().resolve("release-image-trivy.sarif"), "standard scan");
+        Files.writeString(fixture.work().resolve("release-onnx-image-trivy.sarif"), "onnx scan");
+        Result result = runStep(fixture, "Bind release evidence and Helm deployment to immutable image digest");
+        assertThat(result.exitCode()).as(result.output()).isZero();
+        Path artifacts = root.resolve("helm-release");
+        assertThat(Files.readString(artifacts.resolve("taxonomy-1.5.0-image-evidence.json")))
+                .contains(IMAGE_DIGEST).doesNotContain(ONNX_IMAGE_DIGEST);
+        assertThat(Files.readString(artifacts.resolve("taxonomy-1.5.0-onnx-image-evidence.json")))
+                .contains(ONNX_IMAGE_DIGEST, "\"imageVariant\": \"onnx\"", fixture.releaseSha())
+                .doesNotContain(IMAGE_DIGEST);
+        assertThat(Files.readString(artifacts.resolve("taxonomy-1.5.0-onnx-kubernetes-digest.yaml")))
+                .contains(ONNX_IMAGE_DIGEST).doesNotContain(IMAGE_DIGEST);
+        for (String suffix : new String[]{"", "onnx-"}) {
+            Process checksum = new ProcessBuilder("sha256sum", "-c", "taxonomy-1.5.0-" + suffix + "release.sha256")
+                    .directory(artifacts.toFile()).redirectErrorStream(true).start();
+            assertThat(checksum.waitFor(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(checksum.exitValue()).isZero();
+        }
+    }
+
+    @Test
+    void invalidOnnxBuildDigestCannotProducePassingEvidence(@TempDir Path root) throws Exception {
+        Fixture fixture = fixture(root, "unchanged");
+        fixture.environment().put("ONNX_IMAGE_DIGEST", "taxonomy:v1.5.0-onnx");
+        Result result = runStep(fixture, "Bind release evidence and Helm deployment to immutable image digest");
+        assertThat(result.exitCode()).as(result.output()).isNotZero();
+        assertThat(root.resolve("helm-release")).doesNotExist();
+    }
+
     private static Result publish(Fixture fixture) throws Exception {
+        return runStep(fixture, "Publish complete release and trigger deployment");
+    }
+
+    private static Result runStep(Fixture fixture, String stepName) throws Exception {
         Path repository = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
         while (repository != null && !Files.isRegularFile(repository.resolve(".github/workflows/deploy-release.yml"))) {
             repository = repository.getParent();
         }
         if (repository == null) throw new IllegalStateException("Taxonomy repository not found");
         String workflow = Files.readString(repository.resolve(".github/workflows/deploy-release.yml"));
-        int step = workflow.indexOf("      - name: Publish complete release and trigger deployment");
+        int step = workflow.indexOf("      - name: " + stepName);
         assertThat(step).as("actual final publication step").isGreaterThanOrEqualTo(0);
         int start = workflow.indexOf("        run: |\n", step);
         assertThat(start).as("actual publication shell").isGreaterThan(step);

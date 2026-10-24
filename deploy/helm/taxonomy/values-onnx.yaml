@@ -1,0 +1,26 @@
+# Apply after the deployment's ordinary values file. Use the ONNX variant's
+# verified digest: --set-string image.digest=sha256:<64-lowercase-hex>
+# Alternatively set image.tag=vX.Y.Z-onnx for an available published release.
+# Packaged releases derive v<appVersion>-onnx; source snapshots require an
+# explicit matching digest or sha-<commit>-onnx tag.
+image:
+  variant: onnx
+  repository: ghcr.io/carstenartur/taxonomy
+  tag: ""
+  digest: ""
+
+# Override base config entries, which otherwise disable the bundled model.
+config:
+  LLM_PROVIDER: LOCAL_ONNX
+  TAXONOMY_EMBEDDING_ENABLED: "true"
+  TAXONOMY_EMBEDDING_MODEL_PROFILE: MULTILINGUAL_MINILM_L12
+  TAXONOMY_EMBEDDING_MODEL_DIR: /opt/taxonomy/models/multilingual-minilm
+  TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
+  RUST_FLAVOR: cpu
+  DJL_CACHE_DIR: /tmp/djl-cache
+  JAVA_OPTS: "-XX:+UseSerialGC -Xss512k -Xmx768m -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp"
+
+# A starting limit, not a capacity guarantee; native memory is outside -Xmx.
+resources:
+  limits:
+    memory: 2Gi

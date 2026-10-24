@@ -159,9 +159,17 @@ Oracle Database instance to which Taxonomy connects.
 - Pinned revision: `e8f8c211226b894fcb81acc59f3b34ba3efd5f42`
 - ONNX export: `onnx/model_quint8_avx2.onnx`
 
-This is the default local embedding profile. It is provisioned separately from
-Maven dependencies. Distributions that bundle its files must retain the model's
-licence and attribution. The explicit BGE profile remains available below.
+This is the default local embedding profile, provisioned separately from Maven
+dependencies. The optional `onnx` container build target and published `-onnx`
+image variant bundle this model; the standard container does not. The variant
+includes the Apache-2.0 licence, attribution notice and `MODEL_PROVENANCE.txt`
+with the pinned source revision and file digests beside the model under
+`/opt/taxonomy/models/multilingual-minilm`. The source licence and notice are
+maintained in [`deploy/container/onnx`](deploy/container/onnx). The serving
+configuration is application packaging; upstream model/tokenizer bytes are
+unchanged and the ONNX export is renamed `model.onnx` for the local loader.
+Include this bundled model in container-level inventory. The explicit BGE
+profile remains available below.
 
 ### BAAI/bge-small-en-v1.5
 

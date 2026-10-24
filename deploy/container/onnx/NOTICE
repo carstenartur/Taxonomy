@@ -1,0 +1,10 @@
+Taxonomy's ONNX image variant includes the quantized multilingual embedding model
+sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2.
+
+Model publisher: Sentence Transformers
+Source: https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+License: Apache License, Version 2.0 (see LICENSE in this directory).
+
+The upstream model and tokenizer bytes are unmodified. The ONNX export is named
+model.onnx for the local loader. MODEL_PROVENANCE.txt records the immutable source
+revision, upstream export path and SHA-256 digests of the distributed files.

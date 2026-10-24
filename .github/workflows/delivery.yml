@@ -145,6 +145,43 @@ jobs:
             github_token=${{ secrets.GITHUB_TOKEN }}
             github_actor=${{ github.actor }}
 
+      - name: Extract embedded ONNX Docker metadata
+        id: meta_onnx
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=main-onnx,enable=${{ github.event.workflow_run.head_branch == github.event.repository.default_branch }}
+            type=raw,value=latest-onnx,enable=${{ github.event.workflow_run.head_branch == github.event.repository.default_branch }}
+            type=raw,value=${{ github.event.workflow_run.head_branch }}-onnx,enable=${{ startsWith(github.event.workflow_run.head_branch, 'v') }}
+            type=raw,value=sha-${{ github.event.workflow_run.head_sha }}-onnx
+          annotations: |
+            org.opencontainers.image.title=Taxonomy Architecture Analyzer
+            org.opencontainers.image.description=Spring Boot web application for C3-taxonomy catalogue analysis
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.vendor=Carsten Hammer
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+
+      - name: Build and push embedded ONNX Docker image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          target: onnx
+          push: true
+          tags: ${{ steps.meta_onnx.outputs.tags }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.description=Taxonomy Architecture Analyzer with bundled multilingual ONNX embeddings for offline semantic search and similarity scoring.
+            org.opencontainers.image.licenses=MIT AND Apache-2.0
+            com.taxonomy.image.variant=onnx
+          build-args: |
+            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VCS_REF=${{ github.event.workflow_run.head_sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
+            github_actor=${{ github.actor }}
+
   render-deployment-disabled:
     name: Render deployment disabled
     needs: publish-image

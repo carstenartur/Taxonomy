@@ -47,7 +47,7 @@ jobs:
   production-image:
     name: Production Docker image verification
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
     outputs: { executed: "${{ github.event_name != 'pull_request' || steps.production-image-scope.outputs.run == 'true' }}" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -66,7 +66,12 @@ jobs:
         run: |
           if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
               Dockerfile \
+              taxonomy-build/src/test/java/com/taxonomy/build/ProductionImageIT.java \
+              taxonomy-build/src/test/java/com/taxonomy/build/ExternalDriverSupport.java \
+              .github/ui-verification-pom.xml \
               .github/scripts/configure-docker-mirror.sh \
+              .github/scripts/download-embedding-model.sh \
+              deploy/container/onnx \
               .dockerignore \
               pom.xml \
               mvnw \
