@@ -58,8 +58,9 @@ class DslMaterializeServiceTest {
                 }
                 """;
 
+        String selectedBranch = workspaceResolver.resolveCurrentRepositoryContext().branch();
         DslMaterializeService.MaterializeResult result =
-                materializeService.materialize(dsl, "test.tax", "main", "abc123");
+                materializeService.materialize(dsl, "test.tax", selectedBranch, "abc123");
 
         assertThat(result.valid()).isTrue();
         assertThat(result.errors()).isEmpty();
@@ -69,7 +70,7 @@ class DslMaterializeServiceTest {
         var doc = documentRepository.findById(result.documentId());
         assertThat(doc).isPresent();
         assertThat(doc.get().getPath()).isEqualTo("test.tax");
-        assertThat(doc.get().getBranch()).isEqualTo("main");
+        assertThat(doc.get().getBranch()).isEqualTo(selectedBranch);
         assertThat(doc.get().getCommitId()).isEqualTo("abc123");
         assertThat(doc.get().getNamespace()).isEqualTo("test.materialize");
         assertThat(doc.get().getDslVersion()).isEqualTo("2.0");
