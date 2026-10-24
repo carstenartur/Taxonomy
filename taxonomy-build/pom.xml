@@ -258,6 +258,14 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>ci-database-compatibility</id>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
+                <!-- Build guards belong to every companion, including required-* executions. -->
+                <configuration><skipTests>false</skipTests></configuration>
+            </plugin></plugins></build>
+        </profile>
         <profile><id>ci</id><properties><documentTemplateE2E>true</documentTemplateE2E><documentTemplateRenderPreview>true</documentTemplateRenderPreview></properties></profile>
         <profile>
             <id>ui-tests</id>
@@ -280,12 +288,28 @@
                 <documentTemplateRenderPreview>false</documentTemplateRenderPreview>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
             </properties>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId>
+                <executions><execution><configuration>
+                    <!-- The plugin companion owns these original reports in split CI. -->
+                    <excludes>
+                        <exclude>${taxonomy.coverage.policy.exclude}</exclude>
+                        <exclude>**/ExternalPluginPackagedIT.java</exclude>
+                        <exclude>**/OptionalFeaturePackagedIT.java</exclude>
+                    </excludes>
+                </configuration></execution></executions>
+            </plugin></plugins></build>
         </profile>
         <profile>
             <id>ci-plugin-packaging</id>
             <properties>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
             </properties>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
+                <!-- Build guards belong to every companion, including required-* executions. -->
+                <configuration><skipTests>false</skipTests></configuration>
+            </plugin></plugins></build>
         </profile>
         <profile>
             <id>ci-app-test-shards-coverage</id>

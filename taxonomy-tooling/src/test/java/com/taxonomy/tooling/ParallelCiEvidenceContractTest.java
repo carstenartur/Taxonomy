@@ -53,6 +53,8 @@ class ParallelCiEvidenceContractTest {
                 .contains("name: taxonomy-ui-application")
                 .contains("pattern: app-test-shard-*")
                 .contains("name: quality-reports-core")
+                .contains("name: junit-plugin-profile")
+                .contains("Stage source-bound original plugin reports")
                 .contains("pattern: 'ui-verification-*'")
                 .contains("merge-multiple: true")
                 .contains("name: quality-reports")

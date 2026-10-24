@@ -21,6 +21,16 @@ while IFS= read -r -d '' report; do
   cp "$report" "$destination"
 done < <(find target/ui-verification -type f -name 'TEST-*.xml' -print0)
 
+# Dedicated packaged integrations are imported once, with the original producer
+# manifest. Missing originals fail here even before publication verification.
+mkdir -p target/quality-reports/tests/plugin-profile/target/failsafe-reports \
+  target/quality-reports/evidence/plugin-profile
+for suite in ExternalPluginPackagedIT OptionalFeaturePackagedIT; do
+  cp "target/plugin-profile-evidence/TEST-com.taxonomy.build.$suite.xml" \
+    target/quality-reports/tests/plugin-profile/target/failsafe-reports/
+done
+cp target/plugin-profile-evidence/manifest.json target/quality-reports/evidence/plugin-profile/
+
 source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
 build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
 # The action pin is configuration, not evidence of a completed independent scan.

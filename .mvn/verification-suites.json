@@ -34,7 +34,7 @@
       "itTest": "*Oracle*IT"
     },
     "ci-database-compatibility": {
-      "purpose": "Explicit CI companion to database-postgres, database-mssql or database-oracle; skips only duplicate taxonomy-app Surefire execution and partial aggregate coverage while retaining the selected database Failsafe suite and reactor build guards",
+      "purpose": "Explicit CI companion to database-postgres, database-mssql or database-oracle; skips already-owned application and upstream Surefire executions and partial aggregate coverage while retaining the selected database Failsafe suite and reactor build guards",
       "profile": "ci-database-compatibility",
       "baseProfiles": [
         "database-postgres",
@@ -73,7 +73,7 @@
       ]
     },
     "ci-plugin-packaging": {
-      "purpose": "CI companion to plugin-packaging-tests; skips only taxonomy-app Surefire reruns already covered by core/shards while retaining the selected packaged Failsafe suites and build checks",
+      "purpose": "CI companion to plugin-packaging-tests; skips application and upstream Surefire reruns already covered by core/shards while retaining the selected packaged Failsafe suites and build checks",
       "profile": "ci-plugin-packaging",
       "baseProfile": "plugin-packaging-tests",
       "itTest": "ExternalPluginPackagedIT,OptionalFeaturePackagedIT"
@@ -155,6 +155,11 @@
   "applicationTestShards": {
     "purpose": "Split measured expensive taxonomy-app suites across isolated Maven runners while untagged and newly added tests remain in the authoritative core group.",
     "defaultGroup": "core",
+    "dedicatedOwners": {
+      "JavascriptContractTest": "ui-contracts",
+      "ExternalPluginPackagedIT": "plugin-profile",
+      "OptionalFeaturePackagedIT": "plugin-profile"
+    },
     "excludedTags": [
       "real-llm",
       "db-mssql",

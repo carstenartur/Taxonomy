@@ -34,6 +34,13 @@ The three legacy Python files retain all 22 assertion methods, called separately
 by `PythonContractTest` without a Python test runner. Every npm test command points
 to the JUnit owner.
 
+In split CI, the existing `ui-contracts` job owns the nonbrowser JavaScript
+contracts. The core companion excludes that class so the final report contains
+one original execution of each contract. The standalone `ci` command retains
+the class. Browser callbacks use their separate browser selection and remain
+part of the UI shard evidence; Java class names and generated method indices
+alone are not safe cross-report deduplication keys.
+
 `UiScenarioIT` reports each selected browser scenario independently while sharing
 the existing application groups. `InteroperabilityProductsIT` reports StrictDoc
 and Archi independently. Driver failures retain observed per-case results;
@@ -50,6 +57,22 @@ flake counters are rejected. Local and remote publication recount the raw XML
 against its manifest and summary before accepting it; no XML counter is repaired.
 Root `verify` independently invokes `check-junit-outcomes` after Failsafe to recount
 every original reactor XML, so malformed evidence also fails locally.
+
+### Opt-in suppression of inherited tests
+
+App test classes may use `@IgnoreInheritedTests` when they reuse a concrete
+fixture whose test methods already execute in the base class. The test-scoped
+`PostDiscoveryFilter`, registered through Java's ServiceLoader, removes inherited
+method descriptors from annotated classes before execution. It does not produce
+disabled or skipped placeholders. Own ordinary and parameterized methods still
+execute, and unannotated subclasses retain normal JUnit inheritance.
+
+The initial opt-ins are `ReformulationListContractTest` and
+`ReformulationBasePathContractTest`: the nine base cases execute once in
+`ReformulationIsolationTest`, and each subclass contributes its own two cases.
+Do not apply the annotation to suites that intentionally rerun a shared contract
+against another configuration or implementation. This uses the public launcher
+approach recommended in [JUnit discussion 4570](https://github.com/junit-team/junit-framework/discussions/4570).
 
 ## Toolchain
 
@@ -139,10 +162,10 @@ The database workflow adds the explicit `ci-database-compatibility` companion:
 ./mvnw -B verify -Pdatabase-oracle,ci-database-compatibility
 ```
 
-This companion skips only repeated taxonomy-app Surefire executions already owned
-by the core and isolated app-test union. It preserves the selected database
-Failsafe tests, their missing-selector failure behavior, test compilation,
-packaging and the other modules' Surefire/build-policy guards. Database profiles
+This companion skips repeated App and upstream-module Surefire executions already
+owned by the complete core and isolated app-test union. It retains the
+`taxonomy-build` Surefire guards, selected database Failsafe tests, their
+missing-selector failure behavior, test compilation and packaging. Database profiles
 already leave UI and build-policy integration tests disabled; the companion does
 not change those settings or the database selectors. It disables the partial
 aggregate coverage report, while JaCoCo instrumentation remains enabled. These
@@ -355,20 +378,37 @@ In CI, the `plugin-profile` job combines this profile with
 ./mvnw -B verify -Pplugin-packaging-tests,ci-plugin-packaging
 ```
 
-That Maven-owned companion skips only taxonomy-app Surefire tests already covered
-by the core and isolated app-test union. It preserves the complete plugin build,
-SDK checks and both selected packaged Failsafe tests. It excludes the partial-lane
+That Maven-owned companion skips repeated App and upstream-module Surefire tests
+already covered by the core and isolated app-test union. It retains the
+`taxonomy-build` Surefire guards, complete plugin build, SDK checks and both
+selected packaged Failsafe tests. It excludes the partial-lane
 coverage policy; only the separate full-reactor aggregate job can enforce
 coverage. The standalone profile above remains unchanged and runs ordinary
 application tests.
+
+The parentless Mermaid plugin declares matching companion profiles explicitly.
+Its independent SDK verification continues to use standalone `verify`, including
+the plugin's unit tests.
 
 The final Maven verification gate requires that job to succeed; failure,
 cancellation, a skipped job or a missing result blocks completion. The job uses
 the checked-in Maven profiles without a separate workflow-owned test selector.
 Its `plugin-profile-verification` artifact retains the Maven log, Surefire and
 Failsafe reports, independent SDK result and host/plugin identity evidence.
-These results supplement the canonical `ci` profile and digest-bound UI shards;
-overlapping test executions must not be added to the canonical test count.
+In split CI this lane is the sole owner of `ExternalPluginPackagedIT` and
+`OptionalFeaturePackagedIT`; the core companion excludes them. Their original
+JUnit reports enter the final quality inventory once with matching source/build
+identity. Missing, failed, skipped or inconsistent required evidence prevents
+publication. Supplemental repeated build-guard reports are not added to the
+canonical test count. The unsliced `ci` command still runs both packaged suites.
+
+### Document browser preparation
+
+The document E2E workflow prepares its pinned browser runtime with
+`pre-integration-test -DskipTests`. This preparation reaches the existing
+frontend installation goal without executing the build guards a second time.
+The subsequent `verify -Pdocument-template-report-e2e` runs those guards and the
+selected document integration test with normal test execution enabled.
 
 ## UI process isolation and timings
 

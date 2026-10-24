@@ -658,6 +658,25 @@ jobs:
           mkdir -p target
           set -o pipefail
           ./mvnw -B verify -Pplugin-packaging-tests,ci-plugin-packaging 2>&1 | tee target/plugin-profile-verification.log
+      - name: Stage source-bound original plugin reports
+        run: |
+          mkdir -p target/plugin-profile-evidence
+          for suite in ExternalPluginPackagedIT OptionalFeaturePackagedIT; do
+            cp "taxonomy-build/target/failsafe-reports/TEST-com.taxonomy.build.$suite.xml" target/plugin-profile-evidence/
+          done
+          source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          jq -n --arg commit "$GITHUB_SHA" \
+            --arg sourceTree "$source_tree" \
+            --arg buildId "$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT" \
+            --arg external "$(sha256sum target/plugin-profile-evidence/TEST-com.taxonomy.build.ExternalPluginPackagedIT.xml | cut -d ' ' -f 1)" \
+            --arg optional "$(sha256sum target/plugin-profile-evidence/TEST-com.taxonomy.build.OptionalFeaturePackagedIT.xml | cut -d ' ' -f 1)" \
+            '{commit: $commit, sourceTree: $sourceTree, buildId: $buildId, reports: {
+              "TEST-com.taxonomy.build.ExternalPluginPackagedIT.xml": $external,
+              "TEST-com.taxonomy.build.OptionalFeaturePackagedIT.xml": $optional
+            }}' > target/plugin-profile-evidence/manifest.json
+      - name: Upload original plugin reports
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: junit-plugin-profile, path: 'target/plugin-profile-evidence/*', if-no-files-found: error, retention-days: 90 }
       - name: Upload complete plugin profile evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -727,6 +746,9 @@ jobs:
       - name: Download complete coverage and app shard reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: quality-reports-coverage, path: target/quality-reports }
+      - name: Download source-bound original plugin reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: junit-plugin-profile, path: target/plugin-profile-evidence }
       - name: Download JUnit contract evidence
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: junit-ui-contracts, path: target/quality-reports/tests/ui-contracts/target/surefire-reports }

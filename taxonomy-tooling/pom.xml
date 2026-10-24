@@ -41,6 +41,14 @@
         </plugins>
     </build>
     <profiles>
+        <!-- The existing fast UI contract job owns these callbacks in split CI. -->
+        <profile>
+            <id>ci-app-test-shards-core</id>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
+                <configuration><excludes><exclude>**/JavascriptContractTest.java</exclude></excludes></configuration>
+            </plugin></plugins></build>
+        </profile>
         <!-- Only the native browser driver redirects reports. Ordinary lanes inherit
              their parent profile directory so publication sees the original XML. -->
         <profile>

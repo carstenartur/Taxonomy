@@ -24,6 +24,9 @@ class QualityEvidenceFinalizationTest {
     private static final String REPORT = "failsafe-reports/TEST-com.taxonomy.ObservabilityPerformanceIT.xml";
     private static final String CORE_REPORT = QUALITY + "tests/taxonomy-app/target/" + REPORT;
     private static final String DEDICATED_REPORT = "target/observability-performance/tests/taxonomy-app/target/" + REPORT;
+    private static final List<String> PLUGINS = List.of("ExternalPluginPackagedIT", "OptionalFeaturePackagedIT");
+    private static final String PLUGIN_REPORTS = "target/plugin-profile-evidence/";
+    private static final String JAVASCRIPT_REPORT = QUALITY + "tests/ui-contracts/target/surefire-reports/TEST-com.taxonomy.tooling.JavascriptContractTest.xml";
     private static final String CORE = xml("core-disabled", true);
     private static final String DEDICATED = xml("dedicated-executed", false);
 
@@ -42,10 +45,10 @@ class QualityEvidenceFinalizationTest {
             assertThat(read(QUALITY + "tests/observability-performance/taxonomy-app/target/" + REPORT))
                     .isEqualTo(DEDICATED);
             Map<?, ?> counts = (Map<?, ?>) FlatJson.parseObject(read(QUALITY + "quality-summary.json")).get("tests");
-            assertThat(((Number) counts.get("tests")).intValue()).isEqualTo(5);
-            assertThat(((Number) counts.get("passed")).intValue()).isEqualTo(4);
+            assertThat(((Number) counts.get("tests")).intValue()).isEqualTo(8);
+            assertThat(((Number) counts.get("passed")).intValue()).isEqualTo(7);
             assertThat(((Number) counts.get("skipped")).intValue()).isEqualTo(1);
-            assertThat(((Number) counts.get("reportFiles")).intValue()).isEqualTo(5);
+            assertThat(((Number) counts.get("reportFiles")).intValue()).isEqualTo(8);
             assertThat(checkout.resolve(QUALITY + "evidence/observability-performance/tests")).doesNotExist();
         }
     }
@@ -124,6 +127,53 @@ class QualityEvidenceFinalizationTest {
         assertThat(result.output()).contains("application shard");
     }
 
+    @Test
+    void importsOriginalPluginReportsExactlyOnceAndRetainsTheirSourceBinding() throws Exception {
+        fixture();
+        put("target/ui-verification/browser/junit-browser-reports/TEST-com.taxonomy.tooling.JavascriptContractTest.xml",
+                read(JAVASCRIPT_REPORT).replace("<testcase", "<properties><property name=\"taxonomy.javascript.mode\" value=\"browser\"/></properties><testcase"));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            Result result = finalizeEvidence();
+            assertThat(result.exit()).as(result.output()).isZero();
+            for (String suite : PLUGINS) {
+                String name = "TEST-com.taxonomy.build." + suite + ".xml";
+                assertThat(read(QUALITY + "tests/plugin-profile/target/failsafe-reports/" + name))
+                        .isEqualTo(read(PLUGIN_REPORTS + name));
+                try (var files = Files.walk(checkout.resolve(QUALITY + "tests"))) {
+                    assertThat(files.filter(path -> path.getFileName().toString().equals(name)).count()).isEqualTo(1);
+                }
+            }
+            assertThat(read(QUALITY + "evidence/plugin-profile/manifest.json"))
+                    .isEqualTo(read(PLUGIN_REPORTS + "manifest.json"));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ExternalPluginPackagedIT", "OptionalFeaturePackagedIT", "javascript", "manifest", "commit", "sourceTree", "buildId", "digest", "duplicate", "duplicate-javascript", "browser-contract", "skipped", "failed"})
+    void rejectsMissingChangedOrDuplicateDedicatedEvidence(String mutation) throws Exception {
+        fixture();
+        String report = PLUGIN_REPORTS + "TEST-com.taxonomy.build.ExternalPluginPackagedIT.xml";
+        String manifest = PLUGIN_REPORTS + "manifest.json";
+        switch (mutation) {
+            case "ExternalPluginPackagedIT", "OptionalFeaturePackagedIT" -> Files.delete(checkout.resolve(
+                    PLUGIN_REPORTS + "TEST-com.taxonomy.build." + mutation + ".xml"));
+            case "javascript" -> Files.delete(checkout.resolve(JAVASCRIPT_REPORT));
+            case "manifest" -> Files.delete(checkout.resolve(manifest));
+            case "commit" -> put(manifest, read(manifest).replace("HEAD", "foreign"));
+            case "sourceTree" -> put(manifest, read(manifest).replace(tree(), "0".repeat(40)));
+            case "buildId" -> put(manifest, read(manifest).replace("123.2", "124.1"));
+            case "digest" -> put(report, read(report).replace("dedicated", "changed"));
+            case "duplicate" -> put(QUALITY + "tests/taxonomy-build/target/failsafe-reports/" + Path.of(report).getFileName(), read(report));
+            case "duplicate-javascript" -> put(QUALITY + "tests/taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.JavascriptContractTest.xml", read(JAVASCRIPT_REPORT));
+            case "browser-contract" -> put("target/ui-verification/browser/junit-browser-reports/TEST-com.taxonomy.tooling.JavascriptContractTest.xml", read(JAVASCRIPT_REPORT));
+            case "skipped" -> put(JAVASCRIPT_REPORT, xml("skipped-contract", true));
+            case "failed" -> put(JAVASCRIPT_REPORT, xml("failed-contract", false).replace("failures=\"0\"", "failures=\"1\"").replace("</testcase>", "<failure/></testcase>"));
+            default -> throw new IllegalArgumentException(mutation);
+        }
+        Result result = finalizeEvidence();
+        assertThat(result.exit()).as(result.output()).isNotZero();
+    }
+
     private void fixture() throws Exception {
         assertThat(run(List.of("git", "init", "-q")).exit()).isZero();
         assertThat(run(List.of("git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
@@ -144,6 +194,13 @@ class QualityEvidenceFinalizationTest {
         put(QUALITY + "coverage/jacoco.xml", "<report><counter type=\"INSTRUCTION\" covered=\"1\" missed=\"0\"/></report>");
         put(QUALITY + "coverage/index.html", "fixture aggregate coverage");
         put("target/ui-verification/summary.json", "{}");
+        put(JAVASCRIPT_REPORT, xml("javascript-contract", false).replace("com.taxonomy.ObservabilityPerformanceIT", "com.taxonomy.tooling.JavascriptContractTest"));
+        for (String suite : PLUGINS) {
+            put("taxonomy-build/target/failsafe-reports/TEST-com.taxonomy.build." + suite + ".xml",
+                    xml("dedicated-" + suite, false).replace("com.taxonomy.ObservabilityPerformanceIT", "com.taxonomy.build." + suite));
+        }
+        Result stage = stagePluginEvidence();
+        assertThat(stage.exit()).as(stage.output()).isZero();
         put("target/observability-performance/ci-scope.json", "{\"executed\":true}");
         put(DEDICATED_REPORT, DEDICATED);
         for (String shard : List.of("core", "browser", "recovery", "scenario")) {
@@ -163,6 +220,24 @@ class QualityEvidenceFinalizationTest {
                             "failures", 0, "errors", 0, "failureElements", List.of())),
                     "timing", Map.of("durationSeconds", 1, "suites", 1))));
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ExternalPluginPackagedIT", "OptionalFeaturePackagedIT"})
+    void stagingRequiresBothOriginalPluginReports(String suite) throws Exception {
+        fixture();
+        Files.delete(checkout.resolve("taxonomy-build/target/failsafe-reports/TEST-com.taxonomy.build." + suite + ".xml"));
+        Result result = stagePluginEvidence();
+        assertThat(result.exit()).as(result.output()).isNotZero();
+    }
+
+    private Result stagePluginEvidence() throws Exception {
+        String workflow = Files.readString(repositoryRoot().resolve(".github/workflows/ci-cd.yml"));
+        String step = workflow.substring(workflow.indexOf("      - name: Stage source-bound original plugin reports"),
+                workflow.indexOf("      - name: Upload original plugin reports"));
+        String script = step.lines().skip(2).map(line -> line.substring(10))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return run(List.of("bash", "-euo", "pipefail", "-c", script));
     }
 
     private Result finalizeEvidence() throws Exception {

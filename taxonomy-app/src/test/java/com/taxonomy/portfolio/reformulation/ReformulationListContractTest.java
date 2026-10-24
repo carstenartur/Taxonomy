@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
 
+import com.taxonomy.testsupport.IgnoreInheritedTests;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
@@ -11,7 +12,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Reuses the live HTTP/database fixture and its inherited scope-isolation checks. */
+/** Reuses the live HTTP/database fixture; scope-isolation checks run in the base class. */
+@IgnoreInheritedTests
 class ReformulationListContractTest extends ReformulationIsolationTest {
 
     @Test

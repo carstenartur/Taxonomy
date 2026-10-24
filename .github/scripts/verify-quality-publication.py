@@ -9,6 +9,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET
 import time
 from typing import Callable
 from urllib.error import HTTPError, URLError
@@ -62,6 +63,57 @@ def compatible_application_build(producer: str, publication: object) -> bool:
     return bool(producer_id and publication_id
                 and producer_id.group(1) == publication_id.group(1)
                 and int(producer_id.group(2)) <= int(publication_id.group(2)))
+
+
+PLUGIN_REPORTS = tuple(f"TEST-com.taxonomy.build.{suite}.xml" for suite in
+                       ("ExternalPluginPackagedIT", "OptionalFeaturePackagedIT"))
+JAVASCRIPT_REPORT = "TEST-com.taxonomy.tooling.JavascriptContractTest.xml"
+
+
+def require_executed_report(path: Path) -> None:
+    if not path.is_file():
+        raise ValueError(f"dedicated original report is missing: {path}")
+    content = path.read_text(encoding="utf-8")
+    counts = _GENERATOR.parse_junit_report(content, path)
+    if counts["tests"] <= 0 or any(counts[key] for key in ("skipped", "failures", "errors")):
+        raise ValueError(f"dedicated report must execute every case successfully: {path}")
+    expected_class = path.name.removeprefix("TEST-").removesuffix(".xml")
+    if any(case.get("classname") != expected_class for case in ET.fromstring(content).iter("testcase")):
+        raise ValueError(f"dedicated report class differs: {path}")
+
+
+def verify_dedicated_reports(root: Path, summary: dict) -> None:
+    manifest_path = root / "evidence/plugin-profile/manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError("dedicated plugin manifest is missing")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if (not isinstance(manifest, dict) or manifest.get("commit") != summary["commit"]
+            or manifest.get("sourceTree") != summary["sourceTree"]
+            or not isinstance(manifest.get("buildId"), str)
+            or not compatible_application_build(manifest["buildId"], summary["buildId"])):
+        raise ValueError("dedicated plugin source/build metadata differs")
+    reports = manifest.get("reports")
+    if not isinstance(reports, dict) or set(reports) != set(PLUGIN_REPORTS):
+        raise ValueError("dedicated plugin report inventory differs")
+    for name in PLUGIN_REPORTS:
+        path = root / "tests/plugin-profile/target/failsafe-reports" / name
+        require_executed_report(path)
+        if hashlib.sha256(path.read_bytes()).hexdigest() != reports[name]:
+            raise ValueError(f"dedicated plugin original digest differs: {path}")
+        if set((root / "tests").rglob(name)) != {path}:
+            raise ValueError(f"dedicated plugin report has more than one owner: {name}")
+    javascript = root / "tests/ui-contracts/target/surefire-reports" / JAVASCRIPT_REPORT
+    require_executed_report(javascript)
+    # Browser-mode callbacks are a distinct selection retained under the UI shards.
+    for path in (root / "tests").rglob(JAVASCRIPT_REPORT):
+        report = ET.fromstring(path.read_text(encoding="utf-8"))
+        browser = any(prop.get("name") == "taxonomy.javascript.mode" and prop.get("value") == "browser"
+                      for prop in report.findall("properties/property"))
+        if path == javascript:
+            if browser:
+                raise ValueError("dedicated JavaScript report selected browser mode instead of contracts")
+        elif not path.is_relative_to(root / "tests/ui") or not browser:
+            raise ValueError("JavaScript contracts have more than one owner")
 
 
 def verify_application_shards(root: Path, summary: dict) -> None:
@@ -208,6 +260,8 @@ def verify_local(root: Path, expected_commit: str) -> None:
     verify_report_totals(summary, [(str(path.relative_to(root)), path.read_text(encoding="utf-8"))
                                    for path in sorted((root / "tests").rglob("TEST-*.xml"))])
     verify_application_shards(root, summary)
+    if (root / "evidence/plugin-profile").exists() or (root / "evidence/application-test-shards").exists():
+        verify_dedicated_reports(root, summary)
 
 
 def _request(url: str) -> Request:
