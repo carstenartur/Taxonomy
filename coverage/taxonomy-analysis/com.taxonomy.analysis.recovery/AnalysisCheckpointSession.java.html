@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisCheckpointSession.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisCheckpointSession.java</span></div><h1>AnalysisCheckpointSession.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import com.taxonomy.analysis.service.AnalysisStoppedException;
+import com.taxonomy.dto.LlmCallDetail;
+import java.util.*;
+import java.util.function.Supplier;
+
+/** Request-local adapter around the existing evaluator, not a second traversal implementation. */
+public final class AnalysisCheckpointSession implements AutoCloseable {
+    public record Question(String key, String inputHash, String provider, List&lt;String&gt; nodes, String prompt) {
+<span class="fc" id="L11">        public Question { nodes = List.copyOf(nodes); }</span>
+    }
+<span class="fc" id="L13">    public record Checkpoint(Question question, String state, LlmCallDetail detail, boolean chargeReplay) {</span>
+        /** Existing journals retain their original admission behavior for cached answers. */
+        public Checkpoint(Question question, String state, LlmCallDetail detail) {
+<span class="fc" id="L16">            this(question, state, detail, true);</span>
+<span class="fc" id="L17">        }</span>
+    }
+    public interface Store {
+        Checkpoint prepare(Question question);
+        void finish(Question question, String state, LlmCallDetail detail);
+        void checkActive();
+<span class="fc" id="L23">        default void supersedeEvidence(String kind, String provider, java.util.function.Predicate&lt;Question&gt; covered) { }</span>
+        /** Older journal adapters still apply their original full-input predicate. */
+        default void supersedeEvidence(String kind, String provider, Set&lt;String&gt; singletonCodes,
+                java.util.function.Predicate&lt;Question&gt; covered) {
+<span class="fc" id="L27">            supersedeEvidence(kind, provider, covered);</span>
+<span class="fc" id="L28">        }</span>
+<span class="fc" id="L29">        default com.taxonomy.dto.RelationSearchReport previousRelations() { return null; }</span>
+<span class="fc" id="L30">        default int sourceCohortSize() { return 0; }</span>
+<span class="fc" id="L31">        default com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() { return null; }</span>
+        /** Cumulative admitted relation calls; accepted answer replay does not spend again. */
+<span class="fc" id="L33">        default int relationCallsSpent() { return 0; }</span>
+        /** Called only inside a new relation completion, after its local/grant allowance succeeds. */
+<span class="fc" id="L35">        default void beforeRelationCall(int maximum) { }</span>
+    }
+<span class="fc" id="L37">    private static final ThreadLocal&lt;AnalysisCheckpointSession&gt; CURRENT = new ThreadLocal&lt;&gt;();</span>
+    private final AnalysisCheckpointSession previous;
+    private final Store store;
+    private boolean closed;
+<span class="fc" id="L41">    public AnalysisCheckpointSession(Store store) {</span>
+<span class="fc" id="L42">        this.store = Objects.requireNonNull(store); previous = CURRENT.get(); CURRENT.set(this);</span>
+<span class="fc" id="L43">    }</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">    public static boolean active() { return CURRENT.get() != null; }</span>
+    public static com.taxonomy.dto.RelationSearchReport previousRelations() {
+<span class="fc" id="L46">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        return current == null ? null : current.store.previousRelations();</span>
+    }
+    public static int relationCallsSpent() {
+<span class="fc" id="L50">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        return current == null ? 0 : current.store.relationCallsSpent();</span>
+    }
+    public static int sourceCohortSize() {
+<span class="fc" id="L54">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        return current == null ? 0 : current.store.sourceCohortSize();</span>
+    }
+    public static com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() {
+<span class="fc" id="L58">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        return current == null ? null : current.store.relationBudget();</span>
+    }
+    public static void beforeRelationCall(int maximum) {
+<span class="fc" id="L62">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (current != null) current.store.beforeRelationCall(maximum);</span>
+<span class="fc" id="L64">    }</span>
+
+    /** Advances a slice's retained report while every journal and ownership callback stays authoritative. */
+    public static AnalysisCheckpointSession withPreviousRelations(
+            Supplier&lt;com.taxonomy.dto.RelationSearchReport&gt; previousRelations) {
+<span class="fc" id="L69">        Objects.requireNonNull(previousRelations, &quot;previousRelations&quot;);</span>
+<span class="fc" id="L70">        var owner = CURRENT.get();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (owner == null) throw new IllegalStateException(&quot;A retained relation scope requires an active checkpoint session&quot;);</span>
+<span class="fc" id="L72">        Store delegate = owner.store;</span>
+<span class="fc" id="L73">        return new AnalysisCheckpointSession(new Store() {</span>
+<span class="fc" id="L74">            public Checkpoint prepare(Question question) { return delegate.prepare(question); }</span>
+<span class="fc" id="L75">            public void finish(Question question, String state, LlmCallDetail detail) { delegate.finish(question, state, detail); }</span>
+<span class="fc" id="L76">            public void checkActive() { delegate.checkActive(); }</span>
+            public void supersedeEvidence(String kind, String provider, java.util.function.Predicate&lt;Question&gt; covered) {
+<span class="fc" id="L78">                delegate.supersedeEvidence(kind, provider, covered);</span>
+<span class="fc" id="L79">            }</span>
+            public void supersedeEvidence(String kind, String provider, Set&lt;String&gt; singletonCodes,
+                    java.util.function.Predicate&lt;Question&gt; covered) {
+<span class="fc" id="L82">                delegate.supersedeEvidence(kind, provider, singletonCodes, covered);</span>
+<span class="fc" id="L83">            }</span>
+<span class="fc" id="L84">            public com.taxonomy.dto.RelationSearchReport previousRelations() { return previousRelations.get(); }</span>
+<span class="fc" id="L85">            public int sourceCohortSize() { return delegate.sourceCohortSize(); }</span>
+<span class="fc" id="L86">            public com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() { return delegate.relationBudget(); }</span>
+<span class="fc" id="L87">            public int relationCallsSpent() { return delegate.relationCallsSpent(); }</span>
+<span class="fc" id="L88">            public void beforeRelationCall(int maximum) { delegate.beforeRelationCall(maximum); }</span>
+        });
+    }
+    /** No provider request was made; the existing question remains ready for explicit continuation. */
+    public static final class DeferredException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+<span class="fc" id="L94">        public DeferredException(String reason) { super(reason); }</span>
+    }
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">    public static boolean isRelationQuestion(String key) { return key != null &amp;&amp; key.startsWith(&quot;R&quot;); }</span>
+
+    public static void supersedeEvidence(String kind, String provider, java.util.function.Predicate&lt;Question&gt; covered) {
+<span class="fc" id="L99">        var current = CURRENT.get();</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (current != null) current.store.supersedeEvidence(kind, provider, covered);</span>
+<span class="fc" id="L101">    }</span>
+
+    public static void supersedeEvidence(String kind, String provider, Set&lt;String&gt; singletonCodes,
+            java.util.function.Predicate&lt;Question&gt; covered) {
+<span class="fc" id="L105">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (current != null) current.store.supersedeEvidence(kind, provider, Set.copyOf(singletonCodes), covered);</span>
+<span class="fc" id="L107">    }</span>
+
+    static Question evidenceQuestion(String kind, String provider, List&lt;String&gt; nodes, String input) {
+        // 252-bit namespace-separated identity fits the existing 64-character schema.
+<span class="fc" id="L111">        String key = &quot;R&quot; + digest(kind, provider, String.join(&quot;\n&quot;, nodes), input).substring(1);</span>
+<span class="fc" id="L112">        return new Question(key, digest(provider, input), provider, nodes, input);</span>
+    }
+
+    /** Relation evidence uses the same scoped journal without fabricating node scores. */
+    public static LlmCallDetail evaluateEvidence(String kind, String provider, List&lt;String&gt; nodes,
+                                                String input, Supplier&lt;LlmCallDetail&gt; operation) {
+<span class="fc" id="L118">        return evaluateEvidence(kind, provider, nodes, input, operation, () -&gt; { });</span>
+    }
+
+    /** Prior-operation evidence is free; same-delivery replay retains its original grant debit. */
+    public static LlmCallDetail evaluateEvidence(String kind, String provider, List&lt;String&gt; nodes,
+                                                String input, Supplier&lt;LlmCallDetail&gt; operation, Runnable admission) {
+<span class="fc" id="L124">        Objects.requireNonNull(operation, &quot;operation&quot;);</span>
+<span class="fc" id="L125">        Objects.requireNonNull(admission, &quot;admission&quot;);</span>
+<span class="fc" id="L126">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (current == null) { admission.run(); return operation.get(); }</span>
+<span class="fc" id="L128">        current.store.checkActive();</span>
+<span class="fc" id="L129">        Question question = evidenceQuestion(kind, provider, nodes, input);</span>
+<span class="fc" id="L130">        Checkpoint saved = current.store.prepare(question);</span>
+<span class="fc" id="L131">        question = saved.question();</span>
+<span class="fc bfc" id="L132" title="All 4 branches covered.">        if (saved.chargeReplay() &amp;&amp; Set.of(&quot;SUCCESS&quot;, &quot;CLARIFICATION&quot;, &quot;DECOMPOSED&quot;, &quot;UNASSESSED&quot;, &quot;SKIPPED&quot;).contains(saved.state()))</span>
+<span class="fc" id="L133">            admission.run();</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (Set.of(&quot;SUCCESS&quot;, &quot;CLARIFICATION&quot;, &quot;DECOMPOSED&quot;).contains(saved.state())) return copy(saved.detail());</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (&quot;UNASSESSED&quot;.equals(saved.state())) return unassessed(saved.detail());</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (&quot;SKIPPED&quot;.equals(saved.state())) {</span>
+<span class="fc" id="L137">            var skipped = new LlmCallDetail(); skipped.setScores(Map.of()); skipped.setProvider(provider);</span>
+<span class="fc" id="L138">            skipped.setError(&quot;RELATION_LEFT_OPEN&quot;); return skipped;</span>
+        }
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!&quot;ATTEMPT&quot;.equals(saved.state())) throw paused();</span>
+        LlmCallDetail result;
+<span class="fc" id="L142">        try { admission.run(); result = Objects.requireNonNull(operation.get()); }</span>
+<span class="fc" id="L143">        catch (DeferredException deferred) {</span>
+<span class="fc" id="L144">            var ready = new LlmCallDetail(); ready.setProvider(provider); ready.setScores(Map.of());</span>
+<span class="fc" id="L145">            ready.setError(deferred.getMessage()); current.store.finish(question, &quot;READY&quot;, ready);</span>
+<span class="fc" id="L146">            throw deferred;</span>
+<span class="fc" id="L147">        } catch (AnalysisStoppedException stopped) { throw stopped; }</span>
+<span class="fc" id="L148">        catch (RuntimeException failed) {</span>
+<span class="fc" id="L149">            com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(failed);</span>
+<span class="fc" id="L150">            result = new LlmCallDetail(); result.setProvider(provider); result.setPrompt(input);</span>
+<span class="fc" id="L151">            result.setScores(Map.of()); result.setError(&quot;RELATION_FAILURE: &quot; + failed.getClass().getSimpleName());</span>
+<span class="fc" id="L152">        }</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">        if (result.getError() != null &amp;&amp; !result.getError().isBlank()</span>
+<span class="pc bpc" id="L154" title="2 of 4 branches missed.">                || result.getRawResponse() == null || result.getRawResponse().isBlank()) {</span>
+            // A valid answer with a question may contain useful sibling decisions.
+            // Preserve it for strict protocol replay, without marking it a success.
+<span class="pc bpc" id="L157" title="1 of 4 branches missed.">            boolean clarification = result.getError() != null &amp;&amp; result.getError().startsWith(&quot;RELATION_UNRESOLVED:&quot;)</span>
+<span class="pc bpc" id="L158" title="2 of 4 branches missed.">                    &amp;&amp; result.getRawResponse() != null &amp;&amp; !result.getRawResponse().isBlank();</span>
+            // A decomposed response is retained verbatim. Independently keyed corrective
+            // questions own the failed entries; replay reconstructs the same validated siblings.
+<span class="pc bpc" id="L161" title="1 of 4 branches missed.">            boolean decomposed = result.getError() != null &amp;&amp; result.getError().startsWith(&quot;RELATION_DECOMPOSED:&quot;);</span>
+<span class="fc bfc" id="L162" title="All 4 branches covered.">            current.store.finish(question, decomposed ? &quot;DECOMPOSED&quot; : clarification ? &quot;CLARIFICATION&quot; : &quot;UNASSESSED&quot;, copy(result));</span>
+<span class="fc" id="L163">            current.store.checkActive(); // Storage/ownership failures remain blocking.</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            return clarification ? copy(result) : unassessed(result);</span>
+        }
+<span class="fc" id="L166">        current.store.finish(question, &quot;SUCCESS&quot;, copy(result));</span>
+<span class="fc" id="L167">        current.store.checkActive();</span>
+<span class="fc" id="L168">        return copy(result);</span>
+    }
+    public static void checkpoint() {
+<span class="fc" id="L171">        var current = CURRENT.get();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (current != null) current.store.checkActive();</span>
+<span class="fc" id="L173">    }</span>
+    public static LlmCallDetail evaluate(String kind, String provider, List&lt;String&gt; nodes,
+                                        String input, Supplier&lt;LlmCallDetail&gt; operation) {
+<span class="fc" id="L176">        Objects.requireNonNull(operation, &quot;operation&quot;);</span>
+<span class="fc" id="L177">        var current = CURRENT.get();</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (current == null) return operation.get();</span>
+<span class="fc" id="L179">        current.store.checkActive();</span>
+<span class="fc" id="L180">        List&lt;String&gt; offered = List.copyOf(nodes);</span>
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">        if (offered.isEmpty() || new HashSet&lt;&gt;(offered).size() != offered.size()</span>
+<span class="pc bpc" id="L182" title="3 of 6 branches missed.">                || offered.stream().anyMatch(node -&gt; node == null || node.isBlank())) {</span>
+<span class="nc" id="L183">            throw new IllegalArgumentException(&quot;A recovery question requires unique catalogue node identities&quot;);</span>
+        }
+<span class="fc" id="L185">        Question question = new Question(digest(com.taxonomy.dto.AnalysisPercentages.POLICY, kind, String.join(&quot;\n&quot;, offered)),</span>
+<span class="fc" id="L186">                digest(com.taxonomy.dto.AnalysisPercentages.POLICY, provider, input), provider, offered, input);</span>
+<span class="fc" id="L187">        Checkpoint checkpoint = current.store.prepare(question);</span>
+<span class="fc" id="L188">        question = checkpoint.question();</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (&quot;SUCCESS&quot;.equals(checkpoint.state())) return copy(checkpoint.detail());</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (&quot;UNASSESSED&quot;.equals(checkpoint.state())) return unassessed(checkpoint.detail());</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (&quot;SKIPPED&quot;.equals(checkpoint.state())) {</span>
+<span class="fc" id="L192">            var unknown = new LlmCallDetail();</span>
+<span class="fc" id="L193">            unknown.setScores(Map.of()); unknown.setReasons(Map.of());</span>
+<span class="fc" id="L194">            unknown.setProvider(provider);</span>
+<span class="fc" id="L195">            unknown.setError(&quot;UNASSESSED: &quot; + String.join(&quot;, &quot;, offered));</span>
+<span class="fc" id="L196">            return unknown;</span>
+        }
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (!&quot;ATTEMPT&quot;.equals(checkpoint.state())) throw paused();</span>
+        LlmCallDetail result;
+        try {
+<span class="fc" id="L201">            result = Objects.requireNonNull(operation.get(), &quot;assessment result&quot;);</span>
+<span class="nc" id="L202">        } catch (AnalysisStoppedException stopped) {</span>
+            // A response may have completed just before cancellation. Retain it exactly once,
+            // but never turn an erroneous response's fallback zeros into completed evidence.
+<span class="nc" id="L205">            var completed = stopped.completedCallEvidence();</span>
+<span class="nc bnc" id="L206" title="All 6 branches missed.">            if (completed != null &amp;&amp; (completed.getError() == null || completed.getError().isBlank())</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                    &amp;&amp; completed.getScores() != null</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                    &amp;&amp; completed.getScores().keySet().equals(new HashSet&lt;&gt;(offered))) {</span>
+<span class="nc" id="L209">                current.store.finish(question, &quot;SUCCESS&quot;, copy(completed));</span>
+            }
+<span class="nc" id="L211">            throw stopped;</span>
+<span class="fc" id="L212">        } catch (RuntimeException failure) {</span>
+<span class="nc" id="L213">            com.taxonomy.analysis.service.AnalysisExecutionFailures.rethrow(failure);</span>
+<span class="nc" id="L214">            result = new LlmCallDetail();</span>
+<span class="nc" id="L215">            result.setProvider(provider); result.setPrompt(input); result.setScores(Map.of());</span>
+<span class="nc" id="L216">            result.setError(failure.getClass().getSimpleName() + &quot;: &quot;</span>
+<span class="nc" id="L217">                    + Objects.toString(failure.getMessage(), &quot;Provider call failed&quot;));</span>
+<span class="fc" id="L218">        }</span>
+<span class="fc" id="L219">        String problem = result.getError();</span>
+<span class="fc" id="L220">        Map&lt;String, Double&gt; scores = result.getScores();</span>
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">        if (problem == null || problem.isBlank()) {</span>
+<span class="pc bpc" id="L222" title="1 of 4 branches missed.">            if (scores == null || !scores.keySet().equals(new HashSet&lt;&gt;(offered))</span>
+<span class="pc bpc" id="L223" title="2 of 4 branches missed.">                    || scores.values().stream().anyMatch(value -&gt; !com.taxonomy.dto.AnalysisPercentages.valid(value))) {</span>
+<span class="fc" id="L224">                problem = &quot;INCOMPLETE_ASSESSMENT: response must cover the complete question with valid scores&quot;;</span>
+            }
+        }
+<span class="pc bpc" id="L227" title="1 of 4 branches missed.">        if (problem != null &amp;&amp; !problem.isBlank()) {</span>
+<span class="fc" id="L228">            var evidence = copy(result); evidence.setError(problem);</span>
+            // Retain failed raw evidence for inspection, but never return its error zeros to traversal.
+<span class="fc" id="L230">            current.store.finish(question, &quot;UNASSESSED&quot;, evidence);</span>
+<span class="fc" id="L231">            current.store.checkActive();</span>
+<span class="fc" id="L232">            return unassessed(evidence);</span>
+        }
+<span class="fc" id="L234">        current.store.finish(question, &quot;SUCCESS&quot;, copy(result));</span>
+<span class="fc" id="L235">        try { current.store.checkActive(); }</span>
+<span class="pc" id="L236">        catch (AnalysisStoppedException stopped) { throw stopped.withPartial(result); }</span>
+<span class="fc" id="L237">        return copy(result);</span>
+    }
+    /** Keep raw diagnostics, but never expose error fallback scores to traversal. */
+    private static LlmCallDetail unassessed(LlmCallDetail detail) {
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        var result = detail == null ? new LlmCallDetail() : copy(detail);</span>
+<span class="fc" id="L242">        result.setScores(Map.of()); result.setReasons(Map.of()); result.setDiscrepancy(null);</span>
+<span class="pc bpc" id="L243" title="2 of 4 branches missed.">        if (result.getError() == null || result.getError().isBlank()) result.setError(&quot;UNASSESSED: no accepted assessment&quot;);</span>
+<span class="fc" id="L244">        return result;</span>
+    }
+
+    private static AnalysisStoppedException paused() {
+<span class="fc" id="L248">        return new AnalysisStoppedException(AnalysisStoppedException.Reason.AWAITING_DECISION);</span>
+    }
+    public static String digest(String... values) {
+<span class="fc" id="L251">        return AnalysisEvidenceFingerprint.digest(values);</span>
+    }
+    public static LlmCallDetail copy(LlmCallDetail value) {
+<span class="fc" id="L254">        var copy = new LlmCallDetail();</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        copy.setScores(value.getScores() == null ? new LinkedHashMap&lt;&gt;() : new LinkedHashMap&lt;&gt;(value.getScores()));</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        copy.setReasons(value.getReasons() == null ? new LinkedHashMap&lt;&gt;() : new LinkedHashMap&lt;&gt;(value.getReasons()));</span>
+<span class="fc" id="L257">        copy.setProvider(value.getProvider()); copy.setPrompt(value.getPrompt()); copy.setRawResponse(value.getRawResponse());</span>
+<span class="fc" id="L258">        copy.setError(value.getError()); copy.setDurationMs(value.getDurationMs()); copy.setDiscrepancy(value.getDiscrepancy());</span>
+<span class="fc" id="L259">        return copy;</span>
+    }
+    @Override public void close() {
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        if (closed) return;</span>
+<span class="fc" id="L263">        closed = true;</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (previous == null) CURRENT.remove(); else CURRENT.set(previous);</span>
+<span class="fc" id="L265">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PlanningEnvelope.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange</a> &gt; <span class="el_source">PlanningEnvelope.java</span></div><h1>PlanningEnvelope.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.StreamReadConstraints;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+/** Versioned transport values only. Domain interpretation belongs to the installed planning profile. */
+public final class PlanningEnvelope {
+    public static final String EXTENSION = &quot;planningProfilesV1&quot;;
+    public static final String ATTRIBUTE = &quot;Taxonomy.PlanningProfiles.v1&quot;;
+    public static final int MAX_LENGTH = 131072;
+<span class="fc" id="L23">    private static final ObjectMapper JSON = new ObjectMapper(JsonFactory.builder()</span>
+<span class="fc" id="L24">            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L25">            .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(8).maxStringLength(MAX_LENGTH).maxNumberLength(10).build()).build())</span>
+<span class="fc" id="L26">            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);</span>
+    private PlanningEnvelope() {}
+    public record Entry(String id, String profile, String version, String origin, Map&lt;String, String&gt; values) {
+<span class="fc" id="L29">        public Entry {</span>
+<span class="fc" id="L30">            token(id); token(profile); token(version); bounded(origin, 256);</span>
+<span class="pc bpc" id="L31" title="2 of 4 branches missed.">            if (values == null || values.size() &gt; 32) throw invalid();</span>
+<span class="fc" id="L32">            values.forEach((key, value) -&gt; { token(key); bounded(value, 4096); });</span>
+<span class="fc" id="L33">            values = Map.copyOf(values);</span>
+<span class="fc" id="L34">        }</span>
+    }
+    public static List&lt;Entry&gt; read(String value) {
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">        if (value == null || value.length() &gt; MAX_LENGTH) throw invalid();</span>
+        try {
+<span class="fc" id="L39">            JsonNode root = JSON.readTree(value);</span>
+<span class="fc" id="L40">            fields(root, Set.of(&quot;schema&quot;, &quot;entries&quot;));</span>
+<span class="pc bpc" id="L41" title="1 of 4 branches missed.">            if (!root.path(&quot;schema&quot;).isIntegralNumber() || !root.path(&quot;schema&quot;).canConvertToInt()</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                    || root.path(&quot;schema&quot;).intValue() != 1</span>
+<span class="pc bpc" id="L43" title="2 of 4 branches missed.">                    || !root.path(&quot;entries&quot;).isArray() || root.path(&quot;entries&quot;).size() &gt; 32) throw invalid();</span>
+<span class="fc" id="L44">            List&lt;Entry&gt; entries = new ArrayList&lt;&gt;(); Set&lt;String&gt; ids = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            for (JsonNode item : root.get(&quot;entries&quot;)) {</span>
+<span class="fc" id="L46">                fields(item, Set.of(&quot;id&quot;, &quot;profile&quot;, &quot;version&quot;, &quot;origin&quot;, &quot;values&quot;));</span>
+<span class="fc" id="L47">                Map&lt;String, String&gt; values = new TreeMap&lt;&gt;(); JsonNode data = item.get(&quot;values&quot;);</span>
+<span class="pc bpc" id="L48" title="2 of 4 branches missed.">                if (!data.isObject() || data.size() &gt; 32) throw invalid();</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                data.fields().forEachRemaining(e -&gt; { if (!e.getValue().isTextual()) throw invalid(); values.put(e.getKey(), e.getValue().textValue()); });</span>
+<span class="fc" id="L50">                Entry entry = new Entry(string(item, &quot;id&quot;), string(item, &quot;profile&quot;), string(item, &quot;version&quot;), string(item, &quot;origin&quot;), values);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                if (!ids.add(entry.id())) throw invalid();</span>
+<span class="fc" id="L52">                entries.add(entry);</span>
+<span class="fc" id="L53">            }</span>
+<span class="fc" id="L54">            return List.copyOf(entries);</span>
+<span class="fc" id="L55">        } catch (ExchangeFormatException failure) { throw failure; }</span>
+<span class="fc" id="L56">        catch (Exception malformed) { throw invalid(); }</span>
+    }
+    public static String write(List&lt;Entry&gt; entries) {
+        try {
+<span class="fc" id="L60">            List&lt;Map&lt;String, Object&gt;&gt; items = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            for (Entry entry : entries.stream().sorted(java.util.Comparator.comparing(Entry::id)).toList()) {</span>
+<span class="fc" id="L62">                Map&lt;String, Object&gt; item = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L63">                item.put(&quot;id&quot;, entry.id()); item.put(&quot;profile&quot;, entry.profile()); item.put(&quot;version&quot;, entry.version());</span>
+<span class="fc" id="L64">                item.put(&quot;origin&quot;, entry.origin()); item.put(&quot;values&quot;, new TreeMap&lt;&gt;(entry.values())); items.add(item);</span>
+<span class="fc" id="L65">            }</span>
+<span class="fc" id="L66">            Map&lt;String, Object&gt; root = new LinkedHashMap&lt;&gt;(); root.put(&quot;schema&quot;, 1); root.put(&quot;entries&quot;, items);</span>
+<span class="fc" id="L67">            String value = JSON.writeValueAsString(root); read(value); return value;</span>
+<span class="fc" id="L68">        } catch (ExchangeFormatException failure) { throw failure; }</span>
+<span class="nc" id="L69">        catch (Exception failed) { throw invalid(); }</span>
+    }
+    public static List&lt;MappingLoss&gt; report(ExchangeDocument document) {
+<span class="fc" id="L72">        List&lt;MappingLoss&gt; result = new ArrayList&lt;&gt;(document.losses());</span>
+<span class="fc bfc" id="L73" title="All 4 branches covered.">        for (Artifact artifact : document.artifacts()) if (artifact.extensions().containsKey(EXTENSION)) {</span>
+<span class="fc" id="L74">            read(artifact.extensions().get(EXTENSION));</span>
+<span class="fc" id="L75">            var loss = preservation(artifact.id());</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">            if (!result.contains(loss)) result.add(loss);</span>
+        }
+<span class="fc" id="L78">        return List.copyOf(result);</span>
+    }
+    public static MappingLoss preservation(String id) {
+<span class="fc" id="L81">        return new MappingLoss(id, ATTRIBUTE, &quot;PLANNING_PROFILE_ENVELOPE&quot;, LossDisposition.PRESERVED_EXTENSION,</span>
+                &quot;Structured planning metadata is carried in a ReqIF STRING attribute. Native target evaluation and retention by untested products are not claimed.&quot;);
+    }
+    private static void fields(JsonNode node, Set&lt;String&gt; expected) {
+<span class="pc bpc" id="L85" title="2 of 6 branches missed.">        if (node == null || !node.isObject() || node.size() != expected.size()) throw invalid();</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        node.fieldNames().forEachRemaining(key -&gt; { if (!expected.contains(key)) throw invalid(); });</span>
+<span class="fc" id="L87">    }</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">    private static String string(JsonNode node, String key) { if (!node.get(key).isTextual()) throw invalid(); return node.get(key).textValue(); }</span>
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">    private static void token(String value) { if (value == null || !value.matches(&quot;[A-Za-z0-9][A-Za-z0-9_-]{0,63}&quot;)) throw invalid(); }</span>
+    private static void bounded(String value, int size) {
+<span class="pc bpc" id="L91" title="2 of 6 branches missed.">        if (value == null || value.length() &gt; size || value.chars().anyMatch(Character::isISOControl)) throw invalid();</span>
+<span class="fc" id="L92">    }</span>
+    private static ExchangeFormatException invalid() {
+<span class="fc" id="L94">        return new ExchangeFormatException(&quot;INVALID_PLANNING_ENVELOPE&quot;, &quot;Expected bounded planning envelope v1 with unique entry identities and string fields; no profile values were interpreted&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationSearchModel.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RelationSearchModel.java</span></div><h1>RelationSearchModel.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+import java.util.Objects;
+
+/** Immutable, request-local contracts. Scores rank work; they never prove an edge. */
+public final class RelationSearchModel {
+    private RelationSearchModel() { }
+
+<span class="fc" id="L10">    public enum Direction { OUTGOING, INCOMING }</span>
+<span class="fc" id="L11">    public enum Phase { NAVIGATE, VERIFY }</span>
+<span class="fc" id="L12">    public enum Outcome { DESCEND, MATCH, REJECT, UNRESOLVED, VERIFIED }</span>
+<span class="fc" id="L13">    public enum Necessity { REQUIRED, OPTIONAL, ALTERNATIVE }</span>
+
+    /**
+     * Full context remains the evidence for an offered catalogue node. Once its
+     * contribution has been assessed, the optional second representation retains
+     * its complete own description and established ancestor identities without
+     * resending every ancestor's prose for each new counterpart. Both forms are
+     * captured together and survive durable source/plan JSON round trips.
+     */
+    public record Node(String id, String root, String name, String description, boolean container,
+                       String assessedSourceDescription) {
+        /** Legacy retained nodes keep their entire description; never parse or cut free text. */
+        public Node(String id, String root, String name, String description, boolean container) {
+<span class="fc" id="L26">            this(id, root, name, description, container, null);</span>
+<span class="fc" id="L27">        }</span>
+
+<span class="fc" id="L29">        public Node {</span>
+<span class="fc" id="L30">            required(id, &quot;node id&quot;); required(root, &quot;root&quot;); required(name, &quot;name&quot;);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">            description = description == null ? &quot;&quot; : description;</span>
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">            if (assessedSourceDescription != null &amp;&amp; assessedSourceDescription.isBlank())</span>
+<span class="nc" id="L33">                throw new IllegalArgumentException(&quot;Assessed source description must retain its catalogue context&quot;);</span>
+<span class="fc" id="L34">        }</span>
+    }
+
+    /** The exact original quote is distinct from the model's scoped interpretation. */
+    public record Contribution(Node source, String text, String quote, String condition) {
+<span class="fc" id="L39">        public Contribution {</span>
+<span class="fc" id="L40">            Objects.requireNonNull(source); required(text, &quot;contribution&quot;); required(quote, &quot;quote&quot;);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            condition = condition == null ? &quot;&quot; : condition;</span>
+<span class="fc" id="L42">        }</span>
+    }
+
+    public record SourceAssessment(Node node, List&lt;Contribution&gt; contributions, String rationale, String question) {
+<span class="fc" id="L46">        public SourceAssessment { contributions = List.copyOf(contributions); }</span>
+    }
+
+    public record Intent(Contribution contribution, String type, Direction direction, List&lt;Node&gt; roots) {
+<span class="fc" id="L50">        public Intent {</span>
+<span class="fc" id="L51">            Objects.requireNonNull(contribution); required(type, &quot;type&quot;); Objects.requireNonNull(direction);</span>
+<span class="fc" id="L52">            roots = List.copyOf(roots);</span>
+<span class="fc" id="L53">        }</span>
+    }
+
+    /** Zero calls is a supported dry budget; no remote request is made. */
+    public record Limits(int maxCalls, int maxDepth, int batchSize, int maxWorkItems) {
+<span class="fc" id="L58">        public Limits {</span>
+<span class="pc bpc" id="L59" title="7 of 16 branches missed.">            if (maxCalls &lt; 0 || maxCalls &gt; 10_000 || maxDepth &lt; 0 || maxDepth &gt; 100</span>
+                    || batchSize &lt; 1 || batchSize &gt; 100 || maxWorkItems &lt; 1 || maxWorkItems &gt; 100_000) {
+<span class="fc" id="L61">                throw new IllegalArgumentException(&quot;Invalid relation-search limits&quot;);</span>
+            }
+<span class="fc" id="L63">        }</span>
+    }
+
+    public record Query(String original, Contribution contribution, String type, Direction direction,
+                        Phase phase, List&lt;Node&gt; candidates, Decision proposal) {
+<span class="fc" id="L68">        public Query {</span>
+<span class="fc" id="L69">            required(original, &quot;original&quot;); Objects.requireNonNull(contribution); required(type, &quot;type&quot;);</span>
+<span class="fc" id="L70">            Objects.requireNonNull(direction); Objects.requireNonNull(phase);</span>
+<span class="fc" id="L71">            candidates = List.copyOf(candidates);</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (candidates.isEmpty()) throw new IllegalArgumentException(&quot;Empty candidate batch&quot;);</span>
+<span class="pc bpc" id="L73" title="2 of 6 branches missed.">            if (phase == Phase.VERIFY &amp;&amp; (candidates.size() != 1 || proposal == null)) {</span>
+<span class="nc" id="L74">                throw new IllegalArgumentException(&quot;Verification requires one concrete proposal&quot;);</span>
+            }
+<span class="fc" id="L76">        }</span>
+    }
+
+    /** Positive decisions retain required/optional/alternative semantics, never percentage shares. */
+<span class="fc" id="L80">    public record Decision(String targetId, Outcome outcome, String contribution, String quote,</span>
+                           Necessity necessity, String condition, String alternativeGroup,
+                           String rationale, String question) { }
+
+<span class="fc" id="L84">    public record Edge(Contribution contribution, Node target, String type, Direction direction,</span>
+                       Decision evidence) {
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        public String sourceId() { return direction == Direction.OUTGOING ? contribution.source().id() : target.id(); }</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        public String targetId() { return direction == Direction.OUTGOING ? target.id() : contribution.source().id(); }</span>
+    }
+
+    /** Optional replay context is absent in legacy reports; never infer that missing context. */
+    public record Unfinished(String sourceId, String type, Direction direction, List&lt;String&gt; targets,
+                             String reason, String question, String contributionKey, String targetRoot) {
+        public Unfinished(String sourceId, String type, Direction direction, List&lt;String&gt; targets, String reason, String question) {
+<span class="fc" id="L94">            this(sourceId, type, direction, targets, reason, question, null, null);</span>
+<span class="fc" id="L95">        }</span>
+<span class="fc" id="L96">        public Unfinished { targets = List.copyOf(targets); }</span>
+    }
+
+<span class="fc" id="L99">    public record Trace(String sourceId, String type, Direction direction, Phase phase,</span>
+                        String targetId, Outcome outcome, String rationale, String contributionKey) {
+        public Trace(String sourceId, String type, Direction direction, Phase phase, String targetId, Outcome outcome, String rationale) {
+<span class="fc" id="L102">            this(sourceId, type, direction, phase, targetId, outcome, rationale, null);</span>
+<span class="fc" id="L103">        }</span>
+    }
+
+    public record Result(List&lt;Edge&gt; edges, List&lt;Unfinished&gt; unfinished, List&lt;Trace&gt; trace,
+                         int calls, int visitedBatches, long durationMillis) {
+<span class="fc" id="L108">        public Result {</span>
+<span class="fc" id="L109">            edges = List.copyOf(edges); unfinished = List.copyOf(unfinished); trace = List.copyOf(trace);</span>
+<span class="fc" id="L110">        }</span>
+        /** Exhausted under this pruning policy; not a proof of semantic completeness. */
+<span class="fc" id="L112">        public boolean searchExhausted() { return unfinished.isEmpty(); }</span>
+    }
+
+    @FunctionalInterface
+    public interface Catalogue { List&lt;Node&gt; children(Node node); }
+
+    @FunctionalInterface
+    public interface Evaluator { List&lt;Decision&gt; evaluate(Query query); }
+
+    private static void required(String value, String field) {
+<span class="pc bpc" id="L122" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) throw new IllegalArgumentException(&quot;Missing &quot; + field);</span>
+<span class="fc" id="L123">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

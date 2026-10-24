@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisDispatchStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dispatch</a> &gt; <span class="el_source">AnalysisDispatchStore.java</span></div><h1>AnalysisDispatchStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dispatch;
+
+import com.taxonomy.analysis.dag.AnalysisMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskId;
+import com.taxonomy.analysis.dag.AnalysisTaskIdentity;
+import com.taxonomy.analysis.dag.AnalysisTaskMessage;
+import com.taxonomy.analysis.dag.RequirementReference;
+import com.taxonomy.analysis.dag.TaxonomyShardRoot;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.util.HashSet;
+import java.util.Comparator;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Short database transactions around dispatch intents. Broker I/O is never
+ * executed inside these transactions.
+ */
+@Repository
+public class AnalysisDispatchStore {
+
+    /** Bounded, non-sensitive view of one intent. */
+<span class="fc" id="L36">    public record Intent(String id, AnalysisTaskId taskId, AnalysisDispatchStatus status, String messageJson,</span>
+                         int dispatchAttempts, long createdAt, String failureKind) { }
+
+    /** Keyset cursor of a bounded recovery scan. */
+<span class="fc" id="L40">    public record Cursor(long createdAt, String id) {</span>
+<span class="fc" id="L41">        public static final Cursor START = new Cursor(Long.MIN_VALUE, &quot;&quot;);</span>
+    }
+
+    private final EntityManager em;
+    private final TransactionTemplate newTransaction;
+<span class="fc" id="L46">    private final AnalysisMessageCodec codec = new AnalysisMessageCodec();</span>
+    private final Clock clock;
+
+    @Autowired
+    public AnalysisDispatchStore(EntityManager em, PlatformTransactionManager transactions) {
+<span class="fc" id="L51">        this(em, transactions, Clock.systemUTC());</span>
+<span class="fc" id="L52">    }</span>
+
+<span class="fc" id="L54">    AnalysisDispatchStore(EntityManager em, PlatformTransactionManager transactions, Clock clock) {</span>
+<span class="fc" id="L55">        this.em = Objects.requireNonNull(em, &quot;em&quot;);</span>
+<span class="fc" id="L56">        this.newTransaction = new TransactionTemplate(transactions);</span>
+<span class="fc" id="L57">        this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L58">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L59">    }</span>
+
+    /** Stable, bounded primary key of a task identity. */
+    public static String key(AnalysisTaskId taskId) {
+<span class="fc" id="L63">        return RequirementReference.sha256(taskId.value());</span>
+    }
+
+    /**
+     * Persist intents in the caller's transaction (normally the coordinator's
+     * operation transaction). Idempotent by task identity: an existing intent is
+     * never replaced. Returns the keys that still need publishing, in input order.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List&lt;String&gt; recordIntents(Collection&lt;? extends AnalysisTaskMessage&gt; tasks) {
+<span class="fc" id="L73">        var input = List.copyOf(tasks);</span>
+<span class="fc" id="L74">        var pending = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L75">        long now = clock.millis();</span>
+        // Acquire insert locks in stable order even when callers submit reversed batches.
+        // Publication still follows the caller's original order.
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (AnalysisTaskMessage task : input.stream()</span>
+<span class="fc" id="L79">                .sorted(Comparator.comparing(t -&gt; key(t.taskId()))).toList()) {</span>
+<span class="fc" id="L80">            String id = key(task.taskId());</span>
+<span class="fc" id="L81">            AnalysisDispatchIntent existing = em.find(AnalysisDispatchIntent.class, id);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            if (existing == null) {</span>
+<span class="fc" id="L83">                String json = new String(codec.encode(task), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L84">                var duplicate = AnalysisInsertIfAbsent.insert(em, &quot;&quot;&quot;</span>
+                        insert into analysis_dispatch_intent
+                          (id, task_id, operation_id, task_type, routing_root, message_json, status,
+                           dispatch_attempts, created_at, updated_at, row_version)
+                        values (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)&quot;&quot;&quot;, statement -&gt; {
+<span class="fc" id="L89">                    statement.setString(1, id);</span>
+<span class="fc" id="L90">                    statement.setString(2, task.taskId().value());</span>
+<span class="fc" id="L91">                    statement.setString(3, task.envelope().operationId());</span>
+<span class="fc" id="L92">                    statement.setString(4, task.taskType().name());</span>
+<span class="fc" id="L93">                    TaxonomyShardRoot root = task.routingRoot();</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                    statement.setString(5, root == null ? null : root.code());</span>
+<span class="fc" id="L95">                    statement.setString(6, json);</span>
+<span class="fc" id="L96">                    statement.setString(7, AnalysisDispatchStatus.DISPATCH_PENDING.name());</span>
+<span class="fc" id="L97">                    statement.setLong(8, now);</span>
+<span class="fc" id="L98">                    statement.setLong(9, now);</span>
+<span class="fc" id="L99">                });</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                if (duplicate.isEmpty()) {</span>
+<span class="fc" id="L101">                    pending.add(id);</span>
+<span class="fc" id="L102">                    continue;</span>
+                }
+<span class="fc" id="L104">                existing = em.find(AnalysisDispatchIntent.class, id);</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                if (existing == null) {</span>
+<span class="nc" id="L106">                    throw new IllegalStateException(&quot;Concurrent dispatch intent is not visible&quot;, duplicate.get());</span>
+                }
+            }
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">            if (!existing.taskId.equals(task.taskId().value())) {</span>
+<span class="nc" id="L110">                throw new IllegalStateException(&quot;Dispatch intent key collision&quot;);</span>
+            }
+<span class="fc" id="L112">            AnalysisTaskIdentity.requireSameSource(task.envelope(), decode(view(existing)).envelope());</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (existing.status.recoverable()) pending.add(id);</span>
+<span class="fc" id="L114">        }</span>
+<span class="fc" id="L115">        return input.stream().map(task -&gt; key(task.taskId())).filter(pending::contains).toList();</span>
+    }
+
+    /** Same as {@link #recordIntents} in a dedicated transaction, for callers without one. */
+    public List&lt;String&gt; recordIntentsInNewTransaction(Collection&lt;? extends AnalysisTaskMessage&gt; tasks) {
+<span class="fc" id="L120">        return newTransaction.execute(status -&gt; recordIntents(tasks));</span>
+    }
+
+    public Optional&lt;Intent&gt; find(String id) {
+<span class="fc" id="L124">        return Optional.ofNullable(newTransaction.execute(status -&gt; {</span>
+<span class="fc" id="L125">            AnalysisDispatchIntent intent = em.find(AnalysisDispatchIntent.class, id);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            return intent == null ? null : view(intent);</span>
+        }));
+    }
+
+    /** CAS acknowledgement: only a recoverable intent becomes {@code DISPATCHED}. */
+    public boolean acknowledge(String id) {
+<span class="fc" id="L132">        return transition(id, AnalysisDispatchStatus.DISPATCHED, null);</span>
+    }
+
+    /** The broker was unreachable; keep the intent for the next recovery trigger. */
+    public boolean markWaiting(String id, String failureKind) {
+<span class="fc" id="L137">        return transition(id, AnalysisDispatchStatus.WAITING_FOR_BROKER, failureKind);</span>
+    }
+
+    /** The intent can never be published; make it visible instead of retrying forever. */
+    public boolean markFailed(String id, String failureKind) {
+<span class="fc" id="L142">        return transition(id, AnalysisDispatchStatus.DISPATCH_FAILED, failureKind);</span>
+    }
+
+    private boolean transition(String id, AnalysisDispatchStatus target, String failureKind) {
+<span class="fc" id="L146">        long now = clock.millis();</span>
+<span class="fc" id="L147">        Integer updated = newTransaction.execute(status -&gt; em.createQuery(&quot;&quot;&quot;</span>
+                        update AnalysisDispatchIntent i
+                           set i.status = :target, i.updatedAt = :now,
+                               i.dispatchAttempts = i.dispatchAttempts + 1,
+                               i.dispatchedAt = :dispatchedAt,
+                               i.failureKind = :failureKind, i.version = i.version + 1
+                         where i.id = :id and i.status in (:pending, :waiting)&quot;&quot;&quot;)
+<span class="fc" id="L154">                .setParameter(&quot;target&quot;, target)</span>
+<span class="fc" id="L155">                .setParameter(&quot;now&quot;, now)</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                .setParameter(&quot;dispatchedAt&quot;, target == AnalysisDispatchStatus.DISPATCHED ? Long.valueOf(now) : null)</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                .setParameter(&quot;failureKind&quot;, failureKind == null ? null : bounded(failureKind))</span>
+<span class="fc" id="L158">                .setParameter(&quot;id&quot;, id)</span>
+<span class="fc" id="L159">                .setParameter(&quot;pending&quot;, AnalysisDispatchStatus.DISPATCH_PENDING)</span>
+<span class="fc" id="L160">                .setParameter(&quot;waiting&quot;, AnalysisDispatchStatus.WAITING_FOR_BROKER)</span>
+<span class="fc" id="L161">                .executeUpdate());</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">        return updated != null &amp;&amp; updated == 1;</span>
+    }
+
+    /** One bounded page of recoverable intents after {@code cursor}, oldest first. */
+    public List&lt;Intent&gt; recoverable(Cursor cursor, int limit) {
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (limit &lt; 1) throw new IllegalArgumentException(&quot;limit must be &gt;= 1&quot;);</span>
+<span class="fc" id="L168">        return newTransaction.execute(status -&gt; em.createQuery(&quot;&quot;&quot;</span>
+                        select i from AnalysisDispatchIntent i
+                         where i.status in (:pending, :waiting)
+                           and (i.createdAt &gt; :createdAt or (i.createdAt = :createdAt and i.id &gt; :id))
+                         order by i.createdAt, i.id&quot;&quot;&quot;, AnalysisDispatchIntent.class)
+<span class="fc" id="L173">                .setParameter(&quot;pending&quot;, AnalysisDispatchStatus.DISPATCH_PENDING)</span>
+<span class="fc" id="L174">                .setParameter(&quot;waiting&quot;, AnalysisDispatchStatus.WAITING_FOR_BROKER)</span>
+<span class="fc" id="L175">                .setParameter(&quot;createdAt&quot;, cursor.createdAt())</span>
+<span class="fc" id="L176">                .setParameter(&quot;id&quot;, cursor.id())</span>
+<span class="fc" id="L177">                .setMaxResults(limit)</span>
+<span class="fc" id="L178">                .getResultList().stream().map(AnalysisDispatchStore::view).toList());</span>
+    }
+
+    public long count(AnalysisDispatchStatus status) {
+<span class="fc" id="L182">        return newTransaction.execute(tx -&gt; em.createQuery(</span>
+                        &quot;select count(i) from AnalysisDispatchIntent i where i.status = :status&quot;, Long.class)
+<span class="fc" id="L184">                .setParameter(&quot;status&quot;, status).getSingleResult());</span>
+    }
+
+    AnalysisMessage decode(Intent intent) {
+<span class="fc" id="L188">        return codec.decode(intent.messageJson().getBytes(StandardCharsets.UTF_8));</span>
+    }
+
+    private static Intent view(AnalysisDispatchIntent intent) {
+<span class="fc" id="L192">        return new Intent(intent.id, new AnalysisTaskId(intent.taskId), intent.status, intent.messageJson,</span>
+                intent.dispatchAttempts, intent.createdAt, intent.failureKind);
+    }
+
+    private static String bounded(String failureKind) {
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">        return failureKind.length() &lt;= 64 ? failureKind : failureKind.substring(0, 64);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

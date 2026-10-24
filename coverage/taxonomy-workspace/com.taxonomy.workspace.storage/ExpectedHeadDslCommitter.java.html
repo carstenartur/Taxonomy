@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExpectedHeadDslCommitter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">ExpectedHeadDslCommitter.java</span></div><h1>ExpectedHeadDslCommitter.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+
+import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+
+import java.io.IOException;
+import java.util.Objects;
+
+/**
+ * Creates one DSL commit only when the selected branch still has the caller's
+ * expected head.
+ *
+ * &lt;p&gt;The comparison is performed both before object insertion and atomically by
+ * JGit's ref update. A concurrent change can therefore never be adopted as an
+ * implicit parent of a relation command. Inserted objects may become unreachable
+ * after a race, which is normal Git behaviour; the branch remains untouched.&lt;/p&gt;
+ */
+<span class="fc" id="L26">public final class ExpectedHeadDslCommitter {</span>
+
+    public CommitResult commit(
+            DslGitRepository dslRepository,
+            CommitRequest request) throws IOException {
+<span class="fc" id="L31">        Objects.requireNonNull(dslRepository, &quot;dslRepository&quot;);</span>
+<span class="fc" id="L32">        Objects.requireNonNull(request, &quot;request&quot;);</span>
+
+<span class="fc" id="L34">        Repository repository = dslRepository.getGitRepository();</span>
+<span class="fc" id="L35">        String refName = Constants.R_HEADS + request.branch();</span>
+<span class="fc" id="L36">        ObjectId expectedHead = request.expectedHeadObjectId();</span>
+<span class="fc" id="L37">        ObjectId actualHead = currentHead(repository, refName);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (!actualHead.equals(expectedHead)) {</span>
+<span class="fc" id="L39">            throw conflict(request.branch(), expectedHead, actualHead, null);</span>
+        }
+
+<span class="fc" id="L42">        PersonIdent actor = personIdent(request.author());</span>
+<span class="fc" id="L43">        try (ObjectInserter inserter = repository.newObjectInserter()) {</span>
+<span class="fc" id="L44">            ObjectId treeId = dslRepository.insertDslTree(inserter, request.dslText(), request.provenance());</span>
+
+<span class="fc" id="L46">            CommitBuilder commit = new CommitBuilder();</span>
+<span class="fc" id="L47">            commit.setTreeId(treeId);</span>
+<span class="fc" id="L48">            commit.setAuthor(actor);</span>
+<span class="fc" id="L49">            commit.setCommitter(actor);</span>
+<span class="fc" id="L50">            commit.setMessage(request.message());</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (!ObjectId.zeroId().equals(expectedHead)) {</span>
+<span class="fc" id="L52">                commit.setParentId(expectedHead);</span>
+            }
+
+<span class="fc" id="L55">            dslRepository.signCommit(commit, request.branch());</span>
+<span class="fc" id="L56">            ObjectId commitId = inserter.insert(commit);</span>
+<span class="fc" id="L57">            inserter.flush();</span>
+
+<span class="fc" id="L59">            RefUpdate update = repository.updateRef(refName);</span>
+<span class="fc" id="L60">            update.setNewObjectId(commitId);</span>
+<span class="fc" id="L61">            update.setExpectedOldObjectId(expectedHead);</span>
+<span class="fc" id="L62">            update.setForceUpdate(false);</span>
+<span class="fc" id="L63">            update.setRefLogIdent(actor);</span>
+<span class="fc" id="L64">            update.setRefLogMessage(&quot;commit: &quot; + request.message(), true);</span>
+<span class="fc" id="L65">            RefUpdate.Result result = update.update();</span>
+<span class="pc bpc" id="L66" title="2 of 3 branches missed.">            switch (result) {</span>
+                case NEW, FAST_FORWARD, FORCED -&gt; {
+<span class="fc" id="L68">                    return new CommitResult(</span>
+<span class="fc" id="L69">                            commitId.name(),</span>
+<span class="fc" id="L70">                            headName(expectedHead),</span>
+                            result);
+                }
+                case LOCK_FAILURE, REJECTED, REJECTED_CURRENT_BRANCH -&gt; {
+<span class="nc" id="L74">                    ObjectId currentHead = currentHead(repository, refName);</span>
+<span class="nc" id="L75">                    throw conflict(</span>
+<span class="nc" id="L76">                            request.branch(), expectedHead, currentHead, result);</span>
+                }
+<span class="nc" id="L78">                default -&gt; throw new IOException(</span>
+                        &quot;Ref update failed for &quot; + refName + &quot;: &quot; + result);
+            }
+        }
+    }
+
+    /**
+     * Verifies that a semantic no-op still refers to the exact selected branch
+     * head and therefore may safely return that commit as the authority token.
+     *
+     * &lt;p&gt;For an existing branch the verification uses a no-change ref update
+     * with an expected-old-object precondition, so a concurrent writer cannot be
+     * silently accepted. For an expected absent branch JGit has no object ID to
+     * lock; the method performs a fail-closed exact-ref check and returns
+     * {@code null} only while the branch remains absent.&lt;/p&gt;
+     */
+    public String verifyExpectedHead(
+            DslGitRepository dslRepository,
+            String branch,
+            String expectedHeadCommit) throws IOException {
+<span class="fc" id="L98">        Objects.requireNonNull(dslRepository, &quot;dslRepository&quot;);</span>
+<span class="fc" id="L99">        String normalizedBranch = normalizeBranch(branch);</span>
+<span class="fc" id="L100">        ObjectId expectedHead = expectedHeadObjectId(expectedHeadCommit);</span>
+<span class="fc" id="L101">        Repository repository = dslRepository.getGitRepository();</span>
+<span class="fc" id="L102">        String refName = Constants.R_HEADS + normalizedBranch;</span>
+<span class="fc" id="L103">        ObjectId actualHead = currentHead(repository, refName);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (!actualHead.equals(expectedHead)) {</span>
+<span class="fc" id="L105">            throw conflict(normalizedBranch, expectedHead, actualHead, null);</span>
+        }
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (ObjectId.zeroId().equals(expectedHead)) {</span>
+<span class="fc" id="L108">            return null;</span>
+        }
+
+<span class="fc" id="L111">        RefUpdate update = repository.updateRef(refName);</span>
+<span class="fc" id="L112">        update.setNewObjectId(expectedHead);</span>
+<span class="fc" id="L113">        update.setExpectedOldObjectId(expectedHead);</span>
+<span class="fc" id="L114">        update.setForceUpdate(false);</span>
+<span class="fc" id="L115">        update.disableRefLog();</span>
+<span class="fc" id="L116">        RefUpdate.Result result = update.update();</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        if (result == RefUpdate.Result.NO_CHANGE) {</span>
+<span class="fc" id="L118">            return expectedHead.name();</span>
+        }
+<span class="nc bnc" id="L120" title="All 6 branches missed.">        if (result == RefUpdate.Result.LOCK_FAILURE</span>
+                || result == RefUpdate.Result.REJECTED
+                || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH) {
+<span class="nc" id="L123">            throw conflict(</span>
+                    normalizedBranch,
+                    expectedHead,
+<span class="nc" id="L126">                    currentHead(repository, refName),</span>
+                    result);
+        }
+<span class="nc" id="L129">        throw new IOException(</span>
+                &quot;Expected-head verification failed for &quot; + refName + &quot;: &quot; + result);
+    }
+
+    private static ObjectId currentHead(
+            Repository repository,
+            String refName) throws IOException {
+<span class="fc" id="L136">        Ref current = repository.getRefDatabase().exactRef(refName);</span>
+<span class="pc bpc" id="L137" title="1 of 4 branches missed.">        return current == null || current.getObjectId() == null</span>
+<span class="fc" id="L138">                ? ObjectId.zeroId()</span>
+<span class="fc" id="L139">                : current.getObjectId();</span>
+    }
+
+    private static BranchHeadConflictException conflict(
+            String branch,
+            ObjectId expected,
+            ObjectId actual,
+            RefUpdate.Result result) {
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        String suffix = result == null ? &quot;&quot; : &quot; (ref update: &quot; + result + &quot;)&quot;;</span>
+<span class="fc" id="L148">        return new BranchHeadConflictException(</span>
+                branch,
+<span class="fc" id="L150">                headName(expected),</span>
+<span class="fc" id="L151">                headName(actual),</span>
+                &quot;Branch '&quot; + branch + &quot;' moved: expected &quot;
+<span class="fc" id="L153">                        + headName(expected) + &quot;, actual &quot; + headName(actual)</span>
+                        + suffix);
+    }
+
+    private static String headName(ObjectId id) {
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">        return id == null || ObjectId.zeroId().equals(id) ? null : id.name();</span>
+    }
+
+    private static PersonIdent personIdent(String author) {
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">        String normalized = author == null || author.isBlank()</span>
+<span class="nc" id="L163">                ? &quot;taxonomy&quot;</span>
+<span class="fc" id="L164">                : author.strip();</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        String email = normalized.contains(&quot;@&quot;)</span>
+<span class="nc" id="L166">                ? normalized</span>
+<span class="fc" id="L167">                : normalized + &quot;@taxonomy.local&quot;;</span>
+<span class="fc" id="L168">        return new PersonIdent(normalized, email);</span>
+    }
+
+    private static String normalizeBranch(String branch) {
+<span class="pc bpc" id="L172" title="1 of 4 branches missed.">        if (branch == null || branch.isBlank()) {</span>
+<span class="fc" id="L173">            throw new IllegalArgumentException(&quot;branch must not be blank&quot;);</span>
+        }
+<span class="fc" id="L175">        String normalized = branch.strip();</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (!Repository.isValidRefName(Constants.R_HEADS + normalized)) {</span>
+<span class="fc" id="L177">            throw new IllegalArgumentException(</span>
+                    &quot;invalid branch name: &quot; + normalized);
+        }
+<span class="fc" id="L180">        return normalized;</span>
+    }
+
+    private static ObjectId expectedHeadObjectId(String expectedHeadCommit) {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (expectedHeadCommit == null) {</span>
+<span class="fc" id="L185">            return ObjectId.zeroId();</span>
+        }
+<span class="fc" id="L187">        String normalized = expectedHeadCommit.strip();</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (normalized.isEmpty()) {</span>
+<span class="fc" id="L189">            throw new IllegalArgumentException(</span>
+                    &quot;expectedHeadCommit must be null or a full commit ID&quot;);
+        }
+<span class="fc" id="L192">        return ObjectId.fromString(normalized);</span>
+    }
+
+    public record CommitRequest(
+            String branch,
+            String expectedHeadCommit,
+            String dslText,
+            String author,
+            String message,
+            CommitProvenance provenance) {
+
+        public CommitRequest(String branch, String expectedHeadCommit, String dslText, String author, String message) {
+<span class="fc" id="L204">            this(branch, expectedHeadCommit, dslText, author, message, null);</span>
+<span class="fc" id="L205">        }</span>
+
+<span class="fc" id="L207">        public CommitRequest {</span>
+<span class="fc" id="L208">            branch = normalizeBranch(branch);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (expectedHeadCommit != null) {</span>
+<span class="fc" id="L210">                expectedHeadCommit = expectedHeadCommit.strip();</span>
+<span class="fc" id="L211">                ExpectedHeadDslCommitter.expectedHeadObjectId(</span>
+                        expectedHeadCommit);
+            }
+<span class="fc" id="L214">            dslText = Objects.requireNonNull(dslText, &quot;dslText&quot;);</span>
+<span class="pc bpc" id="L215" title="1 of 4 branches missed.">            author = author == null || author.isBlank()</span>
+<span class="fc" id="L216">                    ? &quot;taxonomy&quot;</span>
+<span class="fc" id="L217">                    : author.strip();</span>
+<span class="pc bpc" id="L218" title="1 of 4 branches missed.">            message = message == null || message.isBlank()</span>
+<span class="fc" id="L219">                    ? &quot;DSL update&quot;</span>
+<span class="fc" id="L220">                    : message.strip();</span>
+<span class="fc" id="L221">        }</span>
+
+        ObjectId expectedHeadObjectId() {
+<span class="fc" id="L224">            return ExpectedHeadDslCommitter.expectedHeadObjectId(</span>
+                    expectedHeadCommit);
+        }
+    }
+
+<span class="fc" id="L229">    public record CommitResult(</span>
+            String commitId,
+            String previousHeadCommit,
+            RefUpdate.Result refUpdateResult) {
+    }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

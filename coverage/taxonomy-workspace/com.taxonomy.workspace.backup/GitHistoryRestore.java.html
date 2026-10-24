@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitHistoryRestore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitHistoryRestore.java</span></div><h1>GitHistoryRestore.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.ObjectWalk;
+import java.io.IOException;
+import java.util.*;
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Imports original objects through public Git APIs into an explicitly allocated private target. */
+public final class GitHistoryRestore {
+    private GitHistoryRestore() { }
+    public record Source(GitReflogProvenance.Origin origin, SnapshotContext.RepositoryState state,
+                         Map&lt;String,String&gt; backupRefs, Map&lt;String,String&gt; symbolicRefs,
+                         List&lt;GitHistoryCapture.Reflog&gt; reflogs, List&lt;GitReflogProvenance.Event&gt; importedReflogs,
+                         int objectCount) {
+<span class="fc" id="L18">        public Source {</span>
+<span class="fc" id="L19">            Objects.requireNonNull(origin); Objects.requireNonNull(state); backupRefs=Map.copyOf(backupRefs);</span>
+<span class="fc" id="L20">            symbolicRefs=Map.copyOf(symbolicRefs); reflogs=List.copyOf(reflogs); importedReflogs=List.copyOf(importedReflogs);</span>
+<span class="fc" id="L21">        }</span>
+        public static Source captured(GitHistoryCapture capture, GitReflogProvenance.Origin origin) {
+<span class="fc" id="L23">            var retained=new TreeMap&lt;&gt;(capture.exportedRefs()); retained.keySet().removeAll(capture.state().refs().keySet());</span>
+<span class="fc" id="L24">            return new Source(origin,capture.state(),retained,capture.symbolicRefs(),capture.reflogs(),capture.importedReflogs(),capture.objectCount());</span>
+        }
+    }
+    /** Original-event persistence and the durable completed-owner ledger remain the host's transaction. */
+    public record Proof(SnapshotContext.RepositoryState state, Map&lt;String,String&gt; commitMappings,
+                        List&lt;GitReflogProvenance.Event&gt; originalEvents, String repositorySha256) {
+<span class="fc" id="L30">        public Proof {</span>
+<span class="fc" id="L31">            Objects.requireNonNull(state);commitMappings=Map.copyOf(commitMappings);originalEvents=List.copyOf(originalEvents);</span>
+<span class="pc bpc" id="L32" title="2 of 4 branches missed.">            if(repositorySha256==null||!repositorySha256.matches(&quot;[0-9a-f]{64}&quot;))throw new IllegalArgumentException(&quot;Invalid restored Git proof&quot;);</span>
+<span class="fc" id="L33">        }</span>
+    }
+    /** Read-only source validation can complete before the host allocates any target repository. */
+    public static final class PreparedSource {
+        private final Repository payload;
+        private final Source source;
+        private final GitHistoryCapture.Limits limits;
+        private final SortedMap&lt;String,String&gt; refs;
+        private final Map&lt;ObjectId,GitHistoryObjects.Proof&gt; objects;
+        private final Proof expected;
+        private PreparedSource(Repository payload, Source source, GitHistoryCapture.Limits limits,
+<span class="fc" id="L44">                SortedMap&lt;String,String&gt; refs, Map&lt;ObjectId,GitHistoryObjects.Proof&gt; objects, Proof expected) {</span>
+<span class="fc" id="L45">            this.payload=payload;this.source=source;this.limits=limits;</span>
+<span class="fc" id="L46">            this.refs=Collections.unmodifiableSortedMap(new TreeMap&lt;&gt;(refs));this.objects=Map.copyOf(objects);this.expected=expected;</span>
+<span class="fc" id="L47">        }</span>
+<span class="fc" id="L48">        public int objectCount() { return objects.size(); }</span>
+<span class="fc" id="L49">        public long expandedBytes() { return objects.values().stream().mapToLong(GitHistoryObjects.Proof::length).reduce(0,Math::addExact); }</span>
+<span class="fc" id="L50">        public String inputSha256() { return expected.repositorySha256(); }</span>
+    }
+    public static PreparedSource prepare(Repository payload, Source source, GitHistoryCapture.Limits limits,
+                                         BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L55">            Objects.requireNonNull(payload);Objects.requireNonNull(source);Objects.requireNonNull(limits);checkpoint.check();</span>
+<span class="fc" id="L56">            var refs=refs(source,limits,checkpoint);</span>
+<span class="fc" id="L57">            var events=new ArrayList&lt;&gt;(source.importedReflogs());events.addAll(GitReflogProvenance.original(source.origin(),source.reflogs()));</span>
+<span class="fc" id="L58">            var originals=GitReflogProvenance.canonical(events,limits.maxReflogEntries(),checkpoint);</span>
+<span class="fc" id="L59">            var objects=objects(payload,source,refs,originals,limits,checkpoint);</span>
+<span class="fc" id="L60">            var mappings=new TreeMap&lt;String,String&gt;();source.state().requiredCommits().forEach(id-&gt;mappings.put(id,id));</span>
+<span class="fc" id="L61">            var restored=new SnapshotContext.RepositoryState(refs,source.state().symbolicHead(),Map.of(),source.state().requiredCommits());</span>
+<span class="fc" id="L62">            var objectEvidence=new TreeMap&lt;String,GitHistoryObjects.Proof&gt;();objects.forEach((id,proof)-&gt;objectEvidence.put(id.name(),proof));</span>
+<span class="fc" id="L63">            String digest=GitReflogProvenance.digest(GitReflogProvenance.encoded(new RepositoryDigest(source.origin(),new TreeMap&lt;&gt;(refs),</span>
+<span class="fc" id="L64">                    restored.symbolicHead(),new TreeMap&lt;&gt;(source.symbolicRefs()),new TreeSet&lt;&gt;(restored.requiredCommits()),objectEvidence,originals)));</span>
+<span class="fc" id="L65">            checkpoint.check();return new PreparedSource(payload,source,limits,refs,objects,new Proof(restored,mappings,originals,digest));</span>
+<span class="fc" id="L66">        } catch(IOException|RuntimeException problem){throw sanitized(problem);}</span>
+    }
+    public static Proof restore(PreparedSource prepared, Repository target, UUID operation, PersonIdent actor,
+                                BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L71">            Objects.requireNonNull(prepared);Objects.requireNonNull(target);</span>
+<span class="fc" id="L72">            Objects.requireNonNull(operation);Objects.requireNonNull(actor);checkpoint.check();</span>
+<span class="fc" id="L73">            var source=prepared.source;var refs=prepared.refs;var limits=prepared.limits;var objects=prepared.objects;</span>
+<span class="fc" id="L74">            compatible(target,source,refs,limits,checkpoint);</span>
+<span class="fc" id="L75">            GitHistoryObjects.insertVerified(prepared.payload,objects,target,checkpoint);</span>
+            // Each public library mutation may commit independently; callers journal PREPARED first
+            // and retain original events with the completed-owner proof only after this verification.
+<span class="fc" id="L78">            verifyObjects(target,objects,limits,checkpoint);</span>
+<span class="fc" id="L79">            compatible(target,source,refs,limits,checkpoint);</span>
+<span class="fc" id="L80">            String message=&quot;Restore original Git history &quot;+operation;</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if(source.state().symbolicHead()!=null)link(target,Constants.HEAD,source.state().symbolicHead(),actor,message,checkpoint);</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">            else if(refs.containsKey(Constants.HEAD))direct(target,Constants.HEAD,refs.get(Constants.HEAD),actor,message,checkpoint);</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            for(var ref:refs.entrySet()) {</span>
+<span class="fc bfc" id="L84" title="All 4 branches covered.">                if(ref.getKey().equals(Constants.HEAD)||source.symbolicRefs().containsKey(ref.getKey()))continue;</span>
+<span class="fc" id="L85">                direct(target,ref.getKey(),ref.getValue(),actor,message,checkpoint);</span>
+<span class="fc" id="L86">            }</span>
+            // Every alias has a finite, checked chain. Its immediate target is preserved, not flattened.
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            for(var alias:new TreeMap&lt;&gt;(source.symbolicRefs()).entrySet())link(target,alias.getKey(),alias.getValue(),actor,message,checkpoint);</span>
+<span class="fc" id="L89">            requireExact(target,source,refs,limits,checkpoint);</span>
+<span class="fc" id="L90">            verifyObjects(target,objects,limits,checkpoint);</span>
+<span class="fc" id="L91">            checkpoint.check();return prepared.expected;</span>
+<span class="fc" id="L92">        } catch(IOException|RuntimeException problem){throw sanitized(problem);}</span>
+    }
+    public static Proof restore(Repository payload, Source source, Repository target, GitHistoryCapture.Limits limits,
+                                UUID operation, PersonIdent actor, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L96">        return restore(prepare(payload,source,limits,checkpoint),target,operation,actor,checkpoint);</span>
+    }
+    /** Readback for an already completed owner: never repairs missing objects or references. */
+    public static Proof verify(PreparedSource prepared, Repository target, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L101">            Objects.requireNonNull(prepared);Objects.requireNonNull(target);checkpoint.check();</span>
+<span class="fc" id="L102">            requireExact(target,prepared.source,prepared.refs,prepared.limits,checkpoint);</span>
+<span class="fc" id="L103">            verifyObjects(target,prepared.objects,prepared.limits,checkpoint);</span>
+<span class="fc" id="L104">            requireExact(target,prepared.source,prepared.refs,prepared.limits,checkpoint);</span>
+<span class="fc" id="L105">            checkpoint.check();return prepared.expected;</span>
+<span class="fc" id="L106">        } catch(IOException|RuntimeException problem){throw sanitized(problem);}</span>
+    }
+    private static SortedMap&lt;String,String&gt; refs(Source source,GitHistoryCapture.Limits limits,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L109" title="2 of 4 branches missed.">        if(source.objectCount()&lt;0||source.objectCount()&gt;limits.maxObjects())throw failure(&quot;Invalid restored Git object count&quot;);</span>
+<span class="fc" id="L110">        var result=new TreeMap&lt;String,String&gt;(source.state().refs());</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for(var ref:result.entrySet()){checkpoint.check();refName(ref.getKey(),true);id(ref.getValue());}</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        for(var ref:source.backupRefs().entrySet()) {</span>
+<span class="fc" id="L113">            checkpoint.check();id(ref.getValue());</span>
+<span class="pc bpc" id="L114" title="2 of 4 branches missed.">            if(!ref.getKey().equals(&quot;refs/taxonomy-backup/required/&quot;+ref.getValue())||result.putIfAbsent(ref.getKey(),ref.getValue())!=null)</span>
+<span class="nc" id="L115">                throw failure(&quot;Invalid restored Git retention ref&quot;);</span>
+<span class="fc" id="L116">        }</span>
+<span class="pc bpc" id="L117" title="2 of 4 branches missed.">        if(result.size()&gt;limits.maxRefs()||source.symbolicRefs().size()&gt;limits.maxRefs())throw failure(&quot;Restored Git ref limit exceeded&quot;);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for(var alias:source.symbolicRefs().entrySet()) {</span>
+<span class="fc" id="L119">            checkpoint.check();refName(alias.getKey(),false);refName(alias.getValue(),false);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">            if(!Objects.equals(result.get(alias.getKey()),resolve(alias.getValue(),result,source.symbolicRefs(),checkpoint))</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                    ||result.get(alias.getKey())==null)throw failure(&quot;Restored symbolic Git ref differs from its object proof&quot;);</span>
+<span class="fc" id="L122">        }</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if(source.state().symbolicHead()!=null) {</span>
+<span class="fc" id="L124">            refName(source.state().symbolicHead(),false);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if(!Objects.equals(result.get(Constants.HEAD),resolve(source.state().symbolicHead(),result,source.symbolicRefs(),checkpoint)))</span>
+<span class="nc" id="L126">                throw failure(&quot;Restored symbolic HEAD differs from its object proof&quot;);</span>
+        }
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        for(var working:source.state().workingStates().entrySet()) {</span>
+<span class="fc" id="L129">            checkpoint.check();refName(Constants.R_HEADS+working.getKey(),false);</span>
+<span class="pc bpc" id="L130" title="2 of 4 branches missed.">            if(working.getValue().checkpointCommit()!=null&amp;&amp;!source.state().requiredCommits().contains(working.getValue().checkpointCommit()))</span>
+<span class="nc" id="L131">                throw failure(&quot;Restored working-copy checkpoint is outside original Git history&quot;);</span>
+<span class="fc" id="L132">        }</span>
+<span class="fc" id="L133">        return result;</span>
+    }
+    private static String resolve(String name,Map&lt;String,String&gt; refs,Map&lt;String,String&gt; aliases,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L136">        var visited=new HashSet&lt;String&gt;();int depth=1;</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        while(aliases.containsKey(name)) {</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            checkpoint.check();if(!visited.add(name))throw failure(&quot;Cyclic restored symbolic Git refs&quot;);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if(depth++&gt;=RefDatabase.MAX_SYMBOLIC_REF_DEPTH)throw failure(&quot;Restored symbolic Git ref depth limit exceeded&quot;);</span>
+<span class="fc" id="L140">            name=aliases.get(name);</span>
+        }
+<span class="fc" id="L142">        return refs.get(name);</span>
+    }
+    private static Map&lt;ObjectId,GitHistoryObjects.Proof&gt; objects(Repository payload,Source source,Map&lt;String,String&gt; refs,
+            List&lt;GitReflogProvenance.Event&gt; events,GitHistoryCapture.Limits limits,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L146">        var starts=new TreeSet&lt;String&gt;(refs.values());starts.addAll(source.state().requiredCommits());</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for(var event:events) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            checkpoint.check();if(!event.entry().oldId().equals(ObjectId.zeroId().name()))starts.add(event.entry().oldId());</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if(!event.entry().newId().equals(ObjectId.zeroId().name()))starts.add(event.entry().newId());</span>
+<span class="fc" id="L150">        }</span>
+<span class="fc" id="L151">        var result=new LinkedHashMap&lt;ObjectId,GitHistoryObjects.Proof&gt;();var commits=new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L152">        try(var reader=GitHistoryObjects.inventoryReader(payload,limits,checkpoint);var walk=new ObjectWalk(reader)) {</span>
+<span class="fc" id="L153">            walk.setRetainBody(false);</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">            for(String commit:source.state().requiredCommits()){checkpoint.check();id(commit);walk.parseCommit(ObjectId.fromString(commit));}</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            for(String start:starts){checkpoint.check();id(start);walk.markStart(walk.parseAny(ObjectId.fromString(start)));}</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            for(var commit=walk.next();commit!=null;commit=walk.next()) {</span>
+<span class="fc" id="L157">                result.put(commit.copy(),GitHistoryObjects.verify(reader,commit,checkpoint));commits.add(commit.name());</span>
+            }
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            for(var object=walk.nextObject();object!=null;object=walk.nextObject())result.put(object.copy(),GitHistoryObjects.verify(reader,object,checkpoint));</span>
+        }
+<span class="pc bpc" id="L161" title="1 of 4 branches missed.">        if(result.size()!=source.objectCount()||!commits.equals(source.state().requiredCommits()))</span>
+<span class="fc" id="L162">            throw failure(&quot;Restored Git closure differs from original object evidence&quot;);</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        for(var ref:refs.entrySet()) {</span>
+<span class="fc" id="L164">            checkpoint.check();var proof=result.get(ObjectId.fromString(ref.getValue()));</span>
+<span class="pc bpc" id="L165" title="2 of 8 branches missed.">            if(proof==null||(ref.getKey().equals(Constants.HEAD)||ref.getKey().startsWith(Constants.R_HEADS))&amp;&amp;proof.type()!=Constants.OBJ_COMMIT)</span>
+<span class="nc" id="L166">                throw failure(&quot;Restored Git branch does not identify an original commit&quot;);</span>
+<span class="fc" id="L167">        }</span>
+<span class="fc" id="L168">        return Map.copyOf(result);</span>
+    }
+    private static void compatible(Repository target,Source source,Map&lt;String,String&gt; refs,GitHistoryCapture.Limits limits,
+                                    BackupCheckpoint checkpoint)throws IOException {
+        // A second public repository handle may have committed since this handle was opened.
+        // The pre-write check must use persisted refs, not that handle's cached ref table.
+<span class="fc" id="L174">        checkpoint.check();target.scanForRepoChanges();checkpoint.check();</span>
+<span class="fc" id="L175">        var existing=target.getRefDatabase().getRefsByPrefix(Constants.R_REFS);</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        if(existing.size()&gt;limits.maxRefs())throw failure(&quot;Unexpected staged Git refs&quot;);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        for(var ref:existing) {</span>
+<span class="fc" id="L178">            checkpoint.check();</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">            if(ref.getObjectId()==null||!Objects.equals(refs.get(ref.getName()),ref.getObjectId().name())</span>
+<span class="pc bpc" id="L180" title="1 of 4 branches missed.">                    ||ref.isSymbolic()&amp;&amp;!Objects.equals(source.symbolicRefs().get(ref.getName()),ref.getTarget().getName()))</span>
+<span class="fc" id="L181">                throw failure(&quot;Staged Git ref is outside the prepared restore plan&quot;);</span>
+<span class="fc" id="L182">        }</span>
+<span class="fc" id="L183">        Ref head=target.exactRef(Constants.HEAD);</span>
+<span class="pc bpc" id="L184" title="2 of 6 branches missed.">        if(head!=null&amp;&amp;head.getObjectId()!=null&amp;&amp;!Objects.equals(refs.get(Constants.HEAD),head.getObjectId().name()))</span>
+<span class="nc" id="L185">            throw failure(&quot;Staged Git HEAD is outside the prepared restore plan&quot;);</span>
+<span class="fc" id="L186">        checkpoint.check();</span>
+<span class="fc" id="L187">    }</span>
+    private static void requireExact(Repository target,Source source,Map&lt;String,String&gt; refs,GitHistoryCapture.Limits limits,
+                                     BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L190">        compatible(target,source,refs,limits,checkpoint);var actual=new TreeMap&lt;String,String&gt;();</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        for(var ref:target.getRefDatabase().getRefsByPrefix(Constants.R_REFS)) {</span>
+<span class="fc" id="L192">            checkpoint.check();actual.put(ref.getName(),ref.getObjectId().name());</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            String alias=ref.isSymbolic()?ref.getTarget().getName():null;</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">            if(!Objects.equals(alias,source.symbolicRefs().get(ref.getName())))throw failure(&quot;Restored Git alias proof differs&quot;);</span>
+<span class="fc" id="L195">        }</span>
+<span class="fc" id="L196">        var head=target.exactRef(Constants.HEAD);</span>
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">        if(head!=null&amp;&amp;head.getObjectId()!=null)actual.put(Constants.HEAD,head.getObjectId().name());</span>
+<span class="pc bpc" id="L198" title="3 of 8 branches missed.">        if(!actual.equals(refs)||!Objects.equals(source.state().symbolicHead(),head!=null&amp;&amp;head.isSymbolic()?head.getTarget().getName():null))</span>
+<span class="fc" id="L199">            throw failure(&quot;Restored Git reference proof differs&quot;);</span>
+<span class="fc" id="L200">    }</span>
+    private static void direct(Repository target,String name,String value,PersonIdent actor,String message,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L202">        checkpoint.check();var before=target.exactRef(name);</span>
+<span class="pc bpc" id="L203" title="3 of 8 branches missed.">        if(before!=null&amp;&amp;!before.isSymbolic()&amp;&amp;before.getObjectId()!=null&amp;&amp;before.getObjectId().name().equals(value))return;</span>
+<span class="pc bpc" id="L204" title="3 of 4 branches missed.">        var update=target.updateRef(name,true);update.setExpectedOldObjectId(before==null||before.getObjectId()==null?ObjectId.zeroId():before.getObjectId());</span>
+<span class="fc" id="L205">        update.setNewObjectId(ObjectId.fromString(value));update.setRefLogIdent(actor);update.setRefLogMessage(message,false);</span>
+<span class="fc" id="L206">        requireResult(update.update());checkpoint.check();</span>
+<span class="fc" id="L207">    }</span>
+    private static void link(Repository target,String name,String value,PersonIdent actor,String message,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L209">        checkpoint.check();var before=target.exactRef(name);</span>
+<span class="pc bpc" id="L210" title="1 of 6 branches missed.">        if(before!=null&amp;&amp;before.isSymbolic()&amp;&amp;before.getTarget().getName().equals(value))return;</span>
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">        var update=target.updateRef(name);update.setExpectedOldObjectId(before==null||before.getObjectId()==null?ObjectId.zeroId():before.getObjectId());</span>
+<span class="fc" id="L212">        update.setRefLogIdent(actor);update.setRefLogMessage(message,false);requireResult(update.link(value));checkpoint.check();</span>
+<span class="fc" id="L213">    }</span>
+    private static void requireResult(RefUpdate.Result result)throws IOException {
+<span class="pc bpc" id="L215" title="4 of 8 branches missed.">        if(result!=RefUpdate.Result.NEW&amp;&amp;result!=RefUpdate.Result.NO_CHANGE&amp;&amp;result!=RefUpdate.Result.FORCED&amp;&amp;result!=RefUpdate.Result.FAST_FORWARD)</span>
+<span class="nc" id="L216">            throw failure(&quot;Original Git ref update was not confirmed&quot;);</span>
+<span class="fc" id="L217">    }</span>
+    private static void verifyObjects(Repository target,Map&lt;ObjectId,GitHistoryObjects.Proof&gt; expected,GitHistoryCapture.Limits limits,
+                                       BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L220">        try(var reader=GitHistoryObjects.inventoryReader(target,limits,checkpoint)) {</span>
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">            for(var entry:expected.entrySet())if(!entry.getValue().equals(GitHistoryObjects.verify(reader,entry.getKey(),checkpoint)))</span>
+<span class="nc" id="L222">                throw failure(&quot;Restored Git object differs from its original proof&quot;);</span>
+        }
+<span class="fc" id="L224">    }</span>
+    private static void refName(String name,boolean head)throws IOException {
+<span class="pc bpc" id="L226" title="4 of 12 branches missed.">        if(name==null||name.length()&gt;1024||!(head&amp;&amp;name.equals(Constants.HEAD))&amp;&amp;(!name.startsWith(Constants.R_REFS)||!Repository.isValidRefName(name)))</span>
+<span class="nc" id="L227">            throw failure(&quot;Invalid restored Git ref name&quot;);</span>
+<span class="fc" id="L228">    }</span>
+    private static void id(String id)throws IOException {
+<span class="pc bpc" id="L230" title="3 of 6 branches missed.">        if(id==null||!id.matches(&quot;[0-9a-f]{40}&quot;)||id.equals(ObjectId.zeroId().name()))throw failure(&quot;Invalid restored Git object identity&quot;);</span>
+<span class="fc" id="L231">    }</span>
+<span class="fc" id="L232">    private record RepositoryDigest(GitReflogProvenance.Origin origin,SortedMap&lt;String,String&gt; refs,String symbolicHead,</span>
+            SortedMap&lt;String,String&gt; aliases,SortedSet&lt;String&gt; commits,SortedMap&lt;String,GitHistoryObjects.Proof&gt; objects,
+            List&lt;GitReflogProvenance.Event&gt; originalEvents) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProviderConcurrencyPermits.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">ProviderConcurrencyPermits.java</span></div><h1>ProviderConcurrencyPermits.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.extension.api.llm.ProviderId;
+
+/**
+ * Transport-neutral admission for one physical provider HTTP attempt. Implementations
+ * retain no prompts, credentials or operation payloads. This is concurrency capacity,
+ * not an RPM/TPM/RPD policy; callers retain their process-local rate limiter.
+ */
+@FunctionalInterface
+public interface ProviderConcurrencyPermits {
+<span class="fc" id="L12">    ProviderConcurrencyPermits NONE = (provider, checkpoint) -&gt; {</span>
+<span class="fc" id="L13">        checkpoint.run();</span>
+<span class="fc" id="L14">        return () -&gt; {};</span>
+    };
+
+    /** Wait cooperatively, invoking the supplied cancellation/deadline checkpoint. */
+    Permit acquire(ProviderId provider, Runnable checkpoint);
+
+    /** Existing built-in callers retain their aliases. */
+    default Permit acquire(LlmProvider provider, Runnable checkpoint) {
+<span class="fc" id="L22">        return acquire(provider.id(), checkpoint);</span>
+    }
+
+    /**
+     * Thread-confined lifecycle of one physical attempt. close() releases unused or
+     * proven-complete capacity; it must retain uncertain in-flight capacity.
+     */
+    @FunctionalInterface
+    interface Permit extends AutoCloseable {
+        /** Must confirm durable ownership before the admitted request can run. */
+<span class="fc" id="L32">        default void beforeTransport() { }</span>
+
+        /** A complete HTTP response was received, not merely headers or a local timeout. */
+<span class="fc" id="L35">        default void responseReceived(int statusCode) { }</span>
+
+        @Override void close();
+    }
+
+    /**
+     * Observe local lease closure without dropping lifecycle hooks. A successful
+     * close is not proof that uncertain capacity was returned to the broker.
+     * The callback runs once even when the delegate's close fails.
+     */
+    static Permit observeClose(Permit delegate, java.util.function.Consumer&lt;Boolean&gt; afterClose) {
+<span class="fc" id="L46">        java.util.Objects.requireNonNull(delegate, &quot;delegate&quot;);</span>
+<span class="fc" id="L47">        java.util.Objects.requireNonNull(afterClose, &quot;afterClose&quot;);</span>
+<span class="fc" id="L48">        return new Permit() {</span>
+<span class="fc" id="L49">            private final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();</span>
+<span class="fc" id="L50">            @Override public void beforeTransport() { delegate.beforeTransport(); }</span>
+<span class="fc" id="L51">            @Override public void responseReceived(int statusCode) { delegate.responseReceived(statusCode); }</span>
+            @Override public void close() {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                if (!closed.compareAndSet(false, true)) return;</span>
+<span class="fc" id="L54">                boolean completed = false;</span>
+<span class="fc" id="L55">                try { delegate.close(); completed = true; }</span>
+<span class="fc" id="L56">                finally { afterClose.accept(completed); }</span>
+<span class="fc" id="L57">            }</span>
+        };
+    }
+
+    /** Failed-closed admission; no physical provider attempt may follow this failure. */
+    final class UnavailableException extends LlmRateLimitException {
+<span class="fc" id="L63">        public UnavailableException(String message, Throwable cause) { super(message, cause); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

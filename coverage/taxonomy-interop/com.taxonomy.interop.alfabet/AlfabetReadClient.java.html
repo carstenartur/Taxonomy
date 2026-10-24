@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AlfabetReadClient.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.alfabet</a> &gt; <span class="el_source">AlfabetReadClient.java</span></div><h1>AlfabetReadClient.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.alfabet;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.StreamReadConstraints;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+
+import static com.taxonomy.interop.alfabet.AlfabetHttpTransport.problem;
+import static com.taxonomy.interop.alfabet.AlfabetHttpTransport.requireTime;
+
+/**
+ * Preparatory read adapter in the existing interoperability module. Explicit invocation only:
+ * no startup calls, controller, scheduler, canonical writes, implicit classification or publication.
+ * Callers must authorize the profile against the existing repository/organization context first.
+ */
+public final class AlfabetReadClient {
+    private final Function&lt;String, String&gt; credentials;
+<span class="fc" id="L33">    private final ObjectMapper json = new ObjectMapper(JsonFactory.builder()</span>
+<span class="fc" id="L34">            .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(16).maxStringLength(65536).maxNumberLength(20).build())</span>
+<span class="fc" id="L35">            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build())</span>
+<span class="fc" id="L36">            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);</span>
+
+    /** Supply a server-side secret resolver, e.g. Environment::getProperty; never a browser request map. */
+<span class="fc" id="L39">    public AlfabetReadClient(Function&lt;String, String&gt; credentials) { this.credentials = java.util.Objects.requireNonNull(credentials); }</span>
+
+    public AlfabetSnapshot read(AlfabetReadProfile profile) {
+<span class="fc" id="L42">        Instant started = Instant.now();</span>
+<span class="fc" id="L43">        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(profile.limits().timeoutSeconds());</span>
+<span class="fc" id="L44">        String secret = credential(profile.authentication().secretEnvironmentVariable());</span>
+<span class="fc" id="L45">        var reports = new ArrayList&lt;AlfabetSnapshot.ReportData&gt;();</span>
+<span class="fc" id="L46">        int pages = 0, totalRows = 0; long totalBytes = 0;</span>
+<span class="fc" id="L47">        try (var transport = new AlfabetHttpTransport(profile)) {</span>
+<span class="fc" id="L48">            String token = secret;</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            if (profile.authentication().grant() != AlfabetReadProfile.Grant.BEARER) {</span>
+<span class="fc" id="L50">                String principal = credential(profile.authentication().principalEnvironmentVariable());</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                boolean client = profile.authentication().grant() == AlfabetReadProfile.Grant.CLIENT_CREDENTIALS;</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                String form = client ? &quot;grant_type=client_credentials&amp;client_id=&quot; : &quot;grant_type=password&amp;username=&quot;;</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                form += encode(principal) + (client ? &quot;&amp;client_secret=&quot; : &quot;&amp;password=&quot;) + encode(secret);</span>
+<span class="fc" id="L54">                byte[] bytes = transport.post(AlfabetHttpTransport.Endpoint.TOKEN, form, null,</span>
+<span class="fc" id="L55">                        Math.min(32768, profile.limits().maxResponseBytes()), deadline);</span>
+<span class="fc" id="L56">                totalBytes += bytes.length;</span>
+<span class="fc" id="L57">                JsonNode authentication = parse(bytes);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                if (!authentication.path(&quot;token_type&quot;).asText().equalsIgnoreCase(&quot;bearer&quot;)) throw problem(&quot;ALFABET_AUTH_RESPONSE&quot;);</span>
+<span class="fc" id="L59">                token = text(authentication.get(&quot;access_token&quot;), 8192);</span>
+<span class="fc" id="L60">                JsonNode expires = authentication.get(&quot;expires_in&quot;);</span>
+<span class="pc bpc" id="L61" title="4 of 8 branches missed.">                if (expires == null || !expires.isIntegralNumber() || !expires.canConvertToInt() || expires.intValue() &lt; 2)</span>
+<span class="nc" id="L62">                    throw problem(&quot;ALFABET_AUTH_RESPONSE&quot;);</span>
+<span class="fc" id="L63">                deadline = Math.min(deadline, System.nanoTime() + TimeUnit.SECONDS.toNanos(Math.min(expires.intValue() - 1, 120)));</span>
+            }
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            if (!token.matches(&quot;[A-Za-z0-9._~+/=-]{1,8192}&quot;)) throw problem(&quot;ALFABET_CREDENTIAL_UNAVAILABLE&quot;);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            for (var report : profile.reports()) {</span>
+<span class="fc" id="L67">                var rows = new ArrayList&lt;AlfabetSnapshot.Row&gt;();</span>
+<span class="fc" id="L68">                var identities = new HashSet&lt;Object&gt;();</span>
+<span class="fc" id="L69">                int offset = 0;</span>
+                while (true) {
+<span class="fc" id="L71">                    requireTime(deadline);</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">                    if (pages &gt;= profile.limits().maxPages() || totalBytes &gt;= profile.limits().maxTotalBytes())</span>
+<span class="fc" id="L73">                        throw problem(&quot;ALFABET_READ_LIMIT&quot;);</span>
+<span class="fc" id="L74">                    var body = new LinkedHashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L75">                    body.put(&quot;CurrentProfile&quot;, profile.currentProfile()); body.put(&quot;Report&quot;, report.name());</span>
+<span class="fc" id="L76">                    body.put(&quot;ReportResult&quot;, &quot;DataSet&quot;); body.put(&quot;EmptyValues&quot;, true);</span>
+<span class="fc" id="L77">                    body.put(&quot;Limit&quot;, profile.limits().pageSize()); body.put(&quot;Offset&quot;, offset);</span>
+<span class="fc" id="L78">                    int bound = (int) Math.min(profile.limits().maxResponseBytes(), profile.limits().maxTotalBytes() - totalBytes);</span>
+<span class="fc" id="L79">                    byte[] bytes = transport.post(AlfabetHttpTransport.Endpoint.OBJECTS, write(body), token, bound, deadline);</span>
+<span class="fc" id="L80">                    pages++; totalBytes += bytes.length;</span>
+<span class="fc" id="L81">                    JsonNode response = parse(bytes);</span>
+<span class="fc" id="L82">                    rejectReflection(response, List.of(secret, token));</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">                    if (!report.name().equals(text(response.get(&quot;Name&quot;), 200)) || !response.path(&quot;Objects&quot;).isArray())</span>
+<span class="nc" id="L84">                        throw problem(&quot;ALFABET_REPORT_SHAPE&quot;);</span>
+<span class="fc" id="L85">                    JsonNode values = response.get(&quot;Objects&quot;);</span>
+<span class="pc bpc" id="L86" title="1 of 4 branches missed.">                    if (values.size() &gt; profile.limits().pageSize() || totalRows + values.size() &gt; profile.limits().maxRows())</span>
+<span class="fc" id="L87">                        throw problem(&quot;ALFABET_READ_LIMIT&quot;);</span>
+                    // Count is NOT assumed to be a global total, a stable snapshot version or a deletion warrant.
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                    for (JsonNode value : values) {</span>
+<span class="fc" id="L90">                        requireTime(deadline);</span>
+<span class="fc" id="L91">                        var row = row(report, value);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                        Object identity = report.kind() == AlfabetReadProfile.Kind.OBJECT ? row.refStr() : row;</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                        if (!identities.add(identity)) throw problem(&quot;ALFABET_DUPLICATE_ROW&quot;);</span>
+<span class="fc" id="L94">                        rows.add(row);</span>
+<span class="fc" id="L95">                    }</span>
+<span class="fc" id="L96">                    totalRows += values.size(); offset += values.size();</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                    if (values.size() &lt; profile.limits().pageSize()) break;</span>
+<span class="fc" id="L98">                }</span>
+<span class="fc" id="L99">                reports.add(new AlfabetSnapshot.ReportData(report.name(), report.kind(), rows));</span>
+<span class="fc" id="L100">            }</span>
+        }
+<span class="fc" id="L102">        requireTime(deadline);</span>
+<span class="fc" id="L103">        return new AlfabetSnapshot(profile.scope(), profile.mappingVersion(), started, Instant.now(), pages, totalBytes, reports);</span>
+    }
+
+    private AlfabetSnapshot.Row row(AlfabetReadProfile.Report report, JsonNode value) {
+<span class="fc" id="L107">        String className = text(value.get(&quot;ClassName&quot;), 200), ref = text(value.get(&quot;RefStr&quot;), 2048);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (!report.className().equals(className)) throw problem(&quot;ALFABET_UNEXPECTED_CLASS&quot;);</span>
+<span class="fc" id="L109">        JsonNode nested = value.get(&quot;NestedObjects&quot;);</span>
+<span class="pc bpc" id="L110" title="3 of 8 branches missed.">        if (nested != null &amp;&amp; !nested.isNull() &amp;&amp; !(nested.isContainerNode() &amp;&amp; nested.isEmpty()))</span>
+<span class="fc" id="L111">            throw problem(&quot;ALFABET_UNSUPPORTED_NESTED_OBJECTS&quot;);</span>
+<span class="fc" id="L112">        JsonNode values = value.get(&quot;Values&quot;);</span>
+<span class="pc bpc" id="L113" title="3 of 6 branches missed.">        if (values == null || !values.isObject() || values.size() &gt; 256) throw problem(&quot;ALFABET_REPORT_SHAPE&quot;);</span>
+<span class="fc" id="L114">        var columns = new TreeMap&lt;String, String&gt;(); var nulls = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L115">        values.properties().forEach(entry -&gt; {</span>
+<span class="fc" id="L116">            String column = entry.getKey();</span>
+<span class="pc bpc" id="L117" title="3 of 6 branches missed.">            if (column.isBlank() || column.length() &gt; 256 || column.chars().anyMatch(Character::isISOControl))</span>
+<span class="nc" id="L118">                throw problem(&quot;ALFABET_REPORT_SHAPE&quot;);</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (entry.getValue().isNull()) nulls.add(column);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">            else if (entry.getValue().isTextual()) columns.put(column, entry.getValue().textValue());</span>
+<span class="nc" id="L121">            else throw problem(&quot;ALFABET_REPORT_SHAPE&quot;);</span>
+<span class="fc" id="L122">        });</span>
+<span class="fc" id="L123">        var fields = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        report.fields().forEach((name, column) -&gt; { if (columns.containsKey(column)) fields.put(name, columns.get(column)); });</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (report.kind() == AlfabetReadProfile.Kind.RELATION)</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            for (String endpoint : List.of(&quot;sourceRef&quot;, &quot;targetRef&quot;))</span>
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">                if (!fields.containsKey(endpoint) || fields.get(endpoint).isBlank()) throw problem(&quot;ALFABET_RELATION_ENDPOINT&quot;);</span>
+<span class="fc" id="L128">        return new AlfabetSnapshot.Row(className, ref, fields, columns, nulls);</span>
+    }
+    private JsonNode parse(byte[] bytes) {
+        try {
+<span class="fc" id="L132">            JsonNode value = json.readTree(bytes);</span>
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">            if (value == null || !value.isObject()) throw problem(&quot;ALFABET_REPORT_SHAPE&quot;);</span>
+<span class="fc" id="L134">            return value;</span>
+<span class="fc" id="L135">        } catch (IOException failure) { throw problem(&quot;ALFABET_INVALID_JSON&quot;); }</span>
+    }
+    private String write(Object body) {
+<span class="fc" id="L138">        try { return json.writeValueAsString(body); }</span>
+<span class="nc" id="L139">        catch (IOException failure) { throw problem(&quot;ALFABET_REQUEST_INVALID&quot;); }</span>
+    }
+    private String credential(String reference) {
+        String value;
+<span class="fc" id="L143">        try { value = credentials.apply(reference); }</span>
+<span class="fc" id="L144">        catch (RuntimeException failure) { throw problem(&quot;ALFABET_CREDENTIAL_UNAVAILABLE&quot;); }</span>
+<span class="pc bpc" id="L145" title="3 of 8 branches missed.">        if (value == null || value.isBlank() || value.length() &gt; 8192 || value.chars().anyMatch(Character::isISOControl))</span>
+<span class="fc" id="L146">            throw problem(&quot;ALFABET_CREDENTIAL_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L147">        return value;</span>
+    }
+    private static String text(JsonNode value, int max) {
+<span class="pc bpc" id="L150" title="3 of 8 branches missed.">        if (value == null || !value.isTextual() || value.textValue().isBlank() || value.textValue().length() &gt; max</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">                || value.textValue().chars().anyMatch(Character::isISOControl)) throw problem(&quot;ALFABET_REPORT_SHAPE&quot;);</span>
+<span class="fc" id="L152">        return value.textValue();</span>
+    }
+<span class="fc" id="L154">    private static String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }</span>
+    private static void rejectReflection(JsonNode node, List&lt;String&gt; secrets) {
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (node.isTextual()) {</span>
+<span class="fc" id="L157">            rejectReflectedText(node.textValue(), secrets);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        } else if (node.isObject()) {</span>
+<span class="fc" id="L159">            node.properties().forEach(entry -&gt; {</span>
+<span class="fc" id="L160">                rejectReflectedText(entry.getKey(), secrets);</span>
+<span class="fc" id="L161">                rejectReflection(entry.getValue(), secrets);</span>
+<span class="fc" id="L162">            });</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        } else if (node.isArray()) node.forEach(child -&gt; rejectReflection(child, secrets));</span>
+<span class="fc" id="L164">    }</span>
+    private static void rejectReflectedText(String text, List&lt;String&gt; secrets) {
+        // Jackson has already decoded JSON escapes. Also cover percent-encoded response diagnostics.
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        for (int pass = 0; pass &lt; 3; pass++) {</span>
+<span class="fc bfc" id="L168" title="All 4 branches covered.">            for (String secret : secrets) if (text.contains(secret)) throw problem(&quot;ALFABET_CREDENTIAL_REFLECTION&quot;);</span>
+<span class="fc" id="L169">            String decoded = decodePercentEscapes(text);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (decoded.equals(text)) return;</span>
+<span class="fc" id="L171">            text = decoded;</span>
+        }
+<span class="nc" id="L173">    }</span>
+
+    private static String decodePercentEscapes(String text) {
+<span class="fc" id="L176">        var decoded = new StringBuilder(text.length());</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        for (int index = 0; index &lt; text.length();) {</span>
+<span class="pc bpc" id="L178" title="1 of 4 branches missed.">            if (text.charAt(index) != '%' || index + 2 &gt;= text.length()</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                    || Character.digit(text.charAt(index + 1), 16) &lt; 0</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                    || Character.digit(text.charAt(index + 2), 16) &lt; 0) {</span>
+<span class="fc" id="L181">                decoded.append(text.charAt(index++));</span>
+<span class="fc" id="L182">                continue;</span>
+            }
+<span class="fc" id="L184">            var bytes = new ByteArrayOutputStream();</span>
+<span class="fc bfc" id="L185" title="All 4 branches covered.">            while (index + 2 &lt; text.length() &amp;&amp; text.charAt(index) == '%'</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">                    &amp;&amp; Character.digit(text.charAt(index + 1), 16) &gt;= 0</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">                    &amp;&amp; Character.digit(text.charAt(index + 2), 16) &gt;= 0) {</span>
+<span class="fc" id="L188">                bytes.write(Character.digit(text.charAt(index + 1), 16) * 16</span>
+<span class="fc" id="L189">                        + Character.digit(text.charAt(index + 2), 16));</span>
+<span class="fc" id="L190">                index += 3;</span>
+            }
+<span class="fc" id="L192">            decoded.append(bytes.toString(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L193">        }</span>
+<span class="fc" id="L194">        return decoded.toString();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

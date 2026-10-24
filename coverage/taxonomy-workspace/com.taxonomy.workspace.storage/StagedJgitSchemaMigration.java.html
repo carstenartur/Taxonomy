@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>StagedJgitSchemaMigration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">StagedJgitSchemaMigration.java</span></div><h1>StagedJgitSchemaMigration.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.taxonomy.backup.BackupCheckpoint;
+import org.flywaydb.core.Flyway;
+import javax.sql.DataSource;
+import java.io.*;
+import java.util.Objects;
+
+/** Versioned storage schema only. The host must prove the supplied staged database is isolated.
+ * This adapter never selects, opens or creates an application repository and never adopts legacy storage. */
+public final class StagedJgitSchemaMigration {
+    private StagedJgitSchemaMigration() { }
+    /** Registers the library-owned model for validation against the separately migrated target. */
+    public static void configureModel(org.hibernate.cfg.Configuration configuration) {
+<span class="fc" id="L15">        Objects.requireNonNull(configuration);</span>
+<span class="fc" id="L16">        io.github.carstenartur.jgit.storage.hibernate.config.CoreEntities.annotatedClasses().forEach(configuration::addAnnotatedClass);</span>
+<span class="fc" id="L17">    }</span>
+    public static void migrate(DataSource explicitStagedDatabase, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L19">        Objects.requireNonNull(explicitStagedDatabase); Objects.requireNonNull(checkpoint);</span>
+        try {
+<span class="fc" id="L21">            checkpoint.check();</span>
+<span class="fc" id="L22">            var configuration = Flyway.configure().dataSource(explicitStagedDatabase);</span>
+<span class="fc" id="L23">            new JgitStorageSchemaMigrationConfig().jgitStorageFlywayConfigurationCustomizer().customize(configuration);</span>
+<span class="fc" id="L24">            JgitStorageSchemaMigrationConfig.migrateCoreSchema(configuration.load(), false);</span>
+<span class="fc" id="L25">            checkpoint.check();</span>
+<span class="fc" id="L26">        } catch (InterruptedIOException cancelled) {</span>
+<span class="fc" id="L27">            Thread.currentThread().interrupt(); throw new InterruptedIOException(&quot;Staged Git schema migration was cancelled&quot;);</span>
+<span class="fc" id="L28">        } catch (RuntimeException failure) { throw new IOException(&quot;Staged Git schema migration failed&quot;); }</span>
+<span class="fc" id="L29">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

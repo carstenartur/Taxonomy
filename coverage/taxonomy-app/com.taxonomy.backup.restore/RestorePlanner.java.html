@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestorePlanner.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestorePlanner.java</span></div><h1>RestorePlanner.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.VerifiedBackup;
+import com.taxonomy.backup.runtime.BackupAuthorizationService;
+import javax.sql.DataSource;
+import java.io.*;
+import java.time.*;
+import java.util.*;
+
+/** Read-only private preflight. A witnessed vendor and a parser do not grant import support. */
+public final class RestorePlanner {
+<span class="fc" id="L13">    private static final BackupComponentId APPLICATION=new BackupComponentId(&quot;application&quot;);</span>
+<span class="fc" id="L14">    private static final List&lt;String&gt; IDENTITY_KINDS=List.of(&quot;principals&quot;,&quot;bindings&quot;,&quot;local-accounts&quot;,&quot;roles&quot;,&quot;user-roles&quot;,&quot;capability-grants&quot;,&quot;version-grants&quot;,&quot;access-audit&quot;);</span>
+    private final BackupAuthorizationService authority;private final Clock clock;private final String applicationVersion;private final RestoreSupportRegistry registry;
+<span class="fc" id="L16">    public RestorePlanner(BackupAuthorizationService authority,Clock clock,String applicationVersion,RestoreSupportRegistry registry) {</span>
+<span class="fc" id="L17">        this.authority=Objects.requireNonNull(authority);this.clock=Objects.requireNonNull(clock);this.applicationVersion=Objects.requireNonNull(applicationVersion);this.registry=Objects.requireNonNull(registry);</span>
+<span class="fc" id="L18">    }</span>
+    public RestorePlan plan(VerifiedBackup archive,DataSource active,DataSource target,UUID generationId,
+            Map&lt;BackupRepositoryKey,RestoreRepositoryAllocation&gt; repositories,Map&lt;PrincipalId,RestorePrincipalAllocation&gt; principals,
+            RestoreMode mode,PrincipalId actor,AuditedSourceFamilyDeclaration declaration,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L22">        requireAuthority(actor);checkpoint.check();var manifest=archive.manifest();</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if(!applicationVersion.equals(manifest.applicationVersion()))throw new IOException(&quot;Restore application version requires a reviewed converter&quot;);</span>
+<span class="fc" id="L24">        var targetIdentity=TargetDatabaseIdentity.proveIsolated(active,target,checkpoint);</span>
+<span class="fc" id="L25">        var schema=TargetSchemaEvidence.inspect(target,checkpoint);</span>
+<span class="pc bpc" id="L26" title="1 of 4 branches missed.">        if(!schema.tableNames().isEmpty()||schema.populated())throw new IOException(&quot;Restore target must be genuinely empty before planning&quot;);</span>
+        Map&lt;BackupRepositoryKey,RestoreRepositoryAllocation&gt; repositoryMappings;Map&lt;PrincipalId,RestorePrincipalAllocation&gt; principalMappings;
+<span class="pc" id="L28">        try{repositoryMappings=Map.copyOf(repositories);principalMappings=Map.copyOf(principals);}catch(NullPointerException malformed){throw new IOException(&quot;Restore mapping is incomplete or foreign&quot;);}</span>
+<span class="pc" id="L29">        var sourceKeys=new HashSet&lt;BackupRepositoryKey&gt;();manifest.repositories().forEach(repository-&gt;sourceKeys.add(repository.id()));</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        if(!sourceKeys.equals(repositoryMappings.keySet()))throw new IOException(&quot;Restore repository mapping is incomplete or foreign&quot;);</span>
+<span class="fc" id="L31">        var targetRepositoryIds=new HashMap&lt;String,String&gt;();var storageNames=new HashSet&lt;String&gt;();</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        for(var entry:repositoryMappings.entrySet()) {</span>
+<span class="nc" id="L33">            checkpoint.check();var source=entry.getKey();var allocation=entry.getValue();</span>
+<span class="nc bnc" id="L34" title="All 8 branches missed.">            if((source.workspaceId()==null)!=(allocation.targetKey().workspaceId()==null)||!storageNames.add(allocation.physicalStorageName().toLowerCase(Locale.ROOT)))throw new IOException(&quot;Restore repository mapping changes or merges routing namespaces&quot;);</span>
+<span class="nc" id="L35">            String old=targetRepositoryIds.putIfAbsent(source.repositoryId(),allocation.targetKey().repositoryId());</span>
+<span class="nc bnc" id="L36" title="All 4 branches missed.">            if(old!=null&amp;&amp;!old.equals(allocation.targetKey().repositoryId()))throw new IOException(&quot;Restore repository mapping splits one source repository&quot;);</span>
+<span class="nc" id="L37">        }</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        if(new HashSet&lt;&gt;(targetRepositoryIds.values()).size()!=targetRepositoryIds.size())throw new IOException(&quot;Restore repository mapping merges source repositories&quot;);</span>
+<span class="fc" id="L39">        var family=RestoreArchiveRecords.sourceDatabase(archive,checkpoint);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if(declaration!=null) {</span>
+<span class="fc" id="L41">            Instant declared=Instant.parse(declaration.declaredAt()),now=clock.instant();</span>
+<span class="fc bfc" id="L42" title="All 6 branches covered.">            if(family.isPresent()||!declaration.archiveSha256().equals(archive.archiveSha256())||!declaration.declaredBy().equals(actor)</span>
+<span class="pc bpc" id="L43" title="1 of 4 branches missed.">                    ||declared.isAfter(now)||declared.isBefore(now.minus(Duration.ofMinutes(15))))throw new IOException(&quot;Restore source family declaration binding is invalid&quot;);</span>
+        }
+<span class="fc" id="L45">        var diagnostics=new ArrayList&lt;&gt;(registry.inspect(manifest));</span>
+<span class="fc bfc" id="L46" title="All 4 branches covered.">        if(family.isEmpty()&amp;&amp;declaration==null)diagnostics.add(blocker(&quot;SOURCE_DATABASE_FAMILY_REQUIRED&quot;,null,null));</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if(declaration!=null)diagnostics.add(new RestoreDiagnostic(&quot;SOURCE_FAMILY_OPERATOR_DECLARED&quot;,RestoreDiagnostic.Severity.INFORMATION,null,null));</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        if(mode!=RestoreMode.EMPTY_TARGET)diagnostics.add(blocker(&quot;UNSUPPORTED_MODE&quot;,null,null));</span>
+<span class="fc" id="L49">        var knownResources=new HashSet&lt;String&gt;();knownResources.add(&quot;verification/capture.json&quot;);</span>
+<span class="fc" id="L50">        boolean identity=RestoreArchiveRecords.declares(archive,APPLICATION,&quot;identities/principals.ndjson&quot;);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if(identity) {</span>
+<span class="fc" id="L52">            new RestoreIdentityImporter().preview(archive,principalMappings,checkpoint);</span>
+<span class="fc" id="L53">            IDENTITY_KINDS.forEach(kind-&gt;knownResources.add(&quot;identities/&quot;+kind+&quot;.ndjson&quot;));knownResources.add(&quot;identities/installation.json&quot;);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">            if(manifest.request().secrets()==SecretsSelection.INCLUDE_ENCRYPTED)knownResources.add(&quot;protected/identities/password-hashes.ndjson&quot;);</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        } else if(!principalMappings.isEmpty())throw new IOException(&quot;Restore principal mapping has no declared source identity owner&quot;);</span>
+<span class="fc" id="L56">        var components=new ArrayList&lt;RestorePlan.ComponentBinding&gt;();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for(var component:manifest.components()) {</span>
+<span class="fc" id="L58">            checkpoint.check();components.add(new RestorePlan.ComponentBinding(component.id(),component.version(),component.completeness(),component.entryPaths(),new ArrayList&lt;&gt;(component.dependencies())));</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">            for(String resource:component.entryPaths())if(!knownResources.contains(resource))diagnostics.add(blocker(&quot;UNREGISTERED_RESOURCE&quot;,component.id().value(),resource));</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">            if(component.completeness()!=BackupCompleteness.COMPLETE)diagnostics.add(blocker(&quot;NONCOMPLETE_COMPONENT&quot;,component.id().value(),null));</span>
+<span class="fc" id="L61">        }</span>
+<span class="fc" id="L62">        var principalList=principalMappings.entrySet().stream().map(entry-&gt;new RestorePlan.PrincipalMapping(entry.getKey(),entry.getValue())).toList();</span>
+<span class="pc" id="L63">        var repositoryList=repositoryMappings.entrySet().stream().map(entry-&gt;new RestorePlan.RepositoryMapping(entry.getKey(),entry.getValue())).toList();</span>
+<span class="fc" id="L64">        Instant created=clock.instant();checkpoint.check();</span>
+<span class="fc" id="L65">        return new RestorePlan(UUID.randomUUID(),actor,created.toString(),created.plus(Duration.ofMinutes(15)).toString(),archive.archiveSha256(),manifest.sourceInstallationId(),</span>
+<span class="fc" id="L66">                applicationVersion,manifest.request().profile(),manifest.request().gitRepresentation(),manifest.request().secrets(),mode,generationId,</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                family.map(SourceDatabaseMetadata::family).orElse(declaration==null?null:declaration.family()),family.isPresent(),declaration,targetIdentity,schema.schemaSha256(),components,</span>
+<span class="fc" id="L68">                new ArrayList&lt;&gt;(manifest.requiredFeatures()),principalList,repositoryList,registry.revision(),diagnostics);</span>
+    }
+    public RestorePlan plan(VerifiedBackup archive,DataSource active,DataSource target,UUID generationId,
+            Map&lt;BackupRepositoryKey,RestoreRepositoryAllocation&gt; repositories,Map&lt;PrincipalId,RestorePrincipalAllocation&gt; principals,
+            RestoreMode mode,PrincipalId actor,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L73">        return plan(archive,active,target,generationId,repositories,principals,mode,actor,null,checkpoint);</span>
+    }
+<span class="fc" id="L75">    void requireAuthority(PrincipalId actor){authority.require(actor,BackupCapability.RESTORE_INSTALLATION,new BackupScope.Installation());}</span>
+<span class="nc" id="L76">    void requireSupported(RestorePlan plan)throws IOException{registry.requireSupported(plan);}</span>
+<span class="fc" id="L77">    private static RestoreDiagnostic blocker(String code,String owner,String resource){return new RestoreDiagnostic(code,RestoreDiagnostic.Severity.BLOCKER,owner,resource);}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

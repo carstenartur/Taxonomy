@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductDemoController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.demo</a> &gt; <span class="el_source">ProductDemoController.java</span></div><h1>ProductDemoController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.demo;
+
+import com.taxonomy.composition.demo.ProductDemoService.DemoComparison;
+import com.taxonomy.composition.demo.ProductDemoService.DemoRunView;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Map;
+
+/** Isolated, labelled product demo without external AI calls (issue #1184). */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;portfolio&quot;, &quot;analysis&quot;})
+@RestController
+@RequestMapping(&quot;/api/product-demo&quot;)
+@Tag(name = &quot;Product Demo&quot;)
+public class ProductDemoController {
+
+    /** Optional scenario selection; the default scenario is used when absent. */
+<span class="fc" id="L29">    public record StartDemoRequest(String scenarioId) { }</span>
+
+<span class="nc" id="L31">    public record DemoScenarioInfo(String command, String defaultScenario, List&lt;Map&lt;String, Object&gt;&gt; scenarios) { }</span>
+
+    private final ProductDemoService demos;
+    private final WorkspaceResolver workspaceResolver;
+
+<span class="fc" id="L36">    public ProductDemoController(ProductDemoService demos, WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L37">        this.demos = demos;</span>
+<span class="fc" id="L38">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L39">    }</span>
+
+    @GetMapping(&quot;/scenarios&quot;)
+    @Operation(summary = &quot;List product-demo scenarios&quot;,
+            description = &quot;Lists the versioned, classpath-owned demo scenarios and the exact start command. Reading the list never creates projects and never calls an AI provider.&quot;)
+    public DemoScenarioInfo scenarios() {
+<span class="nc" id="L45">        var catalog = demos.catalog();</span>
+<span class="nc" id="L46">        return new DemoScenarioInfo(catalog.command(), catalog.defaultScenario().id(), catalog.scenarios().stream()</span>
+<span class="nc" id="L47">                .map(s -&gt; Map.&lt;String, Object&gt;of(&quot;id&quot;, s.id(), &quot;version&quot;, s.version(), &quot;title&quot;, s.title(),</span>
+<span class="nc" id="L48">                        &quot;banner&quot;, s.banner(), &quot;requirementText&quot;, s.r0Text()))</span>
+<span class="nc" id="L49">                .toList());</span>
+    }
+
+    @PostMapping(&quot;/runs&quot;)
+    @Operation(summary = &quot;Start an isolated product demo&quot;,
+            description = &quot;Validates the scenario against the live catalogue and creates a new labelled demo project with the scenario requirement R0. Existing drafts, projects and requirements are never modified. All AI replies of the run come only from the strict scenario replay; there is no live fallback.&quot;)
+    public ResponseEntity&lt;DemoRunView&gt; start(@RequestBody(required = false) StartDemoRequest request) {
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        var run = demos.start(request == null ? null : request.scenarioId(),</span>
+<span class="fc" id="L57">                workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());</span>
+<span class="fc" id="L58">        return ResponseEntity.created(ServletUriComponentsBuilder.fromCurrentRequestUri()</span>
+<span class="fc" id="L59">                .pathSegment(run.id()).build().toUri()).body(run);</span>
+    }
+
+    @GetMapping(&quot;/runs&quot;)
+    @Operation(summary = &quot;List product demos in the current workspace&quot;,
+            description = &quot;Lists the caller's demo runs in the current workspace, including the replay provider currently bound to each demo requirement version. With projectId, returns at most the one demo run of that project (empty for ordinary projects).&quot;)
+    public List&lt;DemoRunView&gt; list(@RequestParam(required = false) Long projectId) {
+<span class="fc" id="L66">        return demos.list(projectId, workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());</span>
+    }
+
+    @GetMapping(&quot;/runs/{runId}&quot;)
+    @Operation(summary = &quot;Read one product demo&quot;,
+            description = &quot;Returns the demo banner, stations, visible demo answers and review decisions, and the replay iteration bound to the current requirement version. The read never starts work.&quot;)
+    public DemoRunView get(@PathVariable String runId) {
+<span class="nc" id="L73">        return demos.get(runId, workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());</span>
+    }
+
+    @GetMapping(&quot;/runs/{runId}/comparison&quot;)
+    @Operation(summary = &quot;Evaluate a product demo against its independent reference&quot;,
+            description = &quot;Compares the latest successful A0 and A1 demo analyses with the separately versioned reference annotation. Analyses that have not run are reported as NOT_EXECUTED and never as negative findings.&quot;)
+    public DemoComparison comparison(@PathVariable String runId) {
+<span class="nc" id="L80">        return demos.compare(runId, workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());</span>
+    }
+
+    @PostMapping(&quot;/runs/{runId}/close&quot;)
+    @Operation(summary = &quot;Close a product demo&quot;,
+            description = &quot;Marks the demo run as closed so no further replay analyses are admitted. The demo project and its evidence remain available and unchanged.&quot;)
+    public DemoRunView close(@PathVariable String runId) {
+<span class="nc" id="L87">        return demos.close(runId, workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

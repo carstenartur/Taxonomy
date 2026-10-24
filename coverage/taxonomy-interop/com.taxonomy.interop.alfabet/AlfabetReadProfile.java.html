@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AlfabetReadProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.alfabet</a> &gt; <span class="el_source">AlfabetReadProfile.java</span></div><h1>AlfabetReadProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.alfabet;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.ExternalScope;
+
+import java.net.URI;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** Administrator-supplied, versioned read contract. Contains secret references, never secret values. */
+public record AlfabetReadProfile(ExternalScope scope, String mappingVersion, URI baseUri,
+                                 String currentProfile, Authentication authentication,
+                                 List&lt;Report&gt; reports, Limits limits,
+                                 boolean allowPrivateNetworks, boolean allowInsecureHttp) {
+<span class="fc" id="L16">    public enum Grant { BEARER, CLIENT_CREDENTIALS, PASSWORD }</span>
+<span class="fc" id="L17">    public enum Kind { OBJECT, RELATION }</span>
+
+    public record Authentication(Grant grant, String principalEnvironmentVariable, String secretEnvironmentVariable) {
+<span class="fc" id="L20">        public Authentication {</span>
+<span class="fc" id="L21">            Objects.requireNonNull(grant, &quot;grant&quot;);</span>
+<span class="fc" id="L22">            environmentReference(secretEnvironmentVariable);</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">            if (grant != Grant.BEARER) environmentReference(principalEnvironmentVariable);</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">            else if (principalEnvironmentVariable != null) throw new IllegalArgumentException(&quot;Bearer auth has no principal reference&quot;);</span>
+<span class="fc" id="L25">        }</span>
+    }
+
+    /** fields maps local evidence labels to configured report column names. No catalogue IDs are inferred. */
+    public record Report(String name, String className, Kind kind, Map&lt;String, String&gt; fields) {
+<span class="fc" id="L30">        public Report {</span>
+<span class="fc" id="L31">            text(name, 200); text(className, 200); Objects.requireNonNull(kind, &quot;kind&quot;);</span>
+<span class="fc" id="L32">            fields = Map.copyOf(fields);</span>
+<span class="pc bpc" id="L33" title="2 of 4 branches missed.">            if (fields.isEmpty() || fields.size() &gt; 32) throw new IllegalArgumentException(&quot;Configure 1 to 32 evidence fields&quot;);</span>
+<span class="fc" id="L34">            fields.forEach((key, column) -&gt; { text(key, 64); text(column, 256); });</span>
+<span class="pc bpc" id="L35" title="2 of 6 branches missed.">            if (kind == Kind.RELATION &amp;&amp; (!fields.containsKey(&quot;sourceRef&quot;) || !fields.containsKey(&quot;targetRef&quot;)))</span>
+<span class="nc" id="L36">                throw new IllegalArgumentException(&quot;Relation reports require sourceRef and targetRef column mappings&quot;);</span>
+<span class="fc" id="L37">        }</span>
+    }
+
+    /** Budgets apply across all reports; neither pagination nor token acquisition resets the deadline. */
+    public record Limits(int pageSize, int maxPages, int maxRows, int maxResponseBytes, int maxTotalBytes, int timeoutSeconds) {
+<span class="fc" id="L42">        public Limits {</span>
+<span class="fc" id="L43">            bound(pageSize, 1, 1000); bound(maxPages, 1, 200); bound(maxRows, 1, 10000);</span>
+<span class="fc" id="L44">            bound(maxResponseBytes, 1024, 2 * 1024 * 1024);</span>
+<span class="fc" id="L45">            bound(maxTotalBytes, maxResponseBytes, 16 * 1024 * 1024); bound(timeoutSeconds, 1, 120);</span>
+<span class="fc" id="L46">        }</span>
+<span class="fc" id="L47">        public static Limits defaults() { return new Limits(250, 40, 5000, 2 * 1024 * 1024, 16 * 1024 * 1024, 60); }</span>
+    }
+
+<span class="fc" id="L50">    public AlfabetReadProfile {</span>
+<span class="fc" id="L51">        Objects.requireNonNull(scope, &quot;scope&quot;); text(mappingVersion, 64); text(currentProfile, 200);</span>
+<span class="fc" id="L52">        Objects.requireNonNull(authentication, &quot;authentication&quot;); Objects.requireNonNull(limits, &quot;limits&quot;);</span>
+<span class="fc" id="L53">        reports = List.copyOf(reports);</span>
+<span class="pc bpc" id="L54" title="2 of 4 branches missed.">        if (reports.isEmpty() || reports.size() &gt; 16) throw new IllegalArgumentException(&quot;Configure 1 to 16 read reports&quot;);</span>
+<span class="fc" id="L55">        var names = new HashSet&lt;String&gt;();</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">        for (Report report : reports) if (!names.add(report.name())) throw new IllegalArgumentException(&quot;Duplicate report name&quot;);</span>
+<span class="fc" id="L57">        validateBase(baseUri, allowInsecureHttp);</span>
+<span class="fc" id="L58">    }</span>
+
+    public AlfabetReadProfile withAuthentication(Authentication value) {
+<span class="fc" id="L61">        return new AlfabetReadProfile(scope, mappingVersion, baseUri, currentProfile, value, reports, limits, allowPrivateNetworks, allowInsecureHttp);</span>
+    }
+    public AlfabetReadProfile withReports(List&lt;Report&gt; value) {
+<span class="fc" id="L64">        return new AlfabetReadProfile(scope, mappingVersion, baseUri, currentProfile, authentication, value, limits, allowPrivateNetworks, allowInsecureHttp);</span>
+    }
+
+    static void validateBase(URI base, boolean insecure) {
+<span class="pc bpc" id="L68" title="2 of 8 branches missed.">        if (base == null || base.getHost() == null || base.getUserInfo() != null || base.getRawQuery() != null</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">                || base.getRawFragment() != null || base.toString().length() &gt; 2048</span>
+<span class="pc bpc" id="L70" title="2 of 6 branches missed.">                || !(&quot;https&quot;.equals(base.getScheme()) || insecure &amp;&amp; &quot;http&quot;.equals(base.getScheme()))</span>
+<span class="pc bpc" id="L71" title="3 of 6 branches missed.">                || base.getPort() &lt; -1 || base.getPort() == 0 || base.getPort() &gt; 65535)</span>
+<span class="fc" id="L72">            throw new IllegalArgumentException(&quot;Configure an explicit HTTPS API-server application base&quot;);</span>
+<span class="fc" id="L73">        String path = base.getRawPath();</span>
+<span class="pc bpc" id="L74" title="4 of 10 branches missed.">        if (path == null || !path.endsWith(&quot;/&quot;) || path.contains(&quot;%&quot;) || path.contains(&quot;\\&quot;) || path.contains(&quot;//&quot;)</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                || path.chars().anyMatch(Character::isISOControl))</span>
+<span class="fc" id="L76">            throw new IllegalArgumentException(&quot;Configure an unescaped application path ending in slash&quot;);</span>
+<span class="pc bpc" id="L77" title="1 of 6 branches missed.">        for (String part : path.split(&quot;/&quot;)) if (part.equals(&quot;.&quot;) || part.equals(&quot;..&quot;))</span>
+<span class="fc" id="L78">            throw new IllegalArgumentException(&quot;Dot path segments are not permitted&quot;);</span>
+<span class="fc" id="L79">    }</span>
+    private static void environmentReference(String value) {
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">        if (value == null || !value.matches(&quot;[A-Z][A-Z0-9_]{0,127}&quot;))</span>
+<span class="nc" id="L82">            throw new IllegalArgumentException(&quot;Use an environment-variable reference for credentials&quot;);</span>
+<span class="fc" id="L83">    }</span>
+    private static void bound(int value, int low, int high) {
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">        if (value &lt; low || value &gt; high) throw new IllegalArgumentException(&quot;Read budget outside supported bounds&quot;);</span>
+<span class="fc" id="L86">    }</span>
+    private static void text(String value, int max) {
+<span class="pc bpc" id="L88" title="4 of 8 branches missed.">        if (value == null || value.isBlank() || value.length() &gt; max || value.chars().anyMatch(Character::isISOControl))</span>
+<span class="nc" id="L89">            throw new IllegalArgumentException(&quot;Missing or invalid profile field&quot;);</span>
+<span class="fc" id="L90">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PlanningExchangeBridge.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.planning</a> &gt; <span class="el_source">PlanningExchangeBridge.java</span></div><h1>PlanningExchangeBridge.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.planning;
+
+import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.dsl.command.ArchitectureCommand.ImportRequirementPlanning;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.model.ArchitectureRequirement;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.planning.PlanningEntry;
+import com.taxonomy.dsl.planning.PlanningInformation;
+import com.taxonomy.exchange.PlanningEnvelope;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.interop.ExchangeItems;
+import com.taxonomy.interop.IntegrationPortfolioPort.RequirementApplyPlan;
+import com.taxonomy.interop.IntegrationProblem;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
+/** Maps existing canonical planning data to transport values; never stores a second planning model. */
+public final class PlanningExchangeBridge {
+    private final CanonicalArchitectureModel model;
+    private final PlanningInformation profiles;
+<span class="fc" id="L24">    public PlanningExchangeBridge(String dsl) { this(dsl, new PlanningInformation()); }</span>
+<span class="fc" id="L25">    public PlanningExchangeBridge(String dsl, PlanningInformation profiles) {</span>
+<span class="fc" id="L26">        this.model = new ArchitectureDslCommands().model(dsl); this.profiles = profiles;</span>
+<span class="fc" id="L27">    }</span>
+    public Artifact overlay(Artifact artifact, String projectKey, String requirementKey) {
+<span class="pc bpc" id="L29" title="3 of 8 branches missed.">        if (projectKey == null || projectKey.isBlank() || requirementKey == null || requirementKey.isBlank())</span>
+<span class="fc" id="L30">            throw problem(&quot;An explicit project and requirement identity is required for planning exchange&quot;);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">        var matches = model.getRequirements().stream().filter(r -&gt; java.util.Objects.equals(projectKey, r.getExtensions().get(&quot;x-project-key&quot;))</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">                &amp;&amp; requirementKey.equals(r.getExtensions().get(&quot;x-requirement-key&quot;))).toList();</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (matches.size() &gt; 1) throw problem(&quot;Ambiguous canonical requirement for planning information&quot;);</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        if (matches.isEmpty()) {</span>
+<span class="nc bnc" id="L35" title="All 2 branches missed.">            if (artifact.extensions().containsKey(PlanningEnvelope.EXTENSION)) throw problem(&quot;Canonical requirement for retained planning information is missing&quot;);</span>
+<span class="nc" id="L36">            return artifact;</span>
+        }
+<span class="fc" id="L38">        return overlayCanonical(artifact, matches.getFirst());</span>
+    }
+    public Artifact overlayCanonical(Artifact artifact, ArchitectureRequirement requirement) {
+<span class="fc" id="L41">        List&lt;PlanningEnvelope.Entry&gt; entries = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (var view : profiles.read(model, requirement.getId())) {</span>
+<span class="pc bpc" id="L43" title="3 of 4 branches missed.">            if (!view.supported() &amp;&amp; !&quot;UNSUPPORTED_PROFILE_VERSION&quot;.equals(view.problem()))</span>
+<span class="nc" id="L44">                throw problem(&quot;Invalid canonical planning data must be resolved before exporting this requirement&quot;);</span>
+<span class="fc" id="L45">            var entry = view.entry();</span>
+<span class="fc" id="L46">            entries.add(new PlanningEnvelope.Entry(entry.id(), entry.profile(), entry.version(), entry.origin(), entry.values()));</span>
+<span class="fc" id="L47">        }</span>
+<span class="pc bpc" id="L48" title="3 of 4 branches missed.">        if (entries.isEmpty() &amp;&amp; !artifact.extensions().containsKey(PlanningEnvelope.EXTENSION)) return artifact;</span>
+<span class="fc" id="L49">        return withPayload(artifact, PlanningEnvelope.write(entries));</span>
+    }
+    /** Validate known profiles before a preview; unknown versions remain un-interpreted transport data. */
+    public static void validateInbound(ExchangeDocument document) {
+<span class="fc" id="L53">        PlanningInformation profiles = new PlanningInformation();</span>
+<span class="pc bpc" id="L54" title="1 of 6 branches missed.">        for (Artifact artifact : document.artifacts()) if (artifact.kind() == ArtifactKind.REQUIREMENT &amp;&amp; artifact.extensions().containsKey(PlanningEnvelope.EXTENSION))</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">            for (var entry : PlanningEnvelope.read(artifact.extensions().get(PlanningEnvelope.EXTENSION)))</span>
+<span class="nc" id="L56">                profiles.validatePortable(domain(entry));</span>
+<span class="fc" id="L57">    }</span>
+    /** Select actual, explicitly accepted incoming entries before retaining LOCAL omissions. */
+    public static Map&lt;String, Artifact&gt; acceptedIncoming(List&lt;IntegrationChange&gt; changes,
+            Map&lt;String, Decision&gt; decisions, Map&lt;String, Artifact&gt; selected) {
+<span class="fc" id="L61">        Map&lt;String, Artifact&gt; incoming = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (IntegrationChange change : changes) {</span>
+<span class="fc" id="L63">            Decision decision = decisions.get(change.id());</span>
+<span class="fc" id="L64">            Artifact observed = change.after();</span>
+<span class="pc bpc" id="L65" title="1 of 6 branches missed.">            if ((decision != Decision.ACCEPT &amp;&amp; decision != Decision.TAKE_EXTERNAL)</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                    || observed == null || observed.kind() != ArtifactKind.REQUIREMENT) continue;</span>
+<span class="fc" id="L67">            String payload = observed.extensions().get(PlanningEnvelope.EXTENSION);</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">            if (payload == null || PlanningEnvelope.read(payload).isEmpty()) continue;</span>
+<span class="fc" id="L69">            Artifact reviewed = selected.get(change.externalId());</span>
+<span class="pc bpc" id="L70" title="2 of 6 branches missed.">            if (reviewed == null || reviewed.kind() != ArtifactKind.REQUIREMENT || !observed.id().equals(reviewed.id()))</span>
+<span class="fc" id="L71">                throw problem(&quot;Accepted planning entries require their exact reviewed requirement&quot;);</span>
+            // Keep reviewed field mappings, but never promote retained local entries to received data.
+<span class="fc" id="L73">            incoming.put(change.externalId(), withPayload(reviewed, payload));</span>
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">        return Map.copyOf(incoming);</span>
+    }
+    public static boolean hasEntries(Map&lt;String, Artifact&gt; selected) {
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        return selected.values().stream().filter(artifact -&gt; artifact.kind() == ArtifactKind.REQUIREMENT)</span>
+<span class="fc" id="L79">                .anyMatch(artifact -&gt; artifact.extensions().containsKey(PlanningEnvelope.EXTENSION));</span>
+    }
+    public static List&lt;ArchitectureCommand&gt; commands(Map&lt;String, Artifact&gt; selected, Map&lt;String, RequirementApplyPlan&gt; plans) {
+<span class="fc" id="L82">        List&lt;ArchitectureCommand&gt; commands = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L83" title="2 of 6 branches missed.">        for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.REQUIREMENT &amp;&amp; artifact.extensions().containsKey(PlanningEnvelope.EXTENSION)) {</span>
+<span class="fc" id="L84">            RequirementApplyPlan plan = plans.get(ExchangeItems.key(artifact));</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">            if (plan == null) throw problem(&quot;An exact canonical requirement identity is required for planning import&quot;);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            for (var entry : PlanningEnvelope.read(artifact.extensions().get(PlanningEnvelope.EXTENSION)))</span>
+<span class="fc" id="L87">                commands.add(new ImportRequirementPlanning(plan.canonicalIdentity(), domain(entry)));</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (commands.size() &gt; 2000) throw problem(&quot;Planning imports are bounded to 2000 entry commands; reduce the reviewed batch&quot;);</span>
+        }
+<span class="fc" id="L90">        return List.copyOf(commands);</span>
+    }
+    /** Only the selected LOCAL result gains retained entries. The observed external baseline stays untouched. */
+    public static Artifact retainOmissions(Artifact selected, Artifact local) {
+<span class="pc bpc" id="L94" title="1 of 8 branches missed.">        if (selected == null || selected.kind() != ArtifactKind.REQUIREMENT || local == null || !local.extensions().containsKey(PlanningEnvelope.EXTENSION)) return selected;</span>
+<span class="fc" id="L95">        Map&lt;String, PlanningEnvelope.Entry&gt; entries = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (var entry : PlanningEnvelope.read(local.extensions().get(PlanningEnvelope.EXTENSION))) entries.put(entry.id(), entry);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (selected.extensions().containsKey(PlanningEnvelope.EXTENSION))</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (var entry : PlanningEnvelope.read(selected.extensions().get(PlanningEnvelope.EXTENSION))) entries.put(entry.id(), entry);</span>
+<span class="fc" id="L99">        return withPayload(selected, PlanningEnvelope.write(new ArrayList&lt;&gt;(entries.values())));</span>
+    }
+    /** Add a loss notice without rewriting observations or claiming acknowledgement of locally retained fields. */
+    public static ExchangeDocument describeInbound(ExchangeDocument document, Map&lt;String, Artifact&gt; current) {
+<span class="fc" id="L103">        List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;(document.losses());</span>
+<span class="fc bfc" id="L104" title="All 4 branches covered.">        for (Artifact artifact : document.artifacts()) if (artifact.kind() == ArtifactKind.REQUIREMENT) {</span>
+<span class="fc" id="L105">            Artifact local = current.get(ExchangeItems.key(artifact));</span>
+<span class="fc" id="L106">            Artifact retained = retainOmissions(artifact, local);</span>
+<span class="fc" id="L107">            String incoming = artifact.extensions().get(PlanningEnvelope.EXTENSION);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (!samePayload(incoming, retained.extensions().get(PlanningEnvelope.EXTENSION)))</span>
+<span class="fc" id="L109">                losses.add(new MappingLoss(artifact.id(), PlanningEnvelope.ATTRIBUTE, &quot;PLANNING_OMISSION_RETAINED&quot;, LossDisposition.PRESERVED_EXTENSION,</span>
+                        &quot;Missing external planning entries are retained locally, not deleted or acknowledged as present in the external system.&quot;));
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (incoming != null) {</span>
+<span class="fc" id="L112">                PlanningInformation registry = new PlanningInformation();</span>
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">                for (var entry : PlanningEnvelope.read(incoming)) if (!registry.supports(entry.profile(), entry.version()))</span>
+<span class="fc" id="L114">                    losses.add(new MappingLoss(artifact.id(), entry.id(), &quot;UNSUPPORTED_PLANNING_PROFILE_VERSION&quot;, LossDisposition.PRESERVED_EXTENSION,</span>
+                            &quot;The profile version is retained read-only and has no effect on planning or compliance evaluation.&quot;));
+            }
+        }
+<span class="fc" id="L118">        return new ExchangeDocument(document.profile(), document.profileVersion(), document.externalVersion(), document.completeScope(), document.source(),</span>
+<span class="fc" id="L119">                document.artifacts(), document.relations(), document.placements(), document.metadata(), List.copyOf(losses));</span>
+    }
+    private static boolean samePayload(String a, String b) {
+<span class="pc bpc" id="L122" title="1 of 6 branches missed.">        if (a == null || b == null) return a == b;</span>
+<span class="fc" id="L123">        return java.util.Set.copyOf(PlanningEnvelope.read(a)).equals(java.util.Set.copyOf(PlanningEnvelope.read(b)));</span>
+    }
+<span class="fc" id="L125">    private static PlanningEntry domain(PlanningEnvelope.Entry entry) { return new PlanningEntry(entry.id(), entry.profile(), entry.version(), entry.origin(), entry.values()); }</span>
+    private static Artifact withPayload(Artifact artifact, String payload) {
+<span class="fc" id="L127">        Map&lt;String, String&gt; extensions = new TreeMap&lt;&gt;(artifact.extensions()); extensions.put(PlanningEnvelope.EXTENSION, payload);</span>
+<span class="fc" id="L128">        return new Artifact(artifact.id(), artifact.kind(), artifact.type(), artifact.title(), artifact.text(), artifact.attributes(), extensions);</span>
+    }
+<span class="fc" id="L130">    private static IntegrationProblem problem(String message) { return new IntegrationProblem(&quot;PLANNING_MAPPING_REQUIRED&quot;, 422, message); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

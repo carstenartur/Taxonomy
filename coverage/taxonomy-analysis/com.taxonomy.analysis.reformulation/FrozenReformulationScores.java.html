@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenReformulationScores.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">FrozenReformulationScores.java</span></div><h1>FrozenReformulationScores.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.dto.AnalysisPercentages;
+import com.taxonomy.reformulation.ReformulationBaseline;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/** Reads frozen assessment evidence without rounding small contributions out of the walk-up. */
+final class FrozenReformulationScores {
+    private FrozenReformulationScores() { }
+
+    static Map&lt;String, BigDecimal&gt; read(ReformulationBaseline baseline, ObjectMapper json) {
+<span class="fc" id="L20">        var payload = tree(json, baseline.snapshotPayload());</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (!payload.isObject()) throw invalid(&quot;Expected a frozen analysis object&quot;);</span>
+<span class="fc" id="L22">        var raw = payload.get(&quot;rawScores&quot;);</span>
+        // Legacy/manual snapshots may serialize the optional rawScores field as null.
+        // An explicitly supplied empty raw-score map remains authoritative.
+<span class="fc bfc" id="L25" title="All 4 branches covered.">        if (raw == null || raw.isNull()) raw = payload.get(&quot;scores&quot;);</span>
+<span class="fc" id="L26">        var scores = new LinkedHashMap&lt;String, BigDecimal&gt;();</span>
+<span class="pc bpc" id="L27" title="1 of 4 branches missed.">        if (raw != null &amp;&amp; !raw.isNull()) {</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            if (!raw.isObject()) throw invalid(&quot;Expected a frozen score map&quot;);</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">            for (var entry : raw.properties()) {</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">                if (entry.getKey().isBlank()) throw invalid(&quot;Missing frozen score node code&quot;);</span>
+                // Null is unknown, not an assessment of zero and not a positive contribution.
+<span class="fc bfc" id="L32" title="All 2 branches covered.">                if (!entry.getValue().isNull()) scores.put(entry.getKey(), percentage(entry.getValue()));</span>
+<span class="fc" id="L33">            }</span>
+        }
+<span class="fc" id="L35">        var mappings = tree(json, baseline.frozenContext().getOrDefault(&quot;elementMappings&quot;, &quot;[]&quot;));</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (!mappings.isArray()) throw invalid(&quot;Expected frozen element mappings&quot;);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (var mapping : mappings) {</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">            if (!mapping.isObject()) throw invalid(&quot;Expected a frozen element mapping object&quot;);</span>
+<span class="fc" id="L39">            var direct = mapping.get(&quot;directScore&quot;);</span>
+<span class="pc bpc" id="L40" title="1 of 4 branches missed.">            if (direct == null || direct.isNull()) continue;</span>
+<span class="fc" id="L41">            var code = mapping.get(&quot;nodeCode&quot;);</span>
+<span class="pc bpc" id="L42" title="2 of 6 branches missed.">            if (code == null || !code.isString() || code.asText().isBlank())</span>
+<span class="fc" id="L43">                throw invalid(&quot;Missing frozen mapping node code&quot;);</span>
+<span class="fc" id="L44">            scores.put(code.asText(), percentage(direct));</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">        return scores;</span>
+    }
+
+    private static BigDecimal percentage(JsonNode value) {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (!value.isNumber()) throw invalid(&quot;Frozen assessment must be numeric&quot;);</span>
+<span class="fc" id="L51">        return canonical(value.decimalValue());</span>
+    }
+
+    static BigDecimal canonical(BigDecimal value) {
+        // Reuse the shared bounds/precision policy. Integral prompt metadata keeps
+        // its historical spelling (40, not 40.0 or 4E+1); decimals remain decimals.
+<span class="fc" id="L57">        return new BigDecimal(AnalysisPercentages.canonical(AnalysisPercentages.require(value)));</span>
+    }
+
+    private static JsonNode tree(ObjectMapper json, String payload) {
+        try {
+<span class="fc" id="L62">            var value = json.reader().with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L63">                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)</span>
+<span class="fc" id="L64">                    .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(payload);</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            if (value == null) throw invalid(&quot;Missing frozen analysis evidence&quot;);</span>
+<span class="fc" id="L66">            return value;</span>
+<span class="fc" id="L67">        } catch (JacksonException invalidJson) {</span>
+<span class="fc" id="L68">            throw new IllegalArgumentException(&quot;Invalid frozen analysis evidence&quot;, invalidJson);</span>
+        }
+    }
+
+    private static IllegalArgumentException invalid(String message) {
+<span class="fc" id="L73">        return new IllegalArgumentException(message);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

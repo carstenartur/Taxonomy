@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxRelationProfileV3.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxRelationProfileV3.java</span></div><h1>SparxRelationProfileV3.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.extension.api.integration.IntegrationContracts.Relation;
+
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Explicit Taxonomy semantics carried by XMI profile 3. The Association entries are transport
+ * choices, not assertions that the Taxonomy concepts are native UML Association semantics.
+ * In particular, Taxonomy REALIZES is Capability -&gt; Service (&quot;is made real by&quot;),
+ * the inverse of UML Realization's implementation/client -&gt; specification/supplier meaning.
+ * Versions 1 and 2 deliberately continue using the six mappings in SparxMappingProfile.
+ */
+public final class SparxRelationProfileV3 {
+    public static final String VERSION = &quot;3&quot;;
+    public static final String TYPE_TAG = &quot;tag:taxonomy.relationType&quot;;
+    public static final String DIRECTION_TAG = &quot;tag:taxonomy.relationDirection&quot;;
+<span class="fc" id="L21">    public static final Map&lt;String, String&gt; TRANSPORTS = Map.ofEntries(</span>
+<span class="fc" id="L22">            Map.entry(&quot;DEPENDS_ON&quot;, &quot;Dependency&quot;), Map.entry(&quot;REALIZES&quot;, &quot;Association&quot;),</span>
+<span class="fc" id="L23">            Map.entry(&quot;COMMUNICATES_WITH&quot;, &quot;InformationFlow&quot;), Map.entry(&quot;RELATED_TO&quot;, &quot;Association&quot;),</span>
+<span class="fc" id="L24">            Map.entry(&quot;CONSUMES&quot;, &quot;Usage&quot;), Map.entry(&quot;CONTAINS&quot;, &quot;Composition&quot;),</span>
+<span class="fc" id="L25">            Map.entry(&quot;SUPPORTS&quot;, &quot;Association&quot;), Map.entry(&quot;USES&quot;, &quot;Association&quot;),</span>
+<span class="fc" id="L26">            Map.entry(&quot;FULFILLS&quot;, &quot;Association&quot;), Map.entry(&quot;ASSIGNED_TO&quot;, &quot;Association&quot;),</span>
+<span class="fc" id="L27">            Map.entry(&quot;PRODUCES&quot;, &quot;Association&quot;), Map.entry(&quot;REQUIRES&quot;, &quot;Association&quot;));</span>
+<span class="fc" id="L28">    public static final Set&lt;String&gt; ASSOCIATION_TRANSPORTS = Set.of(</span>
+            &quot;REALIZES&quot;, &quot;SUPPORTS&quot;, &quot;USES&quot;, &quot;FULFILLS&quot;, &quot;ASSIGNED_TO&quot;, &quot;PRODUCES&quot;, &quot;REQUIRES&quot;);
+
+    private SparxRelationProfileV3() { }
+
+    public static String transport(String canonical) {
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        String transport = canonical == null ? null : TRANSPORTS.get(canonical);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (transport == null) throw ExchangeXml.invalid(&quot;SPARX_RELATION_UNMAPPED&quot;, &quot;Profile 3 requires an exact supported Taxonomy relation type&quot;);</span>
+<span class="fc" id="L36">        return transport;</span>
+    }
+
+<span class="fc" id="L39">    public static String stereotype(String canonical) { transport(canonical); return &quot;Taxonomy::&quot; + canonical; }</span>
+
+    /** The same assertions apply before writing and after reading every redundant declaration. */
+    public static void validate(Relation relation) {
+<span class="fc" id="L43">        String canonical = relation.attributes().get(TYPE_TAG);</span>
+<span class="fc" id="L44">        String transport = transport(canonical);</span>
+<span class="fc" id="L45">        require(transport, relation.type(), &quot;The declared Taxonomy relation type contradicts its bounded XMI transport&quot;);</span>
+<span class="fc" id="L46">        require(canonical, relation.extensions().get(&quot;canonicalType&quot;), &quot;The canonical relation type contradicts its Taxonomy tag&quot;);</span>
+<span class="fc" id="L47">        require(SparxMappingProfile.PROFILE + &quot;@3&quot;, relation.attributes().get(&quot;tag:taxonomy.mappingProfile&quot;),</span>
+                &quot;Profile 3 relations need their explicit mapping-profile tag&quot;);
+<span class="fc" id="L49">        require(stereotype(canonical), relation.extensions().get(&quot;stereotype&quot;),</span>
+                &quot;Profile 3 relations need their exact visible Taxonomy stereotype&quot;);
+<span class="fc" id="L51">        String direction = relation.attributes().get(DIRECTION_TAG);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (!Set.of(&quot;Source -&gt; Destination&quot;, &quot;Destination -&gt; Source&quot;).contains(Objects.toString(direction, &quot;&quot;))</span>
+<span class="pc bpc" id="L53" title="1 of 4 branches missed.">                &amp;&amp; !(&quot;RELATED_TO&quot;.equals(canonical) &amp;&amp; &quot;Unspecified&quot;.equals(direction)))</span>
+<span class="fc" id="L54">            throw ExchangeXml.invalid(&quot;SPARX_DIRECTION&quot;, &quot;Profile 3 needs one explicit direction; only RELATED_TO permits Unspecified&quot;);</span>
+<span class="fc" id="L55">        require(direction, relation.extensions().get(&quot;direction&quot;), &quot;The connector direction contradicts its Taxonomy tag&quot;);</span>
+<span class="fc" id="L56">        projectionTags(relation.attributes(), relation.extensions());</span>
+<span class="fc" id="L57">    }</span>
+
+    static void projectionTags(Map&lt;String, String&gt; attributes, Map&lt;String, String&gt; extensions) {
+<span class="fc" id="L60">        extensions.forEach((key, value) -&gt; {</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (key.startsWith(&quot;taxonomy:&quot;)) {</span>
+<span class="fc" id="L62">                String declared = attributes.get(&quot;tag:taxonomy.&quot; + key.substring(9));</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                if (declared != null) require(declared, value, &quot;A Taxonomy tag contradicts its preserved extension&quot;);</span>
+            }
+<span class="fc" id="L65">        });</span>
+<span class="fc" id="L66">    }</span>
+
+    static void require(String expected, String actual, String message) {
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">        if (expected == null || !expected.equals(actual)) throw ExchangeXml.invalid(&quot;SPARX_SEMANTIC_CONFLICT&quot;, message);</span>
+<span class="fc" id="L70">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,531 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitCommitSignatureService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.signing</a> &gt; <span class="el_source">GitCommitSignatureService.java</span></div><h1>GitCommitSignatureService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.signing;
+
+import org.bouncycastle.bcpg.ArmoredOutputStream;
+import org.bouncycastle.bcpg.HashAlgorithmTags;
+import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
+import org.bouncycastle.bcpg.SignatureSubpacketTags;
+import org.bouncycastle.bcpg.sig.KeyFlags;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.openpgp.*;
+import org.bouncycastle.openpgp.operator.jcajce.*;
+import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.GpgSignature;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.Provider;
+import java.time.Instant;
+import java.time.Clock;
+import java.util.*;
+
+/**
+ * Standard Git OpenPGP signing, with an explicit operator-controlled trust store.
+ * The service signs on behalf of an actor: it never represents a personal user key.
+ * Key loading is startup-only, bounded, and fails closed when configured incorrectly.
+ */
+public final class GitCommitSignatureService {
+<span class="fc" id="L33">    private static final Provider BC = new BouncyCastleProvider();</span>
+    private static final int MAX_COMMIT_BYTES = 16 * 1024 * 1024;
+    private static final int MAX_SIGNATURE_BYTES = 64 * 1024;
+    private static final int MAX_KEY_FILE_BYTES = 1024 * 1024;
+    private static final int MAX_TRUST_FILES = 100;
+    private static final String SERVICE_NOTATION = &quot;service@taxonomy.local&quot;;
+    private final Clock clock;
+    private final boolean enabled;
+    private final boolean requireSignatures;
+    private final PGPPrivateKey privateKey;
+    private final TrustedKey signingIdentity;
+<span class="fc" id="L44">    private final Set&lt;String&gt; revokedFingerprints = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L45">    private final Map&lt;Long, List&lt;TrustedKey&gt;&gt; trustedKeys = new HashMap&lt;&gt;();</span>
+
+<span class="fc" id="L47">    private record SignatureLifetime(Instant created, Instant expires) {</span>
+        boolean contains(Instant now) {
+<span class="pc bpc" id="L49" title="1 of 6 branches missed.">            return !created.isAfter(now) &amp;&amp; (expires == null || expires.isAfter(now));</span>
+        }
+    }
+<span class="fc" id="L52">    private record CertificateMetadata(SignatureLifetime lifetime, long validSeconds, boolean canSign,</span>
+                                       List&lt;SignatureLifetime&gt; backsignatures) { }
+<span class="fc" id="L54">    private record CertificatePolicy(boolean primaryKey, long legacyValidity, boolean supportsSigning,</span>
+                                     List&lt;CertificateMetadata&gt; metadata, boolean revoked) { }
+<span class="fc" id="L56">    private record EffectivePolicy(long validSeconds, boolean canSign, boolean valid) { }</span>
+<span class="fc" id="L57">    private record TrustedKey(PGPPublicKey key, PGPPublicKey primary, String signer,</span>
+                              CertificatePolicy keyPolicy, CertificatePolicy primaryPolicy) { }
+<span class="fc" id="L59">    private record ParsedCommit(byte[] payload, byte[] signature, SignatureStatus error) { }</span>
+
+    /** Construct an isolated verifier/signer. No process-global provider or GPG home changes. */
+    public GitCommitSignatureService(GitSigningProperties properties) throws IOException {
+<span class="fc" id="L63">        this(properties, Clock.systemUTC());</span>
+<span class="fc" id="L64">    }</span>
+
+<span class="fc" id="L66">    GitCommitSignatureService(GitSigningProperties properties, Clock clock) throws IOException {</span>
+<span class="fc" id="L67">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L68">        enabled = properties.isEnabled();</span>
+<span class="fc" id="L69">        requireSignatures = properties.isRequireSignatures();</span>
+<span class="fc" id="L70">        PGPPrivateKey loadedPrivate = null;</span>
+<span class="fc" id="L71">        TrustedKey loadedIdentity = null;</span>
+        try {
+<span class="fc" id="L73">            var certificates = new LinkedHashMap&lt;String, Map&lt;String, PGPPublicKey&gt;&gt;();</span>
+<span class="fc" id="L74">            PGPSecretKeyRingCollection secretRings = null;</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (enabled) {</span>
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">                if (properties.getSecretKeyFile() == null || properties.getSecretKeyFile().isBlank()) {</span>
+<span class="fc" id="L77">                    throw new IOException(&quot;Git commit signing is enabled but no secret key file is configured&quot;);</span>
+                }
+<span class="fc" id="L79">                secretRings = new PGPSecretKeyRingCollection(</span>
+<span class="fc" id="L80">                        PGPUtil.getDecoderStream(new ByteArrayInputStream(readKeyFile(Path.of(properties.getSecretKeyFile())))),</span>
+                        new JcaKeyFingerprintCalculator());
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                for (var rings = secretRings.getKeyRings(); rings.hasNext();) {</span>
+<span class="fc" id="L83">                    var ring = rings.next();</span>
+<span class="fc" id="L84">                    var publicKeys = new ArrayList&lt;PGPPublicKey&gt;();</span>
+<span class="fc" id="L85">                    ring.getPublicKeys().forEachRemaining(publicKeys::add);</span>
+<span class="fc" id="L86">                    addTrustedRing(certificates, new PGPPublicKeyRing(publicKeys));</span>
+<span class="fc" id="L87">                }</span>
+            }
+<span class="fc" id="L89">            var publicFiles = new ArrayList&lt;Path&gt;();</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">            if (properties.getTrustedPublicKeyFiles() != null) {</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                for (var file : properties.getTrustedPublicKeyFiles()) {</span>
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">                    if (file != null &amp;&amp; !file.isBlank()) publicFiles.add(Path.of(file));</span>
+<span class="fc" id="L93">                }</span>
+            }
+<span class="pc bpc" id="L95" title="2 of 4 branches missed.">            if (properties.getTrustedPublicKeyDirectory() != null &amp;&amp; !properties.getTrustedPublicKeyDirectory().isBlank()) {</span>
+<span class="nc" id="L96">                try (var files = Files.list(Path.of(properties.getTrustedPublicKeyDirectory()))) {</span>
+<span class="nc" id="L97">                    publicFiles.addAll(files.filter(Files::isRegularFile).sorted().limit(MAX_TRUST_FILES + 1L).toList());</span>
+                }
+            }
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (publicFiles.size() &gt; MAX_TRUST_FILES) throw new IOException(&quot;Too many Git trusted public key files&quot;);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            for (var file : publicFiles) {</span>
+<span class="fc" id="L102">                var rings = new PGPPublicKeyRingCollection(PGPUtil.getDecoderStream(</span>
+<span class="fc" id="L103">                        new ByteArrayInputStream(readKeyFile(file))), new JcaKeyFingerprintCalculator());</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                if (rings.size() == 0) throw new IOException(&quot;Git trust file contains no public keys&quot;);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                for (var iterator = rings.getKeyRings(); iterator.hasNext();) addTrustedRing(certificates, iterator.next());</span>
+<span class="fc" id="L106">            }</span>
+<span class="fc" id="L107">            loadTrustedCertificates(certificates);</span>
+            // Select private material only after public updates and the auto-trusted
+            // secret certificates have been reconciled into the same identity policy.
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (enabled) {</span>
+<span class="fc" id="L111">                var now = clock.instant();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                for (var rings = secretRings.getKeyRings(); rings.hasNext();) {</span>
+<span class="fc" id="L113">                    var ring = rings.next();</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                    for (var keys = ring.getSecretKeys(); keys.hasNext();) {</span>
+<span class="fc" id="L115">                        var candidate = keys.next();</span>
+<span class="pc bpc" id="L116" title="3 of 6 branches missed.">                        if (candidate.isPrivateKeyEmpty() || !candidate.isSigningKey() || loadedPrivate != null) continue;</span>
+<span class="fc" id="L117">                        var identity = trustedKeys.getOrDefault(candidate.getKeyID(), List.of()).stream()</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                                .filter(trusted -&gt; Arrays.equals(trusted.key().getFingerprint(), candidate.getPublicKey().getFingerprint())</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                                        &amp;&amp; Arrays.equals(trusted.primary().getFingerprint(), ring.getPublicKey().getFingerprint()))</span>
+<span class="fc" id="L120">                                .findFirst().orElse(null);</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                        if (identity == null) continue;</span>
+<span class="fc" id="L122">                        var policy = effectivePolicy(identity.keyPolicy(), now);</span>
+<span class="fc bfc" id="L123" title="All 4 branches covered.">                        if (!usable(identity, policy, now) || !policy.canSign()) continue;</span>
+<span class="fc" id="L124">                        char[] passphrase = Objects.toString(properties.getPassphrase(), &quot;&quot;).toCharArray();</span>
+                        try {
+<span class="fc" id="L126">                            loadedPrivate = candidate.extractPrivateKey(new JcePBESecretKeyDecryptorBuilder()</span>
+<span class="fc" id="L127">                                    .setProvider(BC).build(passphrase));</span>
+<span class="fc" id="L128">                            loadedIdentity = identity;</span>
+<span class="fc" id="L129">                        } finally { Arrays.fill(passphrase, '\0'); }</span>
+<span class="fc" id="L130">                    }</span>
+<span class="fc" id="L131">                }</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if (loadedPrivate == null) throw new IOException(&quot;Git commit signing requires a usable signing key&quot;);</span>
+            }
+<span class="fc" id="L134">        } catch (PGPException | IOException | RuntimeException e) {</span>
+            // Do not include parser/decryptor messages or causes: these may expose secret input.
+<span class="fc" id="L136">            throw new IOException(&quot;Cannot initialize Git commit signing or public key trust configuration&quot;);</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc" id="L138">        privateKey = loadedPrivate;</span>
+<span class="fc" id="L139">        signingIdentity = loadedIdentity;</span>
+<span class="fc" id="L140">    }</span>
+
+    /** Legacy repositories still inspect signatures and reject signed objects without a trusted key. */
+    public static GitCommitSignatureService disabled() {
+<span class="fc" id="L144">        try { return new GitCommitSignatureService(new GitSigningProperties()); }</span>
+<span class="nc" id="L145">        catch (IOException impossible) { throw new IllegalStateException(&quot;Cannot create unsigned verifier&quot;); }</span>
+    }
+
+<span class="fc" id="L148">    public boolean isSigningEnabled() { return enabled; }</span>
+
+    /** Sign the exact object bytes before insertion. An IOException must prevent the ref update. */
+    public void sign(CommitBuilder commit, String repositoryName, String branch) throws IOException {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (!enabled) return;</span>
+<span class="fc" id="L153">        var now = clock.instant();</span>
+<span class="fc" id="L154">        var policy = effectivePolicy(signingIdentity.keyPolicy(), now);</span>
+<span class="fc bfc" id="L155" title="All 4 branches covered.">        if (!usable(signingIdentity, policy, now) || !policy.canSign()) {</span>
+<span class="fc" id="L156">            throw new IOException(&quot;Git signing key or primary key is expired or revoked&quot;);</span>
+        }
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">        if (commit.getGpgSignature() != null) throw new IOException(&quot;Commit already has a signature&quot;);</span>
+        try {
+<span class="fc" id="L160">            var signingKey = signingIdentity.key();</span>
+<span class="fc" id="L161">            var generator = new PGPSignatureGenerator(new JcaPGPContentSignerBuilder(</span>
+<span class="fc" id="L162">                    signingKey.getAlgorithm(), HashAlgorithmTags.SHA256).setProvider(BC), signingKey);</span>
+<span class="fc" id="L163">            generator.init(PGPSignature.BINARY_DOCUMENT, privateKey);</span>
+<span class="fc" id="L164">            var packets = new PGPSignatureSubpacketGenerator();</span>
+<span class="fc" id="L165">            packets.setIssuerFingerprint(false, signingKey);</span>
+            // Preserve the durable commit timestamp on retries; algorithm-dependent signature
+            // randomness still means callers must not rely on identical signed object IDs.
+            // A rotated key cannot sign before it existed. This timestamp is not trusted
+            // wall-clock evidence; it is commit metadata covered by the signature.
+<span class="fc" id="L170">            var commitTime = commit.getCommitter().getWhenAsInstant();</span>
+<span class="fc" id="L171">            var keyTime = signingKey.getCreationTime().toInstant();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            packets.setSignatureCreationTime(false, Date.from(commitTime.isBefore(keyTime) ? keyTime : commitTime));</span>
+<span class="fc" id="L173">            packets.addNotationData(false, true, SERVICE_NOTATION, &quot;v1&quot;);</span>
+<span class="fc" id="L174">            packets.addNotationData(false, true, &quot;actor@taxonomy.local&quot;, actor());</span>
+<span class="fc" id="L175">            packets.addNotationData(false, true, &quot;repository@taxonomy.local&quot;, boundedMetadata(repositoryName));</span>
+<span class="fc" id="L176">            packets.addNotationData(false, true, &quot;branch@taxonomy.local&quot;, boundedMetadata(branch));</span>
+<span class="fc" id="L177">            generator.setHashedSubpackets(packets.generate());</span>
+<span class="fc" id="L178">            var payload = commit.build();</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            if (payload.length &gt; MAX_COMMIT_BYTES) throw new IOException(&quot;Git commit exceeds signing size limit&quot;);</span>
+<span class="fc" id="L180">            generator.update(payload);</span>
+<span class="fc" id="L181">            var output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L182">            try (var armor = new ArmoredOutputStream(output)) { generator.generate().encode(armor); }</span>
+<span class="fc" id="L183">            commit.setGpgSignature(new GpgSignature(output.toByteArray()));</span>
+<span class="nc" id="L184">        } catch (PGPException | RuntimeException e) {</span>
+<span class="nc" id="L185">            throw new IOException(&quot;Cannot sign Git commit&quot;);</span>
+<span class="fc" id="L186">        }</span>
+<span class="fc" id="L187">    }</span>
+
+    public CommitSignature verify(byte[] rawCommit) throws IOException {
+<span class="fc" id="L190">        var now = clock.instant();</span>
+<span class="fc" id="L191">        var parsed = parse(rawCommit);</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        if (parsed.error() != null) return status(parsed.error(), &quot;Malformed or unsupported Git commit signature&quot;);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (parsed.signature() == null) return CommitSignature.unsigned();</span>
+<span class="fc" id="L194">        var armorText = new String(parsed.signature(), StandardCharsets.US_ASCII);</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (!armorText.startsWith(&quot;-----BEGIN PGP SIGNATURE-----&quot;)) {</span>
+<span class="fc" id="L196">            return status(SignatureStatus.UNSUPPORTED, &quot;Only OpenPGP commit signatures are supported&quot;);</span>
+        }
+        try {
+<span class="fc" id="L199">            var factory = new PGPObjectFactory(PGPUtil.getDecoderStream(new ByteArrayInputStream(parsed.signature())),</span>
+                    new JcaKeyFingerprintCalculator());
+<span class="fc" id="L201">            var object = factory.nextObject();</span>
+<span class="pc bpc" id="L202" title="3 of 6 branches missed.">            if (!(object instanceof PGPSignatureList signatures) || signatures.size() != 1 || factory.nextObject() != null) {</span>
+<span class="nc" id="L203">                return status(SignatureStatus.INVALID, &quot;Expected one detached OpenPGP signature&quot;);</span>
+            }
+<span class="fc" id="L205">            var signature = signatures.get(0);</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">            if (signature.getSignatureType() != PGPSignature.BINARY_DOCUMENT</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">                    || !supportedHash(signature.getHashAlgorithm())) {</span>
+<span class="nc" id="L208">                return status(SignatureStatus.UNSUPPORTED, &quot;Unsupported OpenPGP signature type or digest&quot;);</span>
+            }
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            if (hasUnsupportedCriticalPackets(signature)) {</span>
+<span class="fc" id="L211">                return status(SignatureStatus.UNSUPPORTED, &quot;Unsupported critical OpenPGP signature extension&quot;);</span>
+            }
+<span class="fc" id="L213">            var packets = signature.getHashedSubPackets();</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">            long expiration = packets == null ? 0 : packets.getSignatureExpirationTime();</span>
+<span class="pc bpc" id="L215" title="1 of 4 branches missed.">            if (expiration &gt; 0 &amp;&amp; !signature.getCreationTime().toInstant().plusSeconds(expiration).isAfter(now)) {</span>
+<span class="fc" id="L216">                return status(SignatureStatus.INVALID, &quot;OpenPGP signature has expired&quot;);</span>
+            }
+<span class="fc" id="L218">            var candidates = trustedKeys.get(signature.getKeyID());</span>
+<span class="pc bpc" id="L219" title="1 of 4 branches missed.">            if (candidates == null || candidates.isEmpty()) return status(SignatureStatus.UNTRUSTED, &quot;Signing key is not trusted&quot;);</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            for (var trusted : candidates) {</span>
+<span class="fc" id="L221">                var policy = effectivePolicy(trusted.keyPolicy(), now);</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                if (!usable(trusted, policy, now)) continue;</span>
+<span class="fc" id="L223">                signature.init(new JcaPGPContentVerifierBuilderProvider().setProvider(BC), trusted.key());</span>
+<span class="fc" id="L224">                signature.update(parsed.payload());</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                if (signature.verify()) {</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                    if (!policy.canSign()) {</span>
+<span class="fc" id="L227">                        return status(SignatureStatus.UNSUPPORTED, &quot;OpenPGP key is not permitted to sign commits&quot;);</span>
+                    }
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                    boolean service = signingIdentity != null</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">                            &amp;&amp; Arrays.equals(signingIdentity.key().getFingerprint(), trusted.key().getFingerprint())</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                            &amp;&amp; signature.getHashedSubPackets() != null</span>
+<span class="fc" id="L232">                            &amp;&amp; Arrays.stream(signature.getHashedSubPackets().getNotationDataOccurrences(SERVICE_NOTATION))</span>
+<span class="pc bpc" id="L233" title="3 of 6 branches missed.">                            .anyMatch(notation -&gt; notation.isHumanReadable() &amp;&amp; &quot;v1&quot;.equals(notation.getNotationValue()));</span>
+<span class="fc" id="L234">                    return new CommitSignature(SignatureStatus.VERIFIED, trusted.signer(),</span>
+<span class="fc" id="L235">                            HexFormat.of().withUpperCase().formatHex(trusted.key().getFingerprint()), service,</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">                            service ? &quot;Verified service signature on behalf of the recorded actor&quot; : &quot;Verified trusted OpenPGP signature&quot;);</span>
+                }
+<span class="fc" id="L238">            }</span>
+<span class="fc" id="L239">            return status(SignatureStatus.INVALID, &quot;Signature verification failed or signing key is expired/revoked&quot;);</span>
+<span class="fc" id="L240">        } catch (PGPException | IOException | RuntimeException e) {</span>
+<span class="fc" id="L241">            return status(SignatureStatus.INVALID, &quot;Malformed or invalid OpenPGP signature&quot;);</span>
+        }
+    }
+
+    /** Import policy: only unsigned legacy history (when allowed) or verified trusted signatures. */
+    public void requireAcceptable(byte[] rawCommit) throws IOException {
+<span class="fc" id="L247">        var result = verify(rawCommit);</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (result.status() == SignatureStatus.VERIFIED</span>
+<span class="fc bfc" id="L249" title="All 4 branches covered.">                || (result.status() == SignatureStatus.UNSIGNED &amp;&amp; !requireSignatures)) return;</span>
+<span class="fc" id="L250">        throw new IOException(&quot;Incoming Git commit rejected by signature policy: &quot; + result.status());</span>
+    }
+
+    private static void addTrustedRing(Map&lt;String, Map&lt;String, PGPPublicKey&gt;&gt; certificates,
+                                       PGPPublicKeyRing ring) throws PGPException {
+<span class="fc" id="L255">        var certificate = certificates.computeIfAbsent(fingerprint(ring.getPublicKey()), ignored -&gt; new LinkedHashMap&lt;&gt;());</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        for (var keys = ring.getPublicKeys(); keys.hasNext();) {</span>
+<span class="fc" id="L257">            var key = keys.next();</span>
+<span class="fc" id="L258">            var identity = fingerprint(key);</span>
+<span class="fc" id="L259">            var previous = certificate.get(identity);</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            certificate.put(identity, previous == null ? key : PGPPublicKey.join(previous, key, false, false));</span>
+<span class="fc" id="L261">        }</span>
+<span class="fc" id="L262">    }</span>
+
+    private void loadTrustedCertificates(Map&lt;String, Map&lt;String, PGPPublicKey&gt;&gt; certificates) {
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        for (var entry : certificates.entrySet()) {</span>
+<span class="fc" id="L266">            var primary = entry.getValue().get(entry.getKey());</span>
+<span class="fc" id="L267">            var primaryPolicy = certificatePolicy(primary, primary);</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            if (primaryPolicy.revoked()) revokedFingerprints.add(fingerprint(primary));</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">            String signer = primary.getUserIDs().hasNext() ? primary.getUserIDs().next() : &quot;OpenPGP signing key&quot;;</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">            for (var key : entry.getValue().values()) {</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">                var policy = key == primary ? primaryPolicy : certificatePolicy(key, primary);</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">                if (policy.revoked()) revokedFingerprints.add(fingerprint(key));</span>
+<span class="fc" id="L273">                trustedKeys.computeIfAbsent(key.getKeyID(), ignored -&gt; new ArrayList&lt;&gt;())</span>
+<span class="fc" id="L274">                        .add(new TrustedKey(key, primary, boundedMetadata(signer), policy, primaryPolicy));</span>
+<span class="fc" id="L275">            }</span>
+<span class="fc" id="L276">        }</span>
+<span class="fc" id="L277">    }</span>
+
+    private static byte[] readKeyFile(Path file) throws IOException {
+<span class="fc" id="L280">        try (var input = Files.newInputStream(file)) {</span>
+<span class="fc" id="L281">            var bytes = input.readNBytes(MAX_KEY_FILE_BYTES + 1);</span>
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">            if (bytes.length &gt; MAX_KEY_FILE_BYTES) throw new IOException(&quot;Git key file exceeds size limit&quot;);</span>
+<span class="fc" id="L283">            return bytes;</span>
+        }
+    }
+
+    private boolean usable(TrustedKey identity, EffectivePolicy policy, Instant now) {
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        return usable(identity.key(), identity.keyPolicy(), policy, now)</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">                &amp;&amp; usable(identity.primary(), identity.primaryPolicy(), effectivePolicy(identity.primaryPolicy(), now), now);</span>
+    }
+
+    private boolean usable(PGPPublicKey key, CertificatePolicy certificate, EffectivePolicy policy, Instant now) {
+<span class="pc bpc" id="L293" title="1 of 6 branches missed.">        if (!policy.valid() || certificate.revoked() || revokedFingerprints.contains(fingerprint(key))) return false;</span>
+<span class="fc" id="L294">        var created = key.getCreationTime().toInstant();</span>
+<span class="pc bpc" id="L295" title="1 of 4 branches missed.">        return !created.isAfter(now) &amp;&amp; (policy.validSeconds() == 0</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">                || created.plusSeconds(policy.validSeconds()).isAfter(now));</span>
+    }
+
+    private static String fingerprint(PGPPublicKey key) {
+<span class="fc" id="L300">        return HexFormat.of().withUpperCase().formatHex(key.getFingerprint());</span>
+    }
+
+    private static boolean supportedKey(PGPPublicKey key) {
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">        return switch (key.getAlgorithm()) {</span>
+            case PublicKeyAlgorithmTags.RSA_GENERAL, PublicKeyAlgorithmTags.RSA_SIGN,
+                 PublicKeyAlgorithmTags.DSA, PublicKeyAlgorithmTags.ECDSA, PublicKeyAlgorithmTags.EDDSA_LEGACY,
+<span class="fc" id="L307">                 PublicKeyAlgorithmTags.Ed25519, PublicKeyAlgorithmTags.Ed448 -&gt; true;</span>
+<span class="nc" id="L308">            default -&gt; false;</span>
+        };
+    }
+
+    private static boolean hasUnsupportedCriticalPackets(PGPSignature signature) {
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        return hasUnsupportedCriticalPackets(signature.getHashedSubPackets())</span>
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">                || hasUnsupportedCriticalPackets(signature.getUnhashedSubPackets());</span>
+    }
+
+    private static boolean hasUnsupportedCriticalPackets(PGPSignatureSubpacketVector packets) {
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">        if (packets == null) return false;</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        for (int tag : packets.getCriticalTags()) {</span>
+<span class="pc bpc" id="L320" title="4 of 10 branches missed.">            if (tag != SignatureSubpacketTags.CREATION_TIME &amp;&amp; tag != SignatureSubpacketTags.EXPIRE_TIME</span>
+                    &amp;&amp; tag != SignatureSubpacketTags.ISSUER_KEY_ID &amp;&amp; tag != SignatureSubpacketTags.ISSUER_FINGERPRINT
+<span class="nc" id="L322">                    &amp;&amp; tag != SignatureSubpacketTags.NOTATION_DATA) return true;</span>
+        }
+<span class="fc" id="L324">        var understood = Set.of(SERVICE_NOTATION, &quot;actor@taxonomy.local&quot;, &quot;repository@taxonomy.local&quot;, &quot;branch@taxonomy.local&quot;);</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        for (var notation : packets.getNotationDataOccurrences()) {</span>
+<span class="pc bpc" id="L326" title="1 of 4 branches missed.">            if (notation.isCritical() &amp;&amp; !understood.contains(notation.getNotationName())) return true;</span>
+        }
+<span class="fc" id="L328">        return false;</span>
+    }
+
+    /** Metadata accessors alone do not authenticate self-certifications or subkey bindings. */
+    private static CertificatePolicy certificatePolicy(PGPPublicKey key, PGPPublicKey primary) {
+<span class="fc" id="L333">        boolean primaryKey = Arrays.equals(key.getFingerprint(), primary.getFingerprint());</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        int metadataType = primaryKey ? PGPSignature.DIRECT_KEY : PGPSignature.SUBKEY_BINDING;</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        int revocationType = primaryKey ? PGPSignature.KEY_REVOCATION : PGPSignature.SUBKEY_REVOCATION;</span>
+<span class="fc" id="L336">        boolean revoked = false;</span>
+<span class="fc" id="L337">        var metadata = new ArrayList&lt;CertificateMetadata&gt;();</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        for (var signatures = key.getKeySignatures(); signatures.hasNext();) {</span>
+<span class="fc" id="L339">            var signature = signatures.next();</span>
+<span class="fc" id="L340">            int type = signature.getSignatureType();</span>
+<span class="pc bpc" id="L341" title="1 of 4 branches missed.">            if (type != metadataType &amp;&amp; type != revocationType) continue;</span>
+<span class="fc bfc" id="L342" title="All 4 branches covered.">            if (!authenticated(signature, primary, sig -&gt; primaryKey</span>
+<span class="fc" id="L343">                    ? sig.verifyCertification(key) : sig.verifyCertification(primary, key))) continue;</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">            if (type == revocationType) revoked = true;</span>
+<span class="fc" id="L345">            else metadata.add(certificateMetadata(signature, key, primary, primaryKey));</span>
+<span class="fc" id="L346">        }</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        if (primaryKey) {</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">            for (var ids = key.getRawUserIDs(); ids.hasNext();) {</span>
+<span class="fc" id="L349">                var id = ids.next();</span>
+<span class="pc bpc" id="L350" title="1 of 4 branches missed.">                for (var signatures = key.getSignaturesForID(id); signatures != null &amp;&amp; signatures.hasNext();) {</span>
+<span class="fc" id="L351">                    var signature = signatures.next();</span>
+<span class="pc bpc" id="L352" title="1 of 4 branches missed.">                    if (signature.isCertification() &amp;&amp; authenticated(signature, primary,</span>
+<span class="fc" id="L353">                            sig -&gt; sig.verifyCertification(id, key))) {</span>
+<span class="fc" id="L354">                        metadata.add(certificateMetadata(signature, key, primary, true));</span>
+                    }
+<span class="fc" id="L356">                }</span>
+<span class="fc" id="L357">            }</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">            for (var attributes = key.getUserAttributes(); attributes.hasNext();) {</span>
+<span class="nc" id="L359">                var attribute = attributes.next();</span>
+<span class="nc bnc" id="L360" title="All 4 branches missed.">                for (var signatures = key.getSignaturesForUserAttribute(attribute); signatures != null &amp;&amp; signatures.hasNext();) {</span>
+<span class="nc" id="L361">                    var signature = signatures.next();</span>
+<span class="nc bnc" id="L362" title="All 4 branches missed.">                    if (signature.isCertification() &amp;&amp; authenticated(signature, primary,</span>
+<span class="nc" id="L363">                            sig -&gt; sig.verifyCertification(attribute, key))) {</span>
+<span class="nc" id="L364">                        metadata.add(certificateMetadata(signature, key, primary, true));</span>
+                    }
+<span class="nc" id="L366">                }</span>
+<span class="nc" id="L367">            }</span>
+        }
+<span class="pc bpc" id="L369" title="1 of 2 branches missed.">        return new CertificatePolicy(primaryKey, key.getVersion() &lt;= 3 ? key.getValidSeconds() : 0,</span>
+<span class="fc" id="L370">                supportedKey(key), List.copyOf(metadata), revoked);</span>
+    }
+
+    private static CertificateMetadata certificateMetadata(PGPSignature signature, PGPPublicKey key,
+                                                           PGPPublicKey primary, boolean primaryKey) {
+<span class="fc" id="L375">        var packets = signature.getHashedSubPackets();</span>
+<span class="pc bpc" id="L376" title="1 of 2 branches missed.">        long validity = key.getVersion() &lt;= 3 ? key.getValidSeconds()</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">                : packets == null ? 0 : packets.getKeyExpirationTime();</span>
+<span class="pc bpc" id="L378" title="2 of 4 branches missed.">        boolean canSign = supportedKey(key) &amp;&amp; (packets == null</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">                || !packets.hasSubpacket(SignatureSubpacketTags.KEY_FLAGS)</span>
+<span class="fc bfc" id="L380" title="All 2 branches covered.">                || (packets.getKeyFlags() &amp; KeyFlags.SIGN_DATA) != 0);</span>
+<span class="fc" id="L381">        return new CertificateMetadata(signatureLifetime(signature), validity, canSign,</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">                primaryKey ? List.of() : authenticatedBacksignatures(signature, primary, key));</span>
+    }
+
+    private static List&lt;SignatureLifetime&gt; authenticatedBacksignatures(PGPSignature binding,
+                                                                      PGPPublicKey primary, PGPPublicKey subkey) {
+<span class="fc" id="L387">        var lifetimes = new ArrayList&lt;SignatureLifetime&gt;();</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">        for (var packets : new PGPSignatureSubpacketVector[]{binding.getHashedSubPackets(), binding.getUnhashedSubPackets()}) {</span>
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">            if (packets == null) continue;</span>
+            try {
+<span class="fc" id="L391">                var signatures = packets.getEmbeddedSignatures();</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">                for (int i = 0; i &lt; signatures.size(); i++) {</span>
+<span class="fc" id="L393">                    var signature = signatures.get(i);</span>
+<span class="pc bpc" id="L394" title="1 of 2 branches missed.">                    if (signature.getSignatureType() == PGPSignature.PRIMARYKEY_BINDING</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">                            &amp;&amp; authenticated(signature, subkey, sig -&gt; sig.verifyCertification(primary, subkey))) {</span>
+<span class="fc" id="L396">                        lifetimes.add(signatureLifetime(signature));</span>
+                    }
+                }
+<span class="nc" id="L399">            } catch (PGPException | RuntimeException invalidBacksignature) {</span>
+                // An invalid embedded proof cannot discard the primary's authenticated
+                // restrictions or restore an older, more permissive binding.
+<span class="fc" id="L402">            }</span>
+        }
+<span class="fc" id="L404">        return List.copyOf(lifetimes);</span>
+    }
+
+    private static SignatureLifetime signatureLifetime(PGPSignature signature) {
+<span class="fc" id="L408">        var created = signature.getCreationTime().toInstant();</span>
+<span class="fc" id="L409">        var packets = signature.getHashedSubPackets();</span>
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">        long expiration = packets == null ? 0 : packets.getSignatureExpirationTime();</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        return new SignatureLifetime(created, expiration == 0 ? null : created.plusSeconds(expiration));</span>
+    }
+
+    /** Evaluate immutable, previously authenticated metadata without sharing mutable signature verifiers. */
+    private static EffectivePolicy effectivePolicy(CertificatePolicy certificate, Instant now) {
+<span class="fc bfc" id="L416" title="All 2 branches covered.">        if (certificate.metadata().isEmpty()) {</span>
+            // Explicitly trusted bare primary keys retain their legacy algorithm policy;
+            // a subkey must always carry an authenticated binding from its primary.
+<span class="fc" id="L419">            return new EffectivePolicy(certificate.legacyValidity(), certificate.supportsSigning(), certificate.primaryKey());</span>
+        }
+<span class="fc" id="L421">        Instant newest = null;</span>
+<span class="fc" id="L422">        long validity = certificate.legacyValidity();</span>
+<span class="fc" id="L423">        boolean canSign = certificate.supportsSigning();</span>
+<span class="fc" id="L424">        boolean backsignatureValid = false;</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">        for (var metadata : certificate.metadata()) {</span>
+            // A signature's own lifetime controls whether it participates in selection.
+            // Its key-expiration restriction is enforced only after selecting the newest
+            // live metadata, so an expired key never falls back to stale permissions.
+<span class="fc bfc" id="L429" title="All 2 branches covered.">            if (!metadata.lifetime().contains(now)) continue;</span>
+<span class="fc" id="L430">            var created = metadata.lifetime().created();</span>
+<span class="fc bfc" id="L431" title="All 4 branches covered.">            if (newest != null &amp;&amp; created.isBefore(newest)) continue;</span>
+<span class="fc" id="L432">            long candidateValidity = metadata.validSeconds();</span>
+<span class="fc" id="L433">            boolean candidateBacksignature = metadata.backsignatures().stream().anyMatch(lifetime -&gt; lifetime.contains(now));</span>
+<span class="fc bfc" id="L434" title="All 4 branches covered.">            if (newest != null &amp;&amp; created.equals(newest)) {</span>
+                // Equal-time conflicting certificates have no authenticated order.
+                // Choose their restrictive intersection rather than trust-file order.
+<span class="pc bpc" id="L437" title="2 of 4 branches missed.">                validity = validity == 0 ? candidateValidity : candidateValidity == 0 ? validity</span>
+<span class="fc" id="L438">                        : Math.min(validity, candidateValidity);</span>
+<span class="fc" id="L439">                canSign &amp;= metadata.canSign();</span>
+<span class="fc" id="L440">                backsignatureValid &amp;= candidateBacksignature;</span>
+            } else {
+<span class="fc" id="L442">                newest = created;</span>
+<span class="fc" id="L443">                validity = candidateValidity;</span>
+<span class="fc" id="L444">                canSign = metadata.canSign();</span>
+<span class="fc" id="L445">                backsignatureValid = candidateBacksignature;</span>
+            }
+<span class="fc" id="L447">        }</span>
+        // Select primary-authenticated policy before checking the subkey's proof.
+        // Removing signing permission is effective even without a backsignature.
+<span class="fc bfc" id="L450" title="All 8 branches covered.">        boolean valid = newest != null &amp;&amp; (certificate.primaryKey() || !canSign || backsignatureValid);</span>
+<span class="fc" id="L451">        return new EffectivePolicy(validity, canSign, valid);</span>
+    }
+
+    @FunctionalInterface
+    private interface CertificationVerifier {
+        boolean verify(PGPSignature signature) throws PGPException;
+    }
+
+    private static boolean authenticated(PGPSignature signature, PGPPublicKey issuer, CertificationVerifier verifier) {
+        try {
+            // Issuer IDs are metadata hints; verification must use the actual key
+            // authorized to certify this policy or prove the subkey binding.
+<span class="fc" id="L463">            signature.init(new JcaPGPContentVerifierBuilderProvider().setProvider(BC), issuer);</span>
+<span class="fc" id="L464">            return verifier.verify(signature);</span>
+<span class="nc" id="L465">        } catch (PGPException | RuntimeException invalidCertificate) {</span>
+<span class="nc" id="L466">            return false;</span>
+        }
+    }
+
+    private static boolean supportedHash(int algorithm) {
+<span class="pc bpc" id="L471" title="7 of 8 branches missed.">        return algorithm == HashAlgorithmTags.SHA256 || algorithm == HashAlgorithmTags.SHA384</span>
+                || algorithm == HashAlgorithmTags.SHA512 || algorithm == HashAlgorithmTags.SHA224;
+    }
+
+    private static String actor() {
+<span class="fc" id="L476">        var authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L477" title="2 of 4 branches missed.">        return authentication != null &amp;&amp; authentication.isAuthenticated()</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">                &amp;&amp; !(authentication instanceof AnonymousAuthenticationToken)</span>
+<span class="fc" id="L479">                ? boundedMetadata(authentication.getName()) : &quot;system&quot;;</span>
+    }
+
+    private static String boundedMetadata(String value) {
+<span class="pc bpc" id="L483" title="1 of 2 branches missed.">        if (value == null) return &quot;&quot;;</span>
+<span class="fc" id="L484">        return value.replaceAll(&quot;[\\p{Cntrl}]&quot;, &quot; &quot;).substring(0, Math.min(value.length(), 512));</span>
+    }
+
+    private static CommitSignature status(SignatureStatus status, String reason) {
+<span class="fc" id="L488">        return new CommitSignature(status, null, null, false, reason);</span>
+    }
+
+    /** Remove exactly the gpgsig header (and its single-space continuations), preserving all other bytes. */
+    private static ParsedCommit parse(byte[] raw) {
+<span class="pc bpc" id="L493" title="2 of 6 branches missed.">        if (raw == null || raw.length == 0 || raw.length &gt; MAX_COMMIT_BYTES) return invalid();</span>
+<span class="fc" id="L494">        var payload = new ByteArrayOutputStream(raw.length);</span>
+<span class="fc" id="L495">        var signature = new ByteArrayOutputStream();</span>
+<span class="fc" id="L496">        boolean inSignature = false, found = false, tree = false, author = false, committer = false;</span>
+<span class="fc" id="L497">        int cursor = 0;</span>
+<span class="pc bpc" id="L498" title="1 of 2 branches missed.">        while (cursor &lt; raw.length) {</span>
+<span class="fc" id="L499">            int start = cursor;</span>
+<span class="fc bfc" id="L500" title="All 4 branches covered.">            while (cursor &lt; raw.length &amp;&amp; raw[cursor] != '\n') cursor++;</span>
+<span class="pc bpc" id="L501" title="1 of 4 branches missed.">            if (cursor == raw.length || cursor &gt; 1024 * 1024) return invalid();</span>
+<span class="fc" id="L502">            int length = cursor - start;</span>
+<span class="fc" id="L503">            cursor++;</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">            if (length == 0) {</span>
+<span class="pc bpc" id="L505" title="3 of 6 branches missed.">                if (!tree || !author || !committer) return invalid();</span>
+<span class="fc" id="L506">                payload.write(raw, start, raw.length - start);</span>
+<span class="fc bfc" id="L507" title="All 2 branches covered.">                return new ParsedCommit(payload.toByteArray(), found ? signature.toByteArray() : null, null);</span>
+            }
+<span class="pc bpc" id="L509" title="1 of 4 branches missed.">            if (raw[start] == ' ' &amp;&amp; inSignature) {</span>
+<span class="fc" id="L510">                signature.write(raw, start + 1, length - 1); signature.write('\n');</span>
+            } else {
+<span class="fc" id="L512">                inSignature = false;</span>
+<span class="fc" id="L513">                var header = new String(raw, start, length, StandardCharsets.US_ASCII);</span>
+<span class="pc bpc" id="L514" title="2 of 4 branches missed.">                if (header.equals(&quot;gpgsig&quot;) || header.startsWith(&quot;gpgsig\t&quot;)) return invalid();</span>
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">                if (header.startsWith(&quot;gpgsig-sha256 &quot;)) return new ParsedCommit(null, null, SignatureStatus.UNSUPPORTED);</span>
+<span class="fc bfc" id="L516" title="All 2 branches covered.">                if (header.startsWith(&quot;gpgsig &quot;)) {</span>
+<span class="fc bfc" id="L517" title="All 2 branches covered.">                    if (found) return invalid();</span>
+<span class="fc" id="L518">                    found = true; inSignature = true;</span>
+<span class="fc" id="L519">                    signature.write(raw, start + 7, length - 7); signature.write('\n');</span>
+                } else {
+<span class="fc" id="L521">                    tree |= header.startsWith(&quot;tree &quot;); author |= header.startsWith(&quot;author &quot;); committer |= header.startsWith(&quot;committer &quot;);</span>
+<span class="fc" id="L522">                    payload.write(raw, start, length + 1);</span>
+                }
+            }
+<span class="pc bpc" id="L525" title="1 of 2 branches missed.">            if (signature.size() &gt; MAX_SIGNATURE_BYTES) return invalid();</span>
+<span class="fc" id="L526">        }</span>
+<span class="nc" id="L527">        return invalid();</span>
+    }
+<span class="fc" id="L529">    private static ParsedCommit invalid() { return new ParsedCommit(null, null, SignatureStatus.INVALID); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

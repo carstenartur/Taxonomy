@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.TaxonomyDecisionDiagramUiIT
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 58.17 s -- in com.taxonomy.TaxonomyDecisionDiagramUiIT

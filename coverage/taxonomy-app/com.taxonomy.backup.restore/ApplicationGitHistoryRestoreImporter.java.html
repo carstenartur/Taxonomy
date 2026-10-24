@@ -1,0 +1,434 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ApplicationGitHistoryRestoreImporter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">ApplicationGitHistoryRestoreImporter.java</span></div><h1>ApplicationGitHistoryRestoreImporter.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.VerifiedBackup;
+import com.taxonomy.backup.runtime.BackupAuthorizationService;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.workspace.backup.*;
+import com.taxonomy.workspace.storage.StagedJgitSchemaMigration;
+import io.github.carstenartur.jgit.storage.hibernate.*;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.hibernate.SessionFactory;
+import org.springframework.jdbc.datasource.AbstractDataSource;
+import org.springframework.security.access.AccessDeniedException;
+import javax.sql.DataSource;
+import java.io.*;
+import java.lang.reflect.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.security.*;
+import java.sql.*;
+import java.util.*;
+import java.util.function.Supplier;
+
+/** Durable original-history import into an explicitly approved isolated generation. */
+public final class ApplicationGitHistoryRestoreImporter implements GitRestoreImporter {
+    private static final int MAX_PROOF_BYTES = 16 * 1_024 * 1_024;
+    private static final long MAX_TOTAL_PROOF_BYTES = 64L * 1_024 * 1_024;
+<span class="fc" id="L28">    private static final BackupScope INSTALLATION = new BackupScope.Installation();</span>
+    private final Supplier&lt;PrincipalId&gt; actor;
+    private final BackupAuthorizationService authority;
+    private final Path privateSpool;
+    private final GitHistoryCapture.Limits limits;
+
+    public ApplicationGitHistoryRestoreImporter(Supplier&lt;PrincipalId&gt; actor, BackupAuthorizationService authority,
+<span class="fc" id="L35">            Path privateSpool, GitHistoryCapture.Limits limits) {</span>
+<span class="fc" id="L36">        this.actor = Objects.requireNonNull(actor); this.authority = Objects.requireNonNull(authority);</span>
+<span class="fc" id="L37">        this.privateSpool = Objects.requireNonNull(privateSpool); this.limits = Objects.requireNonNull(limits);</span>
+<span class="fc" id="L38">    }</span>
+
+    @Override public Result importGit(VerifiedBackup verified, Map&lt;BackupRepositoryKey, RestoreRepositoryAllocation&gt; approved,
+            RestoreTargetGeneration target, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L43">            Objects.requireNonNull(verified); Objects.requireNonNull(target); Objects.requireNonNull(checkpoint);</span>
+<span class="fc" id="L44">            PrincipalId principal = Objects.requireNonNull(actor.get());</span>
+<span class="fc" id="L45">            BackupCheckpoint check = () -&gt; {</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException(&quot;Git restore cancelled&quot;);</span>
+<span class="fc" id="L47">                checkpoint.check();</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                if (!principal.equals(actor.get())) throw new AccessDeniedException(&quot;Restore actor changed&quot;);</span>
+<span class="fc" id="L49">                authority.require(principal, BackupCapability.RESTORE_INSTALLATION, INSTALLATION);</span>
+<span class="fc" id="L50">            };</span>
+<span class="fc" id="L51">            check.check(); var allocations = Map.copyOf(approved);</span>
+<span class="fc" id="L52">            requireAllocations(verified, allocations, target); target.requireUnchanged(check);</span>
+            // Validate every native source and the bounded future proof before target Git allocation.
+<span class="fc" id="L54">            try (var sources = prepare(verified, allocations, check)) {</span>
+<span class="fc" id="L55">                DataSource fenced = new FencedDataSource(target, check);</span>
+<span class="fc" id="L56">                try (var sessions = factory(fenced)) {</span>
+<span class="fc" id="L57">                    var binding = new Owner(target.generationId().toString(), verified.archiveSha256(),</span>
+<span class="fc" id="L58">                            allocationDigest(sources.plans), principal.value().toString(), sources.plans.size());</span>
+<span class="fc" id="L59">                    var existing = existingOnly(sessions);</span>
+<span class="fc" id="L60">                    var rows = claim(fenced, existing, sources.plans, binding, check);</span>
+<span class="fc" id="L61">                    var repositories = new DefaultHibernateRepositoryFactory(sessions);</span>
+<span class="fc" id="L62">                    var provenance = new GitReflogProvenanceStore(fenced);</span>
+<span class="fc" id="L63">                    var result = new LinkedHashMap&lt;BackupRepositoryKey, RepositoryProof&gt;();</span>
+<span class="fc" id="L64">                    var audit = new PersonIdent(&quot;Restore operator &quot; + principal.value(), &quot;restore@invalid&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                    for (var plan : sources.plans) {</span>
+<span class="fc" id="L66">                        check.check(); var row = rows.get(plan.key()); GitHistoryRestore.Proof imported;</span>
+<span class="fc" id="L67">                        var name = new RepositoryName(plan.allocation().physicalStorageName());</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                        if (row.complete()) {</span>
+                            // Completed repositories must exist: this facade cannot recreate their metadata.
+<span class="fc" id="L70">                            try (var repository = existing.open(name, name)) {</span>
+<span class="fc" id="L71">                                imported = GitHistoryRestore.verify(plan.archive().prepared(), repository.repository(), check);</span>
+                            }
+                        } else {
+                            // The stable PREPARED operation committed before this provisioning facade is used.
+<span class="fc" id="L75">                            try (var repository = repositories.open(name)) {</span>
+<span class="fc" id="L76">                                imported = GitHistoryRestore.restore(plan.archive().prepared(), repository.repository(),</span>
+<span class="fc" id="L77">                                        row.operation(), audit, check);</span>
+                            }
+                        }
+<span class="fc" id="L80">                        var proof = new RepositoryProof(plan.allocation().targetKey(), name.value(), imported.state(),</span>
+<span class="fc" id="L81">                                imported.commitMappings(), imported.repositorySha256());</span>
+<span class="fc" id="L82">                        String body = proofBody(proof);</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                        if (!plan.proofBody().equals(body)) throw invalid();</span>
+<span class="fc" id="L84">                        complete(fenced, provenance, sources.plans, binding, plan, row, imported, body, check);</span>
+<span class="fc" id="L85">                        result.put(plan.key(), proof);</span>
+<span class="fc" id="L86">                    }</span>
+<span class="fc" id="L87">                    target.requireUnchanged(check); check.check(); return new Result(result);</span>
+                }
+            }
+<span class="fc" id="L90">        } catch (IOException | SQLException | RuntimeException failure) { throw sanitized(failure); }</span>
+    }
+
+    private static void requireAllocations(VerifiedBackup archive,
+            Map&lt;BackupRepositoryKey, RestoreRepositoryAllocation&gt; allocations, RestoreTargetGeneration target) throws IOException {
+<span class="pc bpc" id="L95" title="2 of 4 branches missed.">        if (!archive.manifest().request().profile().includesHistory() || !allocations.equals(target.allocations())) throw invalid();</span>
+<span class="fc" id="L96">        var keys = new HashSet&lt;BackupRepositoryKey&gt;(); var physical = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        for (var repository : archive.manifest().repositories()) {</span>
+<span class="fc" id="L98">            var allocation = allocations.get(repository.id());</span>
+<span class="pc bpc" id="L99" title="3 of 6 branches missed.">            if (!keys.add(repository.id()) || allocation == null || repository.representation() == GitRepresentation.NONE</span>
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">                    || repository.sourceRepositoryId() != null || repository.sourceCommit() != null</span>
+<span class="pc bpc" id="L101" title="1 of 6 branches missed.">                    || (repository.id().workspaceId() == null) != (allocation.targetKey().workspaceId() == null)</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                    || !physical.add(allocation.physicalStorageName().toLowerCase(Locale.ROOT))) throw invalid();</span>
+<span class="fc" id="L103">            requireKey(repository.id()); requireKey(allocation.targetKey());</span>
+<span class="fc" id="L104">        }</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        if (!keys.equals(allocations.keySet())) throw invalid();</span>
+<span class="fc" id="L106">    }</span>
+    private static void requireKey(BackupRepositoryKey key) throws IOException {
+<span class="pc bpc" id="L108" title="2 of 6 branches missed.">        if (key.repositoryId().length() &gt; 512 || key.workspaceId() != null &amp;&amp; key.workspaceId().length() &gt; 512) throw invalid();</span>
+<span class="fc" id="L109">    }</span>
+    private PreparedArchives prepare(VerifiedBackup verified, Map&lt;BackupRepositoryKey, RestoreRepositoryAllocation&gt; allocations,
+            BackupCheckpoint check) throws IOException {
+<span class="fc" id="L112">        var prepared = new PreparedArchives();</span>
+        try {
+<span class="fc" id="L114">            long remaining = limits.maxTotalBytes(), proofBytes = 0;</span>
+<span class="fc" id="L115">            var repositories = verified.manifest().repositories().stream().sorted(Comparator</span>
+<span class="fc" id="L116">                    .comparing((BackupManifest.Repository repository) -&gt; repository.id().repositoryId())</span>
+<span class="fc" id="L117">                    .thenComparing(repository -&gt; repository.id().workspaceId(), Comparator.nullsFirst(Comparator.naturalOrder()))).toList();</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            for (var repository : repositories) {</span>
+<span class="fc" id="L119">                check.check();</span>
+<span class="fc" id="L120">                var bounded = new GitHistoryCapture.Limits(limits.maxRefs(), limits.maxObjects(), limits.maxObjectBytes(),</span>
+<span class="fc" id="L121">                        remaining, limits.maxReflogEntries());</span>
+<span class="fc" id="L122">                var archive = GitHistoryArchive.open(verified, repository, privateSpool, bounded, check);</span>
+<span class="fc" id="L123">                prepared.archives.add(archive);</span>
+<span class="fc" id="L124">                remaining = Math.subtractExact(remaining, archive.prepared().expandedBytes());</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                if (remaining &lt; 0) throw invalid();</span>
+<span class="fc" id="L126">                var allocation = allocations.get(repository.id());</span>
+<span class="fc" id="L127">                var refs = new TreeMap&lt;&gt;(archive.source().state().refs()); refs.putAll(archive.source().backupRefs());</span>
+<span class="fc" id="L128">                var commits = new TreeMap&lt;String, String&gt;(); archive.source().state().requiredCommits().forEach(id -&gt; commits.put(id, id));</span>
+<span class="fc" id="L129">                var expected = new RepositoryProof(allocation.targetKey(), allocation.physicalStorageName(),</span>
+<span class="fc" id="L130">                        new SnapshotContext.RepositoryState(refs, archive.source().state().symbolicHead(), Map.of(), commits.keySet()),</span>
+<span class="fc" id="L131">                        commits, archive.prepared().inputSha256());</span>
+<span class="fc" id="L132">                String body = proofBody(expected);</span>
+<span class="fc" id="L133">                proofBytes = Math.addExact(proofBytes, body.getBytes(StandardCharsets.UTF_8).length);</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">                if (proofBytes &gt; MAX_TOTAL_PROOF_BYTES) throw invalid();</span>
+<span class="fc" id="L135">                prepared.plans.add(new Plan(repository.id(), digest(repository.id()), repository.archiveId(), allocation, archive, body));</span>
+<span class="fc" id="L136">            }</span>
+<span class="fc" id="L137">            check.check(); return prepared;</span>
+<span class="nc" id="L138">        } catch (IOException | RuntimeException | Error failure) {</span>
+<span class="nc" id="L139">            try { prepared.close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); } throw failure;</span>
+        }
+    }
+    private static SessionFactory factory(DataSource fenced) {
+<span class="fc" id="L143">        var configuration = new org.hibernate.cfg.Configuration();</span>
+<span class="fc" id="L144">        configuration.getProperties().put(&quot;hibernate.connection.datasource&quot;, fenced);</span>
+<span class="fc" id="L145">        configuration.setProperty(&quot;hibernate.hbm2ddl.auto&quot;, &quot;validate&quot;);</span>
+<span class="fc" id="L146">        configuration.setProperty(&quot;hibernate.search.enabled&quot;, &quot;false&quot;);</span>
+<span class="fc" id="L147">        configuration.setProperty(&quot;hibernate.jpa_callbacks.enabled&quot;, &quot;false&quot;);</span>
+<span class="fc" id="L148">        StagedJgitSchemaMigration.configureModel(configuration); return configuration.buildSessionFactory();</span>
+    }
+    private static SecuredHibernateRepositoryFactory&lt;RepositoryName&gt; existingOnly(SessionFactory sessions) {
+<span class="fc" id="L151">        return new SecuredHibernateRepositoryFactory&lt;&gt;(sessions, (name, request) -&gt; {</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">            if (!name.equals(request.repositoryName())</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">                    || request.operation() != RepositoryAccessOperation.DISCOVER &amp;&amp; request.operation() != RepositoryAccessOperation.READ)</span>
+<span class="nc" id="L154">                throw new RepositoryAccessDeniedException(request, &quot;RESTORE_READ_ONLY&quot;, &quot;original-history-restore&quot;, 1);</span>
+<span class="fc" id="L155">        });</span>
+    }
+
+    private static Map&lt;BackupRepositoryKey, JournalRow&gt; claim(DataSource database,
+            SecuredHibernateRepositoryFactory&lt;RepositoryName&gt; repositories, List&lt;Plan&gt; plans, Owner expected,
+            BackupCheckpoint check) throws SQLException, IOException {
+<span class="fc" id="L161">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L162">            connection.setAutoCommit(false); connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);</span>
+<span class="fc" id="L163">            try (var rollback = new Rollback(connection)) {</span>
+<span class="fc" id="L164">                var owner = owner(connection, check);</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                if (owner != null) {</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">                    if (!owner.equals(expected)) throw invalid(); return rows(connection, plans, check);</span>
+                }
+<span class="fc" id="L168">                try (var statement = statement(connection, &quot;select source_key from restore_git_repository&quot;, 1);</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                     var row = statement.executeQuery()) { if (row.next()) throw invalid(); }</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                for (var plan : plans) {</span>
+<span class="fc" id="L171">                    check.check(); var name = new RepositoryName(plan.allocation().physicalStorageName());</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">                    try (var ignored = repositories.open(name, name)) { throw invalid(); }</span>
+<span class="fc" id="L173">                    catch (RepositoryDoesNotExistException absent) {</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                        if (!name.equals(absent.repositoryName())) throw invalid();</span>
+                    }
+<span class="fc" id="L176">                }</span>
+<span class="fc" id="L177">                update(connection, &quot;insert into restore_git_owner(owner_id,generation_id,archive_sha256,allocation_sha256,actor_id,repository_count) values(1,?,?,?,?,?)&quot;,</span>
+<span class="fc" id="L178">                        expected.generation(), expected.archive(), expected.allocations(), expected.actor(), expected.count());</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                for (var plan : plans) {</span>
+<span class="fc" id="L180">                    check.check();</span>
+<span class="fc" id="L181">                    update(connection, &quot;insert into restore_git_repository(source_key,source_repository_id,source_workspace_id,archive_id,target_repository_id,target_workspace_id,storage_repository_name,operation_id,input_sha256,owner_state,proof_sha256,proof_body) values(?,?,?,?,?,?,?,?,?,'PREPARED',null,null)&quot;,</span>
+<span class="fc" id="L182">                            plan.sourceHash(), plan.key().repositoryId(), plan.key().workspaceId(), plan.archiveId(),</span>
+<span class="fc" id="L183">                            plan.allocation().targetKey().repositoryId(), plan.allocation().targetKey().workspaceId(),</span>
+<span class="fc" id="L184">                            plan.allocation().physicalStorageName(), UUID.randomUUID().toString(), plan.archive().prepared().inputSha256());</span>
+<span class="fc" id="L185">                }</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">                if (!expected.equals(owner(connection, check))) throw invalid();</span>
+<span class="fc" id="L187">                var result = rows(connection, plans, check);</span>
+<span class="fc" id="L188">                check.check(); connection.commit(); rollback.committed = true; check.check(); return result;</span>
+<span class="fc" id="L189">            }</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        }</span>
+    }
+    private static void complete(DataSource database, GitReflogProvenanceStore provenance, List&lt;Plan&gt; plans,
+            Owner expected, Plan plan, JournalRow prepared, GitHistoryRestore.Proof proof, String body,
+            BackupCheckpoint check) throws SQLException, IOException {
+<span class="fc" id="L195">        try (var connection = database.getConnection()) {</span>
+<span class="fc" id="L196">            connection.setReadOnly(prepared.complete()); connection.setAutoCommit(false);</span>
+<span class="fc" id="L197">            connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);</span>
+<span class="fc" id="L198">            try (var rollback = new Rollback(connection)) {</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">                if (!expected.equals(owner(connection, check))) throw invalid();</span>
+<span class="fc" id="L200">                var actual = rows(connection, plans, check).get(plan.key());</span>
+<span class="pc bpc" id="L201" title="2 of 6 branches missed.">                if (!actual.operation().equals(prepared.operation()) || prepared.complete() &amp;&amp; !actual.complete()) throw invalid();</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                if (actual.complete()) {</span>
+<span class="fc" id="L203">                    provenance.requireStored(connection, plan.allocation().targetKey(), plan.allocation().physicalStorageName(),</span>
+<span class="fc" id="L204">                            proof.originalEvents(), check);</span>
+<span class="fc" id="L205">                    check.check(); return;</span>
+                }
+<span class="fc" id="L207">                provenance.retain(connection, plan.allocation().targetKey(), plan.allocation().physicalStorageName(), proof.originalEvents(), check);</span>
+<span class="fc" id="L208">                try (var statement = statement(connection, &quot;update restore_git_repository set owner_state='COMPLETE',proof_sha256=?,proof_body=? where source_key=? and operation_id=? and owner_state='PREPARED'&quot;, 0)) {</span>
+<span class="fc" id="L209">                    statement.setString(1, sha256(body.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="fc" id="L210">                    statement.setCharacterStream(2, new StringReader(body)); statement.setString(3, plan.sourceHash());</span>
+<span class="fc" id="L211">                    statement.setString(4, prepared.operation().toString()); check.check();</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">                    if (statement.executeUpdate() != 1) throw invalid();</span>
+                }
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">                if (!rows(connection, plans, check).get(plan.key()).complete()) throw invalid();</span>
+<span class="fc" id="L215">                provenance.requireStored(connection, plan.allocation().targetKey(), plan.allocation().physicalStorageName(), proof.originalEvents(), check);</span>
+<span class="fc" id="L216">                check.check(); connection.commit(); rollback.committed = true; check.check();</span>
+<span class="fc" id="L217">            }</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L219">    }</span>
+    private static Owner owner(Connection connection, BackupCheckpoint check) throws SQLException, IOException {
+<span class="fc" id="L221">        try (var statement = statement(connection, &quot;select owner_id,generation_id,archive_sha256,allocation_sha256,actor_id,repository_count from restore_git_owner&quot;, 2);</span>
+<span class="fc" id="L222">             var rows = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            check.check(); if (!rows.next()) return null;</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">            if (rows.getInt(1) != 1) throw invalid();</span>
+<span class="fc" id="L225">            var result = new Owner(rows.getString(2), rows.getString(3), rows.getString(4), rows.getString(5), rows.getInt(6));</span>
+<span class="pc bpc" id="L226" title="2 of 4 branches missed.">            if (rows.wasNull() || rows.next()) throw invalid(); check.check(); return result;</span>
+<span class="pc bpc" id="L227" title="2 of 4 branches missed.">        }</span>
+    }
+    private static Map&lt;BackupRepositoryKey, JournalRow&gt; rows(Connection connection, List&lt;Plan&gt; plans,
+            BackupCheckpoint check) throws SQLException, IOException {
+<span class="fc" id="L231">        var expected = new HashMap&lt;String, Plan&gt;(); plans.forEach(plan -&gt; expected.put(plan.sourceHash(), plan));</span>
+<span class="fc" id="L232">        var result = new LinkedHashMap&lt;BackupRepositoryKey, JournalRow&gt;(); var operations = new HashSet&lt;UUID&gt;();</span>
+<span class="fc" id="L233">        try (var statement = statement(connection, &quot;select source_key,source_repository_id,source_workspace_id,archive_id,target_repository_id,target_workspace_id,storage_repository_name,operation_id,input_sha256,owner_state,proof_sha256,proof_body from restore_git_repository order by source_key&quot;, plans.size() + 1);</span>
+<span class="fc" id="L234">             var rows = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">            while (rows.next()) {</span>
+<span class="fc" id="L236">                check.check(); var plan = expected.get(rows.getString(1));</span>
+<span class="pc bpc" id="L237" title="3 of 6 branches missed.">                if (plan == null || result.containsKey(plan.key()) || !plan.key().repositoryId().equals(rows.getString(2))</span>
+<span class="pc bpc" id="L238" title="2 of 4 branches missed.">                        || !Objects.equals(plan.key().workspaceId(), rows.getString(3)) || !plan.archiveId().equals(rows.getString(4))</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">                        || !plan.allocation().targetKey().repositoryId().equals(rows.getString(5))</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">                        || !Objects.equals(plan.allocation().targetKey().workspaceId(), rows.getString(6))</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">                        || !plan.allocation().physicalStorageName().equals(rows.getString(7))</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">                        || !plan.archive().prepared().inputSha256().equals(rows.getString(9))) throw invalid();</span>
+<span class="fc" id="L243">                String rawOperation = rows.getString(8); var operation = UUID.fromString(rawOperation);</span>
+<span class="pc bpc" id="L244" title="2 of 4 branches missed.">                if (!operation.toString().equals(rawOperation) || !operations.add(operation)) throw invalid();</span>
+<span class="fc" id="L245">                String state = rows.getString(10), digest = rows.getString(11);</span>
+<span class="fc" id="L246">                try (var content = rows.getCharacterStream(12)) {</span>
+<span class="pc bpc" id="L247" title="2 of 6 branches missed.">                    if (&quot;PREPARED&quot;.equals(state)) { if (digest != null || content != null) throw invalid(); }</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">                    else if (&quot;COMPLETE&quot;.equals(state)) {</span>
+<span class="fc" id="L249">                        String body = readBody(content, plan.proofBody().length(), check);</span>
+<span class="pc bpc" id="L250" title="2 of 4 branches missed.">                        if (!plan.proofBody().equals(body) || !sha256(body.getBytes(StandardCharsets.UTF_8)).equals(digest)) throw invalid();</span>
+<span class="pc" id="L251">                    } else throw invalid();</span>
+                }
+<span class="fc" id="L253">                result.put(plan.key(), new JournalRow(operation, &quot;COMPLETE&quot;.equals(state)));</span>
+<span class="fc" id="L254">            }</span>
+        }
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (result.size() != plans.size()) throw invalid(); check.check(); return Map.copyOf(result);</span>
+    }
+    private static PreparedStatement statement(Connection connection, String sql, int maximum) throws SQLException {
+<span class="fc" id="L259">        var statement = connection.prepareStatement(sql);</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        try { statement.setQueryTimeout(60); if (maximum &gt; 0) statement.setMaxRows(maximum); return statement; }</span>
+<span class="nc" id="L261">        catch (SQLException failure) { try { statement.close(); } catch (SQLException cleanup) { failure.addSuppressed(cleanup); } throw failure; }</span>
+    }
+    private static void update(Connection connection, String sql, Object... parameters) throws SQLException, IOException {
+<span class="fc" id="L264">        try (var statement = statement(connection, sql, 0)) {</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">            for (int i = 0; i &lt; parameters.length; i++) statement.setObject(i + 1, parameters[i]);</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">            if (statement.executeUpdate() != 1) throw invalid();</span>
+        }
+<span class="fc" id="L268">    }</span>
+    private static String readBody(Reader source, int expectedLength, BackupCheckpoint check) throws IOException {
+<span class="pc bpc" id="L270" title="2 of 4 branches missed.">        if (source == null || expectedLength &gt; MAX_PROOF_BYTES) throw invalid();</span>
+<span class="fc" id="L271">        var result = new StringBuilder(); var buffer = new char[4_096];</span>
+        for (;;) {
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            check.check(); int count = source.read(buffer); if (count &lt; 0) break;</span>
+<span class="pc bpc" id="L274" title="3 of 4 branches missed.">            if (count == 0) { int one = source.read(); if (one &lt; 0) break; buffer[0] = (char) one; count = 1; }</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">            if (count &gt; expectedLength - result.length()) throw invalid(); result.append(buffer, 0, count);</span>
+<span class="fc" id="L276">        }</span>
+<span class="fc" id="L277">        check.check(); return result.toString();</span>
+    }
+    private static String proofBody(RepositoryProof proof) throws IOException {
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">        if (!proof.restoredState().workingStates().isEmpty()) throw invalid();</span>
+<span class="fc" id="L281">        var canonical = new CanonicalProof(1, proof.targetKey(), proof.physicalStorageName(),</span>
+<span class="fc" id="L282">                new TreeMap&lt;&gt;(proof.restoredState().refs()), proof.restoredState().symbolicHead(),</span>
+<span class="fc" id="L283">                new TreeSet&lt;&gt;(proof.restoredState().requiredCommits()), new TreeMap&lt;&gt;(proof.commitMappings()), proof.repositoryDigest());</span>
+<span class="fc" id="L284">        var bytes = new ByteArrayOutputStream();</span>
+<span class="fc" id="L285">        try (var bounded = new FilterOutputStream(bytes) {</span>
+            private int count;
+<span class="nc" id="L287">            @Override public void write(int value) throws IOException { require(1); out.write(value); }</span>
+<span class="fc" id="L288">            @Override public void write(byte[] buffer, int offset, int length) throws IOException { require(length); out.write(buffer, offset, length); }</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">            private void require(int length) throws IOException { if (length &gt; MAX_PROOF_BYTES - count) throw invalid(); count += length; }</span>
+<span class="fc" id="L290">        }) { PortableRows.json().writeValue(bounded, canonical); }</span>
+<span class="fc" id="L291">        return bytes.toString(StandardCharsets.UTF_8);</span>
+    }
+    private static String allocationDigest(List&lt;Plan&gt; plans) throws IOException {
+<span class="fc" id="L294">        return digest(plans.stream().map(plan -&gt; new AllocationBinding(plan.key(), plan.archiveId(), plan.allocation(),</span>
+<span class="fc" id="L295">                plan.archive().prepared().inputSha256())).toList());</span>
+    }
+    private static String digest(Object value) throws IOException {
+<span class="fc" id="L298">        MessageDigest digest = sha256();</span>
+<span class="fc" id="L299">        try (var stream = new DigestOutputStream(OutputStream.nullOutputStream(), digest)) { PortableRows.json().writeValue(stream, value); }</span>
+<span class="fc" id="L300">        return HexFormat.of().formatHex(digest.digest());</span>
+    }
+<span class="fc" id="L302">    private static String sha256(byte[] value) { return HexFormat.of().formatHex(sha256().digest(value)); }</span>
+    private static MessageDigest sha256() {
+<span class="pc" id="L304">        try { return MessageDigest.getInstance(&quot;SHA-256&quot;); } catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+    }
+
+    /** Guards standard JDBC boundaries without reflecting into library implementation objects. */
+    static final class FencedDataSource extends AbstractDataSource {
+        private final RestoreTargetGeneration target;
+        private final BackupCheckpoint check;
+<span class="fc" id="L311">        FencedDataSource(RestoreTargetGeneration target, BackupCheckpoint check) { this.target = target; this.check = check; }</span>
+        @Override public Connection getConnection() throws SQLException {
+<span class="fc" id="L313">            Connection actual = target.dataSource().getConnection();</span>
+            try {
+<span class="fc" id="L315">                require(actual);</span>
+<span class="fc" id="L316">                return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class&lt;?&gt;[]{Connection.class},</span>
+<span class="fc" id="L317">                        (proxy, method, args) -&gt; connection(actual, (Connection) proxy, method, args));</span>
+<span class="nc" id="L318">            } catch (SQLException | RuntimeException failure) {</span>
+<span class="nc" id="L319">                try { actual.close(); } catch (SQLException cleanup) { failure.addSuppressed(cleanup); } throw failure;</span>
+            }
+        }
+        @Override public Connection getConnection(String username, String password) throws SQLException {
+<span class="nc" id="L323">            throw new SQLException(&quot;Restore connections require the verified data source&quot;);</span>
+        }
+        private Object connection(Connection actual, Connection proxy, Method method, Object[] args) throws Throwable {
+<span class="fc" id="L326">            String name = method.getName();</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">            if (name.equals(&quot;unwrap&quot;)) return unwrap(proxy, (Class&lt;?&gt;) args[0]);</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">            if (name.equals(&quot;isWrapperFor&quot;)) return ((Class&lt;?&gt;) args[0]).isInstance(proxy);</span>
+<span class="pc bpc" id="L329" title="1 of 6 branches missed.">            boolean prepare = name.equals(&quot;prepareStatement&quot;) || name.equals(&quot;prepareCall&quot;) || name.equals(&quot;createStatement&quot;);</span>
+<span class="fc bfc" id="L330" title="All 8 branches covered.">            if (prepare || name.equals(&quot;commit&quot;) || name.equals(&quot;setAutoCommit&quot;) &amp;&amp; Boolean.TRUE.equals(args[0])) require(actual);</span>
+<span class="fc" id="L331">            Object result = invoke(actual, method, args);</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">            if (prepare) {</span>
+<span class="fc" id="L333">                var statement = (Statement) result;</span>
+                try {
+<span class="fc" id="L335">                    require(actual); statement.setQueryTimeout(60);</span>
+<span class="fc" id="L336">                    return statement(actual, proxy, statement);</span>
+<span class="fc" id="L337">                } catch (SQLException | RuntimeException failure) {</span>
+<span class="pc" id="L338">                    try { statement.close(); } catch (SQLException cleanup) { failure.addSuppressed(cleanup); } throw failure;</span>
+                }
+            }
+<span class="fc bfc" id="L341" title="All 2 branches covered.">            if (result instanceof DatabaseMetaData metadata) {</span>
+<span class="fc" id="L342">                return Proxy.newProxyInstance(DatabaseMetaData.class.getClassLoader(), new Class&lt;?&gt;[]{DatabaseMetaData.class},</span>
+                        (wrapped, operation, values) -&gt; {
+<span class="fc bfc" id="L344" title="All 2 branches covered.">                            if (operation.getName().equals(&quot;getConnection&quot;)) return proxy;</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">                            if (operation.getName().equals(&quot;unwrap&quot;)) return unwrap(wrapped, (Class&lt;?&gt;) values[0]);</span>
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">                            if (operation.getName().equals(&quot;isWrapperFor&quot;)) return ((Class&lt;?&gt;) values[0]).isInstance(wrapped);</span>
+<span class="fc" id="L347">                            Object value = invoke(metadata, operation, values);</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">                            return value instanceof ResultSet rows ? resultSet(actual, proxy, null, rows) : value;</span>
+                        });
+            }
+<span class="fc" id="L351">            return result;</span>
+        }
+        private Statement statement(Connection actual, Connection connection, Statement statement) {
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">            Class&lt;?&gt; type = statement instanceof CallableStatement ? CallableStatement.class</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">                    : statement instanceof PreparedStatement ? PreparedStatement.class : Statement.class;</span>
+<span class="fc" id="L356">            return (Statement) Proxy.newProxyInstance(type.getClassLoader(), new Class&lt;?&gt;[]{type}, (wrapped, operation, values) -&gt; {</span>
+<span class="fc" id="L357">                String called = operation.getName();</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">                if (called.equals(&quot;getConnection&quot;)) return connection;</span>
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">                if (called.equals(&quot;unwrap&quot;)) return unwrap(wrapped, (Class&lt;?&gt;) values[0]);</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">                if (called.equals(&quot;isWrapperFor&quot;)) return ((Class&lt;?&gt;) values[0]).isInstance(wrapped);</span>
+<span class="pc bpc" id="L361" title="1 of 4 branches missed.">                if (called.startsWith(&quot;execute&quot;) || called.equals(&quot;addBatch&quot;)) require(actual);</span>
+<span class="fc" id="L362">                Object value = invoke(statement, operation, values);</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">                return value instanceof ResultSet rows ? resultSet(actual, connection, (Statement) wrapped, rows) : value;</span>
+            });
+        }
+        private ResultSet resultSet(Connection actual, Connection connection, Statement owner, ResultSet rows) {
+<span class="fc" id="L367">            return (ResultSet) Proxy.newProxyInstance(ResultSet.class.getClassLoader(), new Class&lt;?&gt;[]{ResultSet.class},</span>
+                    (wrapped, operation, values) -&gt; {
+<span class="fc" id="L369">                        String called = operation.getName();</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">                        if (called.equals(&quot;unwrap&quot;)) return unwrap(wrapped, (Class&lt;?&gt;) values[0]);</span>
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">                        if (called.equals(&quot;isWrapperFor&quot;)) return ((Class&lt;?&gt;) values[0]).isInstance(wrapped);</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">                        if (called.equals(&quot;getStatement&quot;)) {</span>
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">                            if (owner != null) return owner;</span>
+<span class="nc" id="L374">                            Statement statement = rows.getStatement();</span>
+<span class="nc bnc" id="L375" title="All 2 branches missed.">                            return statement == null ? null : statement(actual, connection, statement);</span>
+                        }
+<span class="pc bpc" id="L377" title="3 of 6 branches missed.">                        if (called.startsWith(&quot;update&quot;) || called.equals(&quot;insertRow&quot;) || called.equals(&quot;deleteRow&quot;)</span>
+<span class="pc bpc" id="L378" title="2 of 6 branches missed.">                                || called.equals(&quot;refreshRow&quot;) || called.equals(&quot;next&quot;) || called.equals(&quot;previous&quot;)</span>
+<span class="pc bpc" id="L379" title="4 of 8 branches missed.">                                || called.equals(&quot;first&quot;) || called.equals(&quot;last&quot;) || called.equals(&quot;absolute&quot;) || called.equals(&quot;relative&quot;))</span>
+<span class="fc" id="L380">                            require(actual);</span>
+<span class="fc" id="L381">                        return invoke(rows, operation, values);</span>
+                    });
+        }
+        private void require(Connection actual) throws SQLException {
+<span class="fc" id="L385">            try { target.requireConnection(actual, check); }</span>
+<span class="fc" id="L386">            catch (InterruptedIOException cancelled) { Thread.currentThread().interrupt(); throw new SQLException(&quot;Git restore cancelled&quot;, cancelled); }</span>
+<span class="fc" id="L387">            catch (IOException failure) { throw new SQLException(&quot;Restore database binding is unavailable or changed&quot;, failure); }</span>
+<span class="fc" id="L388">        }</span>
+        private static Object unwrap(Object wrapper, Class&lt;?&gt; type) throws SQLException {
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">            if (type.isInstance(wrapper)) return wrapper; throw new SQLException(&quot;Raw restore connections are unavailable&quot;);</span>
+        }
+        private static Object invoke(Object target, Method method, Object[] args) throws Throwable {
+<span class="fc" id="L393">            try { return method.invoke(target, args); } catch (InvocationTargetException failure) { throw failure.getCause(); }</span>
+        }
+    }
+
+<span class="fc" id="L397">    private record Owner(String generation, String archive, String allocations, String actor, int count) { }</span>
+<span class="fc" id="L398">    private record Plan(BackupRepositoryKey key, String sourceHash, String archiveId, RestoreRepositoryAllocation allocation,</span>
+                        GitHistoryArchive archive, String proofBody) { }
+<span class="fc" id="L400">    private record JournalRow(UUID operation, boolean complete) { }</span>
+<span class="fc" id="L401">    private record AllocationBinding(BackupRepositoryKey source, String archiveId, RestoreRepositoryAllocation allocation, String inputSha256) { }</span>
+<span class="fc" id="L402">    private record CanonicalProof(int version, BackupRepositoryKey target, String storage, SortedMap&lt;String, String&gt; refs,</span>
+                                  String symbolicHead, SortedSet&lt;String&gt; requiredCommits, SortedMap&lt;String, String&gt; commitMappings,
+                                  String repositorySha256) { }
+<span class="fc" id="L405">    private static final class PreparedArchives implements AutoCloseable {</span>
+<span class="fc" id="L406">        private final List&lt;GitHistoryArchive&gt; archives = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L407">        private final List&lt;Plan&gt; plans = new ArrayList&lt;&gt;();</span>
+        @Override public void close() throws IOException {
+<span class="fc" id="L409">            IOException failure = null;</span>
+<span class="fc bfc" id="L410" title="All 2 branches covered.">            for (var archive : archives.reversed()) try { archive.close(); }</span>
+<span class="pc bnc" id="L411" title="All 2 branches missed.">            catch (IOException problem) { if (failure == null) failure = problem; else failure.addSuppressed(problem); }</span>
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">            if (failure != null) throw failure;</span>
+<span class="fc" id="L413">        }</span>
+    }
+    private static final class Rollback implements AutoCloseable {
+        private final Connection connection; private boolean committed;
+<span class="fc" id="L417">        Rollback(Connection connection) { this.connection = connection; }</span>
+<span class="fc bfc" id="L418" title="All 2 branches covered.">        @Override public void close() throws SQLException { if (!committed) connection.rollback(); }</span>
+    }
+<span class="fc" id="L420">    private static IOException invalid() { return new IOException(&quot;Original Git restore plan or completed evidence is invalid&quot;); }</span>
+    private static IOException sanitized(Throwable failure) {
+<span class="fc" id="L422">        var seen = Collections.newSetFromMap(new IdentityHashMap&lt;Throwable, Boolean&gt;());</span>
+<span class="fc" id="L423">        boolean cancelled = Thread.currentThread().isInterrupted();</span>
+<span class="pc bpc" id="L424" title="2 of 6 branches missed.">        for (Throwable cause = failure; cause != null &amp;&amp; seen.size() &lt; 32 &amp;&amp; seen.add(cause); cause = cause.getCause()) {</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">            if (cause instanceof AccessDeniedException) throw new AccessDeniedException(&quot;Original Git restore access denied&quot;);</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">            if (cause instanceof InterruptedIOException) cancelled = true;</span>
+        }
+        IOException result;
+<span class="fc bfc" id="L429" title="All 2 branches covered.">        if (cancelled) { Thread.currentThread().interrupt(); result = new InterruptedIOException(&quot;Original Git restore cancelled&quot;); }</span>
+<span class="fc" id="L430">        else result = invalid();</span>
+<span class="pc bpc" id="L431" title="1 of 2 branches missed.">        for (var cleanup : failure.getSuppressed()) result.addSuppressed(cleanup); return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AlfabetSnapshot.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.alfabet</a> &gt; <span class="el_source">AlfabetSnapshot.java</span></div><h1>AlfabetSnapshot.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.alfabet;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.taxonomy.extension.api.integration.IntegrationContracts.ExternalScope;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Bounded external observation, NOT a canonical architecture or an authoritative inventory. */
+public record AlfabetSnapshot(ExternalScope source, String mappingVersion, Instant startedAt, Instant finishedAt,
+                              int pageCount, long responseBytes, List&lt;ReportData&gt; reports) {
+<span class="fc" id="L14">    public AlfabetSnapshot { reports = List.copyOf(reports); }</span>
+<span class="fc" id="L15">    @JsonProperty public boolean authoritativeInventory() { return false; }</span>
+<span class="fc" id="L16">    @JsonProperty public String evidenceStatus() { return &quot;REPORTS_EXHAUSTED_NOT_AN_ATOMIC_SNAPSHOT&quot;; }</span>
+    public record ReportData(String report, AlfabetReadProfile.Kind kind, List&lt;Row&gt; rows) {
+<span class="fc" id="L18">        public ReportData { rows = List.copyOf(rows); }</span>
+    }
+    /** For relation reports refStr identifies the base object, NOT the relationship itself. */
+    public record Row(String className, String refStr, Map&lt;String, String&gt; fields,
+                      Map&lt;String, String&gt; columns, Set&lt;String&gt; nullColumns) {
+<span class="fc" id="L23">        public Row { fields = Map.copyOf(fields); columns = Map.copyOf(columns); nullColumns = Set.copyOf(nullColumns); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationWorkPlan.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RelationWorkPlan.java</span></div><h1>RelationWorkPlan.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.analysis.service.AnalysisRunControl;
+import com.taxonomy.dto.RelationSearchProgress;
+import com.taxonomy.dto.RelationSearchProgress.*;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import java.util.*;
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/** One scalar plan for the entire run, including work outside the current execution budget. */
+final class RelationWorkPlan implements RelationSearchEngine.Observer {
+<span class="fc" id="L13">    private record Pair(String source, String root) { }</span>
+    private static final class Counts {
+        int total, completed, unresolved;
+    }
+    private static final class Work {
+        final Counts counts;
+        int expected, finished;
+<span class="fc" id="L20">        State state = State.PENDING;</span>
+<span class="fc" id="L21">        Work(Counts counts) { this.counts = counts; }</span>
+    }
+<span class="fc" id="L23">    private final Map&lt;Pair, Work&gt; work = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L24">    private final Map&lt;String, List&lt;Work&gt;&gt; workBySource = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L25">    private final Map&lt;String, Counts&gt; countsByRoot = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L26">    private final Set&lt;String&gt; assessedSources = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L27">    private final Set&lt;String&gt; unresolvedSources = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L28">    private final Map&lt;String, String&gt; sourceRoots = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L29">    private final Set&lt;Intent&gt; finished = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L30">    private final Set&lt;Edge&gt; verified = new HashSet&lt;&gt;();</span>
+    private final int sources, maximum;
+    private final boolean publish;
+    private int calls, completed, unresolved;
+<span class="fc" id="L34">    private Step step = Step.SOURCES;</span>
+    private Current current;
+    private java.util.function.Supplier&lt;com.taxonomy.dto.RelationSearchBudget&gt; budget;
+
+    RelationWorkPlan(List&lt;Node&gt; sources, List&lt;Node&gt; roots, RelationCompatibilityMatrix rules, int maximum) {
+<span class="fc" id="L39">        this(sources, roots, rules, maximum, true);</span>
+<span class="fc" id="L40">    }</span>
+<span class="fc" id="L41">    RelationWorkPlan(List&lt;Node&gt; sources, List&lt;Node&gt; roots, RelationCompatibilityMatrix rules, int maximum, boolean publish) {</span>
+<span class="fc" id="L42">        this.sources = sources.size(); this.maximum = maximum; this.publish = publish;</span>
+<span class="fc" id="L43">        sources.forEach(source -&gt; sourceRoots.put(source.id(), source.root()));</span>
+<span class="fc bfc" id="L44" title="All 4 branches covered.">        for (Node source : sources) for (Node root : roots) {</span>
+<span class="fc" id="L45">            boolean compatible = Arrays.stream(RelationType.values()).anyMatch(type -&gt;</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                    rules.allowedTargetRoots(source.root(), type).contains(root.root())</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                    || rules.allowedTargetRoots(root.root(), type).contains(source.root()));</span>
+<span class="fc" id="L48">            Pair pair = new Pair(source.id(), root.root());</span>
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">            if (compatible &amp;&amp; !work.containsKey(pair)) {</span>
+<span class="fc" id="L50">                Counts counts = countsByRoot.computeIfAbsent(root.root(), unused -&gt; new Counts());</span>
+<span class="fc" id="L51">                Work value = new Work(counts);</span>
+<span class="fc" id="L52">                work.put(pair, value);</span>
+<span class="fc" id="L53">                workBySource.computeIfAbsent(source.id(), unused -&gt; new ArrayList&lt;&gt;()).add(value);</span>
+<span class="fc" id="L54">                counts.total++;</span>
+            }
+<span class="fc" id="L56">        }</span>
+<span class="fc" id="L57">        publish();</span>
+<span class="fc" id="L58">    }</span>
+    void restore(com.taxonomy.dto.RelationSearchReport previous) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (previous == null) return;</span>
+<span class="fc" id="L61">        previous.sources().forEach(source -&gt; {</span>
+<span class="fc" id="L62">            assessedSources.add(source.node().id());</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (!source.question().isBlank()) unresolvedSources.add(source.node().id());</span>
+<span class="fc" id="L64">        });</span>
+<span class="fc" id="L65">        verified.addAll(previous.result().edges());</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        for (Task task : previous.tasks()) {</span>
+<span class="fc" id="L67">            Work value = work.get(new Pair(task.sourceId(), task.targetRoot()));</span>
+<span class="pc bpc" id="L68" title="1 of 6 branches missed.">            if (value != null &amp;&amp; (task.state() == State.COMPLETED || task.state() == State.UNRESOLVED)) state(value, task.state());</span>
+<span class="fc" id="L69">        }</span>
+<span class="fc" id="L70">        publish();</span>
+<span class="fc" id="L71">    }</span>
+    void retainUnresolved(List&lt;Task&gt; previous, Set&lt;String&gt; retainedLegacySources) {
+<span class="fc bfc" id="L73" title="All 6 branches covered.">        for (Task task : previous) if (task.state() == State.UNRESOLVED &amp;&amp; retainedLegacySources.contains(task.sourceId())) {</span>
+<span class="fc" id="L74">            Work value = work.get(new Pair(task.sourceId(), task.targetRoot()));</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">            if (value != null) state(value, State.UNRESOLVED);</span>
+        }
+<span class="fc" id="L77">    }</span>
+    void replayUnresolved(List&lt;Task&gt; previous, List&lt;Unfinished&gt; previousFailures, List&lt;Intent&gt; replayed) {
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (Task task : previous) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (task.state() != State.UNRESOLVED) continue;</span>
+<span class="fc" id="L81">            Work value = work.get(new Pair(task.sourceId(), task.targetRoot()));</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            if (value == null) continue;</span>
+<span class="fc" id="L83">            List&lt;Unfinished&gt; failures = previousFailures.stream()</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                    .filter(failure -&gt; failure.sourceId().equals(task.sourceId())</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                            &amp;&amp; task.targetRoot().equals(failure.targetRoot()))</span>
+<span class="fc" id="L86">                    .toList();</span>
+<span class="fc bfc" id="L87" title="All 4 branches covered.">            if (!failures.isEmpty() &amp;&amp; failures.stream().allMatch(failure -&gt; replayed.stream()</span>
+<span class="fc" id="L88">                    .anyMatch(intent -&gt; matches(failure, task, intent)))) state(value, State.PENDING);</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc" id="L90">    }</span>
+    private static boolean matches(Unfinished failure, Task task, Intent intent) {
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">        return failure.contributionKey() != null &amp;&amp; failure.targetRoot().equals(task.targetRoot())</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                &amp;&amp; failure.sourceId().equals(intent.contribution().source().id())</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">                &amp;&amp; failure.type().equals(intent.type()) &amp;&amp; failure.direction() == intent.direction()</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                &amp;&amp; failure.contributionKey().equals(RelationSearchEngine.contributionKey(</span>
+<span class="fc" id="L96">                        intent.contribution(), intent.type(), intent.direction()))</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                &amp;&amp; intent.roots().stream().anyMatch(root -&gt; root.root().equals(task.targetRoot()));</span>
+    }
+    void sourceBatch(List&lt;String&gt; ids) {
+<span class="fc" id="L100">        step = Step.SOURCES;</span>
+<span class="fc" id="L101">        current = new Current(String.join(&quot;, &quot;, ids), &quot;&quot;, &quot;&quot;, null, 0, ids);</span>
+<span class="fc" id="L102">        publish();</span>
+<span class="fc" id="L103">    }</span>
+    void assessed(SourceAssessment source) {
+<span class="fc" id="L105">        assessedSources.add(source.node().id());</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (source.question().isBlank()) unresolvedSources.remove(source.node().id());</span>
+<span class="fc" id="L107">        else unresolvedSources.add(source.node().id());</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (source.contributions().isEmpty()) {</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            for (Work value : workBySource.getOrDefault(source.node().id(), List.of())) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                state(value, source.question().isBlank() ? State.COMPLETED : State.UNRESOLVED);</span>
+<span class="fc" id="L111">            }</span>
+        }
+<span class="fc" id="L113">        publish();</span>
+<span class="fc" id="L114">    }</span>
+    void expect(List&lt;Intent&gt; intents) {
+<span class="fc bfc" id="L116" title="All 4 branches covered.">        for (Intent intent : new LinkedHashSet&lt;&gt;(intents)) for (Node root : intent.roots()) {</span>
+<span class="fc" id="L117">            Work value = work.get(new Pair(intent.contribution().source().id(), root.root()));</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (value != null) value.expected++;</span>
+<span class="fc" id="L119">        }</span>
+<span class="fc" id="L120">    }</span>
+<span class="fc" id="L121">    void calls(int count) { calls = count; publish(); }</span>
+<span class="fc" id="L122">    void budget(java.util.function.Supplier&lt;com.taxonomy.dto.RelationSearchBudget&gt; value) { budget = value; publish(); }</span>
+    @Override public void started(Query query, int depth) {
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        step = query.phase() == Phase.VERIFY ? Step.VERIFY : Step.NAVIGATE;</span>
+<span class="fc" id="L125">        current = new Current(query.contribution().source().id(), query.candidates().getFirst().root(),</span>
+<span class="fc" id="L126">                query.type(), query.direction(), depth, query.candidates().stream().map(Node::id).toList());</span>
+<span class="fc" id="L127">        Work value = work.get(new Pair(current.sourceId(), current.targetRoot()));</span>
+<span class="pc bpc" id="L128" title="1 of 8 branches missed.">        if (value != null &amp;&amp; (value.state == State.PENDING || value.state == State.UNRESOLVED &amp;&amp; value.finished == 0))</span>
+<span class="fc" id="L129">            state(value, State.RUNNING);</span>
+<span class="fc" id="L130">        publish();</span>
+<span class="fc" id="L131">    }</span>
+    @Override public void finished(Intent intent, boolean complete) {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (!finished.add(intent)) return;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        for (Node root : intent.roots()) {</span>
+<span class="fc" id="L135">            Work value = work.get(new Pair(intent.contribution().source().id(), root.root()));</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (value == null) continue;</span>
+<span class="fc" id="L137">            value.finished++;</span>
+<span class="pc bpc" id="L138" title="1 of 4 branches missed.">            if (!complete &amp;&amp; value.state != State.COMPLETED) state(value, State.UNRESOLVED);</span>
+<span class="fc bfc" id="L139" title="All 4 branches covered.">            else if (value.state != State.UNRESOLVED &amp;&amp; value.finished == value.expected) state(value, State.COMPLETED);</span>
+<span class="fc" id="L140">        }</span>
+<span class="fc" id="L141">        publish();</span>
+<span class="fc" id="L142">    }</span>
+<span class="fc" id="L143">    @Override public void verified(Edge edge) { verified.add(edge); publish(); }</span>
+    void finish(boolean exhausted) {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        step = exhausted ? Step.FINISHED : Step.PAUSED; current = null;</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        work.values().stream().filter(w -&gt; w.state == State.RUNNING).forEach(w -&gt; state(w, State.PENDING));</span>
+<span class="fc" id="L147">        publish();</span>
+<span class="fc" id="L148">    }</span>
+    List&lt;Task&gt; tasks() {
+<span class="fc" id="L150">        return work.entrySet().stream().map(e -&gt; new Task(e.getKey().source(), e.getKey().root(), e.getValue().state)).toList();</span>
+    }
+    RelationSearchProgress snapshot() {
+<span class="fc" id="L153">        List&lt;Taxonomy&gt; taxonomies = countsByRoot.entrySet().stream().map(e -&gt; {</span>
+<span class="fc" id="L154">            Counts counts = e.getValue();</span>
+<span class="fc" id="L155">            return new Taxonomy(e.getKey(), counts.total, counts.completed, counts.unresolved,</span>
+                    counts.total - counts.completed - counts.unresolved);
+<span class="fc" id="L157">        }).toList();</span>
+<span class="fc" id="L158">        Map&lt;String, int[]&gt; sourceCounts = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L159">        sourceRoots.forEach((id, root) -&gt; {</span>
+<span class="fc" id="L160">            int[] count = sourceCounts.computeIfAbsent(root, unused -&gt; new int[3]); count[0]++;</span>
+<span class="fc" id="L161">            List&lt;Work&gt; tasks = workBySource.getOrDefault(id, List.of());</span>
+<span class="fc bfc" id="L162" title="All 6 branches covered.">            if (unresolvedSources.contains(id) || tasks.stream().anyMatch(task -&gt; task.state == State.UNRESOLVED)) count[2]++;</span>
+<span class="fc bfc" id="L163" title="All 6 branches covered.">            else if (assessedSources.contains(id) &amp;&amp; tasks.stream().allMatch(task -&gt; task.state == State.COMPLETED)) count[1]++;</span>
+<span class="fc" id="L164">        });</span>
+<span class="fc" id="L165">        var sourceTaxonomies = sourceCounts.entrySet().stream().map(entry -&gt; new SourceTaxonomy(entry.getKey(),</span>
+<span class="fc" id="L166">                entry.getValue()[0], entry.getValue()[1], entry.getValue()[2])).toList();</span>
+<span class="fc" id="L167">        return new RelationSearchProgress(sources, assessedSources.size(), work.size(), completed, unresolved,</span>
+<span class="fc" id="L168">                work.size() - completed - unresolved, calls, maximum, verified.size(), step, current, taxonomies, sourceTaxonomies,</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                budget == null ? null : budget.get());</span>
+    }
+    private void state(Work value, State next) {
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (value.state == next) return;</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        if (value.state == State.COMPLETED) { completed--; value.counts.completed--; }</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (value.state == State.UNRESOLVED) { unresolved--; value.counts.unresolved--; }</span>
+<span class="fc" id="L175">        value.state = next;</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (next == State.COMPLETED) { completed++; value.counts.completed++; }</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (next == State.UNRESOLVED) { unresolved++; value.counts.unresolved++; }</span>
+<span class="fc" id="L178">    }</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">    private void publish() { if (publish) AnalysisRunControl.relations(snapshot()); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureCheckpointWriter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureCheckpointWriter.java</span></div><h1>ArchitectureCheckpointWriter.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.ExpectedHeadDslCommitter;
+import com.taxonomy.editor.persistence.EditorJournal;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Objects;
+
+/** Retryable Git phase of a durable checkpoint intent. Deliberately outside the journal transaction. */
+@Component
+<span class="fc" id="L20">public class ArchitectureCheckpointWriter {</span>
+<span class="fc" id="L21">    public record Result(String commitId, boolean created) {}</span>
+
+    public Result write(DslGitRepository source, String scope, String branch, EditorJournal.Checkpoint request) throws IOException {
+<span class="fc" id="L24">        Repository repository = source.getGitRepository();</span>
+        // A checkpoint is one Git publication, even when several requests retry its
+        // durable intent. Keep insertion and ref publication together on this live
+        // repository: storage 0.11.3 otherwise takes its catalogue and database locks
+        // in opposite orders when another retry flushes a pack during a ref update.
+        // Separate processes still coordinate through the expected-head CAS below;
+        // this monitor neither replaces that check nor spans a journal transaction.
+<span class="fc" id="L31">        synchronized (repository) {</span>
+<span class="fc" id="L32">            return write(source, repository, scope, branch, request);</span>
+        }
+    }
+
+    private Result write(DslGitRepository source, Repository repository, String scope, String branch,
+                         EditorJournal.Checkpoint request) throws IOException {
+<span class="fc" id="L38">        String previous = request.expectedCommit();</span>
+<span class="fc bfc" id="L39" title="All 4 branches covered.">        if (Objects.equals(request.dsl(), previous == null ? &quot;&quot; : source.getDslAtCommit(previous))) {</span>
+<span class="fc" id="L40">            new ExpectedHeadDslCommitter().verifyExpectedHead(source, branch, previous);</span>
+<span class="fc" id="L41">            return new Result(previous, false);</span>
+        }
+        // The unsigned payload comes from the durable intent. Signatures may
+        // differ after key rotation or when a background worker resumes a request.
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        PersonIdent actor = new PersonIdent(request.actor(), request.actor().contains(&quot;@&quot;)</span>
+<span class="pc" id="L46">                ? request.actor() : request.actor() + &quot;@taxonomy.local&quot;, Instant.parse(request.occurredAt()), ZoneOffset.UTC);</span>
+<span class="fc" id="L47">        try (ObjectInserter inserter = repository.newObjectInserter()) {</span>
+<span class="fc" id="L48">            ObjectId blob = inserter.insert(Constants.OBJ_BLOB, request.dsl().getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L49">            TreeFormatter tree = new TreeFormatter();</span>
+<span class="fc" id="L50">            tree.append(DslGitRepository.DSL_FILENAME, FileMode.REGULAR_FILE, blob);</span>
+<span class="fc" id="L51">            CommitBuilder commit = new CommitBuilder();</span>
+<span class="fc" id="L52">            commit.setTreeId(inserter.insert(tree));</span>
+<span class="fc" id="L53">            commit.setAuthor(actor); commit.setCommitter(actor);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (previous != null) commit.setParentId(ObjectId.fromString(previous));</span>
+<span class="fc" id="L55">            commit.setMessage(&quot;architecture checkpoint: &quot; + request.rationale()</span>
+<span class="fc" id="L56">                    + &quot;\n\nCheckpoint-Id: &quot; + request.commandId() + &quot;\nCheckpoint-Scope: &quot; + scope</span>
+<span class="fc" id="L57">                    + &quot;\nCheckpoint-Fingerprint: &quot; + request.fingerprint()</span>
+<span class="fc" id="L58">                    + &quot;\nSemantic-Revision: &quot; + request.revision()</span>
+<span class="fc" id="L59">                    + &quot;\nOperations-After: &quot; + request.fromRevision() + &quot;\nOperations-Through: &quot; + request.revision()</span>
+<span class="fc" id="L60">                    + &quot;\nRationale: &quot; + request.rationale());</span>
+<span class="fc" id="L61">            String recovered = findPublishedCheckpoint(source, repository, branch, commit);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (recovered != null) return new Result(recovered, true);</span>
+<span class="fc" id="L63">            source.signCommit(commit, branch);</span>
+<span class="fc" id="L64">            ObjectId id = inserter.insert(commit);</span>
+<span class="fc" id="L65">            inserter.flush();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            if (applied(repository, branch, id)) return new Result(id.name(), true);</span>
+            try {
+<span class="fc" id="L68">                new ExpectedHeadDslCommitter().verifyExpectedHead(source, branch, previous);</span>
+<span class="fc" id="L69">            } catch (BranchHeadConflictException conflict) {</span>
+                // A concurrent retry of this SAME durable intent may have won between the read and CAS.
+<span class="fc" id="L71">                recovered = findPublishedCheckpoint(source, repository, branch, commit);</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">                if (recovered != null) return new Result(recovered, true);</span>
+<span class="fc" id="L73">                throw conflict;</span>
+<span class="fc" id="L74">            }</span>
+<span class="fc" id="L75">            RefUpdate update = repository.updateRef(Constants.R_HEADS + branch);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            update.setExpectedOldObjectId(previous == null ? ObjectId.zeroId() : ObjectId.fromString(previous));</span>
+<span class="fc" id="L77">            update.setNewObjectId(id); update.setForceUpdate(false);</span>
+<span class="fc" id="L78">            update.setRefLogIdent(actor); update.setRefLogMessage(&quot;checkpoint: &quot; + request.commandId(), false);</span>
+<span class="fc" id="L79">            RefUpdate.Result result = update.update();</span>
+<span class="pc bpc" id="L80" title="3 of 6 branches missed.">            if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.FAST_FORWARD || result == RefUpdate.Result.NO_CHANGE) {</span>
+<span class="fc" id="L81">                return new Result(id.name(), true);</span>
+            }
+<span class="nc" id="L83">            recovered = findPublishedCheckpoint(source, repository, branch, commit);</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">            if (recovered != null) return new Result(recovered, true);</span>
+<span class="nc" id="L85">            throw new IOException(&quot;Checkpoint ref update did not succeed: &quot; + result + &quot;; retry checkpoint &quot; + request.commandId());</span>
+<span class="pc bpc" id="L86" title="6 of 8 branches missed.">        }</span>
+    }
+
+    /** Recover the exact durable payload without requiring deterministic signature bytes. */
+    private static String findPublishedCheckpoint(DslGitRepository source, Repository repository,
+                                                   String branch, CommitBuilder expected) throws IOException {
+<span class="fc" id="L92">        Ref current = repository.exactRef(Constants.R_HEADS + branch);</span>
+<span class="pc bpc" id="L93" title="1 of 4 branches missed.">        if (current == null || current.getObjectId() == null) return null;</span>
+<span class="fc" id="L94">        try (RevWalk walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L95">            walk.markStart(walk.parseCommit(current.getObjectId()));</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            for (ObjectId parent : expected.getParentIds()) walk.markUninteresting(walk.parseCommit(parent));</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            for (var candidate : walk) {</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                if (!candidate.getTree().equals(expected.getTreeId())</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                        || !candidate.getAuthorIdent().equals(expected.getAuthor())</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                        || !candidate.getCommitterIdent().equals(expected.getCommitter())</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                        || !candidate.getFullMessage().equals(expected.getMessage())</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                        || candidate.getParentCount() != expected.getParentIds().length) continue;</span>
+<span class="fc" id="L103">                boolean parentsMatch = true;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                for (int i = 0; i &lt; candidate.getParentCount(); i++) {</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                    if (!candidate.getParent(i).equals(expected.getParentIds()[i])) parentsMatch = false;</span>
+                }
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                if (parentsMatch) {</span>
+<span class="fc" id="L108">                    source.verifySnapshot(candidate.name());</span>
+<span class="fc" id="L109">                    return candidate.name();</span>
+                }
+<span class="nc" id="L111">            }</span>
+<span class="fc" id="L112">        }</span>
+<span class="fc" id="L113">        return null;</span>
+    }
+
+    private static boolean applied(Repository repository, String branch, ObjectId id) throws IOException {
+<span class="fc" id="L117">        Ref current = repository.exactRef(Constants.R_HEADS + branch);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (current == null) return false;</span>
+<span class="fc" id="L119">        try (RevWalk walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L120">            return walk.isMergedInto(walk.parseCommit(id), walk.parseCommit(current.getObjectId()));</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

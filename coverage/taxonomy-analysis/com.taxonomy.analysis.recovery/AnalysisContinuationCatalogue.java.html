@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisContinuationCatalogue.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.recovery</a> &gt; <span class="el_source">AnalysisContinuationCatalogue.java</span></div><h1>AnalysisContinuationCatalogue.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.recovery;
+
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import java.util.*;
+
+/** Compares frozen official node and overlay semantics without mutable relation projections. */
+public final class AnalysisContinuationCatalogue {
+    private AnalysisContinuationCatalogue() { }
+    public static boolean matches(List&lt;TaxonomyNodeDto&gt; tree, Collection&lt;RootCatalogueSnapshot&gt; roots) {
+<span class="pc bpc" id="L11" title="1 of 2 branches missed.">        if (tree == null) return false;</span>
+<span class="fc" id="L12">        var selected = new HashMap&lt;String,TaxonomyNodeDto&gt;();</span>
+<span class="fc" id="L13">        var rootCodes = roots.stream().map(RootCatalogueSnapshot::rootCode).collect(java.util.stream.Collectors.toSet());</span>
+<span class="pc bpc" id="L14" title="1 of 4 branches missed.">        for (var root : tree) if (rootCodes.contains(root.getCode())) flatten(root, selected);</span>
+<span class="fc" id="L15">        var offered = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L16" title="All 4 branches covered.">        for (var root : roots) for (var node : root.nodes()) {</span>
+<span class="fc" id="L17">            var saved = selected.get(node.code());</span>
+<span class="pc bpc" id="L18" title="3 of 6 branches missed.">            if (!offered.add(node.code()) || saved == null || !fields(saved).equals(fields(node))) return false;</span>
+<span class="fc" id="L19">        }</span>
+<span class="fc" id="L20">        return offered.equals(selected.keySet());</span>
+    }
+    private static void flatten(TaxonomyNodeDto node, Map&lt;String,TaxonomyNodeDto&gt; all) {
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if (all.putIfAbsent(node.getCode(), node) != null) throw new IllegalArgumentException(&quot;Duplicate frozen catalogue node&quot;);</span>
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (node.getChildren() != null) node.getChildren().forEach(child -&gt; flatten(child, all));</span>
+<span class="fc" id="L25">    }</span>
+    private static List&lt;Object&gt; fields(TaxonomyNodeDto n) {
+<span class="fc" id="L27">        return Arrays.asList(n.getId(),n.getCode(),n.getUuid(),n.getNameEn(),n.getNameDe(),n.getDescriptionEn(),n.getDescriptionDe(),</span>
+<span class="fc" id="L28">                n.getParentCode(),n.getTaxonomyRoot(),n.getLevel(),n.getDataset(),n.getExternalId(),n.getSource(),n.getReference(),</span>
+<span class="fc" id="L29">                n.getSortOrder(),n.getState(),n.getAnalysisRole(),n.getSecondaryClassificationCodes(),n.getClassificationConfidence(),</span>
+<span class="fc" id="L30">                n.isClassificationReviewRequired(),n.getClassificationJustification());</span>
+    }
+    private static List&lt;Object&gt; fields(RootCatalogueSnapshot.Node n) {
+<span class="fc" id="L33">        return Arrays.asList(n.id(),n.code(),n.uuid(),n.nameEn(),n.nameDe(),n.descriptionEn(),n.descriptionDe(),</span>
+<span class="fc" id="L34">                n.parentCode(),n.taxonomyRoot(),n.level(),n.dataset(),n.externalId(),n.source(),n.reference(),n.sortOrder(),n.state(),</span>
+<span class="fc" id="L35">                n.metadata().analysisRole(),n.metadata().secondaryClassificationCodes(),n.metadata().confidence(),</span>
+<span class="fc" id="L36">                n.metadata().reviewRequired(),n.metadata().justification());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

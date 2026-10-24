@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UnavailablePortfolioPort.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.config</a> &gt; <span class="el_source">UnavailablePortfolioPort.java</span></div><h1>UnavailablePortfolioPort.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.config;
+
+import com.taxonomy.interop.IntegrationPortfolioPort;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import java.util.List;
+
+/** Unavailable operations fail closed; absent portfolio data is never reported as an empty/deleted project. */
+<span class="nc" id="L9">final class UnavailablePortfolioPort implements IntegrationPortfolioPort {</span>
+<span class="nc" id="L10">    private IntegrationProblem unavailable() { return new IntegrationProblem(&quot;PORTFOLIO_FEATURE_UNAVAILABLE&quot;, 503,</span>
+            &quot;This integration operation requires the portfolio startup feature&quot;); }
+<span class="nc" id="L12">    @Override public RequirementApplyPlan planRequirementApply(Long id, String key, String dsl, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L13">    @Override public List&lt;ProjectData&gt; listProjects(String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L14">    @Override public ProjectData getProject(Long id, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L15">    @Override public void requireProject(Long id, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L16">    @Override public void requireProjectForUpdate(Long id, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L17">    @Override public void refreshIntegrationRequirements(Long id, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L18">    @Override public List&lt;RequirementData&gt; listRequirements(Long id, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L19">    @Override public RequirementsPage listApprovedRequirements(Long id, String user, WorkspaceContext context, int page, int pageSize) { throw unavailable(); }</span>
+<span class="nc" id="L20">    @Override public RequirementData getRequirement(Long id, Long requirement, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L21">    @Override public RequirementData createRequirement(Long id, ImportedRequirement request, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L22">    @Override public void archiveRequirement(Long id, Long requirement, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L23">    @Override public void updateRequirement(Long id, Long requirement, String title, boolean review, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L24">    @Override public void addRequirementVersion(Long id, Long requirement, String text, String rationale, ImportProvenance source, String user, WorkspaceContext context) { throw unavailable(); }</span>
+<span class="nc" id="L25">    @Override public String contributeTo(String source, String user, WorkspaceContext context) { throw unavailable(); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

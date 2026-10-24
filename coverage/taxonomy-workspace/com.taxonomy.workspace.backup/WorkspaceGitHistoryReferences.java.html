@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceGitHistoryReferences.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">WorkspaceGitHistoryReferences.java</span></div><h1>WorkspaceGitHistoryReferences.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.taxonomy.exchange.backup.PortableRows.Query;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.Repository;
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.nio.CharBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import static com.taxonomy.exchange.backup.PortableRows.reference;
+import static com.taxonomy.exchange.backup.PortableRows.text;
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Source-owned commit references, resolved only within the explicitly authorized Git inventory. */
+public final class WorkspaceGitHistoryReferences {
+<span class="fc" id="L25">    public enum Field {</span>
+<span class="fc" id="L26">        REPOSITORY_FORK_POINT, REPOSITORY_LAST_FETCH,</span>
+<span class="fc" id="L27">        WORKSPACE_BASE, WORKSPACE_CURRENT, WORKSPACE_LAST_FETCHED, WORKSPACE_LAST_INTEGRATED,</span>
+<span class="fc" id="L28">        SYNC_LAST_SYNCED, SYNC_LAST_PUBLISHED, EDITOR_CHECKPOINT,</span>
+<span class="fc" id="L29">        CHECKPOINT_EXPECTED, CHECKPOINT_COMMIT, INDEX_COMMIT, CONTEXT_FROM, CONTEXT_TO</span>
+    }
+    public record CommitReference(SourceRecordId sourceId, Field field, BackupRepositoryKey repository, String commit) {
+<span class="fc" id="L32">        public CommitReference {</span>
+<span class="fc" id="L33">            Objects.requireNonNull(sourceId); Objects.requireNonNull(field); Objects.requireNonNull(repository);</span>
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">            if (commit == null || !commit.matches(&quot;[a-f0-9]{40}&quot;)) throw new IllegalArgumentException(&quot;Invalid original commit identity&quot;);</span>
+<span class="fc" id="L35">        }</span>
+    }
+    public record Capture(Map&lt;BackupRepositoryKey, Set&lt;String&gt;&gt; requiredCommits,
+                          Map&lt;BackupRepositoryKey, Map&lt;String, SnapshotContext.WorkingState&gt;&gt; workingStates,
+                          List&lt;CommitReference&gt; references, List&lt;WorkingCopyProof&gt; workingCopies) {
+        public Capture(Map&lt;BackupRepositoryKey, Set&lt;String&gt;&gt; requiredCommits,
+                       Map&lt;BackupRepositoryKey, Map&lt;String, SnapshotContext.WorkingState&gt;&gt; workingStates,
+<span class="nc" id="L42">                       List&lt;CommitReference&gt; references) { this(requiredCommits, workingStates, references, List.of()); }</span>
+<span class="fc" id="L43">        public Capture {</span>
+<span class="fc" id="L44">            var commits = new HashMap&lt;BackupRepositoryKey, Set&lt;String&gt;&gt;();</span>
+<span class="fc" id="L45">            requiredCommits.forEach((key, values) -&gt; commits.put(key, Set.copyOf(values)));</span>
+<span class="fc" id="L46">            requiredCommits = Map.copyOf(commits);</span>
+<span class="fc" id="L47">            var states = new HashMap&lt;BackupRepositoryKey, Map&lt;String, SnapshotContext.WorkingState&gt;&gt;();</span>
+<span class="fc" id="L48">            workingStates.forEach((key, values) -&gt; states.put(key, Map.copyOf(values)));</span>
+<span class="fc" id="L49">            workingStates = Map.copyOf(states); references = List.copyOf(references); workingCopies = List.copyOf(workingCopies);</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">            if (!requiredCommits.keySet().equals(workingStates.keySet())) throw new IllegalArgumentException(&quot;Inconsistent Git inventory&quot;);</span>
+<span class="fc" id="L51">        }</span>
+    }
+    public record WorkingCopyProof(SourceRecordId sourceId, BackupRepositoryKey repository, String branch,
+                                   SnapshotContext.WorkingState state, String sha256, String interruptedCheckpoint) {
+<span class="fc" id="L55">        public WorkingCopyProof {</span>
+<span class="fc" id="L56">            Objects.requireNonNull(sourceId); Objects.requireNonNull(repository); Objects.requireNonNull(state);</span>
+<span class="pc bpc" id="L57" title="3 of 6 branches missed.">            if (!sourceId.kind().equals(&quot;workspace.editor&quot;) || repository.workspaceId() == null || branch == null</span>
+<span class="pc bpc" id="L58" title="3 of 6 branches missed.">                    || !Repository.isValidRefName(Constants.R_HEADS + branch) || sha256 == null || !sha256.matches(&quot;[a-f0-9]{64}&quot;))</span>
+<span class="nc" id="L59">                throw new IllegalArgumentException(&quot;Invalid raw working copy proof&quot;);</span>
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">            if (interruptedCheckpoint != null &amp;&amp; !UUID.fromString(interruptedCheckpoint).toString().equals(interruptedCheckpoint))</span>
+<span class="nc" id="L61">                throw new IllegalArgumentException(&quot;Invalid interrupted checkpoint identity&quot;);</span>
+<span class="fc" id="L62">        }</span>
+    }
+<span class="fc" id="L64">    private static final Comparator&lt;BackupRepositoryKey&gt; KEY_ORDER = Comparator.comparing(BackupRepositoryKey::repositoryId)</span>
+<span class="fc" id="L65">            .thenComparing(BackupRepositoryKey::workspaceId, Comparator.nullsFirst(Comparator.naturalOrder()));</span>
+    private static final int MAX_REFERENCES = 100_000;
+    private static final int MAX_MEMBERSHIP_PROBES = 200_000;
+    private final PortableRows rows;
+    private final ExistingGitBackupRepositories repositories;
+    private final int maximumReferences;
+    public WorkspaceGitHistoryReferences(DataSource database, ExistingGitBackupRepositories repositories) {
+<span class="fc" id="L72">        this(database, repositories, MAX_REFERENCES);</span>
+<span class="fc" id="L73">    }</span>
+<span class="fc" id="L74">    public WorkspaceGitHistoryReferences(DataSource database, ExistingGitBackupRepositories repositories, int maximumReferences) {</span>
+<span class="fc" id="L75">        rows = new PortableRows(database); this.repositories = Objects.requireNonNull(repositories);</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">        if (maximumReferences &lt; 1 || maximumReferences &gt; MAX_REFERENCES) throw new IllegalArgumentException(&quot;Invalid commit reference budget&quot;);</span>
+<span class="fc" id="L77">        this.maximumReferences = maximumReferences;</span>
+<span class="fc" id="L78">    }</span>
+    public Capture inspect(AuthorizedBackupRequest authorization, Set&lt;BackupRepositoryKey&gt; keys,
+                           GitHistoryCapture.Limits limits, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L82">            checkpoint.check();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">            if (!authorization.request().profile().includesHistory()) throw failure(&quot;Database history closure requires history authorization&quot;);</span>
+<span class="fc" id="L84">            keys = Set.copyOf(keys); var scope = new BackupRowScope(authorization, keys);</span>
+<span class="fc" id="L85">            var result = new Builder(authorization, keys, limits, checkpoint);</span>
+<span class="fc" id="L86">            var repositoryIds = scope.repositoryIds(&quot;repository_id&quot;);</span>
+<span class="fc" id="L87">            read(&quot;select repository_id,upstream_repository_id,fork_point_commit,last_fetch_commit from system_repository&quot;, repositoryIds, &quot;repository_id&quot;, checkpoint, row -&gt; {</span>
+<span class="fc" id="L88">                String repository = text(row, &quot;repository_id&quot;);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                if (!result.repositoryIds.contains(repository)) throw failure(&quot;Repository metadata belongs to another capture scope&quot;);</span>
+<span class="fc" id="L90">                var source = new SourceRecordId(&quot;workspace.repository&quot;, repository);</span>
+<span class="fc" id="L91">                var candidates = new ArrayList&lt;BackupRepositoryKey&gt;(); candidates.add(new BackupRepositoryKey(repository, null));</span>
+<span class="fc" id="L92">                String upstream = text(row, &quot;upstream_repository_id&quot;);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                if (upstream != null) candidates.add(new BackupRepositoryKey(upstream, null));</span>
+<span class="fc" id="L94">                result.resolve(source, Field.REPOSITORY_FORK_POINT, candidates, text(row, &quot;fork_point_commit&quot;));</span>
+<span class="fc" id="L95">                result.resolve(source, Field.REPOSITORY_LAST_FETCH, candidates, text(row, &quot;last_fetch_commit&quot;));</span>
+<span class="fc" id="L96">            });</span>
+<span class="fc" id="L97">            read(&quot;select source_repository_id,workspace_id,base_commit,current_commit,last_fetched_commit,last_integrated_commit from user_workspace&quot;,</span>
+<span class="fc" id="L98">                    scope.repositories(&quot;source_repository_id&quot;, &quot;workspace_id&quot;), &quot;workspace_id&quot;, checkpoint, row -&gt; {</span>
+<span class="fc" id="L99">                var key = result.key(row, &quot;source_repository_id&quot;, &quot;workspace_id&quot;);</span>
+<span class="fc" id="L100">                var source = new SourceRecordId(&quot;workspace.workspace&quot;, key.workspaceId());</span>
+<span class="fc" id="L101">                var related = List.of(new BackupRepositoryKey(key.repositoryId(), null), key);</span>
+<span class="fc" id="L102">                result.resolve(source, Field.WORKSPACE_BASE, related, text(row, &quot;base_commit&quot;));</span>
+<span class="fc" id="L103">                result.resolve(source, Field.WORKSPACE_CURRENT, List.of(key), text(row, &quot;current_commit&quot;));</span>
+<span class="fc" id="L104">                result.resolve(source, Field.WORKSPACE_LAST_FETCHED, related, text(row, &quot;last_fetched_commit&quot;));</span>
+<span class="fc" id="L105">                result.resolve(source, Field.WORKSPACE_LAST_INTEGRATED, related, text(row, &quot;last_integrated_commit&quot;));</span>
+<span class="fc" id="L106">            });</span>
+<span class="fc" id="L107">            read(&quot;select w.source_repository_id,w.workspace_id as captured_workspace_id,s.workspace_id,s.id,s.last_synced_commit_id,s.last_published_commit_id from sync_state s join user_workspace w on w.workspace_id=s.workspace_id&quot;,</span>
+<span class="fc" id="L108">                    scope.repositories(&quot;w.source_repository_id&quot;, &quot;w.workspace_id&quot;), &quot;s.id&quot;, checkpoint, row -&gt; {</span>
+<span class="fc" id="L109">                var key = result.key(row, &quot;source_repository_id&quot;, &quot;captured_workspace_id&quot;);</span>
+<span class="fc" id="L110">                linked(row, &quot;captured_workspace_id&quot;, &quot;workspace_id&quot;);</span>
+<span class="fc" id="L111">                var source = reference(row, &quot;workspace.sync&quot;, &quot;id&quot;);</span>
+<span class="fc" id="L112">                var related = List.of(key, new BackupRepositoryKey(key.repositoryId(), null));</span>
+<span class="fc" id="L113">                result.resolve(source, Field.SYNC_LAST_SYNCED, related, text(row, &quot;last_synced_commit_id&quot;));</span>
+<span class="fc" id="L114">                result.resolve(source, Field.SYNC_LAST_PUBLISHED, related, text(row, &quot;last_published_commit_id&quot;));</span>
+<span class="fc" id="L115">            });</span>
+<span class="fc" id="L116">            read(&quot;select scope_id,repository_id,workspace_id,branch,semantic_revision,checkpoint_commit,checkpoint_revision,dsl,pending_checkpoint from editor_workspace&quot;,</span>
+<span class="fc" id="L117">                    scope.repositories(&quot;repository_id&quot;, &quot;workspace_id&quot;), &quot;scope_id&quot;, checkpoint, row -&gt; {</span>
+<span class="fc" id="L118">                var key = result.key(row, &quot;repository_id&quot;, &quot;workspace_id&quot;);</span>
+<span class="fc" id="L119">                String branch = text(row, &quot;branch&quot;), scopeId = text(row, &quot;scope_id&quot;);</span>
+<span class="pc bpc" id="L120" title="3 of 6 branches missed.">                if (key.workspaceId() == null || branch == null || !Repository.isValidRefName(Constants.R_HEADS + branch)</span>
+<span class="fc" id="L121">                        || !RepositoryContext.workspace(key.repositoryId(), key.workspaceId(), branch, &quot;backup-reader&quot;)</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">                                .repositoryWorkspaceScopeKey().equals(scopeId)) throw failure(&quot;Stored editor scope is inconsistent&quot;);</span>
+<span class="fc" id="L123">                String commit = text(row, &quot;checkpoint_commit&quot;);</span>
+<span class="fc" id="L124">                var state = new SnapshotContext.WorkingState(number(row, &quot;semantic_revision&quot;), commit, number(row, &quot;checkpoint_revision&quot;));</span>
+<span class="pc bpc" id="L125" title="2 of 4 branches missed.">                if (++result.workingStateCount &gt; BackupLimits.MAX_ITEMS || result.workingStates.get(key).putIfAbsent(branch, state) != null)</span>
+<span class="nc" id="L126">                    throw failure(&quot;Duplicate or excessive stored working states&quot;);</span>
+<span class="fc" id="L127">                result.workingCopies.add(new WorkingCopyProof(new SourceRecordId(&quot;workspace.editor&quot;, scopeId), key, branch, state,</span>
+<span class="fc" id="L128">                        workingCopyHash(text(row, &quot;dsl&quot;), checkpoint), text(row, &quot;pending_checkpoint&quot;)));</span>
+<span class="fc" id="L129">                result.resolve(new SourceRecordId(&quot;workspace.editor&quot;, scopeId), Field.EDITOR_CHECKPOINT, List.of(key), commit);</span>
+<span class="fc" id="L130">            });</span>
+<span class="fc" id="L131">            read(&quot;select w.repository_id,w.workspace_id,w.scope_id as captured_editor_id,c.scope_id,c.id,c.expected_commit,c.commit_id from editor_checkpoint c join editor_workspace w on w.scope_id=c.scope_id&quot;,</span>
+<span class="fc" id="L132">                    scope.repositories(&quot;w.repository_id&quot;, &quot;w.workspace_id&quot;), &quot;c.id&quot;, checkpoint, row -&gt; {</span>
+<span class="fc" id="L133">                var key = result.key(row, &quot;repository_id&quot;, &quot;workspace_id&quot;); linked(row, &quot;captured_editor_id&quot;, &quot;scope_id&quot;);</span>
+<span class="fc" id="L134">                var source = reference(row, &quot;workspace.checkpoint&quot;, &quot;id&quot;);</span>
+<span class="fc" id="L135">                result.resolve(source, Field.CHECKPOINT_EXPECTED, List.of(key), text(row, &quot;expected_commit&quot;));</span>
+<span class="fc" id="L136">                result.resolve(source, Field.CHECKPOINT_COMMIT, List.of(key), text(row, &quot;commit_id&quot;));</span>
+<span class="fc" id="L137">            });</span>
+<span class="fc" id="L138">            read(&quot;select id,repository_id,workspace_id,commit_id from architecture_commit_index&quot;,</span>
+<span class="fc" id="L139">                    scope.repositories(&quot;repository_id&quot;, &quot;workspace_id&quot;), &quot;id&quot;, checkpoint, row -&gt; {</span>
+<span class="fc" id="L140">                var key = result.key(row, &quot;repository_id&quot;, &quot;workspace_id&quot;);</span>
+<span class="fc" id="L141">                result.resolve(reference(row, &quot;workspace.commit-index&quot;, &quot;id&quot;), Field.INDEX_COMMIT, List.of(key), text(row, &quot;commit_id&quot;));</span>
+<span class="fc" id="L142">            });</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            if (scope.installation()) {</span>
+                // Context UUIDs have no repository-ownership contract. Only the explicit Git catalogue may prove these legacy hashes.
+<span class="fc" id="L145">                var catalogue = keys.stream().sorted(KEY_ORDER).toList();</span>
+<span class="fc" id="L146">                read(&quot;select id,from_commit_id,to_commit_id from context_history_record&quot;, new Query(&quot;1=1&quot;, List.of()), &quot;id&quot;, checkpoint, row -&gt; {</span>
+<span class="fc" id="L147">                    var source = reference(row, &quot;workspace.context-history&quot;, &quot;id&quot;);</span>
+<span class="fc" id="L148">                    result.resolve(source, Field.CONTEXT_FROM, catalogue, text(row, &quot;from_commit_id&quot;));</span>
+<span class="fc" id="L149">                    result.resolve(source, Field.CONTEXT_TO, catalogue, text(row, &quot;to_commit_id&quot;));</span>
+<span class="fc" id="L150">                });</span>
+            }
+<span class="fc" id="L152">            checkpoint.check(); return result.finish();</span>
+<span class="fc" id="L153">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+    private void read(String select, Query predicate, String order, BackupCheckpoint checkpoint, RowRead action) throws IOException {
+<span class="fc" id="L156">        rows.visit(new Query(select + &quot; where &quot; + predicate.sql() + &quot; order by &quot; + order, predicate.parameters()), row -&gt; {</span>
+<span class="fc" id="L157">            checkpoint.check(); action.read(row); checkpoint.check(); return new Visited();</span>
+<span class="fc" id="L158">        }, ignored -&gt; checkpoint.check());</span>
+<span class="fc" id="L159">    }</span>
+    private static void linked(ResultSet row, String first, String second) throws SQLException, IOException {
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (!Objects.equals(text(row, first), text(row, second))) throw failure(&quot;History reference has an inconsistent parent scope&quot;);</span>
+<span class="fc" id="L162">    }</span>
+    private static long number(ResultSet row, String column) throws SQLException, IOException {
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        long value = row.getLong(column); if (row.wasNull()) throw failure(&quot;Stored working revision is missing&quot;); return value;</span>
+    }
+    private static String workingCopyHash(String framed, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L167">        checkpoint.check(); String raw = PortableRows.unframe(framed);</span>
+<span class="fc" id="L168">        var bytes = StandardCharsets.UTF_8.newEncoder().encode(CharBuffer.wrap(raw));</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (bytes.remaining() &gt; PortableRows.MAX_RECORD_BYTES) throw failure(&quot;Stored working copy byte budget exceeded&quot;);</span>
+        MessageDigest hash;
+<span class="fc" id="L171">        try { hash = MessageDigest.getInstance(&quot;SHA-256&quot;); }</span>
+<span class="pc" id="L172">        catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        while (bytes.hasRemaining()) {</span>
+<span class="fc" id="L174">            checkpoint.check(); int length = Math.min(bytes.remaining(), 8192);</span>
+<span class="fc" id="L175">            var chunk = bytes.slice(); chunk.limit(length); hash.update(chunk); bytes.position(bytes.position() + length);</span>
+<span class="fc" id="L176">        }</span>
+<span class="fc" id="L177">        checkpoint.check(); return HexFormat.of().formatHex(hash.digest());</span>
+    }
+    private record Visited() { }
+<span class="fc" id="L180">    private record Probe(BackupRepositoryKey key, String commit) { }</span>
+<span class="fc" id="L181">    private record ReferenceKey(SourceRecordId sourceId, Field field) { }</span>
+    @FunctionalInterface private interface RowRead { void read(ResultSet row) throws SQLException, IOException; }
+    private final class Builder {
+        final AuthorizedBackupRequest authorization;
+        final Set&lt;BackupRepositoryKey&gt; keys;
+        final Set&lt;String&gt; repositoryIds;
+        final GitHistoryCapture.Limits limits;
+        final BackupCheckpoint checkpoint;
+<span class="fc" id="L189">        final Map&lt;BackupRepositoryKey, Set&lt;String&gt;&gt; required = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L190">        final Map&lt;BackupRepositoryKey, Map&lt;String, SnapshotContext.WorkingState&gt;&gt; workingStates = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L191">        final Map&lt;ReferenceKey, CommitReference&gt; references = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L192">        final List&lt;WorkingCopyProof&gt; workingCopies = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L193">        final Map&lt;Probe, Boolean&gt; membership = new HashMap&lt;&gt;();</span>
+        int workingStateCount;
+<span class="fc" id="L195">        Builder(AuthorizedBackupRequest authorization, Set&lt;BackupRepositoryKey&gt; keys, GitHistoryCapture.Limits limits, BackupCheckpoint checkpoint) {</span>
+<span class="fc" id="L196">            this.authorization = authorization; this.keys = keys; this.limits = Objects.requireNonNull(limits); this.checkpoint = checkpoint;</span>
+<span class="fc" id="L197">            repositoryIds = keys.stream().map(BackupRepositoryKey::repositoryId).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            for (var key : keys) { required.put(key, new TreeSet&lt;&gt;()); workingStates.put(key, new TreeMap&lt;&gt;()); }</span>
+<span class="fc" id="L199">        }</span>
+        BackupRepositoryKey key(ResultSet row, String repository, String workspace) throws SQLException, IOException {
+<span class="fc" id="L201">            var key = new BackupRepositoryKey(text(row, repository), text(row, workspace));</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            if (!keys.contains(key)) throw failure(&quot;History row is outside the exact authorized Git inventory&quot;); return key;</span>
+        }
+        void resolve(SourceRecordId source, Field field, List&lt;BackupRepositoryKey&gt; candidates, String commit) throws IOException {
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            checkpoint.check(); if (commit == null) return;</span>
+<span class="pc bpc" id="L206" title="2 of 4 branches missed.">            if (!commit.matches(&quot;[a-f0-9]{40}&quot;) || source == null) throw failure(&quot;Invalid database commit reference&quot;);</span>
+<span class="fc" id="L207">            var identity = new ReferenceKey(source, field);</span>
+<span class="pc bpc" id="L208" title="1 of 4 branches missed.">            if (references.size() &gt;= maximumReferences || references.containsKey(identity)) throw failure(&quot;Duplicate or excessive database commit references&quot;);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            for (var key : candidates) {</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                checkpoint.check(); if (!keys.contains(key)) continue;</span>
+<span class="fc" id="L211">                var probe = new Probe(key, commit); Boolean found = membership.get(probe);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                if (found == null) {</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">                    if (membership.size() &gt;= MAX_MEMBERSHIP_PROBES) throw failure(&quot;Git membership proof budget exceeded&quot;);</span>
+<span class="fc" id="L214">                    try (var session = repositories.open(authorization, key, checkpoint)) { found = session.containsHistoryCommit(commit, limits, checkpoint); }</span>
+<span class="fc" id="L215">                    membership.put(probe, found);</span>
+                }
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                if (found) {</span>
+<span class="fc" id="L218">                    references.put(identity, new CommitReference(source, field, key, commit));</span>
+<span class="fc" id="L219">                    var commits = required.get(key); commits.add(commit);</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">                    if (commits.size() &gt; BackupLimits.MAX_ITEMS) throw failure(&quot;Required original commit budget exceeded&quot;);</span>
+<span class="fc" id="L221">                    return;</span>
+                }
+<span class="fc" id="L223">            }</span>
+<span class="fc" id="L224">            throw failure(&quot;Database commit reference is missing from the authorized Git history closure&quot;);</span>
+        }
+        Capture finish() {
+<span class="fc" id="L227">            return new Capture(required, workingStates, references.values().stream().sorted(Comparator</span>
+<span class="fc" id="L228">                    .comparing((CommitReference value) -&gt; value.sourceId().kind()).thenComparing(value -&gt; value.sourceId().value())</span>
+<span class="fc" id="L229">                    .thenComparing(value -&gt; value.field().name())).toList(), workingCopies.stream()</span>
+<span class="fc" id="L230">                    .sorted(Comparator.comparing(value -&gt; value.sourceId().value())).toList());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

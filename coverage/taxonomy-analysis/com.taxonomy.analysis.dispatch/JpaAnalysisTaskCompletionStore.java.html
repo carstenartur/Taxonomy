@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>JpaAnalysisTaskCompletionStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dispatch</a> &gt; <span class="el_source">JpaAnalysisTaskCompletionStore.java</span></div><h1>JpaAnalysisTaskCompletionStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dispatch;
+
+import com.taxonomy.analysis.dag.AnalysisCompletionMessage;
+import com.taxonomy.analysis.dag.AnalysisTaskCompletionStore;
+import com.taxonomy.analysis.dag.AnalysisTaskId;
+import com.taxonomy.analysis.dag.AnalysisTaskIdentity;
+import com.taxonomy.analysis.dag.PreparedAnalysisCompletion;
+import com.taxonomy.analysis.dag.RelationAnalysisCompleted;
+import com.taxonomy.analysis.dag.SubtaxonomyAnalysisCompleted;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * The completion insert reserves the task before the business-result mutation.
+ * Both become visible in one short transaction. A concurrent insert waits for
+ * the winner, then reads it without invoking the losing effect. A failed effect
+ * rolls back its reservation too, allowing broker redelivery to try again.
+ * Provider computation and JMS acknowledgement stay outside this transaction.
+ */
+@Repository
+public class JpaAnalysisTaskCompletionStore implements AnalysisTaskCompletionStore {
+    private final EntityManager em;
+    private final TransactionTemplate newTransaction;
+<span class="fc" id="L34">    private final AnalysisMessageCodec codec = new AnalysisMessageCodec();</span>
+    private final Clock clock;
+
+    @Autowired
+    public JpaAnalysisTaskCompletionStore(EntityManager em, PlatformTransactionManager transactions) {
+<span class="fc" id="L39">        this(em, transactions, Clock.systemUTC());</span>
+<span class="fc" id="L40">    }</span>
+
+<span class="fc" id="L42">    JpaAnalysisTaskCompletionStore(EntityManager em, PlatformTransactionManager transactions, Clock clock) {</span>
+<span class="fc" id="L43">        this.em = Objects.requireNonNull(em, &quot;em&quot;);</span>
+<span class="fc" id="L44">        this.newTransaction = new TransactionTemplate(transactions);</span>
+<span class="fc" id="L45">        this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L46">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public Optional&lt;AnalysisCompletionMessage&gt; find(AnalysisTaskId taskId) {
+<span class="fc" id="L51">        return Optional.ofNullable(newTransaction.execute(status -&gt; read(taskId)));</span>
+    }
+
+    @Override
+    public AnalysisCompletionMessage commit(PreparedAnalysisCompletion&lt;?&gt; prepared) {
+<span class="fc" id="L56">        Objects.requireNonNull(prepared, &quot;prepared&quot;);</span>
+<span class="fc" id="L57">        AnalysisCompletionMessage completion = prepared.completion();</span>
+<span class="fc" id="L58">        return Objects.requireNonNull(newTransaction.execute(status -&gt; {</span>
+<span class="fc" id="L59">            AnalysisCompletionMessage existing = read(completion.taskId());</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (existing != null) return winner(completion, existing);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            String outcome = switch (completion) {</span>
+<span class="fc" id="L62">                case SubtaxonomyAnalysisCompleted root -&gt; root.outcome().name();</span>
+<span class="fc" id="L63">                case RelationAnalysisCompleted relation -&gt; relation.outcome().name();</span>
+            };
+<span class="fc" id="L65">            String json = new String(codec.encode(completion), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L66">            var duplicate = AnalysisInsertIfAbsent.insert(em, &quot;&quot;&quot;</span>
+                    insert into analysis_task_completion
+                      (id, task_id, operation_id, message_type, outcome, completion_json, recorded_at)
+                    values (?, ?, ?, ?, ?, ?, ?)&quot;&quot;&quot;, statement -&gt; {
+<span class="fc" id="L70">                statement.setString(1, AnalysisDispatchStore.key(completion.taskId()));</span>
+<span class="fc" id="L71">                statement.setString(2, completion.taskId().value());</span>
+<span class="fc" id="L72">                statement.setString(3, completion.envelope().operationId());</span>
+<span class="fc" id="L73">                statement.setString(4, completion.envelope().messageType().name());</span>
+<span class="fc" id="L74">                statement.setString(5, outcome);</span>
+<span class="fc" id="L75">                statement.setString(6, json);</span>
+<span class="fc" id="L76">                statement.setLong(7, clock.millis());</span>
+<span class="fc" id="L77">            });</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (duplicate.isPresent()) {</span>
+<span class="fc" id="L79">                AnalysisCompletionMessage recorded = read(completion.taskId());</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                if (recorded == null) {</span>
+<span class="nc" id="L81">                    throw new IllegalStateException(&quot;Concurrent completion is not visible&quot;, duplicate.get());</span>
+                }
+<span class="fc" id="L83">                return winner(completion, recorded);</span>
+            }
+<span class="fc" id="L85">            prepared.persistEffect().run();</span>
+<span class="fc" id="L86">            em.flush();</span>
+<span class="fc" id="L87">            return completion;</span>
+        }), &quot;recorded completion&quot;);
+    }
+
+    private static AnalysisCompletionMessage winner(AnalysisCompletionMessage requested,
+                                                    AnalysisCompletionMessage recorded) {
+<span class="fc" id="L93">        AnalysisTaskIdentity.requireSameSource(requested.envelope(), recorded.envelope());</span>
+<span class="fc" id="L94">        return recorded;</span>
+    }
+
+    private AnalysisCompletionMessage read(AnalysisTaskId taskId) {
+<span class="fc" id="L98">        AnalysisTaskCompletionRecord record = em.find(AnalysisTaskCompletionRecord.class,</span>
+<span class="fc" id="L99">                AnalysisDispatchStore.key(taskId));</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (record == null) return null;</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (!record.taskId.equals(taskId.value())) throw new IllegalStateException(&quot;Completion key collision&quot;);</span>
+<span class="fc" id="L102">        return (AnalysisCompletionMessage) codec.decode(record.completionJson.getBytes(StandardCharsets.UTF_8));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

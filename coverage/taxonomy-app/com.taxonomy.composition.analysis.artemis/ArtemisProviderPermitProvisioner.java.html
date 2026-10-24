@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArtemisProviderPermitProvisioner.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.analysis.artemis</a> &gt; <span class="el_source">ArtemisProviderPermitProvisioner.java</span></div><h1>ArtemisProviderPermitProvisioner.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.analysis.artemis;
+
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
+import org.apache.activemq.artemis.api.core.ActiveMQQueueExistsException;
+import org.apache.activemq.artemis.api.core.QueueConfiguration;
+import org.apache.activemq.artemis.api.core.RoutingType;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.apache.activemq.artemis.jms.client.ActiveMQSession;
+
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Explicit administrative one-shot command, never a Spring startup hook. Broker
+ * queue creation is the exclusive claim: an existing queue ALWAYS rejects, even
+ * when empty or when every token is currently delivering. Token creation commits
+ * as one transaction. A crash between queue creation and commit fails closed and
+ * requires operator inspection with all consumers stopped, never auto-refilling.
+ */
+public final class ArtemisProviderPermitProvisioner {
+    private ArtemisProviderPermitProvisioner() {}
+
+    public static void provision(ActiveMQConnectionFactory factory, String prefix, String group, int capacity) {
+<span class="pc bpc" id="L26" title="2 of 4 branches missed.">        if (capacity &lt; 1 || capacity &gt; 10_000) throw new IllegalArgumentException(&quot;Permit capacity must be within 1..10000&quot;);</span>
+<span class="fc" id="L27">        String queue = new ArtemisProviderPermitSettings(prefix, Map.of(), 1).queueName(group);</span>
+<span class="fc" id="L28">        try (var connection = factory.createConnection();</span>
+<span class="fc" id="L29">             var session = connection.createSession(true, Session.SESSION_TRANSACTED)) {</span>
+            // Atomic broker operation, not a racy browse/count/check-then-seed protocol.
+<span class="fc" id="L31">            ((ActiveMQSession) session).getCoreSession().createQueue(QueueConfiguration.of(queue)</span>
+<span class="fc" id="L32">                    .setAddress(queue).setRoutingType(RoutingType.ANYCAST).setDurable(true)</span>
+<span class="fc" id="L33">                    .setAutoCreated(false).setAutoDelete(false).setPurgeOnNoConsumers(false));</span>
+<span class="fc" id="L34">            try (var producer = session.createProducer(session.createQueue(queue + &quot;::&quot; + queue))) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                for (int i = 0; i &lt; capacity; i++) {</span>
+<span class="fc" id="L36">                    producer.send(ArtemisProviderConcurrencyPermits.token(session, group, UUID.randomUUID().toString()),</span>
+                            DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, 0);
+                }
+<span class="fc" id="L39">                session.commit();</span>
+            }
+<span class="fc" id="L41">        } catch (ActiveMQQueueExistsException exists) {</span>
+<span class="fc" id="L42">            throw new IllegalStateException(&quot;Provider permit queue already exists; capacity was not modified&quot;, exists);</span>
+<span class="nc" id="L43">        } catch (Exception failure) {</span>
+<span class="nc" id="L44">            throw new IllegalStateException(&quot;Permit provisioning was not confirmed; inspect the queue with consumers stopped&quot;, failure);</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">    }</span>
+
+    /** Metadata only. Browsing is an administrative capability, not worker admission. */
+<span class="fc" id="L49">    public record QuarantinedPermit(String permitId, String attemptId, long startedAt) { }</span>
+
+    public record Inspection(java.util.List&lt;QuarantinedPermit&gt; receipts, boolean truncated) {
+<span class="fc" id="L52">        public Inspection { receipts = java.util.List.copyOf(receipts); }</span>
+    }
+
+    /** A bounded observation, never proof of absence while other consumers are active. */
+    public static Inspection inspect(ActiveMQConnectionFactory factory, String prefix, String group, int limit) {
+<span class="fc bfc" id="L57" title="All 4 branches covered.">        if (limit &lt; 1 || limit &gt; 1000) throw new IllegalArgumentException(&quot;Inspection limit must be within 1..1000&quot;);</span>
+<span class="fc" id="L58">        String queue = new ArtemisProviderPermitSettings(prefix, Map.of(), 1).queueName(group);</span>
+<span class="fc" id="L59">        try (var connection = factory.createConnection();</span>
+<span class="fc" id="L60">             var session = connection.createSession(true, Session.SESSION_TRANSACTED)) {</span>
+<span class="fc" id="L61">            requireExistingQueue(session, queue);</span>
+<span class="fc" id="L62">            connection.start();</span>
+<span class="fc" id="L63">            try (var browser = session.createBrowser(session.createQueue(queue + &quot;::&quot; + queue),</span>
+                    &quot;permitState = '&quot; + ArtemisProviderConcurrencyPermits.IN_FLIGHT + &quot;'&quot;)) {
+<span class="fc" id="L65">                var result = new java.util.ArrayList&lt;QuarantinedPermit&gt;();</span>
+<span class="fc" id="L66">                var messages = browser.getEnumeration();</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">                while (result.size() &lt; limit &amp;&amp; messages.hasMoreElements()) {</span>
+<span class="fc" id="L68">                    Message message = (Message) messages.nextElement();</span>
+<span class="fc" id="L69">                    String id = ArtemisProviderConcurrencyPermits.canonicalId(message.getStringProperty(&quot;permitId&quot;));</span>
+<span class="fc" id="L70">                    String attempt = ArtemisProviderConcurrencyPermits.canonicalId(message.getStringProperty(&quot;attemptId&quot;));</span>
+<span class="fc" id="L71">                    ArtemisProviderConcurrencyPermits.validateReceipt(message, group, id, attempt);</span>
+<span class="fc" id="L72">                    result.add(new QuarantinedPermit(id, attempt, message.getLongProperty(&quot;startedAt&quot;)));</span>
+<span class="fc" id="L73">                }</span>
+<span class="fc" id="L74">                return new Inspection(result, messages.hasMoreElements());</span>
+            }
+<span class="nc" id="L76">        } catch (Exception failure) {</span>
+<span class="nc" id="L77">            throw new IllegalStateException(&quot;Provider receipt inspection was not confirmed&quot;, failure);</span>
+        }
+    }
+
+    /**
+     * Operator must stop competing consumers and independently confirm the remote
+     * request ended. Exact receipt consumption prevents retry/late-owner duplication.
+     * This never creates a missing queue or resets the independent rate ledger.
+     */
+    public static void reconcile(ActiveMQConnectionFactory factory, String prefix, String group,
+                                 String permitId, String attemptId, boolean upstreamStopped, boolean workersStopped) {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (!upstreamStopped) throw new IllegalArgumentException(&quot;Explicit upstream-stopped confirmation is required&quot;);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (!workersStopped) throw new IllegalArgumentException(&quot;Explicit stopped-workers confirmation is required&quot;);</span>
+<span class="fc" id="L90">        ArtemisProviderConcurrencyPermits.canonicalId(permitId);</span>
+<span class="fc" id="L91">        ArtemisProviderConcurrencyPermits.canonicalId(attemptId);</span>
+<span class="fc" id="L92">        String queue = new ArtemisProviderPermitSettings(prefix, Map.of(), 1).queueName(group);</span>
+<span class="fc" id="L93">        try (var connection = factory.createConnection();</span>
+<span class="fc" id="L94">             var session = connection.createSession(true, Session.SESSION_TRANSACTED)) {</span>
+<span class="fc" id="L95">            requireExistingQueue(session, queue);</span>
+<span class="fc" id="L96">            connection.start();</span>
+<span class="fc" id="L97">            ArtemisProviderConcurrencyPermits.returnReceipt(session, session.createQueue(queue + &quot;::&quot; + queue),</span>
+                    group, permitId, attemptId, 1000);
+<span class="fc" id="L99">        } catch (Exception failure) {</span>
+<span class="fc" id="L100">            throw new IllegalStateException(&quot;Exact receipt reconciliation was not confirmed; never create replacement capacity&quot;, failure);</span>
+<span class="fc" id="L101">        }</span>
+<span class="fc" id="L102">    }</span>
+
+    private static void requireExistingQueue(Session session, String queue) throws Exception {
+<span class="fc" id="L105">        var existing = ((ActiveMQSession) session).getCoreSession().queueQuery(</span>
+<span class="fc" id="L106">                org.apache.activemq.artemis.api.core.SimpleString.of(queue));</span>
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">        if (!existing.isExists() || !existing.isDurable()) {</span>
+<span class="nc" id="L108">            throw new IllegalStateException(&quot;Provider permit queue is not provisioned and durable&quot;);</span>
+        }
+<span class="fc" id="L110">    }</span>
+
+    /** Uses the same external broker/TLS/secret environment as the application. */
+    public static void main(String[] args) {
+<span class="pc bpc" id="L114" title="3 of 4 branches missed.">        boolean inspect = args.length == 2 &amp;&amp; &quot;--inspect&quot;.equals(args[0]);</span>
+<span class="pc bpc" id="L115" title="3 of 4 branches missed.">        boolean reconcile = args.length == 6 &amp;&amp; &quot;--reconcile&quot;.equals(args[0])</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">                &amp;&amp; &quot;--confirmed-upstream-stopped&quot;.equals(args[4])</span>
+<span class="pc bnc" id="L117" title="All 2 branches missed.">                &amp;&amp; &quot;--confirmed-workers-stopped&quot;.equals(args[5]);</span>
+<span class="pc bpc" id="L118" title="3 of 4 branches missed.">        boolean provision = args.length == 2 &amp;&amp; !args[0].startsWith(&quot;--&quot;);</span>
+<span class="pc bpc" id="L119" title="3 of 6 branches missed.">        if (!inspect &amp;&amp; !reconcile &amp;&amp; !provision) throw new IllegalArgumentException(</span>
+                &quot;Usage: ArtemisProviderPermitProvisioner &lt;quota-group&gt; &lt;capacity&gt; | --inspect &lt;quota-group&gt; | &quot;
+                        + &quot;--reconcile &lt;quota-group&gt; &lt;permit-id&gt; &lt;attempt-id&gt; --confirmed-upstream-stopped --confirmed-workers-stopped&quot;);
+<span class="nc" id="L122">        var env = System.getenv();</span>
+<span class="nc" id="L123">        String requireTls = env.getOrDefault(&quot;TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS&quot;, &quot;true&quot;);</span>
+<span class="nc bnc" id="L124" title="All 4 branches missed.">        if (!&quot;true&quot;.equalsIgnoreCase(requireTls) &amp;&amp; !&quot;false&quot;.equalsIgnoreCase(requireTls)) {</span>
+<span class="nc" id="L125">            throw new IllegalArgumentException(&quot;TAXONOMY_ANALYSIS_ARTEMIS_REQUIRE_TLS must be 'true' or 'false'&quot;);</span>
+        }
+<span class="nc" id="L127">        var settings = new ArtemisAnalysisSettings(env.get(&quot;TAXONOMY_ANALYSIS_ARTEMIS_BROKER_URL&quot;),</span>
+<span class="nc" id="L128">                Boolean.parseBoolean(requireTls), 1000, 30_000);</span>
+<span class="nc" id="L129">        try (var factory = ArtemisAnalysisTransportConfiguration.connectionFactory(settings,</span>
+<span class="nc" id="L130">                env.get(&quot;TAXONOMY_ANALYSIS_ARTEMIS_USER&quot;), env.get(&quot;TAXONOMY_ANALYSIS_ARTEMIS_PASSWORD&quot;))) {</span>
+<span class="nc" id="L131">            factory.setInitialConnectAttempts(0);</span>
+<span class="nc" id="L132">            factory.setReconnectAttempts(0);</span>
+<span class="nc" id="L133">            String prefix = env.getOrDefault(&quot;TAXONOMY_ANALYSIS_PROVIDER_PERMITS_DESTINATION_PREFIX&quot;,</span>
+                    ArtemisProviderPermitSettings.DEFAULT_PREFIX);
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (inspect) {</span>
+<span class="nc" id="L136">                Inspection result = inspect(factory, prefix, args[1], 1000);</span>
+<span class="nc" id="L137">                result.receipts().forEach(receipt -&gt; System.out.println(receipt.permitId() + &quot;\t&quot;</span>
+<span class="nc" id="L138">                        + receipt.attemptId() + &quot;\t&quot; + receipt.startedAt()));</span>
+<span class="nc" id="L139">                System.out.println(&quot;Inspection truncated=&quot; + result.truncated()</span>
+                        + &quot;; observation is not proof of no active remote requests&quot;);
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            } else if (reconcile) {</span>
+<span class="nc" id="L142">                reconcile(factory, prefix, args[1], args[2], args[3], true, true);</span>
+<span class="nc" id="L143">                System.out.println(&quot;Exact provider receipt reconciled; rate quota unchanged&quot;);</span>
+            } else {
+<span class="nc" id="L145">                provision(factory, prefix, args[0], Integer.parseInt(args[1]));</span>
+<span class="nc" id="L146">                System.out.println(&quot;Provider permit queue provisioned&quot;);</span>
+            }
+        }
+<span class="nc" id="L149">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

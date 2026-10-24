@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueSnapshotService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.snapshot</a> &gt; <span class="el_source">CatalogueSnapshotService.java</span></div><h1>CatalogueSnapshotService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.snapshot;
+
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.provenance.CatalogueSourceJournal;
+import com.taxonomy.catalog.service.CatalogueOverlayService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+/** Admission captures evidence once; workers bind only authoritative persisted root records. */
+@Service
+public class CatalogueSnapshotService {
+    private final TaxonomyNodeRepository repository;
+    private final CatalogueOverlayService overlay;
+    private final CatalogueRuntimePolicy policy;
+    private final CatalogueSourceJournal sources;
+
+    public CatalogueSnapshotService(TaxonomyNodeRepository repository, CatalogueOverlayService overlay,
+<span class="fc" id="L25">                                    CatalogueRuntimePolicy policy, CatalogueSourceJournal sources) {</span>
+<span class="fc" id="L26">        this.repository = repository;</span>
+<span class="fc" id="L27">        this.overlay = overlay;</span>
+<span class="fc" id="L28">        this.policy = policy;</span>
+<span class="fc" id="L29">        this.sources = sources;</span>
+<span class="fc" id="L30">    }</span>
+
+    /** Singleton convenience; callers needing multiple roots must use one captureRoots call. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public RootCatalogueSnapshot captureRoot(CatalogueSourceIdentity source, String rootCode) {
+<span class="fc" id="L35">        return captureRoots(source, Set.of(rootCode)).getFirst();</span>
+    }
+
+    /**
+     * Freeze all requested roots under one import gate. The caller authorizes the architecture
+     * operation identity; the independently retained catalogue provenance identifies the shared
+     * official dataset actually read, never a fictitious mapping from an architecture Git commit.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public List&lt;RootCatalogueSnapshot&gt; captureRoots(CatalogueSourceIdentity source, Set&lt;String&gt; rootCodes) {
+<span class="fc" id="L45">        policy.requireCurrentCatalogueAllowed();</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (FrozenCatalogueContext.current() != null) {</span>
+<span class="nc" id="L47">            throw new IllegalStateException(&quot;Cannot capture current catalogue inside a frozen snapshot scope&quot;);</span>
+        }
+<span class="fc" id="L49">        Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="pc bpc" id="L50" title="2 of 4 branches missed.">        if (rootCodes == null || rootCodes.isEmpty()) throw new IllegalArgumentException(&quot;Required roots are empty&quot;);</span>
+<span class="fc" id="L51">        rootCodes.forEach(CatalogueRoot::require);</span>
+<span class="fc" id="L52">        var provenance = sources.lockForCapture();</span>
+<span class="fc" id="L53">        var metadata = overlay.getOverlayMetadata();</span>
+<span class="fc" id="L54">        RootCatalogueSnapshot.requireMatchingOverlay(provenance, metadata);</span>
+<span class="fc" id="L55">        return rootCodes.stream().sorted().map(root -&gt; {</span>
+<span class="fc" id="L56">            var nodes = repository.findByTaxonomyRootOrderByLevelAscNameEnAsc(root).stream()</span>
+<span class="fc" id="L57">                    .map(node -&gt; RootCatalogueSnapshot.Node.capture(node, overlay.getNodeMetadata(node.getCode()),</span>
+<span class="fc" id="L58">                            overlay.hasParentPatch(node.getCode()))).toList();</span>
+<span class="fc" id="L59">            return new RootCatalogueSnapshot(RootCatalogueSnapshot.SCHEMA_VERSION, source, root,</span>
+                    nodes, metadata, provenance);
+<span class="fc" id="L61">        }).toList();</span>
+    }
+
+    public FrozenCatalogueContext.Scope bind(CatalogueSourceIdentity expectedSource, Set&lt;String&gt; requiredRoots,
+                                             Collection&lt;RootCatalogueSnapshot&gt; snapshots) {
+<span class="fc" id="L66">        policy.requireConfiguredRoots(requiredRoots);</span>
+<span class="fc" id="L67">        return FrozenCatalogueContext.bind(new FrozenCatalogueView(expectedSource, requiredRoots, snapshots));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisJobReadRow.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.repository</a> &gt; <span class="el_source">AnalysisJobReadRow.java</span></div><h1>AnalysisJobReadRow.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.repository;
+
+import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+
+import java.time.Instant;
+
+/** One statement's job and item metadata, without hydrating result payload associations. */
+<span class="fc" id="L9">public record AnalysisJobReadRow(</span>
+        String id, Long projectId, AnalysisStatus status, String idempotencyKey,
+        String provider, int maxArchitectureNodes, String requestedBy, String workspaceId,
+        Instant createdAt, Instant startedAt, Instant completedAt,
+        int totalItems, int successfulItems, int partialItems, int failedItems, String errorSummary,
+        String providerPluginId, String providerPluginVersion, String providerPluginSha256,
+        String providerConfigRevision, AnalysisReasonLength analysisReasonLength, com.taxonomy.dto.AnalysisLanguage analysisLanguage,
+        Long itemId, Long requirementId, String requirementKey, Long requirementVersionId,
+        Integer requirementVersionNumber, AnalysisStatus itemStatus, String snapshotId, Integer attempt,
+        Instant itemStartedAt, Instant itemCompletedAt, String itemErrorMessage) {
+    public AnalysisJobReadRow(String id, Long projectId, AnalysisStatus status, String idempotencyKey,
+            String provider, int maxArchitectureNodes, String requestedBy, String workspaceId,
+            Instant createdAt, Instant startedAt, Instant completedAt, int totalItems, int successfulItems,
+            int partialItems, int failedItems, String errorSummary, String providerPluginId, String providerPluginVersion,
+            String providerPluginSha256, String providerConfigRevision, AnalysisReasonLength analysisReasonLength,
+            Long itemId, Long requirementId, String requirementKey, Long requirementVersionId,
+            Integer requirementVersionNumber, AnalysisStatus itemStatus, String snapshotId, Integer attempt,
+            Instant itemStartedAt, Instant itemCompletedAt, String itemErrorMessage) {
+<span class="fc" id="L27">        this(id, projectId, status, idempotencyKey, provider, maxArchitectureNodes, requestedBy, workspaceId,</span>
+                createdAt, startedAt, completedAt, totalItems, successfulItems, partialItems, failedItems,
+                errorSummary, providerPluginId, providerPluginVersion, providerPluginSha256, providerConfigRevision,
+                analysisReasonLength, null, itemId, requirementId, requirementKey, requirementVersionId,
+                requirementVersionNumber, itemStatus, snapshotId, attempt, itemStartedAt, itemCompletedAt, itemErrorMessage);
+<span class="fc" id="L32">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

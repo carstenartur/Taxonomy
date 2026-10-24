@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PublicationEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.publication</a> &gt; <span class="el_source">PublicationEvidence.java</span></div><h1>PublicationEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.publication;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import java.util.*;
+import static com.taxonomy.extension.api.integration.PublicationBounds.*;
+
+/** Journal-only immutable evidence. An observation checkpoint cannot be passed as a common baseline. */
+public final class PublicationEvidence {
+    private PublicationEvidence() {}
+    public record CommonBaseline(int schemaVersion, ProviderIdentity provider, PublicationScope scope, String profile, String profileVersion,
+            ExchangeDocument localDocument, ExchangeDocument remoteDocument, String semanticFingerprint) {
+<span class="fc" id="L12">        public CommonBaseline { schema(schemaVersion); Objects.requireNonNull(provider); Objects.requireNonNull(scope); text(profile); text(profileVersion); document(localDocument); document(remoteDocument); text(semanticFingerprint);</span>
+<span class="pc bpc" id="L13" title="4 of 8 branches missed.">            if (!profile.equals(localDocument.profile()) || !profile.equals(remoteDocument.profile()) || !profileVersion.equals(localDocument.profileVersion()) || !profileVersion.equals(remoteDocument.profileVersion())) throw new IllegalArgumentException(&quot;Common profile mismatch&quot;);</span>
+<span class="fc" id="L14">            bounded(MAX_DOCUMENT_BYTES, schemaVersion, provider, scope, profile, profileVersion, localDocument, remoteDocument, semanticFingerprint); }</span>
+    }
+    public record StagedBinding(String externalId, String businessIdentity, Long requirementId, Artifact externalArtifact, Artifact internalArtifact, boolean removed) {
+<span class="pc bpc" id="L17" title="1 of 2 branches missed.">        public StagedBinding { resource(externalId); if (businessIdentity != null) text(businessIdentity); bounded(MAX_ITEM_BYTES, externalId, businessIdentity, requirementId, externalArtifact, internalArtifact, removed); }</span>
+    }
+    public record PublicationPreviewEnvelope(int schemaVersion, PublicationPreviewRequest request, IntegrationContext context, long connectionRevision,
+            UUID commonCheckpointId, CommonBaseline commonBaseline, ExchangeDocument localDocument, ScopeSnapshot remoteSnapshot,
+            List&lt;PublicationChange&gt; changes, List&lt;MappingLoss&gt; losses, String previewFingerprint) {
+<span class="pc bpc" id="L22" title="2 of 8 branches missed.">        public PublicationPreviewEnvelope { schema(schemaVersion); Objects.requireNonNull(request); Objects.requireNonNull(context); if (connectionRevision &lt; 0 || (commonCheckpointId == null) != (commonBaseline == null)) throw new IllegalArgumentException(&quot;Invalid preview baseline&quot;);</span>
+<span class="fc" id="L23">            document(localDocument); Objects.requireNonNull(remoteSnapshot); changes = list(changes, MAX_SCOPE_ITEMS); losses = list(losses, MAX_SCOPE_ITEMS); text(previewFingerprint);</span>
+<span class="fc" id="L24">            bounded(MAX_DOCUMENT_BYTES, schemaVersion, request, context, connectionRevision, commonCheckpointId, commonBaseline, localDocument, remoteSnapshot, changes, losses, previewFingerprint); }</span>
+<span class="fc" id="L25">        public PublicationPreview publicPreview() { return new PublicationPreview(request.operationId(), request.mode(), previewFingerprint, changes, losses); }</span>
+    }
+    public record PublicationClaim(UUID operationId, String itemId, UUID attemptId, long leaseEpoch, AttemptKind attemptKind, PublicationItemRequest frozenRequest) {
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        public PublicationClaim { Objects.requireNonNull(operationId); text(itemId); Objects.requireNonNull(attemptId); if (leaseEpoch &lt; 1) throw new IllegalArgumentException(&quot;Invalid claim epoch&quot;); Objects.requireNonNull(attemptKind); Objects.requireNonNull(frozenRequest);</span>
+<span class="pc bpc" id="L29" title="2 of 4 branches missed.">            if (!operationId.equals(frozenRequest.operationId()) || !itemId.equals(frozenRequest.item().itemId())) throw new IllegalArgumentException(&quot;Claim identity mismatch&quot;); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

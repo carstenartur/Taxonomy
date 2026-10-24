@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectedBackupRecords.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.backup</a> &gt; <span class="el_source">ProjectedBackupRecords.java</span></div><h1>ProjectedBackupRecords.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.backup;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.taxonomy.backup.*;
+import java.io.*;
+import java.security.*;
+import java.util.*;
+
+/** Inspects the owner's actual portable projection, without retaining an entry or duplicating its row selection. */
+public final class ProjectedBackupRecords {
+    private ProjectedBackupRecords() { }
+    @FunctionalInterface public interface Visitor { void record(String dataset, JsonNode record) throws IOException; }
+    public static void inspect(BackupDataContributor owner, SnapshotContext snapshot, BackupCheckpoint checkpoint, Visitor visitor) throws IOException {
+<span class="fc" id="L14">        owner.write(snapshot, new ComponentSink() {</span>
+            long total; int entries;
+<span class="fc" id="L16">            @Override public void checkpoint() throws IOException { checkpoint.check(); }</span>
+            @Override public BackupEntry write(String path, InputStream input) throws IOException {
+<span class="fc" id="L18">                return writeGenerated(path, output -&gt; input.transferTo(output));</span>
+            }
+            @Override public BackupEntry writeGenerated(String path, EntryWriter producer) throws IOException {
+<span class="fc" id="L21">                checkpoint();</span>
+<span class="pc bpc" id="L22" title="2 of 4 branches missed.">                if (++entries &gt; BackupLimits.MAX_ITEMS || !path.matches(&quot;data/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*\\.ndjson&quot;))</span>
+<span class="nc" id="L23">                    throw new IOException(&quot;Unsupported projected reference dataset&quot;);</span>
+<span class="fc" id="L24">                String dataset=path.substring(path.lastIndexOf('/')+1,path.length()-7);</span>
+<span class="fc" id="L25">                var digest=sha256();var record=new ByteArrayOutputStream();long[] length={0};int[] lines={0};</span>
+<span class="fc" id="L26">                var output=new OutputStream() {</span>
+<span class="nc" id="L27">                    @Override public void write(int value) throws IOException { write(new byte[]{(byte)value},0,1); }</span>
+                    @Override public void write(byte[] bytes,int offset,int count) throws IOException {
+<span class="fc" id="L29">                        Objects.checkFromIndexSize(offset,count,bytes.length);checkpoint();</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">                        if(count&gt;(10L&lt;&lt;30)-total)throw new IOException(&quot;Reference inspection byte limit exceeded&quot;);</span>
+<span class="fc" id="L31">                        total+=count;length[0]+=count;digest.update(bytes,offset,count);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">                        for(int i=offset;i&lt;offset+count;i++) {</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                            if(bytes[i]=='\n') {</span>
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">                                if(++lines[0]&gt;1_000_001 || record.size()==0)throw new IOException(&quot;Invalid projected reference records&quot;);</span>
+<span class="fc" id="L35">                                var document=PortableRows.json().readTree(record.toByteArray());record.reset();</span>
+<span class="pc bpc" id="L36" title="2 of 4 branches missed.">                                if(document==null || !document.isObject())throw new IOException(&quot;Invalid projected reference record&quot;);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">                                if(lines[0]==1) {</span>
+<span class="pc bpc" id="L38" title="2 of 4 branches missed.">                                    if(document.path(&quot;schemaVersion&quot;).asInt()!=1 || !dataset.equals(document.path(&quot;kind&quot;).asText())</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">                                            || !snapshot.authorization().request().profile().name().equals(document.path(&quot;profile&quot;).asText()))</span>
+<span class="fc" id="L40">                                        throw new IOException(&quot;Projected reference header differs from capture&quot;);</span>
+<span class="fc" id="L41">                                } else visitor.record(dataset,document);</span>
+<span class="fc" id="L42">                                checkpoint();</span>
+<span class="fc" id="L43">                            } else {</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">                                if(record.size()&gt;=PortableRows.MAX_RECORD_BYTES)throw new IOException(&quot;Projected reference record limit exceeded&quot;);</span>
+<span class="fc" id="L45">                                record.write(bytes[i]);</span>
+                            }
+                        }
+<span class="fc" id="L48">                    }</span>
+                };
+<span class="fc" id="L50">                producer.write(output);checkpoint();</span>
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">                if(record.size()!=0 || lines[0]==0)throw new IOException(&quot;Incomplete projected reference records&quot;);</span>
+<span class="fc" id="L52">                return new BackupEntry(path,length[0],HexFormat.of().formatHex(digest.digest()));</span>
+            }
+        });
+<span class="fc" id="L55">    }</span>
+<span class="pc" id="L56">    private static MessageDigest sha256() { try{return MessageDigest.getInstance(&quot;SHA-256&quot;);}catch(NoSuchAlgorithmException impossible){throw new AssertionError(impossible);} }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,910 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioAnalysisPersistenceService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioAnalysisPersistenceService.java</span></div><h1>PortfolioAnalysisPersistenceService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisReasonLength;
+import com.taxonomy.dto.ArchitectureRecommendation;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.NodeOrigin;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ElementMappingView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewElementMappingRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewRelationMappingRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ScoreChange;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDiff;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.dto.SnapshotSelection;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.MappingOrigin;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.model.RequirementAnalysisJob;
+import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
+import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.model.RequirementElementMapping;
+import com.taxonomy.portfolio.model.RequirementRelationMapping;
+import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
+import com.taxonomy.portfolio.repository.AnalysisJobReadRow;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
+import com.taxonomy.portfolio.repository.RequirementElementMappingRepository;
+import com.taxonomy.portfolio.repository.RequirementRelationMappingRepository;
+import com.taxonomy.relations.service.AnalysisHypothesisLinkPort;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+/** Transactional exact-tenant persistence boundary for long-running project analysis. */
+@Service
+public class PortfolioAnalysisPersistenceService {
+
+    private static final String AUTOMATIC_IDEMPOTENCY_PREFIX = &quot;auto:&quot;;
+
+    private com.taxonomy.analysis.service.LlmProviderConfig providerConfiguration;
+    @org.springframework.beans.factory.annotation.Autowired
+<span class="fc" id="L66">    void providerConfiguration(com.taxonomy.analysis.service.LlmProviderConfig configuration) { this.providerConfiguration=configuration; }</span>
+
+    private com.taxonomy.analysis.service.AnalysisRuntimeSettings analysisSettings;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+<span class="fc" id="L70">    void analysisSettings(com.taxonomy.analysis.service.AnalysisRuntimeSettings settings) { this.analysisSettings = settings; }</span>
+
+    private final ArchitectureProjectRepository projectRepository;
+    private final ProjectRequirementRepository requirementRepository;
+    private final ProjectRequirementVersionRepository versionRepository;
+    private final RequirementAnalysisJobRepository jobRepository;
+    private final RequirementAnalysisJobItemRepository itemRepository;
+    private final RequirementAnalysisSnapshotRepository snapshotRepository;
+    private final RequirementElementMappingRepository elementRepository;
+    private final RequirementRelationMappingRepository relationRepository;
+    private final AnalysisHypothesisLinkPort hypothesisLinks;
+    private final PortfolioJsonCodec jsonCodec;
+    private final PortfolioSnapshotSelectionReader snapshotSelectionReader;
+    private final PortfolioSnapshotEvidenceReader snapshotEvidenceReader;
+    private final ProjectProviderBinding providerBinding;
+
+    public PortfolioAnalysisPersistenceService(ArchitectureProjectRepository projectRepository,
+                                               ProjectRequirementRepository requirementRepository,
+                                               ProjectRequirementVersionRepository versionRepository,
+                                               RequirementAnalysisJobRepository jobRepository,
+                                               RequirementAnalysisJobItemRepository itemRepository,
+                                               RequirementAnalysisSnapshotRepository snapshotRepository,
+                                               RequirementElementMappingRepository elementRepository,
+                                               RequirementRelationMappingRepository relationRepository,
+                                               AnalysisHypothesisLinkPort hypothesisLinks,
+                                               PortfolioJsonCodec jsonCodec,
+                                               PortfolioSnapshotSelectionReader snapshotSelectionReader,
+                                               PortfolioSnapshotEvidenceReader snapshotEvidenceReader,
+<span class="fc" id="L98">                                               org.springframework.beans.factory.ObjectProvider&lt;ProjectProviderBinding&gt; providerBindings) {</span>
+<span class="fc" id="L99">        this.projectRepository = projectRepository;</span>
+<span class="fc" id="L100">        this.requirementRepository = requirementRepository;</span>
+<span class="fc" id="L101">        this.versionRepository = versionRepository;</span>
+<span class="fc" id="L102">        this.jobRepository = jobRepository;</span>
+<span class="fc" id="L103">        this.itemRepository = itemRepository;</span>
+<span class="fc" id="L104">        this.snapshotRepository = snapshotRepository;</span>
+<span class="fc" id="L105">        this.elementRepository = elementRepository;</span>
+<span class="fc" id="L106">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L107">        this.hypothesisLinks = hypothesisLinks;</span>
+<span class="fc" id="L108">        this.jsonCodec = jsonCodec;</span>
+<span class="fc" id="L109">        this.snapshotSelectionReader = snapshotSelectionReader;</span>
+<span class="fc" id="L110">        this.snapshotEvidenceReader = snapshotEvidenceReader;</span>
+<span class="fc" id="L111">        this.providerBinding = providerBindings.getIfAvailable(() -&gt; ProjectProviderBinding.NONE);</span>
+<span class="fc" id="L112">    }</span>
+
+    @Transactional
+    public AnalysisJobView createOrReuseJob(Long projectId,
+                                            List&lt;Long&gt; requirementIds,
+                                            String provider,
+                                            int maxArchitectureNodes,
+                                            String idempotencyKey,
+                                            String username,
+                                            WorkspaceContext context) {
+<span class="fc" id="L122">        return createOrReuseJob(projectId, requirementIds, provider, maxArchitectureNodes, idempotencyKey,</span>
+<span class="fc" id="L123">                username, context, com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(null));</span>
+    }
+
+    @Transactional
+    public AnalysisJobView createOrReuseJob(Long projectId, List&lt;Long&gt; requirementIds, String provider,
+                                            int maxArchitectureNodes, String idempotencyKey, String username,
+                                            WorkspaceContext context, com.taxonomy.dto.AnalysisLanguage requestedLanguage) {
+<span class="fc" id="L130">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L131">        ArchitectureProject project = projectRepository</span>
+<span class="fc" id="L132">                .findByIdAndScopeKey(projectId, scopeKey)</span>
+<span class="pc" id="L133">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Project not found: &quot; + projectId));</span>
+
+<span class="fc" id="L135">        String normalizedIdempotency = normalizeIdempotencyKey(idempotencyKey);</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (normalizedIdempotency != null) {</span>
+<span class="fc" id="L137">            RequirementAnalysisJob existing = jobRepository</span>
+<span class="fc" id="L138">                    .findByProjectIdAndScopeKeyAndIdempotencyKey(</span>
+                            projectId, scopeKey, normalizedIdempotency)
+<span class="fc" id="L140">                    .orElse(null);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            if (existing != null) {</span>
+<span class="fc" id="L142">                return toJobView(existing);</span>
+            }
+        }
+
+<span class="pc bpc" id="L146" title="2 of 4 branches missed.">        if (requirementIds == null || requirementIds.isEmpty()) {</span>
+<span class="nc" id="L147">            throw PortfolioException.validation(&quot;At least one requirement is required for analysis&quot;);</span>
+        }
+
+<span class="fc" id="L150">        List&lt;ProjectRequirement&gt; requirements = requirementIds.stream()</span>
+<span class="fc" id="L151">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L152">                .distinct()</span>
+<span class="fc" id="L153">                .map(id -&gt; requirementRepository</span>
+<span class="fc" id="L154">                        .findByIdAndProjectIdAndScopeKey(id, projectId, scopeKey)</span>
+<span class="pc" id="L155">                        .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                                &quot;Requirement &quot; + id + &quot; was not found in project &quot; + projectId)))
+<span class="fc" id="L157">                .sorted(Comparator.comparing(ProjectRequirement::getRequirementKey))</span>
+<span class="fc" id="L158">                .toList();</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        if (requirements.isEmpty()) {</span>
+<span class="nc" id="L160">            throw PortfolioException.validation(&quot;At least one valid requirement is required for analysis&quot;);</span>
+        }
+
+<span class="fc" id="L163">        Instant now = Instant.now();</span>
+<span class="fc" id="L164">        RequirementAnalysisJob job = new RequirementAnalysisJob(</span>
+<span class="fc" id="L165">                UUID.randomUUID().toString(),</span>
+                project,
+                normalizedIdempotency,
+<span class="pc bpc" id="L168" title="1 of 4 branches missed.">                provider != null &amp;&amp; !provider.isBlank() ? provider.strip() : null,</span>
+                maxArchitectureNodes,
+<span class="fc" id="L170">                PortfolioScope.username(username, context),</span>
+<span class="fc" id="L171">                PortfolioScope.workspaceId(context),</span>
+<span class="fc" id="L172">                requirements.size(),</span>
+                now);
+<span class="fc" id="L174">        var language = com.taxonomy.analysis.service.AnalysisLanguageContext.resolveCurrentRequest(requestedLanguage);</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        if (language != null) job.recordAnalysisLanguage(language);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        job.recordAnalysisReasonLength(analysisSettings == null ? AnalysisReasonLength.STANDARD</span>
+<span class="fc" id="L177">                : AnalysisReasonLength.fromValue(analysisSettings.getString(&quot;analysis.reason-length&quot;, &quot;standard&quot;)));</span>
+<span class="fc" id="L178">        var bound = providerBinding.admittedProvider(projectId, targets(requirements), provider, username, context);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (bound.isPresent()) {</span>
+            // A bound project uses exactly its admitted provider: no mock, live or fallback provider.
+<span class="fc" id="L181">            job.bindProvider(bound.get(), null);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        } else if (providerConfiguration != null) {</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (providerConfiguration.isScenarioReplay(provider))</span>
+<span class="fc" id="L184">                throw new PortfolioException(PortfolioException.Kind.VALIDATION, &quot;PROVIDER_REQUIRES_PROJECT_BINDING&quot;,</span>
+<span class="fc" id="L185">                        &quot;Provider &quot; + provider.strip() + &quot; is available only to a project bound to it&quot;, null);</span>
+<span class="pc bpc" id="L186" title="1 of 6 branches missed.">            String admitted = providerConfiguration.isMockMode() ? &quot;MOCK&quot; : provider == null || provider.isBlank()</span>
+<span class="fc" id="L187">                    ? providerConfiguration.getActiveProviderId().value() : provider.strip().toUpperCase(java.util.Locale.ROOT);</span>
+<span class="fc" id="L188">            job.bindProvider(admitted, providerConfiguration.captureProviderBinding(admitted));</span>
+        }
+<span class="fc" id="L190">        jobRepository.save(job);</span>
+
+<span class="fc" id="L192">        List&lt;RequirementAnalysisJobItem&gt; items = requirements.stream()</span>
+<span class="fc" id="L193">                .map(requirement -&gt; new RequirementAnalysisJobItem(</span>
+<span class="fc" id="L194">                        job, requirement, requireCurrentVersion(requirement)))</span>
+<span class="fc" id="L195">                .toList();</span>
+<span class="fc" id="L196">        itemRepository.saveAll(items);</span>
+<span class="fc" id="L197">        return toJobView(job);</span>
+    }
+
+    private List&lt;ProjectProviderBinding.Target&gt; targets(List&lt;ProjectRequirement&gt; requirements) {
+<span class="fc" id="L201">        return requirements.stream().map(requirement -&gt; new ProjectProviderBinding.Target(</span>
+<span class="fc" id="L202">                requirement.getId(), requireCurrentVersion(requirement).getId())).toList();</span>
+    }
+
+    @Transactional
+    public void markJobRunning(String jobId, Long projectId, String scopeKey) {
+<span class="fc" id="L207">        requireJob(jobId, projectId, scopeKey).markRunning(Instant.now());</span>
+<span class="fc" id="L208">    }</span>
+
+    @Transactional
+    public RequirementAnalysisJobItem markItemRunning(Long itemId,
+                                                      String jobId,
+                                                      Long projectId,
+                                                      String scopeKey) {
+<span class="fc" id="L215">        RequirementAnalysisJobItem item = requireItem(itemId, jobId, projectId, scopeKey);</span>
+<span class="fc" id="L216">        item.markRunning(Instant.now());</span>
+<span class="fc" id="L217">        return item;</span>
+    }
+
+    @Transactional
+    public SnapshotSummary persistSnapshot(Long itemId,
+                                           String jobId,
+                                           Long projectId,
+                                           String scopeKey,
+                                           String snapshotId,
+                                           String analysisSessionId,
+                                           AnalysisResult analysis,
+                                           GapAnalysisView gaps,
+                                           PatternDetectionView patterns,
+                                           ArchitectureRecommendation recommendation,
+                                           String provider,
+                                           String modelName,
+                                           String promptFingerprint,
+                                           String taxonomyFingerprint,
+                                           String username,
+                                           WorkspaceContext context,
+                                           long durationMs) {
+<span class="fc" id="L238">        String exactScope = requireRequestScope(scopeKey, username, context);</span>
+<span class="fc" id="L239">        RequirementAnalysisJobItem item = requireItem(</span>
+                itemId, jobId, projectId, exactScope);
+<span class="fc" id="L241">        RequirementAnalysisJob job = item.getJob();</span>
+<span class="fc" id="L242">        ProjectRequirement requirement = item.getRequirement();</span>
+<span class="fc" id="L243">        AnalysisStatus status = analysisStatus(analysis);</span>
+<span class="pc bpc" id="L244" title="1 of 4 branches missed.">        if (status != AnalysisStatus.SUCCESS &amp;&amp; status != AnalysisStatus.PARTIAL) {</span>
+<span class="nc" id="L245">            throw PortfolioException.validation(&quot;Only successful or partial analyses can create snapshots&quot;);</span>
+        }
+
+<span class="fc" id="L248">        ViewContext viewContext = analysis.getViewContext();</span>
+<span class="fc" id="L249">        RequirementAnalysisSnapshot snapshot = new RequirementAnalysisSnapshot(</span>
+                snapshotId,
+<span class="fc" id="L251">                job.getProject(),</span>
+                requirement,
+<span class="fc" id="L253">                item.getRequirementVersion(),</span>
+                job,
+                status,
+                analysisSessionId,
+                provider,
+                modelName,
+                promptFingerprint,
+                taxonomyFingerprint,
+<span class="fc" id="L261">                PortfolioScope.workspaceId(context),</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                viewContext != null ? viewContext.basedOnBranch() : PortfolioScope.branch(context),</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">                viewContext != null ? viewContext.basedOnCommit() : null,</span>
+<span class="fc" id="L264">                PortfolioScope.username(username, context),</span>
+<span class="fc" id="L265">                Instant.now(),</span>
+                durationMs,
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">                analysis.getWarnings() != null ? analysis.getWarnings().size() : 0,</span>
+<span class="fc" id="L268">                diagnosticPreview(analysis.getErrorMessage()),</span>
+<span class="fc" id="L269">                jsonCodec.write(analysis),</span>
+<span class="fc" id="L270">                jsonCodec.write(gaps),</span>
+<span class="fc" id="L271">                jsonCodec.write(patterns),</span>
+<span class="fc" id="L272">                jsonCodec.write(recommendation));</span>
+        // Assigned snapshot IDs make save merge the entity. Mapping inserts must reference
+        // the managed return, avoiding a transient FK check that rereads all four CLOBs.
+<span class="fc" id="L275">        snapshot = snapshotRepository.save(snapshot);</span>
+<span class="fc" id="L276">        persistElementMappings(snapshot, analysis);</span>
+<span class="fc" id="L277">        persistRelationMappings(snapshot, analysis);</span>
+<span class="fc" id="L278">        linkHypotheses(</span>
+                analysisSessionId,
+<span class="fc" id="L280">                job.getProjectId(),</span>
+<span class="fc" id="L281">                requirement.getId(),</span>
+                snapshotId,
+                context);
+
+<span class="fc" id="L285">        requirement.pointToAnalysis(snapshotId, Instant.now());</span>
+<span class="fc" id="L286">        requirementRepository.save(requirement);</span>
+<span class="fc" id="L287">        item.complete(status, snapshotId, Instant.now(),</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">                status == AnalysisStatus.PARTIAL ? partialDiagnostic(analysis) : null);</span>
+<span class="fc" id="L289">        return toSnapshotSummary(snapshot);</span>
+    }
+
+    @Transactional
+    public void failItem(Long itemId,
+                         String jobId,
+                         Long projectId,
+                         String scopeKey,
+                         Throwable failure) {
+<span class="fc" id="L298">        RequirementAnalysisJobItem item = requireItem(</span>
+                itemId, jobId, projectId, scopeKey);
+<span class="fc" id="L300">        item.fail(safeFailureMessage(failure), Instant.now());</span>
+<span class="fc" id="L301">    }</span>
+
+    @Transactional
+    public AnalysisJobView completeJob(String jobId,
+                                       Long projectId,
+                                       String scopeKey) {
+<span class="fc" id="L307">        String exactScope = requireScope(scopeKey);</span>
+<span class="fc" id="L308">        RequirementAnalysisJob job = requireJob(jobId, projectId, exactScope);</span>
+<span class="fc" id="L309">        List&lt;RequirementAnalysisJobItem&gt; items = itemRepository</span>
+<span class="fc" id="L310">                .findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(</span>
+                        jobId, projectId, exactScope);
+<span class="fc" id="L312">        int successful = (int) items.stream()</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">                .filter(item -&gt; item.getStatus() == AnalysisStatus.SUCCESS)</span>
+<span class="fc" id="L314">                .count();</span>
+<span class="fc" id="L315">        int partial = (int) items.stream()</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">                .filter(item -&gt; item.getStatus() == AnalysisStatus.PARTIAL)</span>
+<span class="fc" id="L317">                .count();</span>
+<span class="fc" id="L318">        int failed = (int) items.stream()</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">                .filter(item -&gt; item.getStatus() == AnalysisStatus.FAILED)</span>
+<span class="fc" id="L320">                .count();</span>
+<span class="fc" id="L321">        String errors = items.stream()</span>
+<span class="pc bpc" id="L322" title="1 of 4 branches missed.">                .filter(item -&gt; item.getErrorMessage() != null &amp;&amp; !item.getErrorMessage().isBlank())</span>
+<span class="fc" id="L323">                .map(item -&gt; item.getRequirement().getRequirementKey() + &quot;: &quot; + item.getErrorMessage())</span>
+<span class="fc" id="L324">                .collect(Collectors.joining(&quot; | &quot;));</span>
+<span class="fc" id="L325">        job.complete(successful, partial, failed,</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">                errors.isBlank() ? null : diagnosticPreview(errors), Instant.now());</span>
+<span class="fc" id="L327">        return toJobView(job);</span>
+    }
+
+    @Transactional
+    public AnalysisJobView prepareFailedItemsForRetry(String jobId,
+                                                      Long projectId,
+                                                      String username,
+                                                      WorkspaceContext context) {
+<span class="fc" id="L335">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L336">        RequirementAnalysisJob job = requireScopedJob(</span>
+                jobId, projectId, username, context);
+<span class="fc" id="L338">        List&lt;RequirementAnalysisJobItem&gt; failedItems = itemRepository</span>
+<span class="fc" id="L339">                .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(</span>
+                        jobId, projectId, scopeKey, AnalysisStatus.FAILED);
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        if (failedItems.isEmpty()) {</span>
+<span class="fc" id="L342">            throw PortfolioException.conflict(&quot;Analysis job has no failed items to retry: &quot; + jobId);</span>
+        }
+        // A retry re-admits the current versions with the job's recorded provider.
+<span class="fc" id="L345">        requireRetainedProviderBinding(projectId, job.getId(), job.getProvider(),</span>
+<span class="fc" id="L346">                targets(failedItems.stream().map(RequirementAnalysisJobItem::getRequirement).toList()), username, context);</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        for (RequirementAnalysisJobItem item : failedItems) {</span>
+<span class="fc" id="L348">            item.prepareRetry(requireCurrentVersion(item.getRequirement()));</span>
+<span class="fc" id="L349">        }</span>
+<span class="fc" id="L350">        job.markRunning(Instant.now());</span>
+<span class="fc" id="L351">        return toJobView(job);</span>
+    }
+
+    /**
+     * Re-admit exact requirement versions without selecting or changing the saved
+     * provider. Binding implementations retain their admission lock until the
+     * caller's write transaction ends.
+     */
+    @Transactional
+    public void requireRetainedProviderBinding(Long projectId, String jobId, String recordedProvider,
+            List&lt;ProjectProviderBinding.Target&gt; targets, String username, WorkspaceContext context) {
+<span class="fc" id="L362">        var bound = providerBinding.admittedProvider(projectId, targets, null, username, context);</span>
+<span class="fc bfc" id="L363" title="All 6 branches covered.">        if (bound.isEmpty() &amp;&amp; providerConfiguration != null &amp;&amp; providerConfiguration.isScenarioReplay(recordedProvider)) {</span>
+<span class="fc" id="L364">            throw new PortfolioException(PortfolioException.Kind.CONFLICT, &quot;PROVIDER_REQUIRES_PROJECT_BINDING&quot;,</span>
+                    &quot;Replay job &quot; + jobId + &quot; can continue only while its project binding is present&quot;, null);
+        }
+<span class="fc bfc" id="L367" title="All 4 branches covered.">        if (bound.isPresent() &amp;&amp; !bound.get().equalsIgnoreCase(recordedProvider)) {</span>
+<span class="fc" id="L368">            throw new PortfolioException(PortfolioException.Kind.CONFLICT, &quot;PROVIDER_BINDING_CHANGED&quot;,</span>
+                    &quot;Provider binding changed: job &quot; + jobId + &quot; records &quot; + recordedProvider
+<span class="fc" id="L370">                            + &quot; but the project now admits &quot; + bound.get()</span>
+                            + &quot;; start a new analysis&quot;, null);
+        }
+<span class="fc" id="L373">    }</span>
+
+    /** A rejected read check must not mark its enclosing snapshot-read transaction rollback-only. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void checkRetainedProviderBindingForRead(Long projectId, String jobId, String recordedProvider,
+            List&lt;ProjectProviderBinding.Target&gt; targets, String username, WorkspaceContext context) {
+<span class="fc" id="L379">        requireRetainedProviderBinding(projectId, jobId, recordedProvider, targets, username, context);</span>
+<span class="fc" id="L380">    }</span>
+
+    @Transactional(readOnly = true)
+    public AnalysisJobView getJob(String jobId,
+                                  Long projectId,
+                                  String username,
+                                  WorkspaceContext context) {
+<span class="fc" id="L387">        requireScopedProject(projectId, username, context);</span>
+<span class="fc" id="L388">        return requireJobView(jobId, projectId, PortfolioScope.key(username, context));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;AnalysisJobView&gt; listJobs(Long projectId,
+                                         String username,
+                                         WorkspaceContext context) {
+<span class="fc" id="L395">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L396">        requireScopedProject(projectId, username, context);</span>
+<span class="fc" id="L397">        return jobRepository.findReadRowsByProjectIdAndScopeKey(projectId, scopeKey).stream()</span>
+<span class="fc" id="L398">                .collect(Collectors.groupingBy(AnalysisJobReadRow::id, LinkedHashMap::new, Collectors.toList()))</span>
+<span class="fc" id="L399">                .values().stream().map(this::toJobView).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;SnapshotSummary&gt; listRequirementSnapshots(Long projectId,
+                                                         Long requirementId,
+                                                         String username,
+                                                         WorkspaceContext context) {
+<span class="fc" id="L407">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L408">        requireScopedProject(projectId, username, context);</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (!requirementRepository.existsByIdAndProjectIdAndScopeKey(requirementId, projectId, scopeKey)) {</span>
+<span class="fc" id="L410">            throw PortfolioException.notFound(</span>
+                    &quot;Requirement &quot; + requirementId + &quot; was not found in project &quot; + projectId);
+        }
+<span class="fc" id="L413">        return List.copyOf(snapshotRepository</span>
+<span class="fc" id="L414">                .findSummariesByRequirementIdAndProjectIdAndScopeKey(requirementId, projectId, scopeKey));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public SnapshotDetail getSnapshot(Long projectId,
+                                      String snapshotId,
+                                      String username,
+                                      WorkspaceContext context) {
+<span class="fc" id="L422">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L423">        requireScopedProject(projectId, username, context);</span>
+<span class="fc" id="L424">        SnapshotSummary snapshot = snapshotRepository</span>
+<span class="fc" id="L425">                .findSummaryByIdAndProjectIdAndScopeKey(snapshotId, projectId, scopeKey)</span>
+<span class="fc" id="L426">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis snapshot not found: &quot; + snapshotId));
+<span class="fc" id="L428">        var evidence = snapshotEvidenceReader.read(projectId, snapshotId, scopeKey)</span>
+<span class="pc" id="L429">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis snapshot not found: &quot; + snapshotId));</span>
+<span class="fc" id="L430">        return new SnapshotDetail(snapshot, evidence.analysis(), evidence.gapAnalysis(), evidence.patternDetection(),</span>
+<span class="fc" id="L431">                evidence.recommendation(),</span>
+<span class="fc" id="L432">                List.copyOf(elementRepository.findViewsBySnapshotIdAndScopeKey(snapshot.id(), scopeKey)),</span>
+<span class="fc" id="L433">                List.copyOf(relationRepository.findViewsBySnapshotIdAndScopeKey(snapshot.id(), scopeKey)));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public SnapshotSelection getSnapshotSelection(Long projectId, String snapshotId,
+                                                   String username, WorkspaceContext context) {
+<span class="fc" id="L439">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L440">        requireScopedProject(projectId, username, context);</span>
+<span class="fc" id="L441">        return snapshotSelectionReader.read(projectId, snapshotId, scopeKey)</span>
+<span class="fc" id="L442">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis snapshot not found: &quot; + snapshotId));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public SnapshotDiff diffSnapshots(Long projectId,
+                                      String olderSnapshotId,
+                                      String newerSnapshotId,
+                                      String username,
+                                      WorkspaceContext context) {
+<span class="fc" id="L451">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L452">        requireScopedProject(projectId, username, context);</span>
+<span class="fc" id="L453">        RequirementAnalysisSnapshot older = snapshotRepository</span>
+<span class="fc" id="L454">                .findByIdAndProjectIdAndScopeKey(olderSnapshotId, projectId, scopeKey)</span>
+<span class="pc" id="L455">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis snapshot not found: &quot; + olderSnapshotId));
+<span class="fc" id="L457">        RequirementAnalysisSnapshot newer = snapshotRepository</span>
+<span class="fc" id="L458">                .findByIdAndProjectIdAndScopeKey(newerSnapshotId, projectId, scopeKey)</span>
+<span class="pc" id="L459">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis snapshot not found: &quot; + newerSnapshotId));
+<span class="fc" id="L461">        AnalysisResult olderAnalysis = jsonCodec.read(</span>
+<span class="fc" id="L462">                older.getAnalysisPayload(), AnalysisResult.class);</span>
+<span class="fc" id="L463">        AnalysisResult newerAnalysis = jsonCodec.read(</span>
+<span class="fc" id="L464">                newer.getAnalysisPayload(), AnalysisResult.class);</span>
+
+<span class="fc" id="L466">        Map&lt;String, ScoreChange&gt; scoreChanges =</span>
+<span class="fc" id="L467">                AnalysisScoreDiff.between(olderAnalysis, newerAnalysis);</span>
+
+<span class="fc" id="L469">        Set&lt;String&gt; oldElements = elementRepository</span>
+<span class="fc" id="L470">                .findBySnapshotIdAndScopeKeyOrderByTaxonomyRootAscNodeCodeAsc(</span>
+                        olderSnapshotId, scopeKey)
+<span class="fc" id="L472">                .stream()</span>
+<span class="fc" id="L473">                .map(RequirementElementMapping::getNodeCode)</span>
+<span class="fc" id="L474">                .collect(Collectors.toCollection(TreeSet::new));</span>
+<span class="fc" id="L475">        Set&lt;String&gt; newElements = elementRepository</span>
+<span class="fc" id="L476">                .findBySnapshotIdAndScopeKeyOrderByTaxonomyRootAscNodeCodeAsc(</span>
+                        newerSnapshotId, scopeKey)
+<span class="fc" id="L478">                .stream()</span>
+<span class="fc" id="L479">                .map(RequirementElementMapping::getNodeCode)</span>
+<span class="fc" id="L480">                .collect(Collectors.toCollection(TreeSet::new));</span>
+<span class="fc" id="L481">        Set&lt;String&gt; oldRelations = relationSignatures(olderSnapshotId, scopeKey);</span>
+<span class="fc" id="L482">        Set&lt;String&gt; newRelations = relationSignatures(newerSnapshotId, scopeKey);</span>
+
+<span class="fc" id="L484">        return new SnapshotDiff(</span>
+                olderSnapshotId,
+                newerSnapshotId,
+                scoreChanges,
+<span class="fc" id="L488">                difference(newElements, oldElements),</span>
+<span class="fc" id="L489">                difference(oldElements, newElements),</span>
+<span class="fc" id="L490">                difference(newRelations, oldRelations),</span>
+<span class="fc" id="L491">                difference(oldRelations, newRelations),</span>
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">                !Objects.equals(older.getTaxonomyFingerprint(), newer.getTaxonomyFingerprint()),</span>
+<span class="pc bpc" id="L493" title="1 of 2 branches missed.">                !Objects.equals(older.getPromptFingerprint(), newer.getPromptFingerprint()),</span>
+<span class="pc bpc" id="L494" title="1 of 2 branches missed.">                !Objects.equals(older.getProvider(), newer.getProvider()));</span>
+    }
+
+    @Transactional
+    public ElementMappingView reviewElementMapping(Long projectId,
+                                                   Long mappingId,
+                                                   ReviewElementMappingRequest request,
+                                                   String username,
+                                                   WorkspaceContext context) {
+<span class="fc" id="L503">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L504">        requireScopedProject(projectId, username, context);</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">        if (request == null) {</span>
+<span class="fc" id="L506">            throw PortfolioException.validation(&quot;mapping review is required&quot;);</span>
+        }
+<span class="fc" id="L508">        RequirementElementMapping mapping = elementRepository</span>
+<span class="fc" id="L509">                .findByIdAndScopeKeyAndSnapshotProjectId(mappingId, scopeKey, projectId)</span>
+<span class="pc" id="L510">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Element mapping not found: &quot; + mappingId));
+<span class="fc" id="L512">        mapping.review(</span>
+<span class="fc" id="L513">                request.reviewStatus(),</span>
+<span class="fc" id="L514">                request.actionStatus(),</span>
+<span class="fc" id="L515">                truncate(request.actionEvidence(), 2000),</span>
+<span class="fc" id="L516">                PortfolioScope.username(username, context),</span>
+<span class="fc" id="L517">                truncate(request.comment(), 2000),</span>
+<span class="fc" id="L518">                Instant.now());</span>
+<span class="fc" id="L519">        return toElementView(mapping);</span>
+    }
+
+    @Transactional
+    public RelationMappingView reviewRelationMapping(Long projectId,
+                                                     Long mappingId,
+                                                     ReviewRelationMappingRequest request,
+                                                     String username,
+                                                     WorkspaceContext context) {
+<span class="fc" id="L528">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L529">        requireScopedProject(projectId, username, context);</span>
+<span class="fc bfc" id="L530" title="All 2 branches covered.">        if (request == null) {</span>
+<span class="fc" id="L531">            throw PortfolioException.validation(&quot;mapping review is required&quot;);</span>
+        }
+<span class="fc" id="L533">        RequirementRelationMapping mapping = relationRepository</span>
+<span class="fc" id="L534">                .findByIdAndScopeKeyAndSnapshotProjectId(mappingId, scopeKey, projectId)</span>
+<span class="pc" id="L535">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Relation mapping not found: &quot; + mappingId));
+<span class="fc" id="L537">        mapping.review(</span>
+<span class="fc" id="L538">                request.reviewStatus(),</span>
+<span class="fc" id="L539">                PortfolioScope.username(username, context),</span>
+<span class="fc" id="L540">                truncate(request.comment(), 2000),</span>
+<span class="fc" id="L541">                Instant.now());</span>
+<span class="fc" id="L542">        return toRelationView(mapping);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RequirementAnalysisJobItem&gt; pendingItems(String jobId,
+                                                         Long projectId,
+                                                         String scopeKey) {
+<span class="nc" id="L549">        String exactScope = requireScope(scopeKey);</span>
+<span class="nc" id="L550">        requireJob(jobId, projectId, exactScope);</span>
+<span class="nc" id="L551">        return itemRepository</span>
+<span class="nc" id="L552">                .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(</span>
+                        jobId, projectId, exactScope, AnalysisStatus.PENDING);
+    }
+
+    private void persistElementMappings(RequirementAnalysisSnapshot snapshot,
+                                        AnalysisResult analysis) {
+<span class="fc" id="L558">        RequirementArchitectureView architecture = analysis.getArchitectureView();</span>
+<span class="pc bpc" id="L559" title="1 of 4 branches missed.">        if (architecture == null || architecture.getIncludedElements() == null) {</span>
+<span class="fc" id="L560">            return;</span>
+        }
+<span class="fc" id="L562">        List&lt;RequirementElementMapping&gt; mappings = architecture.getIncludedElements().stream()</span>
+<span class="fc" id="L563">                .map(element -&gt; new RequirementElementMapping(</span>
+                        snapshot,
+<span class="fc" id="L565">                        element.getNodeCode(),</span>
+<span class="fc" id="L566">                        element.getTitle(),</span>
+<span class="fc" id="L567">                        taxonomyRoot(element),</span>
+<span class="fc" id="L568">                        element.getDirectLlmScore(),</span>
+<span class="fc" id="L569">                        element.getRelevance(),</span>
+<span class="fc" id="L570">                        confidence(element),</span>
+<span class="fc" id="L571">                        mappingOrigin(element.getOrigin()),</span>
+<span class="fc" id="L572">                        element.getHierarchyPath(),</span>
+<span class="fc bfc" id="L573" title="All 2 branches covered.">                        element.getPresenceReason() != null</span>
+<span class="fc" id="L574">                                ? element.getPresenceReason() : element.getIncludedBecause(),</span>
+<span class="fc" id="L575">                        element.isSelectedForImpact()))</span>
+<span class="fc" id="L576">                .toList();</span>
+<span class="fc" id="L577">        elementRepository.saveAll(mappings);</span>
+<span class="fc" id="L578">    }</span>
+
+    private void persistRelationMappings(RequirementAnalysisSnapshot snapshot,
+                                         AnalysisResult analysis) {
+<span class="fc" id="L582">        RequirementArchitectureView architecture = analysis.getArchitectureView();</span>
+<span class="pc bpc" id="L583" title="1 of 4 branches missed.">        if (architecture == null || architecture.getIncludedRelationships() == null) {</span>
+<span class="fc" id="L584">            return;</span>
+        }
+<span class="fc" id="L586">        List&lt;RequirementRelationMapping&gt; mappings = architecture.getIncludedRelationships().stream()</span>
+<span class="fc" id="L587">                .map(relation -&gt; new RequirementRelationMapping(</span>
+                        snapshot,
+<span class="fc" id="L589">                        relation.getSourceCode(),</span>
+<span class="fc" id="L590">                        relation.getTargetCode(),</span>
+<span class="fc" id="L591">                        relation.getRelationType(),</span>
+<span class="fc bfc" id="L592" title="All 2 branches covered.">                        relation.getOrigin() != null</span>
+<span class="fc" id="L593">                                ? relation.getOrigin().name() : &quot;UNKNOWN&quot;,</span>
+<span class="fc" id="L594">                        relation.getRelationCategory(),</span>
+<span class="fc" id="L595">                        relation.getPropagatedRelevance(),</span>
+<span class="fc" id="L596">                        relation.getConfidence(),</span>
+<span class="fc bfc" id="L597" title="All 2 branches covered.">                        relation.getPresenceReason() != null</span>
+<span class="fc" id="L598">                                ? relation.getPresenceReason()</span>
+<span class="fc" id="L599">                                : relation.getDerivationReason()))</span>
+<span class="fc" id="L600">                .toList();</span>
+<span class="fc" id="L601">        relationRepository.saveAll(mappings);</span>
+<span class="fc" id="L602">    }</span>
+
+    private void linkHypotheses(String analysisSessionId,
+                                Long projectId,
+                                Long requirementId,
+                                String snapshotId,
+                                WorkspaceContext context) {
+<span class="fc" id="L609">        hypothesisLinks.linkSnapshot(</span>
+<span class="fc" id="L610">                PortfolioScope.repositoryId(context), PortfolioScope.workspaceId(context),</span>
+                analysisSessionId, projectId, requirementId, snapshotId);
+<span class="fc" id="L612">    }</span>
+
+    private RequirementAnalysisJob requireJob(String jobId,
+                                              Long projectId,
+                                              String scopeKey) {
+<span class="fc" id="L617">        String exactScope = requireScope(scopeKey);</span>
+<span class="fc" id="L618">        return jobRepository.findByIdAndProjectIdAndScopeKey(</span>
+                        jobId, projectId, exactScope)
+<span class="pc" id="L620">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis job not found: &quot; + jobId));
+    }
+
+    private RequirementAnalysisJobItem requireItem(Long itemId,
+                                                   String jobId,
+                                                   Long projectId,
+                                                   String scopeKey) {
+<span class="fc" id="L628">        String exactScope = requireScope(scopeKey);</span>
+<span class="fc" id="L629">        return itemRepository.findByIdAndJobIdAndProjectIdAndScopeKey(</span>
+                        itemId, jobId, projectId, exactScope)
+<span class="fc" id="L631">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis job item not found: &quot; + itemId));
+    }
+
+    private RequirementAnalysisJob requireScopedJob(String jobId,
+                                                    Long projectId,
+                                                    String username,
+                                                    WorkspaceContext context) {
+<span class="fc" id="L639">        requireScopedProject(projectId, username, context);</span>
+<span class="fc" id="L640">        return requireJob(jobId, projectId, PortfolioScope.key(username, context));</span>
+    }
+
+    private ArchitectureProject requireScopedProject(Long projectId,
+                                                     String username,
+                                                     WorkspaceContext context) {
+<span class="fc" id="L646">        return projectRepository</span>
+<span class="fc" id="L647">                .findByIdAndScopeKey(projectId, PortfolioScope.key(username, context))</span>
+<span class="fc" id="L648">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Project not found: &quot; + projectId));
+    }
+
+    private ProjectRequirement requireScopedRequirement(Long projectId,
+                                                        Long requirementId,
+                                                        String username,
+                                                        WorkspaceContext context) {
+<span class="nc" id="L656">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="nc" id="L657">        requireScopedProject(projectId, username, context);</span>
+<span class="nc" id="L658">        return requirementRepository</span>
+<span class="nc" id="L659">                .findByIdAndProjectIdAndScopeKey(requirementId, projectId, scopeKey)</span>
+<span class="nc" id="L660">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Requirement &quot; + requirementId
+                                + &quot; was not found in project &quot; + projectId));
+    }
+
+    private ProjectRequirementVersion requireCurrentVersion(
+            ProjectRequirement requirement) {
+<span class="pc bpc" id="L667" title="1 of 2 branches missed.">        if (requirement.getCurrentVersionId() == null) {</span>
+<span class="nc" id="L668">            throw PortfolioException.conflict(</span>
+                    &quot;Requirement has no current text version: &quot;
+<span class="nc" id="L670">                            + requirement.getRequirementKey());</span>
+        }
+<span class="fc" id="L672">        return versionRepository.findByIdAndRequirementIdAndScopeKey(</span>
+<span class="fc" id="L673">                        requirement.getCurrentVersionId(),</span>
+<span class="fc" id="L674">                        requirement.getId(),</span>
+<span class="fc" id="L675">                        requirement.getScopeKey())</span>
+<span class="pc" id="L676">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Current requirement version not found: &quot;
+<span class="nc" id="L678">                                + requirement.getCurrentVersionId()));</span>
+    }
+
+    private AnalysisJobView toJobView(RequirementAnalysisJob job) {
+        // The query also flushes pending job/item mutations in this transaction. Do not mix
+        // a previously loaded job header with items read after a concurrent continuation.
+<span class="fc" id="L684">        return requireJobView(job.getId(), job.getProjectId(), job.getScopeKey());</span>
+    }
+
+    private AnalysisJobView requireJobView(String jobId, Long projectId, String scopeKey) {
+<span class="fc" id="L688">        List&lt;AnalysisJobReadRow&gt; rows = jobRepository.findReadRowsByIdAndProjectIdAndScopeKey(</span>
+<span class="fc" id="L689">                jobId, projectId, requireScope(scopeKey));</span>
+<span class="fc bfc" id="L690" title="All 2 branches covered.">        if (rows.isEmpty()) {</span>
+<span class="fc" id="L691">            throw PortfolioException.notFound(&quot;Analysis job not found: &quot; + jobId);</span>
+        }
+<span class="fc" id="L693">        return toJobView(rows);</span>
+    }
+
+    private AnalysisJobView toJobView(List&lt;AnalysisJobReadRow&gt; rows) {
+<span class="fc" id="L697">        AnalysisJobReadRow job = rows.getFirst();</span>
+<span class="fc bfc" id="L698" title="All 2 branches covered.">        List&lt;AnalysisJobItemView&gt; items = rows.stream().filter(row -&gt; row.itemId() != null)</span>
+<span class="fc" id="L699">                .map(row -&gt; new AnalysisJobItemView(row.itemId(), row.requirementId(), row.requirementKey(),</span>
+<span class="fc" id="L700">                        row.requirementVersionId(), row.requirementVersionNumber(), row.itemStatus(),</span>
+<span class="fc" id="L701">                        row.snapshotId(), row.attempt(), row.itemStartedAt(), row.itemCompletedAt(), row.itemErrorMessage()))</span>
+<span class="fc" id="L702">                .toList();</span>
+<span class="fc" id="L703">        return new AnalysisJobView(</span>
+<span class="fc" id="L704">                job.id(), job.projectId(), job.status(), visibleIdempotencyKey(job.id(), job.idempotencyKey()),</span>
+<span class="fc" id="L705">                job.provider(), job.maxArchitectureNodes(), job.requestedBy(), job.workspaceId(),</span>
+<span class="fc" id="L706">                job.createdAt(), job.startedAt(), job.completedAt(), job.totalItems(), job.successfulItems(),</span>
+<span class="fc" id="L707">                job.partialItems(), job.failedItems(), job.errorSummary(), items,</span>
+<span class="fc" id="L708">                providerBinding(job), job.analysisReasonLength(), job.analysisLanguage());</span>
+    }
+
+    private static com.taxonomy.extension.api.plugin.PluginInvocation providerBinding(AnalysisJobReadRow job) {
+<span class="pc bpc" id="L712" title="1 of 4 branches missed.">        if (job.providerPluginId() == null &amp;&amp; job.providerPluginVersion() == null</span>
+<span class="pc bpc" id="L713" title="2 of 4 branches missed.">                &amp;&amp; job.providerPluginSha256() == null &amp;&amp; job.providerConfigRevision() == null) return null;</span>
+<span class="fc" id="L714">        return new com.taxonomy.extension.api.plugin.PluginInvocation(</span>
+<span class="fc" id="L715">                new com.taxonomy.extension.api.plugin.PluginIdentity(job.providerPluginId(),</span>
+<span class="fc" id="L716">                        job.providerPluginVersion(), job.providerPluginSha256()), job.providerConfigRevision());</span>
+    }
+
+    private SnapshotSummary toSnapshotSummary(RequirementAnalysisSnapshot snapshot) {
+<span class="fc" id="L720">        return new SnapshotSummary(</span>
+<span class="fc" id="L721">                snapshot.getId(),</span>
+<span class="fc" id="L722">                snapshot.getProjectId(),</span>
+<span class="fc" id="L723">                snapshot.getRequirementId(),</span>
+<span class="fc" id="L724">                snapshot.getRequirement().getRequirementKey(),</span>
+<span class="fc" id="L725">                snapshot.getRequirementVersionId(),</span>
+<span class="fc" id="L726">                snapshot.getRequirementVersion().getVersionNumber(),</span>
+<span class="fc" id="L727">                snapshot.getJobId(),</span>
+<span class="fc" id="L728">                snapshot.getStatus(),</span>
+<span class="fc" id="L729">                snapshot.getProvider(),</span>
+<span class="fc" id="L730">                snapshot.getModelName(),</span>
+<span class="fc" id="L731">                snapshot.getTaxonomyFingerprint(),</span>
+<span class="fc" id="L732">                snapshot.getPromptFingerprint(),</span>
+<span class="fc" id="L733">                snapshot.getWorkspaceId(),</span>
+<span class="fc" id="L734">                snapshot.getBranchName(),</span>
+<span class="fc" id="L735">                snapshot.getCommitSha(),</span>
+<span class="fc" id="L736">                snapshot.getCreatedAt(),</span>
+<span class="fc" id="L737">                snapshot.getDurationMs(),</span>
+<span class="fc" id="L738">                snapshot.getWarningCount(),</span>
+<span class="fc" id="L739">                snapshot.getErrorMessage());</span>
+    }
+
+    private ElementMappingView toElementView(RequirementElementMapping mapping) {
+<span class="fc" id="L743">        return new ElementMappingView(</span>
+<span class="fc" id="L744">                mapping.getId(),</span>
+<span class="fc" id="L745">                mapping.getSnapshotId(),</span>
+<span class="fc" id="L746">                mapping.getNodeCode(),</span>
+<span class="fc" id="L747">                mapping.getNodeTitle(),</span>
+<span class="fc" id="L748">                mapping.getTaxonomyRoot(),</span>
+<span class="fc" id="L749">                mapping.getDirectScore(),</span>
+<span class="fc" id="L750">                mapping.getRelevance(),</span>
+<span class="fc" id="L751">                mapping.getConfidence(),</span>
+<span class="fc" id="L752">                mapping.getMappingOrigin(),</span>
+<span class="fc" id="L753">                mapping.getHierarchyPath(),</span>
+<span class="fc" id="L754">                mapping.getPresenceReason(),</span>
+<span class="fc" id="L755">                mapping.isSelectedForImpact(),</span>
+<span class="fc" id="L756">                mapping.getReviewStatus(),</span>
+<span class="fc" id="L757">                mapping.getActionStatus(),</span>
+<span class="fc" id="L758">                mapping.getActionEvidence(),</span>
+<span class="fc" id="L759">                mapping.getDecisionBy(),</span>
+<span class="fc" id="L760">                mapping.getDecisionAt(),</span>
+<span class="fc" id="L761">                mapping.getDecisionComment());</span>
+    }
+
+    private RelationMappingView toRelationView(RequirementRelationMapping mapping) {
+<span class="fc" id="L765">        return new RelationMappingView(</span>
+<span class="fc" id="L766">                mapping.getId(),</span>
+<span class="fc" id="L767">                mapping.getSnapshotId(),</span>
+<span class="fc" id="L768">                mapping.getSourceCode(),</span>
+<span class="fc" id="L769">                mapping.getTargetCode(),</span>
+<span class="fc" id="L770">                mapping.getRelationType(),</span>
+<span class="fc" id="L771">                mapping.getRelationOrigin(),</span>
+<span class="fc" id="L772">                mapping.getRelationCategory(),</span>
+<span class="fc" id="L773">                mapping.getRelevance(),</span>
+<span class="fc" id="L774">                mapping.getConfidence(),</span>
+<span class="fc" id="L775">                mapping.getPresenceReason(),</span>
+<span class="fc" id="L776">                mapping.getReviewStatus(),</span>
+<span class="fc" id="L777">                mapping.getDecisionBy(),</span>
+<span class="fc" id="L778">                mapping.getDecisionAt(),</span>
+<span class="fc" id="L779">                mapping.getDecisionComment());</span>
+    }
+
+    private Set&lt;String&gt; relationSignatures(String snapshotId, String scopeKey) {
+<span class="fc" id="L783">        return relationRepository</span>
+<span class="fc" id="L784">                .findBySnapshotIdAndScopeKeyOrderBySourceCodeAscTargetCodeAsc(</span>
+<span class="fc" id="L785">                        snapshotId, requireScope(scopeKey))</span>
+<span class="fc" id="L786">                .stream()</span>
+<span class="fc" id="L787">                .map(mapping -&gt; mapping.getSourceCode() + &quot;|&quot; + mapping.getRelationType()</span>
+<span class="fc" id="L788">                        + &quot;|&quot; + mapping.getTargetCode() + &quot;|&quot;</span>
+<span class="fc" id="L789">                        + mapping.getRelationOrigin())</span>
+<span class="fc" id="L790">                .collect(Collectors.toCollection(TreeSet::new));</span>
+    }
+
+    private static List&lt;String&gt; difference(Set&lt;String&gt; left, Set&lt;String&gt; right) {
+<span class="fc" id="L794">        Set&lt;String&gt; result = new TreeSet&lt;&gt;(left);</span>
+<span class="fc" id="L795">        result.removeAll(right);</span>
+<span class="fc" id="L796">        return List.copyOf(result);</span>
+    }
+
+    private static String partialDiagnostic(AnalysisResult analysis) {
+<span class="fc" id="L800">        String error = analysis.getErrorMessage();</span>
+<span class="pc bpc" id="L801" title="1 of 4 branches missed.">        if (error != null &amp;&amp; !error.isBlank()) return diagnosticPreview(error);</span>
+<span class="pc bpc" id="L802" title="1 of 2 branches missed.">        if (analysis.getWarnings() == null) return null;</span>
+<span class="fc" id="L803">        return analysis.getWarnings().stream()</span>
+<span class="fc bfc" id="L804" title="All 4 branches covered.">                .filter(warning -&gt; warning != null &amp;&amp; !warning.isBlank())</span>
+<span class="fc" id="L805">                .findFirst().map(PortfolioAnalysisPersistenceService::diagnosticPreview)</span>
+<span class="fc" id="L806">                .orElse(null);</span>
+    }
+
+    /** Both summary columns are VARCHAR(2000); never shorten the full analysis payload. */
+    private static String diagnosticPreview(String message) {
+<span class="fc bfc" id="L811" title="All 4 branches covered.">        if (message == null || message.length() &lt;= 2000) return message;</span>
+<span class="fc" id="L812">        String marker = &quot;\n[truncated]&quot;;</span>
+<span class="fc" id="L813">        int end = 2000 - marker.length();</span>
+<span class="fc bfc" id="L814" title="All 2 branches covered.">        if (Character.isHighSurrogate(message.charAt(end - 1))</span>
+<span class="pc bpc" id="L815" title="1 of 2 branches missed.">                &amp;&amp; Character.isLowSurrogate(message.charAt(end))) end--;</span>
+<span class="fc" id="L816">        return message.substring(0, end) + marker;</span>
+    }
+
+    private static AnalysisStatus analysisStatus(AnalysisResult analysis) {
+<span class="pc bpc" id="L820" title="1 of 2 branches missed.">        if (analysis == null) return AnalysisStatus.FAILED;</span>
+<span class="fc" id="L821">        String status = analysis.getStatus();</span>
+<span class="fc bfc" id="L822" title="All 2 branches covered.">        if (&quot;SUCCESS&quot;.equalsIgnoreCase(status)) return AnalysisStatus.SUCCESS;</span>
+<span class="pc bpc" id="L823" title="1 of 2 branches missed.">        if (&quot;PARTIAL&quot;.equalsIgnoreCase(status)) return AnalysisStatus.PARTIAL;</span>
+<span class="nc" id="L824">        return AnalysisStatus.FAILED;</span>
+    }
+
+    private static MappingOrigin mappingOrigin(NodeOrigin origin) {
+<span class="fc bfc" id="L828" title="All 2 branches covered.">        if (origin == null) return MappingOrigin.PROPAGATED;</span>
+<span class="fc bfc" id="L829" title="All 3 branches covered.">        return switch (origin) {</span>
+<span class="fc" id="L830">            case DIRECT_SCORED -&gt; MappingOrigin.DIRECT;</span>
+<span class="fc" id="L831">            case ENRICHED_LEAF -&gt; MappingOrigin.ENRICHED;</span>
+            // The legacy query index has a coarse propagated category; exact
+            // RELATION_EVIDENCE provenance remains in the immutable analysis JSON.
+            case TRACE_INTERMEDIATE, PROPAGATED, SEED_CONTEXT, IMPACT_PROMOTED, RELATION_EVIDENCE, REQUIREMENT_EVIDENCE -&gt;
+<span class="fc" id="L835">                    MappingOrigin.PROPAGATED;</span>
+        };
+    }
+
+    private static String taxonomyRoot(RequirementElementView element) {
+<span class="fc bfc" id="L840" title="All 2 branches covered.">        if (element.getTaxonomySheet() != null</span>
+<span class="pc bpc" id="L841" title="1 of 2 branches missed.">                &amp;&amp; !element.getTaxonomySheet().isBlank()) {</span>
+<span class="fc" id="L842">            return element.getTaxonomySheet();</span>
+        }
+<span class="fc" id="L844">        String code = element.getNodeCode();</span>
+<span class="pc bpc" id="L845" title="1 of 2 branches missed.">        int separator = code != null ? code.indexOf('-') : -1;</span>
+<span class="pc bpc" id="L846" title="1 of 2 branches missed.">        return separator &gt; 0 ? code.substring(0, separator) : code;</span>
+    }
+
+    private static double confidence(RequirementElementView element) {
+<span class="fc bfc" id="L850" title="All 2 branches covered.">        if (element.getOrigin() == NodeOrigin.RELATION_EVIDENCE</span>
+<span class="fc bfc" id="L851" title="All 2 branches covered.">                || element.getOrigin() == NodeOrigin.REQUIREMENT_EVIDENCE) return 0.0;</span>
+<span class="fc bfc" id="L852" title="All 2 branches covered.">        if (element.getDirectLlmScore() &gt; 0) {</span>
+<span class="fc" id="L853">            return Math.min(1.0,</span>
+<span class="fc" id="L854">                    Math.max(0.0, element.getDirectLlmScore() / 100.0));</span>
+        }
+<span class="fc" id="L856">        return Math.min(1.0, Math.max(0.0, element.getRelevance()));</span>
+    }
+
+    private static String normalizeIdempotencyKey(String value) {
+<span class="pc bpc" id="L860" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) return null;</span>
+<span class="fc" id="L861">        String normalized = value.strip();</span>
+<span class="pc bpc" id="L862" title="1 of 2 branches missed.">        if (normalized.length() &gt; 160) {</span>
+<span class="nc" id="L863">            throw PortfolioException.validation(</span>
+                    &quot;idempotencyKey exceeds 160 characters&quot;);
+        }
+<span class="fc" id="L866">        return normalized;</span>
+    }
+
+    private static String visibleIdempotencyKey(String jobId, String value) {
+<span class="fc" id="L870">        return value != null</span>
+<span class="pc bpc" id="L871" title="1 of 4 branches missed.">                &amp;&amp; value.equals(AUTOMATIC_IDEMPOTENCY_PREFIX + jobId)</span>
+<span class="fc" id="L872">                ? null : value;</span>
+    }
+
+    private static String requireScope(String scopeKey) {
+<span class="pc bpc" id="L876" title="2 of 4 branches missed.">        if (scopeKey == null || scopeKey.isBlank()) {</span>
+<span class="nc" id="L877">            throw PortfolioException.validation(</span>
+                    &quot;Exact analysis tenant scope is required&quot;);
+        }
+<span class="fc" id="L880">        return scopeKey.strip();</span>
+    }
+
+    private static String requireRequestScope(String scopeKey,
+                                              String username,
+                                              WorkspaceContext context) {
+<span class="fc" id="L886">        String supplied = requireScope(scopeKey);</span>
+<span class="fc" id="L887">        String requested = PortfolioScope.key(username, context);</span>
+<span class="pc bpc" id="L888" title="1 of 2 branches missed.">        if (!requested.equals(supplied)) {</span>
+<span class="nc" id="L889">            throw PortfolioException.validation(</span>
+                    &quot;Analysis tenant scope does not match the request context&quot;);
+        }
+<span class="fc" id="L892">        return requested;</span>
+    }
+
+    private static String safeFailureMessage(Throwable failure) {
+<span class="pc bpc" id="L896" title="1 of 2 branches missed.">        if (failure == null) return &quot;Unknown analysis failure&quot;;</span>
+<span class="fc" id="L897">        String type = failure.getClass().getSimpleName();</span>
+<span class="fc" id="L898">        String message = failure.getMessage();</span>
+<span class="fc" id="L899">        return truncate(type</span>
+<span class="pc bpc" id="L900" title="2 of 4 branches missed.">                + (message != null &amp;&amp; !message.isBlank() ? &quot;: &quot; + message : &quot;&quot;),</span>
+                2000);
+    }
+
+    private static String truncate(String value, int maximumLength) {
+<span class="pc bpc" id="L905" title="1 of 2 branches missed.">        if (value == null) return null;</span>
+<span class="pc bpc" id="L906" title="1 of 2 branches missed.">        return value.length() &lt;= maximumLength</span>
+<span class="pc" id="L907">                ? value : value.substring(0, maximumLength);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

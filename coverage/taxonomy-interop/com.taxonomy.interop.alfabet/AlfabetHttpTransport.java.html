@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AlfabetHttpTransport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.alfabet</a> &gt; <span class="el_source">AlfabetHttpTransport.java</span></div><h1>AlfabetHttpTransport.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.alfabet;
+
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.oslc.OslcTransport;
+import org.apache.hc.client5.http.DnsResolver;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.util.Timeout;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+
+/** Fixed read endpoints only. DNS policy is enforced by the actual connection manager, as in OSLC. */
+final class AlfabetHttpTransport implements AutoCloseable {
+    @FunctionalInterface
+    interface HostLookup { InetAddress[] resolve(String host) throws UnknownHostException; }
+
+<span class="fc" id="L38">    private static final ThreadPoolExecutor DNS_LOOKUPS = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,</span>
+            new ArrayBlockingQueue&lt;&gt;(16), runnable -&gt; {
+<span class="fc" id="L40">                Thread thread = new Thread(runnable, &quot;alfabet-read-dns&quot;); thread.setDaemon(true); return thread;</span>
+            });
+<span class="fc" id="L42">    enum Endpoint {</span>
+<span class="fc" id="L43">        TOKEN(&quot;api/token&quot;, ContentType.APPLICATION_FORM_URLENCODED),</span>
+<span class="fc" id="L44">        OBJECTS(&quot;api/v2/objects&quot;, ContentType.APPLICATION_JSON);</span>
+        final String path;
+        final ContentType contentType;
+<span class="fc" id="L47">        Endpoint(String path, ContentType contentType) { this.path = path; this.contentType = contentType; }</span>
+    }
+    private final URI base;
+    private final CloseableHttpClient client;
+    private final HostLookup lookup;
+<span class="fc" id="L52">    private final AtomicLong resolutionDeadline = new AtomicLong();</span>
+<span class="fc" id="L53">    private final ScheduledExecutorService cancellation = Executors.newSingleThreadScheduledExecutor(r -&gt; {</span>
+<span class="fc" id="L54">        Thread thread = new Thread(r, &quot;alfabet-read-deadline&quot;); thread.setDaemon(true); return thread;</span>
+    });
+
+    AlfabetHttpTransport(AlfabetReadProfile profile) {
+<span class="fc" id="L58">        this(profile, InetAddress::getAllByName);</span>
+<span class="fc" id="L59">    }</span>
+
+<span class="fc" id="L61">    AlfabetHttpTransport(AlfabetReadProfile profile, HostLookup lookup) {</span>
+<span class="fc" id="L62">        base = profile.baseUri();</span>
+<span class="fc" id="L63">        this.lookup = lookup;</span>
+<span class="fc" id="L64">        DnsResolver resolver = new DnsResolver() {</span>
+            @Override public InetAddress[] resolve(String host) throws UnknownHostException {
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                if (!base.getHost().equalsIgnoreCase(host)) throw new UnknownHostException(&quot;Origin outside read profile&quot;);</span>
+<span class="fc" id="L67">                InetAddress[] addresses = resolveWithinDeadline(host, resolutionDeadline.get());</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                if (addresses.length == 0) throw new UnknownHostException(&quot;No addresses resolved&quot;);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                for (InetAddress address : addresses)</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                    if (!OslcTransport.allowedAddress(address, profile.allowPrivateNetworks()))</span>
+<span class="fc" id="L71">                        throw new UnknownHostException(&quot;Address outside integration network policy&quot;);</span>
+<span class="fc" id="L72">                return addresses;</span>
+            }
+<span class="nc" id="L74">            @Override public String resolveCanonicalHostname(String host) throws UnknownHostException { resolve(host); return host; }</span>
+        };
+<span class="fc" id="L76">        var manager = PoolingHttpClientConnectionManagerBuilder.create().setDnsResolver(resolver)</span>
+<span class="fc" id="L77">                .setDefaultConnectionConfig(ConnectionConfig.custom().setConnectTimeout(Timeout.ofSeconds(3))</span>
+<span class="fc" id="L78">                        .setSocketTimeout(Timeout.ofSeconds(5)).build()).setMaxConnTotal(1).setMaxConnPerRoute(1).build();</span>
+<span class="fc" id="L79">        client = HttpClients.custom().setConnectionManager(manager).disableRedirectHandling().disableAutomaticRetries()</span>
+<span class="fc" id="L80">                .disableCookieManagement().disableContentCompression()</span>
+<span class="fc" id="L81">                .setDefaultRequestConfig(RequestConfig.custom().setConnectionRequestTimeout(Timeout.ofSeconds(2))</span>
+<span class="fc" id="L82">                        .setResponseTimeout(Timeout.ofSeconds(5)).build()).build();</span>
+<span class="fc" id="L83">    }</span>
+
+    byte[] post(Endpoint endpoint, String body, String token, int maxBytes, long deadline) {
+<span class="fc" id="L86">        requireTime(deadline);</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (maxBytes &lt;= 0) throw problem(&quot;ALFABET_READ_LIMIT&quot;);</span>
+        // No API accepts a caller-supplied path, verb, query or redirect destination.
+<span class="fc" id="L89">        HttpPost request = new HttpPost(base.resolve(endpoint.path));</span>
+<span class="fc" id="L90">        resolutionDeadline.set(deadline);</span>
+<span class="fc" id="L91">        request.setHeader(&quot;Accept&quot;, &quot;application/json&quot;);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (token != null) request.setHeader(&quot;Authorization&quot;, &quot;Bearer &quot; + token);</span>
+<span class="fc" id="L93">        request.setEntity(new StringEntity(body, endpoint.contentType.withCharset(java.nio.charset.StandardCharsets.UTF_8)));</span>
+<span class="fc" id="L94">        var timer = cancellation.schedule(() -&gt; request.cancel(), Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);</span>
+        try {
+<span class="fc" id="L96">            return client.execute(request, response -&gt; {</span>
+<span class="fc" id="L97">                int status = response.getCode();</span>
+<span class="pc bpc" id="L98" title="1 of 6 branches missed.">                if (status != 200) throw problem(switch (status) {</span>
+<span class="fc" id="L99">                    case 401, 403 -&gt; &quot;ALFABET_UNAUTHORIZED&quot;;</span>
+<span class="fc" id="L100">                    case 429 -&gt; &quot;ALFABET_RATE_LIMITED&quot;;</span>
+<span class="fc" id="L101">                    case 301, 302, 303, 307, 308 -&gt; &quot;ALFABET_REDIRECT_REJECTED&quot;;</span>
+<span class="nc" id="L102">                    default -&gt; &quot;ALFABET_UNAVAILABLE&quot;;</span>
+                });
+<span class="fc" id="L104">                var type = response.getFirstHeader(&quot;Content-Type&quot;);</span>
+<span class="pc bpc" id="L105" title="1 of 4 branches missed.">                if (type == null || !type.getValue().split(&quot;;&quot;, 2)[0].strip().equalsIgnoreCase(&quot;application/json&quot;))</span>
+<span class="fc" id="L106">                    throw problem(&quot;ALFABET_MEDIA_TYPE&quot;);</span>
+<span class="fc" id="L107">                var encoding = response.getFirstHeader(&quot;Content-Encoding&quot;);</span>
+<span class="pc bpc" id="L108" title="3 of 4 branches missed.">                if (encoding != null &amp;&amp; !encoding.getValue().equalsIgnoreCase(&quot;identity&quot;)) throw problem(&quot;ALFABET_MEDIA_TYPE&quot;);</span>
+<span class="fc" id="L109">                var entity = response.getEntity();</span>
+<span class="pc bpc" id="L110" title="1 of 4 branches missed.">                if (entity == null || entity.getContentLength() &gt; maxBytes) throw problem(&quot;ALFABET_READ_LIMIT&quot;);</span>
+<span class="fc" id="L111">                try (var input = entity.getContent(); var output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L112">                    byte[] buffer = new byte[8192]; int count;</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                    while ((count = input.read(buffer)) != -1) {</span>
+<span class="fc" id="L114">                        requireTime(deadline);</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                        if (output.size() + count &gt; maxBytes) throw problem(&quot;ALFABET_READ_LIMIT&quot;);</span>
+<span class="fc" id="L116">                        output.write(buffer, 0, count);</span>
+                    }
+<span class="fc" id="L118">                    requireTime(deadline);</span>
+<span class="fc" id="L119">                    return output.toByteArray();</span>
+                }
+            });
+<span class="fc" id="L122">        } catch (IOException failure) {</span>
+<span class="fc" id="L123">            requireTime(deadline);</span>
+            // The exception/cause can contain endpoint names or credential-bearing wire data. Do not retain it.
+<span class="fc" id="L125">            throw problem(&quot;ALFABET_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L126">        } finally { timer.cancel(false); }</span>
+    }
+    private InetAddress[] resolveWithinDeadline(String host, long deadline) throws UnknownHostException {
+<span class="fc" id="L129">        requireTime(deadline);</span>
+        Future&lt;InetAddress[]&gt; lookupResult;
+<span class="fc" id="L131">        try { lookupResult = DNS_LOOKUPS.submit(() -&gt; lookup.resolve(host)); }</span>
+<span class="pc" id="L132">        catch (RejectedExecutionException saturated) { throw new UnknownHostException(&quot;DNS resolver capacity is exhausted&quot;); }</span>
+        try {
+<span class="fc" id="L134">            InetAddress[] addresses = lookupResult.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);</span>
+<span class="fc" id="L135">            requireTime(deadline);</span>
+<span class="fc" id="L136">            return Arrays.copyOf(addresses, addresses.length);</span>
+<span class="fc" id="L137">        } catch (TimeoutException timeout) {</span>
+<span class="fc" id="L138">            lookupResult.cancel(true);</span>
+<span class="fc" id="L139">            DNS_LOOKUPS.purge();</span>
+<span class="fc" id="L140">            throw new UnknownHostException(&quot;DNS resolution exceeded read deadline&quot;);</span>
+<span class="nc" id="L141">        } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L142">            lookupResult.cancel(true);</span>
+<span class="nc" id="L143">            DNS_LOOKUPS.purge();</span>
+<span class="nc" id="L144">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L145">            throw new UnknownHostException(&quot;DNS resolution interrupted&quot;);</span>
+<span class="nc" id="L146">        } catch (ExecutionException failure) {</span>
+<span class="nc" id="L147">            throw new UnknownHostException(&quot;DNS resolution failed&quot;);</span>
+        }
+    }
+    static void requireTime(long deadline) {
+<span class="pc bpc" id="L151" title="1 of 4 branches missed.">        if (Thread.currentThread().isInterrupted() || System.nanoTime() &gt;= deadline) throw problem(&quot;ALFABET_READ_TIMEOUT&quot;);</span>
+<span class="fc" id="L152">    }</span>
+    static IntegrationProblem problem(String code) {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        return new IntegrationProblem(code, code.equals(&quot;ALFABET_READ_TIMEOUT&quot;) ? 504 : 502,</span>
+                &quot;Alfabet read did not complete; no inventory, absence or synchronization success was recorded&quot;);
+    }
+    @Override public void close() {
+<span class="fc" id="L158">        cancellation.shutdownNow();</span>
+<span class="pc" id="L159">        try { client.close(); } catch (IOException ignored) { /* No payload or secret-bearing diagnostics. */ }</span>
+<span class="fc" id="L160">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

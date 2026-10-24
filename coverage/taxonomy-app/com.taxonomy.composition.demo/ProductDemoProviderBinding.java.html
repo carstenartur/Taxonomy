@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductDemoProviderBinding.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.demo</a> &gt; <span class="el_source">ProductDemoProviderBinding.java</span></div><h1>ProductDemoProviderBinding.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.demo;
+
+import com.taxonomy.analysis.demo.DemoProviderIds;
+import com.taxonomy.analysis.demo.DemoScenario;
+import com.taxonomy.analysis.demo.DemoScenarioCatalog;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.service.PortfolioScope;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.service.ProjectProviderBinding;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Binds a product-demo project to its scenario replay.
+ *
+ * &lt;p&gt;The provider of a demo project is derived exclusively from its durable
+ * {@link ProductDemoRun} and the analysed requirement version: version 1 is
+ * replayed as R0, version 2 (the explicitly adopted reformulation) as R1. Any
+ * other requested provider is rejected, so a demo project can never reach a live
+ * model. The run row stays write-locked until the surrounding transaction ends,
+ * so closing a run serializes with admission.&lt;/p&gt;
+ */
+@com.taxonomy.shared.features.ConditionalOnFeature({&quot;portfolio&quot;, &quot;analysis&quot;})
+@Component
+public class ProductDemoProviderBinding implements ProjectProviderBinding {
+    private final ProductDemoRunRepository runs;
+    private final DemoScenarioCatalog scenarios;
+    private final ProjectPortfolioService projects;
+
+    public ProductDemoProviderBinding(ProductDemoRunRepository runs, DemoScenarioCatalog scenarios,
+<span class="fc" id="L36">                                      ProjectPortfolioService projects) {</span>
+<span class="fc" id="L37">        this.runs = runs;</span>
+<span class="fc" id="L38">        this.scenarios = scenarios;</span>
+<span class="fc" id="L39">        this.projects = projects;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    @Transactional
+    public Optional&lt;String&gt; admittedProvider(Long projectId, List&lt;Target&gt; targets, String requestedProvider,
+                                             String username, WorkspaceContext context) {
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (projectId == null) return Optional.empty();</span>
+<span class="fc" id="L47">        var run = runs.lockByProjectIdAndScopeKey(projectId, PortfolioScope.key(username, context));</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (run.isEmpty()) return Optional.empty();</span>
+<span class="fc" id="L49">        Target target = singleTarget(run.get(), targets);</span>
+<span class="fc" id="L50">        int versionNumber = projects.listRequirementVersions(projectId, target.requirementId(), username, context).stream()</span>
+<span class="fc" id="L51">                .filter(version -&gt; target.requirementVersionId().equals(version.id()))</span>
+<span class="fc" id="L52">                .mapToInt(RequirementVersionView::versionNumber).findFirst()</span>
+<span class="pc" id="L53">                .orElseThrow(() -&gt; ProductDemoProblems.notFound(ProductDemoProblems.REQUIREMENT_MISMATCH,</span>
+<span class="nc" id="L54">                        &quot;Requirement version not found: &quot; + target.requirementVersionId()));</span>
+<span class="fc" id="L55">        return Optional.of(admit(run.get(), scenarios.find(run.get().getScenarioId()).orElse(null),</span>
+                versionNumber, requestedProvider));
+    }
+
+    /** Pure admission rule; failing visibly instead of falling back to any other provider. */
+    static String admit(ProductDemoRun run, DemoScenario scenario, int requirementVersionNumber, String requestedProvider) {
+<span class="fc" id="L61">        Objects.requireNonNull(run, &quot;run&quot;);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (run.isClosed())</span>
+<span class="fc" id="L63">            throw ProductDemoProblems.conflict(ProductDemoProblems.RUN_CLOSED, &quot;Product demo &quot; + run.getId() + &quot; is closed&quot;);</span>
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">        if (scenario == null || scenario.version() != run.getScenarioVersion()</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                || !scenario.fingerprint().equals(run.getScenarioFingerprint()))</span>
+<span class="nc" id="L66">            throw ProductDemoProblems.conflict(ProductDemoProblems.SCENARIO_CHANGED, &quot;Scenario &quot; + run.getScenarioId()</span>
+                    + &quot; no longer matches the recorded version of this demo run&quot;);
+<span class="fc" id="L68">        int iteration = requirementVersionNumber - 1;</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">        if (iteration &lt; 0 || iteration &gt; scenario.maxIteration())</span>
+<span class="nc" id="L70">            throw ProductDemoProblems.validation(ProductDemoProblems.ITERATION_UNAVAILABLE,</span>
+                    &quot;The demo scenario has no replies for requirement version &quot; + requirementVersionNumber);
+<span class="fc" id="L72">        String admitted = DemoProviderIds.providerId(run.getScenarioId(), iteration).value();</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">        if (requestedProvider != null &amp;&amp; !requestedProvider.isBlank()</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">                &amp;&amp; !admitted.equalsIgnoreCase(requestedProvider.strip()))</span>
+<span class="fc" id="L75">            throw ProductDemoProblems.validation(ProductDemoProblems.PROVIDER_REJECTED, &quot;A product demo never uses provider &quot;</span>
+<span class="fc" id="L76">                    + requestedProvider.strip() + &quot;; its replies come only from the scenario replay &quot; + admitted);</span>
+<span class="fc" id="L77">        return admitted;</span>
+    }
+
+    private static Target singleTarget(ProductDemoRun run, List&lt;Target&gt; targets) {
+<span class="pc bpc" id="L81" title="3 of 6 branches missed.">        if (targets == null || targets.size() != 1 || !run.getRequirementId().equals(targets.getFirst().requirementId()))</span>
+<span class="nc" id="L82">            throw ProductDemoProblems.validation(ProductDemoProblems.REQUIREMENT_MISMATCH,</span>
+                    &quot;A product demo analyses exactly its demo requirement&quot;);
+<span class="fc" id="L84">        return targets.getFirst();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

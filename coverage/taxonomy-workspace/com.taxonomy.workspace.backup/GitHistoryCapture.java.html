@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitHistoryCapture.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.backup</a> &gt; <span class="el_source">GitHistoryCapture.java</span></div><h1>GitHistoryCapture.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.exchange.backup.PortableRows;
+import com.fasterxml.jackson.core.JsonGenerator;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.ObjectWalk;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.storage.pack.PackConfig;
+import org.eclipse.jgit.transport.BundleWriter;
+import java.io.*;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+import static com.taxonomy.workspace.backup.GitTreeCapture.failure;
+import static com.taxonomy.workspace.backup.GitTreeCapture.sanitized;
+
+/** Fenced complete Git capture; current-state projection remains a separate adapter. */
+public final class GitHistoryCapture {
+    public record Limits(int maxRefs, int maxObjects, long maxObjectBytes, long maxTotalBytes, int maxReflogEntries) {
+<span class="fc" id="L25">        public Limits {</span>
+<span class="pc bpc" id="L26" title="8 of 16 branches missed.">            if (maxRefs &lt; 1 || maxRefs &gt; BackupLimits.MAX_ITEMS || maxObjects &lt; 1 || maxObjects &gt; 1_000_000</span>
+                    || maxObjectBytes &lt; 0 || maxTotalBytes &lt; 0 || maxReflogEntries &lt; 0 || maxReflogEntries &gt; BackupLimits.MAX_ITEMS)
+<span class="nc" id="L28">                throw new IllegalArgumentException(&quot;Invalid Git history limits&quot;);</span>
+<span class="fc" id="L29">        }</span>
+<span class="fc" id="L30">        public static Limits defaults() { return new Limits(10_000, 100_000, 1L &lt;&lt; 30, 64L &lt;&lt; 30, 10_000); }</span>
+    }
+<span class="fc" id="L32">    public record Reflog(String ref, String oldId, String newId, String name, String email,</span>
+                         long epochSeconds, int offsetMinutes, String message) { }
+    private final Repository repository;
+    private final Limits limits;
+    private final SnapshotContext.RepositoryState state;
+    private final Map&lt;String, String&gt; backupRefs;
+    private final Map&lt;String, String&gt; symbolicRefs;
+    private final List&lt;Reflog&gt; reflogs;
+    private final List&lt;GitReflogProvenance.Event&gt; importedReflogs;
+    private final Map&lt;ObjectId, GitHistoryObjects.Proof&gt; objects;
+    private final BackupCheckpoint lifetime;
+    private final ReflogInventory reflogInventory;
+    private final ProvenanceInventory provenanceInventory;
+    private final Origin origin;
+
+    /** An internal capability ties an editor overlay to the same authorized repository facade and key. */
+<span class="fc" id="L48">    record Origin(ExistingGitBackupRepositories source, BackupRepositoryKey key) { }</span>
+
+    @FunctionalInterface interface ReflogInventory { Set&lt;String&gt; names(BackupCheckpoint checkpoint) throws IOException; }
+    @FunctionalInterface interface ProvenanceInventory { List&lt;GitReflogProvenance.Event&gt; events(BackupCheckpoint checkpoint) throws IOException; }
+
+    private GitHistoryCapture(Repository repository, Limits limits, SnapshotContext.RepositoryState state,
+                              Map&lt;String, String&gt; backupRefs, Map&lt;String, String&gt; symbolicRefs, List&lt;Reflog&gt; reflogs,
+                              Map&lt;ObjectId, GitHistoryObjects.Proof&gt; objects, BackupCheckpoint lifetime, ReflogInventory reflogInventory, Origin origin,
+<span class="fc" id="L56">                              List&lt;GitReflogProvenance.Event&gt; importedReflogs, ProvenanceInventory provenanceInventory) {</span>
+<span class="fc" id="L57">        this.repository = repository; this.limits = limits; this.state = state; this.backupRefs = Map.copyOf(backupRefs);</span>
+<span class="fc" id="L58">        this.symbolicRefs = Map.copyOf(symbolicRefs);</span>
+<span class="fc" id="L59">        this.reflogs = List.copyOf(reflogs); this.objects = Map.copyOf(objects); this.lifetime = lifetime; this.reflogInventory = reflogInventory;</span>
+<span class="fc" id="L60">        this.importedReflogs = List.copyOf(importedReflogs); this.provenanceInventory = provenanceInventory;</span>
+<span class="fc" id="L61">        this.origin = origin;</span>
+<span class="fc" id="L62">    }</span>
+    public static GitHistoryCapture capture(Repository repository, Set&lt;String&gt; requiredCommits,
+            Map&lt;String, SnapshotContext.WorkingState&gt; workingStates, Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L65">        return capture(repository, requiredCommits, workingStates, limits, checkpoint, () -&gt; { });</span>
+    }
+    static GitHistoryCapture capture(Repository repository, Set&lt;String&gt; requiredCommits,
+            Map&lt;String, SnapshotContext.WorkingState&gt; workingStates, Limits limits,
+            BackupCheckpoint checkpoint, BackupCheckpoint lifetime) throws IOException {
+<span class="fc" id="L70">        return capture(repository, requiredCommits, workingStates, limits, checkpoint, lifetime,</span>
+<span class="fc" id="L71">                check -&gt; fileReflogNames(repository, limits, check));</span>
+    }
+    static GitHistoryCapture capture(Repository repository, Set&lt;String&gt; requiredCommits,
+            Map&lt;String, SnapshotContext.WorkingState&gt; workingStates, Limits limits,
+            BackupCheckpoint checkpoint, BackupCheckpoint lifetime, ReflogInventory reflogInventory) throws IOException {
+<span class="fc" id="L76">        return capture(repository, requiredCommits, workingStates, limits, checkpoint, lifetime, reflogInventory, null);</span>
+    }
+    static GitHistoryCapture capture(Repository repository, Set&lt;String&gt; requiredCommits,
+            Map&lt;String, SnapshotContext.WorkingState&gt; workingStates, Limits limits,
+            BackupCheckpoint checkpoint, BackupCheckpoint lifetime, ReflogInventory reflogInventory, Origin origin) throws IOException {
+<span class="fc" id="L81">        return capture(repository, requiredCommits, workingStates, limits, checkpoint, lifetime, reflogInventory, origin, check -&gt; List.of());</span>
+    }
+    static GitHistoryCapture capture(Repository repository, Set&lt;String&gt; requiredCommits,
+            Map&lt;String, SnapshotContext.WorkingState&gt; workingStates, Limits limits,
+            BackupCheckpoint checkpoint, BackupCheckpoint lifetime, ReflogInventory reflogInventory, Origin origin,
+            ProvenanceInventory provenanceInventory) throws IOException {
+        try {
+<span class="fc" id="L88">            Objects.requireNonNull(repository); Objects.requireNonNull(limits); Objects.requireNonNull(lifetime); Objects.requireNonNull(reflogInventory);</span>
+<span class="fc" id="L89">            Objects.requireNonNull(provenanceInventory);</span>
+<span class="fc" id="L90">            var check = guard(lifetime, checkpoint); check.check();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            if (requiredCommits.size() &gt; limits.maxRefs()) throw failure(&quot;Required Git commit limit exceeded&quot;);</span>
+<span class="fc" id="L92">            var refs = refs(repository, limits, check);</span>
+<span class="fc" id="L93">            String symbolicHead = symbolicHead(repository);</span>
+<span class="fc" id="L94">            var symbolicRefs = symbolicRefs(repository, limits, check);</span>
+<span class="fc" id="L95">            var logs = logs(repository, refs.keySet(), reflogInventory, limits, check);</span>
+<span class="fc" id="L96">            var imported = GitReflogProvenance.canonical(provenanceInventory.events(check), limits.maxReflogEntries() - logs.size(), check);</span>
+<span class="fc" id="L97">            var logBudget = new GitHistoryReflogs.Budget(limits.maxReflogEntries());</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (var log : logs) logBudget.add(log);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            for (var event : imported) logBudget.add(event.entry());</span>
+<span class="fc" id="L100">            var required = new TreeSet&lt;String&gt;(requiredCommits);</span>
+<span class="fc" id="L101">            workingStates.values().stream().map(SnapshotContext.WorkingState::checkpointCommit).filter(Objects::nonNull).forEach(required::add);</span>
+<span class="fc" id="L102">            var extras = new TreeSet&lt;String&gt;(required);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            for (var log : logs) {</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                if (!ObjectId.zeroId().name().equals(log.oldId())) extras.add(log.oldId());</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                if (!ObjectId.zeroId().name().equals(log.newId())) extras.add(log.newId());</span>
+<span class="fc" id="L106">            }</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            for (var event : imported) {</span>
+<span class="fc" id="L108">                var log = event.entry();</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                if (!ObjectId.zeroId().name().equals(log.oldId())) extras.add(log.oldId());</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                if (!ObjectId.zeroId().name().equals(log.newId())) extras.add(log.newId());</span>
+<span class="fc" id="L111">            }</span>
+<span class="fc" id="L112">            var objects = new LinkedHashMap&lt;ObjectId, GitHistoryObjects.Proof&gt;();</span>
+<span class="fc" id="L113">            try (var reader = GitHistoryObjects.inventoryReader(repository, limits, check); var walk = new ObjectWalk(reader)) {</span>
+<span class="fc" id="L114">                walk.setRetainBody(false);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                for (String id : required) {</span>
+<span class="fc" id="L116">                    check.check(); requireId(id); walk.parseCommit(ObjectId.fromString(id));</span>
+<span class="fc" id="L117">                }</span>
+<span class="fc" id="L118">                var starts = new TreeSet&lt;&gt;(refs.values()); starts.addAll(extras);</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                for (String id : starts) { check.check(); requireId(id); walk.markStart(walk.parseAny(ObjectId.fromString(id))); }</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                for (var commit = walk.next(); commit != null; commit = walk.next()) {</span>
+<span class="fc" id="L121">                    objects.put(commit.copy(), GitHistoryObjects.verify(reader, commit, check));</span>
+<span class="fc" id="L122">                    required.add(commit.name());</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                    if (required.size() &gt; BackupLimits.MAX_ITEMS) throw failure(&quot;Git commit proof limit exceeded&quot;);</span>
+                }
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                for (var object = walk.nextObject(); object != null; object = walk.nextObject())</span>
+<span class="fc" id="L126">                    objects.put(object.copy(), GitHistoryObjects.verify(reader, object, check));</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">                for (String id : extras) if (objects.get(ObjectId.fromString(id)).type() == Constants.OBJ_COMMIT) required.add(id);</span>
+            }
+<span class="fc" id="L129">            var backupRefs = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            for (String id : extras) {</span>
+<span class="fc" id="L131">                check.check();</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if (!refs.containsValue(id)) {</span>
+<span class="fc" id="L133">                    String ref = &quot;refs/taxonomy-backup/required/&quot; + id;</span>
+<span class="pc bpc" id="L134" title="3 of 4 branches missed.">                    if (refs.containsKey(ref) &amp;&amp; !id.equals(refs.get(ref))) throw failure(&quot;Required Git ref collides with source ref&quot;);</span>
+<span class="fc" id="L135">                    backupRefs.put(ref, id);</span>
+                }
+<span class="fc" id="L137">            }</span>
+<span class="pc bpc" id="L138" title="2 of 4 branches missed.">            if (refs.size() + backupRefs.size() &gt; limits.maxRefs() || required.size() &gt; BackupLimits.MAX_ITEMS)</span>
+<span class="nc" id="L139">                throw failure(&quot;Git history ref closure limit exceeded&quot;);</span>
+<span class="fc" id="L140">            check.check();</span>
+<span class="fc" id="L141">            var result = new GitHistoryCapture(repository, limits,</span>
+                    new SnapshotContext.RepositoryState(refs, symbolicHead, workingStates, required), backupRefs, symbolicRefs, logs, objects, lifetime, reflogInventory, origin,
+                    imported, provenanceInventory);
+<span class="fc" id="L144">            result.checkSource(check); return result;</span>
+<span class="fc" id="L145">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+<span class="fc" id="L147">    public SnapshotContext.RepositoryState state() { return state; }</span>
+<span class="fc" id="L148">    public List&lt;Reflog&gt; reflogs() { return reflogs; }</span>
+<span class="fc" id="L149">    public List&lt;GitReflogProvenance.Event&gt; importedReflogs() { return importedReflogs; }</span>
+<span class="fc" id="L150">    public Map&lt;String, String&gt; symbolicRefs() { return symbolicRefs; }</span>
+    public List&lt;BackupDocumentReference&gt; documents(BackupRepositoryKey key, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L152">        return documents(key, BackupLimits.MAX_ITEMS, checkpoint);</span>
+    }
+    /** Bounded original-document inspection; zero remaining capacity is valid for an empty source. */
+    public record DocumentLimits(int maxDocuments, int maxDocumentBytes, long maxTotalBytes) {
+<span class="fc" id="L156">        public DocumentLimits {</span>
+<span class="pc bpc" id="L157" title="6 of 12 branches missed.">            if (maxDocuments &lt; 0 || maxDocuments &gt; BackupLimits.MAX_ITEMS || maxDocumentBytes &lt; 1</span>
+                    || maxDocumentBytes &gt; PortableRows.MAX_RECORD_BYTES || maxTotalBytes &lt; 0 || maxTotalBytes &gt; (10L &lt;&lt; 30))
+<span class="nc" id="L159">                throw new IllegalArgumentException(&quot;Invalid historical document visit limits&quot;);</span>
+<span class="fc" id="L160">        }</span>
+<span class="fc" id="L161">        public static DocumentLimits defaults() { return new DocumentLimits(BackupLimits.MAX_ITEMS, PortableRows.MAX_RECORD_BYTES, 10L &lt;&lt; 30); }</span>
+    }
+<span class="fc" id="L163">    public record DocumentVisit(int documents, long bytes) { }</span>
+    @FunctionalInterface public interface DocumentVisitor {
+        void accept(BackupDocumentReference reference, byte[] originalBody) throws IOException;
+    }
+    /**
+     * Visits exact bounded bodies during this capture's lifetime. The complete source inventory
+     * is verified around the pass; each body uses the captured object/type/length/content proof.
+     * Only one body is retained by the owner at a time, and no repository handle escapes.
+     */
+    public DocumentVisit visitDocuments(BackupRepositoryKey key, DocumentLimits bounds, BackupCheckpoint checkpoint,
+                                       DocumentVisitor visitor) throws IOException {
+        try {
+<span class="fc" id="L175">            Objects.requireNonNull(bounds); Objects.requireNonNull(visitor);</span>
+<span class="fc" id="L176">            var check = guard(lifetime, checkpoint); check.check();</span>
+<span class="fc" id="L177">            var references = documents(key, check);</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if (references.size() &gt; bounds.maxDocuments()) throw failure(&quot;Historical document visit count limit exceeded&quot;);</span>
+<span class="fc" id="L179">            long bytes = 0;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            for (var reference : references) {</span>
+<span class="fc" id="L181">                check.check();</span>
+<span class="fc" id="L182">                var body = new ByteArrayOutputStream();</span>
+<span class="fc" id="L183">                long length = copyCapturedDocument(reference, Math.min(bounds.maxDocumentBytes(), bounds.maxTotalBytes() - bytes), body, check);</span>
+<span class="fc" id="L184">                bytes += length; check.check(); visitor.accept(reference, body.toByteArray()); check.check();</span>
+<span class="fc" id="L185">            }</span>
+<span class="fc" id="L186">            checkSource(check); return new DocumentVisit(references.size(), bytes);</span>
+<span class="fc" id="L187">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+    /** Copies one original historical document through the caller's bounded parser input. */
+    public void copyDocument(BackupDocumentReference reference, long maximumBytes, OutputStream output,
+                             BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L193">            var check = guard(lifetime, checkpoint); checkSource(check);</span>
+<span class="fc" id="L194">            copyCapturedDocument(reference, maximumBytes, output, check);</span>
+<span class="fc" id="L195">            checkSource(check);</span>
+<span class="fc" id="L196">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L197">    }</span>
+    private long copyCapturedDocument(BackupDocumentReference reference, long maximumBytes, OutputStream output,
+                                      BackupCheckpoint check) throws IOException {
+<span class="fc" id="L200">        Objects.requireNonNull(reference); Objects.requireNonNull(output); check.check();</span>
+<span class="pc bpc" id="L201" title="2 of 6 branches missed.">        if (maximumBytes &lt; 0 || origin != null &amp;&amp; !origin.key().equals(reference.repository())</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                || !documentPath(reference.path().getBytes(StandardCharsets.UTF_8)))</span>
+<span class="fc" id="L203">            throw failure(&quot;Invalid historical document source or bound&quot;);</span>
+<span class="fc" id="L204">        var id = ObjectId.fromString(reference.commit()); var commitProof = objects.get(id);</span>
+<span class="pc bpc" id="L205" title="2 of 6 branches missed.">        if (commitProof == null || commitProof.type() != Constants.OBJ_COMMIT || !state.requiredCommits().contains(reference.commit()))</span>
+<span class="fc" id="L206">            throw failure(&quot;Historical document commit is outside the captured closure&quot;);</span>
+<span class="fc" id="L207">        try (var reader = reader(check); var revisions = new RevWalk(reader)) {</span>
+<span class="fc" id="L208">            revisions.setRetainBody(false); var commit = revisions.parseCommit(id);</span>
+<span class="fc" id="L209">            try (var tree = TreeWalk.forPath(reader, reference.path(), commit.getTree())) {</span>
+<span class="pc bpc" id="L210" title="3 of 6 branches missed.">                if (tree == null || !tree.getFileMode(0).equals(FileMode.REGULAR_FILE) &amp;&amp; !tree.getFileMode(0).equals(FileMode.EXECUTABLE_FILE))</span>
+<span class="fc" id="L211">                    throw failure(&quot;Historical document path has no captured regular file&quot;);</span>
+<span class="fc" id="L212">                var proof = objects.get(tree.getObjectId(0));</span>
+<span class="pc bpc" id="L213" title="2 of 8 branches missed.">                if (proof == null || proof.type() != Constants.OBJ_BLOB || proof.length() &gt; maximumBytes || !reference.sha256().equals(proof.sha256()))</span>
+<span class="fc" id="L214">                    throw failure(&quot;Historical document content proof differs or exceeds its bound&quot;);</span>
+<span class="fc" id="L215">                reader.open(tree.getObjectId(0), Constants.OBJ_BLOB).copyTo(output); check.check();</span>
+<span class="fc" id="L216">                return proof.length();</span>
+            }
+        }
+    }
+    public List&lt;BackupDocumentReference&gt; documents(BackupRepositoryKey key, int maximum, BackupCheckpoint checkpoint) throws IOException {
+        try {
+<span class="fc" id="L222">            Objects.requireNonNull(key);</span>
+<span class="pc bpc" id="L223" title="2 of 4 branches missed.">            if (maximum &lt; 1 || maximum &gt; BackupLimits.MAX_ITEMS) throw failure(&quot;Invalid history document proof limit&quot;);</span>
+<span class="pc bpc" id="L224" title="1 of 4 branches missed.">            if (origin != null &amp;&amp; !origin.key().equals(key)) throw failure(&quot;History document key differs from its authorized source&quot;);</span>
+<span class="fc" id="L225">            var check = guard(lifetime, checkpoint); checkSource(check);</span>
+<span class="fc" id="L226">            var documents = new ArrayList&lt;BackupDocumentReference&gt;();</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">            var commits = objects.entrySet().stream().filter(entry -&gt; entry.getValue().type() == Constants.OBJ_COMMIT)</span>
+<span class="fc" id="L228">                    .map(Map.Entry::getKey).sorted(Comparator.comparing(ObjectId::name)).toList();</span>
+<span class="fc" id="L229">            try (var reader = reader(check); var revisions = new RevWalk(reader)) {</span>
+<span class="fc" id="L230">                revisions.setRetainBody(false);</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                for (var id : commits) {</span>
+<span class="fc" id="L232">                    check.check(); var commit = revisions.parseCommit(id);</span>
+<span class="fc" id="L233">                    try (var tree = new TreeWalk(reader)) {</span>
+<span class="fc" id="L234">                        tree.addTree(commit.getTree()); tree.setRecursive(true);</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                        while (tree.next()) {</span>
+<span class="fc" id="L236">                            check.check();</span>
+<span class="fc" id="L237">                            byte[] rawPath = tree.getRawPath();</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                            if (!documentPath(rawPath)) continue;</span>
+<span class="fc" id="L239">                            String path = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(rawPath)).toString();</span>
+<span class="fc" id="L240">                            var mode = tree.getFileMode(0);</span>
+<span class="pc bpc" id="L241" title="3 of 4 branches missed.">                            if (!mode.equals(FileMode.REGULAR_FILE) &amp;&amp; !mode.equals(FileMode.EXECUTABLE_FILE))</span>
+<span class="nc" id="L242">                                throw failure(&quot;Unsupported historical document file mode&quot;);</span>
+<span class="fc" id="L243">                            var proof = objects.get(tree.getObjectId(0));</span>
+<span class="pc bpc" id="L244" title="3 of 6 branches missed.">                            if (proof == null || proof.type() != Constants.OBJ_BLOB || proof.sha256() == null)</span>
+<span class="nc" id="L245">                                throw failure(&quot;Historical document has no captured content proof&quot;);</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                            if (documents.size() &gt;= maximum) throw failure(&quot;History document proof limit exceeded&quot;);</span>
+<span class="fc" id="L247">                            documents.add(new BackupDocumentReference(key, id.name(), path, proof.sha256()));</span>
+<span class="fc" id="L248">                        }</span>
+                    }
+<span class="fc" id="L250">                }</span>
+            }
+<span class="fc" id="L252">            checkSource(check); return List.copyOf(documents);</span>
+<span class="fc" id="L253">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+    }
+    private static boolean documentPath(byte[] path) {
+<span class="fc" id="L256">        byte[] suffix = {'.', 't', 'a', 'x', 'd', 's', 'l'};</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (path.length &lt; suffix.length) return false;</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        for (int i = 0; i &lt; suffix.length; i++) {</span>
+<span class="fc" id="L259">            int value = Byte.toUnsignedInt(path[path.length - suffix.length + i]);</span>
+<span class="pc bpc" id="L260" title="1 of 4 branches missed.">            if (value &gt;= 'A' &amp;&amp; value &lt;= 'Z') value += 'a' - 'A';</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">            if (value != suffix[i]) return false;</span>
+        }
+<span class="fc" id="L263">        return true;</span>
+    }
+    public void write(String archiveId, GitRepresentation representation, ComponentSink sink) throws IOException {
+<span class="fc" id="L266">        write(archiveId, representation, BackupProfile.REPOSITORY_HISTORY, sink);</span>
+<span class="fc" id="L267">    }</span>
+    public void writeWorkingTree(String archiveId, BackupProfile profile, GitStandBackupSource.Stand workingCopy, ComponentSink sink) throws IOException {
+<span class="fc" id="L269">        Objects.requireNonNull(workingCopy);</span>
+<span class="fc" id="L270">        write(archiveId, GitRepresentation.WORKTREE, profile, workingCopy, sink);</span>
+<span class="fc" id="L271">    }</span>
+    public void write(String archiveId, GitRepresentation representation, BackupProfile profile, ComponentSink sink) throws IOException {
+<span class="fc" id="L273">        write(archiveId, representation, profile, null, sink);</span>
+<span class="fc" id="L274">    }</span>
+    private void write(String archiveId, GitRepresentation representation, BackupProfile profile, GitStandBackupSource.Stand workingCopy, ComponentSink sink) throws IOException {
+        try {
+<span class="pc bpc" id="L277" title="4 of 8 branches missed.">            if (archiveId == null || !archiveId.matches(&quot;[A-Za-z0-9][A-Za-z0-9._-]{0,127}&quot;) || archiveId.equals(&quot;.&quot;) || archiveId.equals(&quot;..&quot;))</span>
+<span class="nc" id="L278">                throw failure(&quot;Invalid Git history archive identity&quot;);</span>
+<span class="pc bpc" id="L279" title="3 of 6 branches missed.">            if (!profile.includesHistory() || representation == null || representation == GitRepresentation.NONE) throw failure(&quot;Unsupported Git history representation&quot;);</span>
+<span class="fc" id="L280">            var check = guard(lifetime, sink::checkpoint); check.check();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">            if (workingCopy != null) {</span>
+<span class="fc" id="L282">                check = guard(workingCopy::checkLifetime, check);</span>
+<span class="fc" id="L283">                requireWorkingCopy(workingCopy, check);</span>
+            }
+<span class="fc" id="L285">            final var writeCheck = check;</span>
+<span class="fc" id="L286">            checkSource(check);</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">            if (representation == GitRepresentation.BUNDLE) {</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                if (objects.isEmpty()) throw failure(&quot;An empty history has no native Git bundle; select a bare repository&quot;);</span>
+<span class="fc" id="L289">                GitTreeCapture.writeGenerated(&quot;repositories/&quot; + archiveId + &quot;/history.bundle&quot;, sink, output -&gt; {</span>
+<span class="fc" id="L290">                    try (var reader = reader(writeCheck)) {</span>
+<span class="fc" id="L291">                        var writer = new BundleWriter(reader); writer.setPackConfig(packConfig());</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">                        for (var ref : exportedRefs().entrySet()) writer.include(ref.getKey(), ObjectId.fromString(ref.getValue()));</span>
+<span class="fc" id="L293">                        writer.writeBundle(monitor(writeCheck), output); writeCheck.check();</span>
+                    }
+<span class="fc" id="L295">                });</span>
+<span class="fc" id="L296">            } else GitFileRepositoryWriter.write(this, archiveId, representation, workingCopy, sink, check);</span>
+<span class="fc" id="L297">            GitTreeCapture.writeGenerated(&quot;data/workspace/git-history-&quot; + archiveId + &quot;.ndjson&quot;, sink,</span>
+<span class="fc" id="L298">                    output -&gt; metadata(archiveId, profile, workingCopy, output, writeCheck));</span>
+<span class="fc" id="L299">            checkSource(check); check.check();</span>
+<span class="fc" id="L300">        } catch (IOException | RuntimeException problem) { throw sanitized(problem); }</span>
+<span class="fc" id="L301">    }</span>
+<span class="fc" id="L302">    Map&lt;String, String&gt; exportedRefs() { var result = new TreeMap&lt;&gt;(state.refs()); result.putAll(backupRefs); return result; }</span>
+<span class="fc" id="L303">    int objectCount() { return objects.size(); }</span>
+<span class="fc" id="L304">    long objectBytes() { return objects.values().stream().mapToLong(GitHistoryObjects.Proof::length).reduce(0, Math::addExact); }</span>
+    private void requireWorkingCopy(GitStandBackupSource.Stand working, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L306">        check.check();</span>
+<span class="pc bpc" id="L307" title="3 of 6 branches missed.">        if (!working.isHistoryWorkingCopy() || origin == null || !origin.equals(working.origin())) throw failure(&quot;Working copy belongs to a different history capture source&quot;);</span>
+<span class="fc" id="L308">        var source = working.state(); String branch = source.symbolicHead();</span>
+<span class="pc bpc" id="L309" title="2 of 4 branches missed.">        if (branch == null || !Objects.equals(state.refs().get(branch), source.refs().get(branch))</span>
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">                || !state.workingStates().entrySet().containsAll(source.workingStates().entrySet()))</span>
+<span class="nc" id="L311">            throw failure(&quot;Working copy differs from the captured branch or checkpoint evidence&quot;);</span>
+<span class="fc" id="L312">    }</span>
+<span class="fc" id="L313">    ObjectReader reader(BackupCheckpoint check) throws IOException { return GitHistoryObjects.capturedReader(repository, limits, objects, guard(lifetime, check)); }</span>
+    Optional&lt;GitTreeCapture&gt; headTree(BackupCheckpoint check) throws IOException {
+<span class="fc" id="L315">        String head = state.refs().get(Constants.HEAD);</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        return head == null ? Optional.empty() : Optional.of(GitTreeCapture.capture(repository, head,</span>
+<span class="fc" id="L317">                new GitTreeCapture.Limits(BackupLimits.MAX_ITEMS, limits.maxObjectBytes(), limits.maxTotalBytes()), check, lifetime));</span>
+    }
+    private void metadata(String archiveId, BackupProfile profile, GitStandBackupSource.Stand workingCopy, OutputStream output, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L320">        var json = PortableRows.json();</span>
+<span class="fc" id="L321">        try (var generator = json.getFactory().createGenerator(output).disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)) {</span>
+<span class="fc" id="L322">            generator.setRootValueSeparator(null);</span>
+<span class="fc" id="L323">            json.writeValue(generator, new PortableRows.Header(1, &quot;git-history&quot;, profile)); generator.writeRaw('\n');</span>
+<span class="fc" id="L324">            json.writeValue(generator, new HistoryRecord(&quot;repository&quot;, archiveId, state, backupRefs, symbolicRefs, objects.size(),</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">                    workingCopy == null ? null : workingCopy.state())); generator.writeRaw('\n');</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">            for (var log : reflogs) { check.check(); json.writeValue(generator, new LogRecord(&quot;reflog&quot;, log)); generator.writeRaw('\n'); }</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">            for (var event : importedReflogs) { check.check(); json.writeValue(generator, new OriginalLogRecord(&quot;original-reflog&quot;, event)); generator.writeRaw('\n'); }</span>
+<span class="fc" id="L328">            generator.flush(); check.check();</span>
+        }
+<span class="fc" id="L330">    }</span>
+    private static Map&lt;String, String&gt; refs(Repository repository, Limits limits, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L332">        check.check();repository.scanForRepoChanges();check.check();</span>
+<span class="fc" id="L333">        var result = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        for (var ref : repository.getRefDatabase().getRefsByPrefix(Constants.R_REFS)) {</span>
+<span class="fc" id="L335">            check.check();</span>
+<span class="pc bpc" id="L336" title="2 of 4 branches missed.">            if (!Repository.isValidRefName(ref.getName()) || ref.getObjectId() == null) throw failure(&quot;Invalid Git history ref&quot;);</span>
+<span class="pc bpc" id="L337" title="2 of 4 branches missed.">            if (result.put(ref.getName(), ref.getObjectId().name()) != null || result.size() &gt; limits.maxRefs()) throw failure(&quot;Git history ref limit exceeded&quot;);</span>
+<span class="fc" id="L338">        }</span>
+<span class="fc" id="L339">        Ref head = repository.exactRef(Constants.HEAD);</span>
+<span class="pc bpc" id="L340" title="1 of 4 branches missed.">        if (head != null &amp;&amp; head.getObjectId() != null) result.put(Constants.HEAD, head.getObjectId().name());</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        if (result.size() &gt; limits.maxRefs()) throw failure(&quot;Git history ref limit exceeded&quot;);</span>
+<span class="fc" id="L342">        check.check(); return Map.copyOf(result);</span>
+    }
+    private void checkSource(BackupCheckpoint check) throws IOException {
+<span class="fc" id="L345">        check.check();</span>
+<span class="fc bfc" id="L346" title="All 4 branches covered.">        if (!state.refs().equals(refs(repository, limits, check)) || !Objects.equals(state.symbolicHead(), symbolicHead(repository))</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">                || !symbolicRefs.equals(symbolicRefs(repository, limits, check)))</span>
+<span class="fc" id="L348">            throw failure(&quot;Git refs changed after history capture&quot;);</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (!reflogs.equals(logs(repository, state.refs().keySet(), reflogInventory, limits, check)))</span>
+<span class="fc" id="L350">            throw failure(&quot;Git reflogs changed after history capture&quot;);</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (!importedReflogs.equals(GitReflogProvenance.canonical(provenanceInventory.events(check), limits.maxReflogEntries() - reflogs.size(), check)))</span>
+<span class="fc" id="L352">            throw failure(&quot;Original Git event provenance changed after history capture&quot;);</span>
+<span class="fc" id="L353">        check.check();</span>
+<span class="fc" id="L354">    }</span>
+    private static String symbolicHead(Repository repository) throws IOException {
+<span class="fc" id="L356">        Ref head = repository.exactRef(Constants.HEAD);</span>
+<span class="pc bpc" id="L357" title="1 of 4 branches missed.">        return head != null &amp;&amp; head.isSymbolic() ? head.getTarget().getName() : null;</span>
+    }
+    private static Map&lt;String, String&gt; symbolicRefs(Repository repository, Limits limits, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L360">        var result = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">        for (var ref : repository.getRefDatabase().getRefsByPrefix(Constants.R_REFS)) {</span>
+<span class="fc" id="L362">            check.check();</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">            if (!ref.isSymbolic()) continue;</span>
+<span class="fc" id="L364">            String target = ref.getTarget().getName();</span>
+<span class="pc bpc" id="L365" title="2 of 4 branches missed.">            if (!Repository.isValidRefName(ref.getName()) || !Repository.isValidRefName(target)) throw failure(&quot;Invalid symbolic Git ref&quot;);</span>
+<span class="pc bpc" id="L366" title="2 of 4 branches missed.">            if (result.put(ref.getName(), target) != null || result.size() &gt; limits.maxRefs()) throw failure(&quot;Git symbolic ref limit exceeded&quot;);</span>
+<span class="fc" id="L367">        }</span>
+<span class="fc" id="L368">        check.check(); return Map.copyOf(result);</span>
+    }
+    private static List&lt;Reflog&gt; logs(Repository repository, Set&lt;String&gt; refs, ReflogInventory inventory, Limits limits, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L371">        var result = new ArrayList&lt;Reflog&gt;(); var names = new TreeSet&lt;&gt;(refs); names.add(Constants.HEAD); names.addAll(inventory.names(check));</span>
+<span class="pc bpc" id="L372" title="1 of 2 branches missed.">        if (names.size() &gt; limits.maxRefs()) throw failure(&quot;Git reflog ref limit exceeded&quot;);</span>
+<span class="fc" id="L373">        var budget = new GitHistoryReflogs.Budget(limits.maxReflogEntries());</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">        for (String name : names) {</span>
+<span class="pc bpc" id="L375" title="2 of 6 branches missed.">            if (!name.equals(Constants.HEAD) &amp;&amp; (!name.startsWith(Constants.R_REFS) || !Repository.isValidRefName(name)))</span>
+<span class="nc" id="L376">                throw failure(&quot;Invalid retained Git reflog name&quot;);</span>
+<span class="fc" id="L377">            check.check();</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">            if (repository.getDirectory() != null) {</span>
+<span class="fc" id="L379">                result.addAll(GitHistoryReflogs.file(repository.getDirectory().toPath().resolve(&quot;logs&quot;).resolve(name), name, budget, check));</span>
+<span class="fc" id="L380">                continue;</span>
+            }
+<span class="fc" id="L382">            var reader = repository.getReflogReader(name);</span>
+            // File storage resolves a live ref in its String overload. Its public Ref overload can
+            // read an inventoried deleted name without creating a source ref. Hibernate owns the
+            // String overload directly, so retain that storage-specific public implementation.
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">            if (reader == null) reader = repository.getReflogReader(new ObjectIdRef.Unpeeled(Ref.Storage.NEW, name, null));</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">            if (reader == null) continue;</span>
+<span class="fc" id="L388">            var entries = reader.getReverseEntries(limits.maxReflogEntries() - result.size() + 1);</span>
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">            if (entries.size() &gt; limits.maxReflogEntries() - result.size()) throw failure(&quot;Git reflog entry limit exceeded&quot;);</span>
+<span class="fc bfc" id="L390" title="All 2 branches covered.">            for (var entry : entries.reversed()) {</span>
+<span class="fc" id="L391">                check.check(); var who = entry.getWho();</span>
+<span class="fc" id="L392">                var log = new Reflog(name, entry.getOldId().name(), entry.getNewId().name(), who.getName(), who.getEmailAddress(),</span>
+<span class="fc" id="L393">                        who.getWhenAsInstant().getEpochSecond(), who.getTimeZoneOffset(), entry.getComment());</span>
+<span class="fc" id="L394">                budget.add(log); result.add(log);</span>
+<span class="fc" id="L395">            }</span>
+<span class="fc" id="L396">        }</span>
+<span class="fc" id="L397">        check.check(); return List.copyOf(result);</span>
+    }
+    private static Set&lt;String&gt; fileReflogNames(Repository repository, Limits limits, BackupCheckpoint check) throws IOException {
+<span class="fc" id="L400">        check.check();</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">        if (repository.getDirectory() == null) throw failure(&quot;Git storage needs an explicit retained-reflog inventory&quot;);</span>
+<span class="fc" id="L402">        Path directory = repository.getDirectory().toPath().resolve(&quot;logs&quot;);</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) return Set.of();</span>
+<span class="fc" id="L404">        var names = new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L405">        Files.walkFileTree(directory, EnumSet.noneOf(FileVisitOption.class), 34, new SimpleFileVisitor&lt;&gt;() {</span>
+            @Override public FileVisitResult preVisitDirectory(Path path, BasicFileAttributes attributes) throws IOException {
+<span class="fc" id="L407">                check.check(); return FileVisitResult.CONTINUE;</span>
+            }
+            @Override public FileVisitResult visitFile(Path path, BasicFileAttributes attributes) throws IOException {
+<span class="fc" id="L410">                check.check();</span>
+<span class="pc bpc" id="L411" title="2 of 4 branches missed.">                if (!attributes.isRegularFile() || attributes.isSymbolicLink()) throw failure(&quot;Retained Git reflog path is not a regular file&quot;);</span>
+<span class="fc" id="L412">                String name = directory.relativize(path).toString().replace(java.io.File.separatorChar, '/');</span>
+<span class="pc bpc" id="L413" title="1 of 2 branches missed.">                if (names.size() &gt;= limits.maxRefs()) throw failure(&quot;Git reflog ref limit exceeded&quot;);</span>
+<span class="fc" id="L414">                names.add(name); return FileVisitResult.CONTINUE;</span>
+            }
+        });
+<span class="fc" id="L417">        check.check(); return Set.copyOf(names);</span>
+    }
+    static PackConfig packConfig() {
+<span class="fc" id="L420">        var config = new PackConfig(); config.setDeltaCompress(false); config.setReuseObjects(false);</span>
+<span class="fc" id="L421">        config.setReuseDeltas(false); config.setBuildBitmaps(false); config.setThreads(1); return config;</span>
+    }
+    static ProgressMonitor monitor(BackupCheckpoint check) {
+<span class="fc" id="L424">        return new ProgressMonitor() {</span>
+<span class="nc" id="L425">            @Override public void start(int tasks) { }</span>
+<span class="fc" id="L426">            @Override public void beginTask(String title, int totalWork) { }</span>
+<span class="fc" id="L427">            @Override public void update(int completed) { }</span>
+<span class="fc" id="L428">            @Override public void endTask() { }</span>
+<span class="pc" id="L429">            @Override public boolean isCancelled() { try { check.check(); return false; } catch (IOException failure) { return true; } }</span>
+<span class="nc" id="L430">            @Override public void showDuration(boolean enabled) { }</span>
+        };
+    }
+    private static BackupCheckpoint guard(BackupCheckpoint lifetime, BackupCheckpoint check) {
+<span class="fc" id="L434">        return () -&gt; { lifetime.check(); check.check(); lifetime.check(); };</span>
+    }
+    private static void requireId(String id) throws IOException {
+<span class="pc bpc" id="L437" title="3 of 6 branches missed.">        if (id == null || !id.matches(&quot;[0-9a-f]{40}&quot;) || id.equals(ObjectId.zeroId().name())) throw failure(&quot;Invalid required Git object&quot;);</span>
+<span class="fc" id="L438">    }</span>
+<span class="fc" id="L439">    public record HistoryRecord(String recordType, String archiveId, SnapshotContext.RepositoryState source,</span>
+                                 Map&lt;String, String&gt; backupRefs, Map&lt;String, String&gt; symbolicRefs, int objectCount,
+                                 SnapshotContext.RepositoryState workingCopy) { }
+<span class="fc" id="L442">    public record LogRecord(String recordType, Reflog entry) { }</span>
+<span class="fc" id="L443">    public record OriginalLogRecord(String recordType, GitReflogProvenance.Event event) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestoreTargetGeneration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestoreTargetGeneration.java</span></div><h1>RestoreTargetGeneration.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import org.hibernate.SessionFactory;
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.*;
+
+/** Identity-verified wiring for staging. This is neither owner readiness nor activation approval. */
+public final class RestoreTargetGeneration {
+    private final UUID generationId;
+    private final DataSource active;
+    private final DataSource staged;
+    private final SessionFactory factory;
+    private final TargetDatabaseIdentity activeIdentity;
+    private final TargetDatabaseIdentity targetIdentity;
+    private final Map&lt;BackupRepositoryKey, RestoreRepositoryAllocation&gt; allocations;
+
+    private RestoreTargetGeneration(UUID generationId, DataSource active, DataSource staged, SessionFactory factory,
+                                    TargetDatabaseIdentity activeIdentity, TargetDatabaseIdentity targetIdentity,
+<span class="fc" id="L22">                                    Map&lt;BackupRepositoryKey, RestoreRepositoryAllocation&gt; allocations) {</span>
+<span class="fc" id="L23">        this.generationId = generationId; this.active = active; this.staged = staged; this.factory = factory;</span>
+<span class="fc" id="L24">        this.activeIdentity = activeIdentity; this.targetIdentity = targetIdentity; this.allocations = allocations;</span>
+<span class="fc" id="L25">    }</span>
+
+    public static RestoreTargetGeneration verified(UUID generationId, DataSource active, DataSource staged,
+            SessionFactory factory, Map&lt;BackupRepositoryKey, RestoreRepositoryAllocation&gt; allocations,
+            BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L30">        Objects.requireNonNull(generationId); Objects.requireNonNull(factory);</span>
+<span class="fc" id="L31">        var immutable = Map.copyOf(allocations);</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        if (immutable.size() &gt; BackupLimits.MAX_ITEMS) throw new IllegalArgumentException(&quot;Too many repository allocations&quot;);</span>
+<span class="fc" id="L33">        var targets = new HashSet&lt;BackupRepositoryKey&gt;(); var storage = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (var allocation : immutable.values())</span>
+<span class="pc bpc" id="L35" title="2 of 4 branches missed.">            if (!targets.add(allocation.targetKey()) || !storage.add(allocation.physicalStorageName()))</span>
+<span class="nc" id="L36">                throw new IllegalArgumentException(&quot;Colliding repository allocations&quot;);</span>
+<span class="fc" id="L37">        var sourceIdentity = TargetDatabaseIdentity.inspect(active, checkpoint);</span>
+<span class="fc" id="L38">        var targetIdentity = TargetDatabaseIdentity.proveIsolated(active, staged, checkpoint);</span>
+<span class="fc" id="L39">        requireFactory(factory, targetIdentity, checkpoint);</span>
+<span class="fc" id="L40">        return new RestoreTargetGeneration(generationId, active, staged, factory, sourceIdentity, targetIdentity, immutable);</span>
+    }
+
+    /** Rechecks physical bindings; durable generation and content proofs are separately required by readiness. */
+    public void requireUnchanged(BackupCheckpoint checkpoint) throws IOException {
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        if (!activeIdentity.equals(TargetDatabaseIdentity.inspect(active, checkpoint))</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                || !targetIdentity.equals(TargetDatabaseIdentity.inspect(staged, checkpoint)))</span>
+<span class="fc" id="L47">            throw new IOException(&quot;Restore generation database binding changed&quot;);</span>
+<span class="fc" id="L48">        requireFactory(factory, targetIdentity, checkpoint);</span>
+<span class="fc" id="L49">    }</span>
+
+    /** Proves the connection actually used by an owner, including the current active destination. */
+    public void requireConnection(java.sql.Connection connection, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L53">        checkpoint.check();</span>
+        TargetDatabaseIdentity actual;
+<span class="fc" id="L55">        try { actual = TargetDatabaseIdentity.inspectConnection(connection); }</span>
+<span class="pc" id="L56">        catch (SQLException invalid) { throw new IOException(&quot;Restore database binding is unavailable&quot;); }</span>
+<span class="fc" id="L57">        var currentActive = TargetDatabaseIdentity.inspect(active, checkpoint);</span>
+<span class="fc bfc" id="L58" title="All 4 branches covered.">        if (!targetIdentity.equals(actual) || !activeIdentity.equals(currentActive)</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                || actual.destinationFingerprint().equals(currentActive.destinationFingerprint()))</span>
+<span class="fc" id="L60">            throw new IOException(&quot;Restore database binding changed or is not isolated&quot;);</span>
+<span class="fc" id="L61">        checkpoint.check();</span>
+<span class="fc" id="L62">    }</span>
+
+    private static void requireFactory(SessionFactory factory, TargetDatabaseIdentity expected,
+                                       BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L66">        checkpoint.check(); TargetDatabaseIdentity actual;</span>
+<span class="fc" id="L67">        try (var session = factory.openSession()) {</span>
+<span class="fc" id="L68">            actual = session.doReturningWork(connection -&gt; {</span>
+<span class="fc" id="L69">                try { return TargetDatabaseIdentity.inspectConnection(connection); }</span>
+<span class="nc" id="L70">                catch (IOException invalid) { throw new SQLException(&quot;Restore factory identity is unavailable&quot;); }</span>
+            });
+<span class="pc" id="L72">        } catch (RuntimeException invalid) { throw new IOException(&quot;Restore factory identity is unavailable or unproven&quot;); }</span>
+<span class="fc" id="L73">        checkpoint.check();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (!expected.equals(actual)) throw new IOException(&quot;Restore factory is not bound to the isolated target generation&quot;);</span>
+<span class="fc" id="L75">    }</span>
+
+<span class="fc" id="L77">    public UUID generationId() { return generationId; }</span>
+<span class="fc" id="L78">    public DataSource dataSource() { return staged; }</span>
+<span class="fc" id="L79">    public SessionFactory sessionFactory() { return factory; }</span>
+<span class="nc" id="L80">    public TargetDatabaseIdentity databaseIdentity() { return targetIdentity; }</span>
+<span class="fc" id="L81">    public Map&lt;BackupRepositoryKey, RestoreRepositoryAllocation&gt; allocations() { return allocations; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

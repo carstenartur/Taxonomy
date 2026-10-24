@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductionSecurityGuard.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">ProductionSecurityGuard.java</span></div><h1>ProductionSecurityGuard.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import com.taxonomy.setup.SetupChecks;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.Ordered;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.annotation.Order;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * Fails production startup before any bootstrap account can be persisted when
+ * the active login configuration or optional machine token is unsafe.
+ */
+@Component
+@Profile(&quot;production&quot;)
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class ProductionSecurityGuard implements ApplicationRunner {
+
+    private static final int MINIMUM_SECRET_LENGTH = 16;
+<span class="fc" id="L33">    private static final Set&lt;String&gt; FORBIDDEN_PASSWORDS = Set.of(</span>
+            &quot;admin&quot;,
+            &quot;password&quot;,
+            &quot;changeme&quot;,
+            &quot;change-me&quot;);
+
+    private final String adminPassword;
+    private final String adminToken;
+    private final Environment environment;
+
+    /** Preserve direct construction by focused local-password policy tests. */
+    public ProductionSecurityGuard(String adminPassword, String adminToken) {
+<span class="fc" id="L45">        this(adminPassword, adminToken, new StandardEnvironment());</span>
+<span class="fc" id="L46">    }</span>
+
+    @Autowired
+    public ProductionSecurityGuard(
+            @Value(&quot;${taxonomy.admin-password:}&quot;) String adminPassword,
+            @Value(&quot;${admin.token:}&quot;) String adminToken,
+<span class="fc" id="L52">            Environment environment) {</span>
+<span class="fc" id="L53">        this.adminPassword = adminPassword;</span>
+<span class="fc" id="L54">        this.adminToken = adminToken;</span>
+<span class="fc" id="L55">        this.environment = environment;</span>
+<span class="fc" id="L56">    }</span>
+
+    @Override
+    public void run(ApplicationArguments arguments) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (environment.acceptsProfiles(Profiles.of(&quot;keycloak&quot;))) {</span>
+            // Central login has no local bootstrap credential. Validate its own contract instead.
+<span class="fc" id="L62">            var profiles = new HashSet&lt;&gt;(Arrays.asList(environment.getActiveProfiles()));</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            if (profiles.isEmpty()) { profiles.addAll(Arrays.asList(environment.getDefaultProfiles())); }</span>
+<span class="fc" id="L64">            SetupChecks.checkAuthentication(environment::getProperty, profiles).stream()</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                    .filter(finding -&gt; finding.status() == SetupChecks.Status.ERROR)</span>
+<span class="fc" id="L66">                    .findFirst().ifPresent(finding -&gt; {</span>
+<span class="fc" id="L67">                        throw new IllegalStateException(&quot;Production startup refused: &quot;</span>
+<span class="fc" id="L68">                                + finding.key() + &quot;: &quot; + finding.message());</span>
+                    });
+<span class="fc" id="L70">        } else {</span>
+<span class="fc" id="L71">            requireStrongSecret(adminPassword, &quot;TAXONOMY_ADMIN_PASSWORD&quot;);</span>
+        }
+
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">        if (adminToken != null &amp;&amp; !adminToken.isBlank()) {</span>
+<span class="fc" id="L75">            requireStrongSecret(adminToken, &quot;ADMIN_PASSWORD&quot;);</span>
+<span class="pc bpc" id="L76" title="1 of 6 branches missed.">            if (adminPassword != null &amp;&amp; !adminPassword.isBlank() &amp;&amp; constantTimeEquals(adminPassword, adminToken)) {</span>
+<span class="fc" id="L77">                throw new IllegalStateException(</span>
+                        &quot;Production startup refused: ADMIN_PASSWORD must be a distinct &quot;
+                                + &quot;machine token and must not reuse TAXONOMY_ADMIN_PASSWORD.&quot;);
+            }
+        }
+<span class="fc" id="L82">    }</span>
+
+    private static void requireStrongSecret(
+            String value,
+            String environmentVariable) {
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        String normalized = value == null</span>
+<span class="nc" id="L88">                ? &quot;&quot;</span>
+<span class="fc" id="L89">                : value.trim().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (normalized.isEmpty()</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                || FORBIDDEN_PASSWORDS.contains(normalized)</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                || normalized.startsWith(&quot;replace-with-&quot;)</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                || normalized.startsWith(&quot;change-me-to-&quot;)) {</span>
+<span class="fc" id="L94">            throw unsafeSecret(environmentVariable);</span>
+        }
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (value.length() &lt; MINIMUM_SECRET_LENGTH) {</span>
+<span class="fc" id="L97">            throw new IllegalStateException(</span>
+                    &quot;Production startup refused: &quot; + environmentVariable
+                            + &quot; must contain at least &quot; + MINIMUM_SECRET_LENGTH
+                            + &quot; characters.&quot;);
+        }
+<span class="fc" id="L102">    }</span>
+
+    private static IllegalStateException unsafeSecret(String environmentVariable) {
+<span class="fc" id="L105">        return new IllegalStateException(</span>
+                &quot;Production startup refused: configure a unique, strong &quot;
+                        + environmentVariable
+                        + &quot; and do not use a documented placeholder.&quot;);
+    }
+
+    private static boolean constantTimeEquals(String left, String right) {
+<span class="fc" id="L112">        return MessageDigest.isEqual(</span>
+<span class="fc" id="L113">                left.getBytes(StandardCharsets.UTF_8),</span>
+<span class="fc" id="L114">                right.getBytes(StandardCharsets.UTF_8));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

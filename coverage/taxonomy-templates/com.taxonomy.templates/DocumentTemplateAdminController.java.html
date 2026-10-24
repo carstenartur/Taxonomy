@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateAdminController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-templates</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateAdminController.java</span></div><h1>DocumentTemplateAdminController.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.api.TemplateDescriptor;
+import com.taxonomy.templates.api.TemplateDiff;
+import com.taxonomy.templates.api.TemplateRevision;
+import com.taxonomy.templates.api.TemplateFile;
+import com.taxonomy.templates.api.TemplatePartView;
+import io.swagger.v3.oas.annotations.media.SchemaProperty;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.headers.Header;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.security.Principal;
+import java.util.List;
+
+/**
+ * Administrative upload/download, history and package-inspection API.
+ */
+@RestController
+@Tag(name = &quot;Document templates&quot;, description = &quot;ADMIN-only versioned DOTX packages and inspection&quot;)
+@RequestMapping(&quot;/api/admin/document-templates&quot;)
+@ApiResponse(responseCode = &quot;500&quot;, description = &quot;Template storage operation failed&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+@ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required&quot;, content = @Content)
+@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Administrator role or CSRF protection required&quot;, content = @Content)
+public class DocumentTemplateAdminController {
+
+    private final DocumentTemplateService templates;
+
+<span class="fc" id="L52">    public DocumentTemplateAdminController(DocumentTemplateService templates) {</span>
+<span class="fc" id="L53">        this.templates = templates;</span>
+<span class="fc" id="L54">    }</span>
+
+    @Operation(summary = &quot;List versioned document templates&quot;,
+            description = &quot;ADMIN only. Lists available template descriptors and current Git heads without downloading package bytes.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Available template descriptors&quot;)
+    @GetMapping
+    public List&lt;TemplateDescriptor&gt; list() throws IOException {
+<span class="nc" id="L61">        return templates.list();</span>
+    }
+
+    /**
+     * Accepts the DOTX as the raw request body. This keeps the same bounded package
+     * import path as WebDAV and avoids a second multipart buffering limit.
+     */
+    @Operation(summary = &quot;Upload a raw DOTX document template&quot;,
+            description = &quot;ADMIN only. Sends the DOTX archive as the raw request body, not multipart/form-data. &quot;
+                    + &quot;The bounded archive and active content are validated before committing the versioned package. &quot;
+                    + &quot;Use the current head ETag as If-Match when replacing a template; new templates may omit it. &quot;
+                    + &quot;The returned ETag identifies the saved revision. Does not execute a report or macros.&quot;,
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    description = &quot;Non-empty raw DOTX ZIP archive&quot;,
+                    content = {
+                            @Content(mediaType = com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
+                                    schema = @Schema(type = &quot;string&quot;, format = &quot;binary&quot;)),
+                            @Content(mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                                    schema = @Schema(type = &quot;string&quot;, format = &quot;binary&quot;))
+                    }))
+    @ApiResponse(responseCode = &quot;201&quot;, description = &quot;Validated template revision saved&quot;,
+            headers = @Header(name = &quot;ETag&quot;, description = &quot;Quoted Git commit of the saved revision&quot;,
+                    schema = @Schema(type = &quot;string&quot;)))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid identifier, archive or package content&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;Template head changed or required current head was not supplied&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @PutMapping(
+            value = &quot;/{templateId}&quot;,
+            consumes = {
+                    com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
+                    MediaType.APPLICATION_OCTET_STREAM_VALUE
+            })
+    public ResponseEntity&lt;TemplateDescriptor&gt; upload(
+            @Parameter(description = &quot;Registered template identifier, not a filesystem path&quot;) @PathVariable String templateId,
+            @Parameter(description = &quot;Human-readable template display name&quot;) @RequestParam String displayName,
+            @Parameter(description = &quot;Current quoted head ETag; required for an existing template, optional for initial creation&quot;) @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String expectedHead,
+            HttpServletRequest request,
+            Principal principal) throws IOException {
+<span class="fc" id="L106">        long contentLength = request.getContentLengthLong();</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (contentLength == 0) {</span>
+<span class="nc" id="L108">            throw new IllegalArgumentException(&quot;Choose a non-empty DOTX file&quot;);</span>
+        }
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (contentLength &gt; OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES) {</span>
+<span class="nc" id="L111">            throw new IllegalArgumentException(&quot;DOTX archive exceeds the permitted size&quot;);</span>
+        }
+<span class="fc" id="L113">        TemplateDescriptor saved = templates.upload(</span>
+                templateId,
+                displayName,
+<span class="fc" id="L116">                request.getInputStream(),</span>
+                expectedHead,
+<span class="fc" id="L118">                principal.getName(),</span>
+                &quot;Upload document template &quot; + templateId);
+<span class="fc" id="L120">        return ResponseEntity.status(201)</span>
+<span class="fc" id="L121">                .eTag(etag(saved.headCommit()))</span>
+<span class="fc" id="L122">                .body(saved);</span>
+    }
+
+    @Operation(summary = &quot;Download a document template revision&quot;,
+            description = &quot;ADMIN only. Downloads the current DOTX when revision is absent or blank; otherwise downloads the exact retained Git revision. The response is a binary attachment with ETag and Last-Modified headers and private cache revalidation.&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Template, revision or package part not found&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid identifier, revision or package path&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;DOTX binary attachment&quot;,
+            content = @Content(mediaType = com.taxonomy.templates.api.OoxmlTemplateMediaTypes.DOTX_MEDIA_TYPE,
+                    schema = @Schema(type = &quot;string&quot;, format = &quot;binary&quot;)),
+            headers = {
+                    @Header(name = &quot;ETag&quot;, description = &quot;Quoted revision identifier&quot;, schema = @Schema(type = &quot;string&quot;)),
+                    @Header(name = &quot;Last-Modified&quot;, description = &quot;Revision timestamp as an HTTP date&quot;, schema = @Schema(type = &quot;string&quot;)),
+                    @Header(name = &quot;Content-Disposition&quot;, description = &quot;Attachment filename&quot;, schema = @Schema(type = &quot;string&quot;))
+            })
+    @GetMapping(&quot;/{templateId}/download&quot;)
+    public ResponseEntity&lt;byte[]&gt; download(
+            @Parameter(description = &quot;Registered template identifier, not a filesystem path&quot;) @PathVariable String templateId,
+            @Parameter(description = &quot;Exact retained Git revision; absent or blank selects the current head&quot;) @RequestParam(required = false) String revision) throws IOException {
+<span class="pc bpc" id="L149" title="1 of 4 branches missed.">        TemplateFile file = revision == null || revision.isBlank()</span>
+<span class="fc" id="L150">                ? templates.downloadCurrent(templateId)</span>
+<span class="fc" id="L151">                : templates.download(templateId, revision);</span>
+<span class="fc" id="L152">        return ResponseEntity.ok()</span>
+<span class="fc" id="L153">                .contentType(MediaType.parseMediaType(file.manifest().mediaType()))</span>
+<span class="fc" id="L154">                .contentLength(file.content().length)</span>
+<span class="fc" id="L155">                .eTag(file.etag())</span>
+<span class="fc" id="L156">                .lastModified(file.lastModified().toEpochMilli())</span>
+<span class="fc" id="L157">                .cacheControl(CacheControl.noCache().cachePrivate())</span>
+<span class="fc" id="L158">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+<span class="fc" id="L159">                        ContentDisposition.attachment()</span>
+<span class="fc" id="L160">                                .filename(file.manifest().fileName(),</span>
+                                        java.nio.charset.StandardCharsets.UTF_8)
+<span class="fc" id="L162">                                .build()</span>
+<span class="fc" id="L163">                                .toString())</span>
+<span class="fc" id="L164">                .body(file.content());</span>
+    }
+
+    @Operation(summary = &quot;Read template revision history&quot;,
+            description = &quot;ADMIN only. Returns retained Git revisions for the selected template; this is a metadata read without restoring an older version.&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Template, revision or package part not found&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid identifier, revision or package path&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Requested template metadata or bounded package evidence&quot;)
+    @GetMapping(&quot;/{templateId}/history&quot;)
+    public List&lt;TemplateRevision&gt; history(@Parameter(description = &quot;Registered template identifier, not a filesystem path&quot;) @PathVariable String templateId)
+            throws IOException {
+<span class="fc" id="L183">        return templates.history(templateId);</span>
+    }
+
+    @Operation(summary = &quot;Compare two template revisions&quot;,
+            description = &quot;ADMIN only. Compares the exact from and to Git revisions of one template, including added, removed and changed package parts. Does not modify the template or generate a report.&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Template, revision or package part not found&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid identifier, revision or package path&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Requested template metadata or bounded package evidence&quot;)
+    @GetMapping(&quot;/{templateId}/diff&quot;)
+    public TemplateDiff diff(
+            @Parameter(description = &quot;Registered template identifier, not a filesystem path&quot;) @PathVariable String templateId,
+            @Parameter(description = &quot;Exact Git revision used as comparison source&quot;) @RequestParam String from,
+            @Parameter(description = &quot;Exact Git revision used as comparison target&quot;) @RequestParam String to) throws IOException {
+<span class="nc" id="L204">        return templates.diff(templateId, from, to);</span>
+    }
+
+    @Operation(summary = &quot;Inspect a retained template package part&quot;,
+            description = &quot;ADMIN only. Reads the bounded part preview at an exact template revision and package-relative path. The path identifies a package entry, not a server filesystem path.&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Template, revision or package part not found&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid identifier, revision or package path&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Requested template metadata or bounded package evidence&quot;)
+    @GetMapping(&quot;/{templateId}/part&quot;)
+    public TemplatePartView part(
+            @Parameter(description = &quot;Registered template identifier, not a filesystem path&quot;) @PathVariable String templateId,
+            @Parameter(description = &quot;Exact retained Git revision to read or restore&quot;) @RequestParam String revision,
+            @Parameter(description = &quot;Package-relative part path, for example word/document.xml&quot;) @RequestParam String path) throws IOException {
+<span class="nc" id="L225">        return templates.readPart(templateId, revision, path);</span>
+    }
+
+    @Operation(summary = &quot;Restore a historical document template&quot;,
+            description = &quot;ADMIN only. Creates a new current revision from an existing historical DOTX package. Does not erase intervening history. If-Match must identify the current head; a concurrent change is rejected. Returns the new head ETag.&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Template, revision or package part not found&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid identifier, revision or package path&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;New current template revision&quot;,
+            headers = @Header(name = &quot;ETag&quot;, description = &quot;Quoted restored head&quot;, schema = @Schema(type = &quot;string&quot;)))
+    @ApiResponse(responseCode = &quot;412&quot;, description = &quot;Missing or stale current template head&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = &quot;error&quot;),
+                    schemaProperties = @SchemaProperty(name = &quot;error&quot;,
+                            schema = @Schema(type = &quot;string&quot;, description = &quot;Reason the template operation was rejected&quot;))))
+    @PostMapping(&quot;/{templateId}/restore&quot;)
+    public ResponseEntity&lt;TemplateDescriptor&gt; restore(
+            @Parameter(description = &quot;Registered template identifier, not a filesystem path&quot;) @PathVariable String templateId,
+            @Parameter(description = &quot;Exact retained Git revision to read or restore&quot;) @RequestParam String revision,
+            @Parameter(description = &quot;Required current quoted head ETag; restore creates a new commit&quot;,
+                    required = true) @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String expectedHead,
+            Principal principal) throws IOException {
+<span class="fc" id="L254">        TemplateDescriptor restored = templates.restore(</span>
+                templateId,
+                revision,
+                expectedHead,
+<span class="fc" id="L258">                principal.getName());</span>
+<span class="fc" id="L259">        return ResponseEntity.ok()</span>
+<span class="fc" id="L260">                .eTag(etag(restored.headCommit()))</span>
+<span class="fc" id="L261">                .body(restored);</span>
+    }
+
+    private static String etag(String commitId) {
+<span class="fc" id="L265">        return &quot;\&quot;&quot; + commitId + &quot;\&quot;&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

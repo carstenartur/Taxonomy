@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestoreSupportRegistry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestoreSupportRegistry.java</span></div><h1>RestoreSupportRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import java.io.IOException;
+import java.util.*;
+
+/** Closed production import/matrix registry until complete owner combinations have actual acceptance. */
+public final class RestoreSupportRegistry {
+    private RestoreSupportRegistry() { }
+<span class="fc" id="L10">    public static RestoreSupportRegistry closed(){return new RestoreSupportRegistry();}</span>
+<span class="fc" id="L11">    public String revision(){return &quot;closed-owner-matrix-v1&quot;;}</span>
+    List&lt;RestoreDiagnostic&gt; inspect(BackupManifest manifest) {
+<span class="fc" id="L13">        var diagnostics=new ArrayList&lt;RestoreDiagnostic&gt;();</span>
+<span class="fc bfc" id="L14" title="All 4 branches covered.">        for(var component:manifest.components())if(!component.id().value().equals(&quot;capture-proof&quot;))</span>
+<span class="fc" id="L15">            diagnostics.add(new RestoreDiagnostic(&quot;UNREGISTERED_OWNER&quot;,RestoreDiagnostic.Severity.BLOCKER,component.id().value(),null));</span>
+<span class="fc" id="L16">        diagnostics.add(new RestoreDiagnostic(&quot;UNSUPPORTED_MATRIX&quot;,RestoreDiagnostic.Severity.BLOCKER,null,null));return diagnostics;</span>
+    }
+    void requireSupported(RestorePlan plan)throws IOException {
+        // No enum, source-family witness, schema fixture or available parser grants import readiness.
+<span class="fc" id="L20">        throw new IOException(&quot;Restore owner/database combination is unsupported&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

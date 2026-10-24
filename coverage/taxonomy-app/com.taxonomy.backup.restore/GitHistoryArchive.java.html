@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitHistoryArchive.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">GitHistoryArchive.java</span></div><h1>GitHistoryArchive.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.VerifiedBackup;
+import com.taxonomy.workspace.backup.*;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.eclipse.jgit.util.sha1.SHA1;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.security.*;
+import java.time.*;
+import java.util.*;
+
+/** Verified original Git payload, held privately until a durable target allocation is prepared. */
+public final class GitHistoryArchive implements AutoCloseable {
+<span class="fc" id="L20">    private static final BackupComponentId OWNER = new BackupComponentId(&quot;workspace&quot;);</span>
+    private static final int BUFFER_BYTES = 8_192;
+    private static final int MAX_HEADER_LINE_BYTES = 4_096;
+    private final Repository payload;
+    private final Path directory;
+    private final GitHistoryRestore.Source source;
+    private final GitHistoryRestore.PreparedSource prepared;
+    private boolean closed;
+
+    private GitHistoryArchive(Repository payload, Path directory, GitHistoryRestore.Source source,
+<span class="fc" id="L30">                              GitHistoryRestore.PreparedSource prepared) {</span>
+<span class="fc" id="L31">        this.payload=payload;this.directory=directory;this.source=source;this.prepared=prepared;</span>
+<span class="fc" id="L32">    }</span>
+
+    /** No archive pathname is extracted or used to open a repository, config, hook, or external object source. */
+    public static GitHistoryArchive open(VerifiedBackup archive, BackupManifest.Repository repository,
+            Path privateSpool, GitHistoryCapture.Limits limits, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L37">        Repository payload=null;Path directory=null;</span>
+        try {
+<span class="fc" id="L39">            Objects.requireNonNull(archive);Objects.requireNonNull(repository);Objects.requireNonNull(limits);</span>
+<span class="fc" id="L40">            BackupCheckpoint check=checked(checkpoint);check.check();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if(!archive.manifest().request().profile().includesHistory()</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">                    ||!archive.manifest().repositories().contains(repository)</span>
+<span class="pc bpc" id="L43" title="3 of 6 branches missed.">                    ||repository.representation()==GitRepresentation.NONE||repository.sourceRepositoryId()!=null||repository.sourceCommit()!=null)</span>
+<span class="nc" id="L44">                throw invalid();</span>
+<span class="fc" id="L45">            var metadata=metadata(archive,repository,limits,check);</span>
+<span class="fc" id="L46">            var source=new GitHistoryRestore.Source(new GitReflogProvenance.Origin(archive.archiveSha256(),repository.id(),repository.archiveId()),</span>
+<span class="fc" id="L47">                    metadata.repository.source(),metadata.repository.backupRefs(),metadata.repository.symbolicRefs(),metadata.logs,metadata.originals,</span>
+<span class="fc" id="L48">                    metadata.repository.objectCount());</span>
+<span class="fc" id="L49">            var entries=entries(archive,repository,check);</span>
+<span class="fc" id="L50">            var paths=container(repository,entries,check);</span>
+<span class="fc" id="L51">            Path spool=privateSpool.toAbsolutePath().normalize();</span>
+<span class="pc bpc" id="L52" title="2 of 4 branches missed.">            if(!Files.isDirectory(spool,LinkOption.NOFOLLOW_LINKS)||!spool.toRealPath().equals(spool))throw invalid();</span>
+<span class="fc" id="L53">            directory=Files.createTempDirectory(spool,&quot;history-&quot;);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">            if(Files.getFileStore(directory).supportsFileAttributeView(&quot;posix&quot;))</span>
+<span class="fc" id="L55">                Files.setPosixFilePermissions(directory,PosixFilePermissions.fromString(&quot;rwx------&quot;));</span>
+<span class="fc" id="L56">            payload=new FileRepositoryBuilder().setGitDir(directory.resolve(&quot;payload.git&quot;).toFile()).setBare().build();</span>
+<span class="fc" id="L57">            payload.create(true);check.check();</span>
+<span class="fc" id="L58">            Path pack=directory.resolve(&quot;verified.pack&quot;);</span>
+<span class="fc" id="L59">            var inspection=pack(archive,paths.pack,pack,payload,source,repository.representation(),limits,check);</span>
+            // Only the private file repository receives verified pack bytes. The database target does not exist yet.
+<span class="fc" id="L61">            try(var input=new BufferedInputStream(Files.newInputStream(pack),BUFFER_BYTES);var inserter=payload.newObjectInserter()) {</span>
+<span class="fc" id="L62">                var parser=inserter.newPackParser(checking(input,check));</span>
+<span class="fc" id="L63">                parser.setAllowThin(false);parser.setObjectChecking(true);parser.setCheckEofAfterPackFooter(true);</span>
+<span class="fc" id="L64">                parser.setMaxObjectSizeLimit(limits.maxObjectBytes());</span>
+<span class="fc" id="L65">                parser.parse(NullProgressMonitor.INSTANCE);inserter.flush();check.check();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                if(parser.getObjectCount()!=inspection.objectCount())throw invalid();</span>
+            }
+<span class="fc" id="L68">            var prepared=GitHistoryRestore.prepare(payload,source,limits,check);</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">            if(prepared.objectCount()!=inspection.objectCount()||prepared.expandedBytes()!=inspection.expandedBytes())throw invalid();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if(repository.representation()==GitRepresentation.BUNDLE) {</span>
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">                if(metadata.repository.workingCopy()!=null||!Objects.equals(repository.exportedHead(),source.state().refs().get(Constants.HEAD)))throw invalid();</span>
+<span class="fc" id="L72">            } else nativeContainer(archive,repository,metadata,source,payload,entries,paths,inspection,limits,check);</span>
+<span class="fc" id="L73">            Files.delete(pack);check.check();</span>
+<span class="fc" id="L74">            return new GitHistoryArchive(payload,directory,source,prepared);</span>
+<span class="fc" id="L75">        } catch(IOException|RuntimeException|Error failure) {</span>
+<span class="pc bfc" id="L76" title="All 2 branches covered.">            if(payload!=null)try{payload.close();}catch(RuntimeException cleanup){failure.addSuppressed(cleanup);}</span>
+<span class="pc bfc" id="L77" title="All 2 branches covered.">            if(directory!=null)try{remove(directory);}catch(IOException cleanup){failure.addSuppressed(cleanup);}</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            if(failure instanceof Error error)throw error;</span>
+            IOException sanitized;
+<span class="pc bpc" id="L80" title="1 of 4 branches missed.">            if(failure instanceof InterruptedIOException||Thread.currentThread().isInterrupted()) {</span>
+<span class="fc" id="L81">                Thread.currentThread().interrupt();sanitized=new InterruptedIOException(&quot;Original Git preparation cancelled&quot;);</span>
+<span class="fc" id="L82">            } else sanitized=invalid();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            for(var cleanup:failure.getSuppressed())sanitized.addSuppressed(cleanup);</span>
+<span class="fc" id="L84">            throw sanitized;</span>
+        }
+    }
+<span class="fc" id="L87">    public GitHistoryRestore.Source source() { requireOpen();return source; }</span>
+<span class="fc" id="L88">    public GitHistoryRestore.PreparedSource prepared() { requireOpen();return prepared; }</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">    private void requireOpen(){if(closed)throw new IllegalStateException(&quot;Original Git preparation is closed&quot;);}</span>
+    @Override public void close() throws IOException {
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if(!closed){closed=true;try{payload.close();}finally{remove(directory);}}</span>
+<span class="fc" id="L92">    }</span>
+
+<span class="fc" id="L94">    private static final class Metadata {</span>
+        GitHistoryCapture.HistoryRecord repository;
+<span class="fc" id="L96">        final List&lt;GitHistoryCapture.Reflog&gt; logs=new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L97">        final List&lt;GitReflogProvenance.Event&gt; originals=new ArrayList&lt;&gt;();</span>
+    }
+    private static Metadata metadata(VerifiedBackup archive,BackupManifest.Repository repository,
+            GitHistoryCapture.Limits limits,BackupCheckpoint check)throws IOException {
+<span class="fc" id="L101">        var result=new Metadata();</span>
+<span class="fc" id="L102">        RestoreArchiveRecords.readVariants(archive,OWNER,&quot;data/workspace/git-history-&quot;+repository.archiveId()+&quot;.ndjson&quot;,&quot;git-history&quot;,</span>
+<span class="fc" id="L103">                Map.of(&quot;repository&quot;,GitHistoryCapture.HistoryRecord.class,&quot;reflog&quot;,GitHistoryCapture.LogRecord.class,</span>
+<span class="fc" id="L104">                        &quot;original-reflog&quot;,GitHistoryCapture.OriginalLogRecord.class),limits.maxReflogEntries()+1,check,row-&gt;{</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                    if(row instanceof GitHistoryCapture.HistoryRecord history) {</span>
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">                        if(result.repository!=null||!repository.archiveId().equals(history.archiveId())</span>
+<span class="pc bpc" id="L107" title="3 of 6 branches missed.">                                ||!repository.captured().equals(history.source())||history.objectCount()&lt;0||history.objectCount()&gt;limits.maxObjects())throw invalid();</span>
+<span class="fc" id="L108">                        result.repository=history;</span>
+                    } else {
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                        if(result.repository==null)throw invalid();</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                        if(row instanceof GitHistoryCapture.LogRecord log)result.logs.add(Objects.requireNonNull(log.entry()));</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">                        else if(row instanceof GitHistoryCapture.OriginalLogRecord log)result.originals.add(Objects.requireNonNull(log.event()));</span>
+<span class="nc" id="L113">                        else throw invalid();</span>
+                    }
+<span class="fc" id="L115">                });</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if(result.repository==null)throw invalid();return result;</span>
+    }
+    private static Map&lt;String,BackupEntry&gt; entries(VerifiedBackup archive,BackupManifest.Repository repository,BackupCheckpoint check)throws IOException {
+<span class="fc" id="L119">        String prefix=&quot;repositories/&quot;+repository.archiveId()+&quot;/&quot;;var result=new HashMap&lt;String,BackupEntry&gt;();</span>
+<span class="fc" id="L120">        var owner=archive.manifest().components().stream().filter(component-&gt;component.id().equals(OWNER)).findFirst().orElseThrow(GitHistoryArchive::invalid);</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if(owner.version()!=1)throw invalid();var owned=new HashSet&lt;&gt;(owner.entryPaths());</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for(var entry:archive.manifest().entries()) {</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            check.check();if(!entry.path().startsWith(prefix))continue;</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">            if(!owned.contains(entry.path()))throw invalid();</span>
+<span class="fc" id="L125">            result.put(entry.path().substring(prefix.length()),entry);</span>
+<span class="fc" id="L126">        }</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if(result.isEmpty())throw invalid();return result;</span>
+    }
+<span class="fc" id="L129">    private record Container(String pack,String index,String git) { }</span>
+    private static Container container(BackupManifest.Repository repository,Map&lt;String,BackupEntry&gt; entries,BackupCheckpoint check)throws IOException {
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if(repository.representation()==GitRepresentation.BUNDLE) {</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">            if(!entries.keySet().equals(Set.of(&quot;history.bundle&quot;)))throw invalid();</span>
+<span class="fc" id="L133">            return new Container(entries.get(&quot;history.bundle&quot;).path(),null,null);</span>
+        }
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        String git=repository.representation()==GitRepresentation.WORKTREE?&quot;.git/&quot;:&quot;&quot;;</span>
+<span class="fc" id="L136">        String pack=null;</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        for(String path:entries.keySet()) {</span>
+<span class="fc" id="L138">            check.check();</span>
+<span class="fc bfc" id="L139" title="All 4 branches covered.">            if(path.startsWith(git+&quot;objects/pack/&quot;)&amp;&amp;path.endsWith(&quot;.pack&quot;)) {</span>
+<span class="pc bpc" id="L140" title="1 of 4 branches missed.">                if(pack!=null||!path.substring((git+&quot;objects/pack/&quot;).length()).matches(&quot;pack-[0-9a-f]{40}\\.pack&quot;))throw invalid();</span>
+<span class="fc" id="L141">                pack=path;</span>
+            }
+<span class="fc" id="L143">        }</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        if(pack==null)throw invalid();String index=pack.substring(0,pack.length()-5)+&quot;.idx&quot;;</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        if(!entries.containsKey(index))throw invalid();return new Container(entries.get(pack).path(),index,git);</span>
+    }
+    private static GitPackVerification.Result pack(VerifiedBackup archive,String path,Path destination,Repository payload,
+            GitHistoryRestore.Source source,GitRepresentation representation,GitHistoryCapture.Limits limits,BackupCheckpoint check)throws IOException {
+<span class="fc" id="L149">        var guard=new EntryGuard(check);</span>
+<span class="fc" id="L150">        try(var input=new BufferedInputStream(archive.openEntry(path,guard),BUFFER_BYTES);var output=Files.newOutputStream(destination,StandardOpenOption.CREATE_NEW)) {</span>
+            try {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                if(representation==GitRepresentation.BUNDLE)bundleHeader(input,source,limits,check);</span>
+<span class="fc" id="L153">                var tee=new FilterInputStream(input) {</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                    @Override public int read()throws IOException{byte[] b=new byte[1];return read(b,0,1)&lt;0?-1:b[0]&amp;0xff;}</span>
+                    @Override public int read(byte[] b,int offset,int length)throws IOException {
+<span class="fc" id="L156">                        check.check();int count=in.read(b,offset,Math.min(length,BUFFER_BYTES));</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                        if(count&gt;0)output.write(b,offset,count);check.check();return count;</span>
+                    }
+                };
+<span class="fc" id="L160">                var result=GitPackVerification.inspect(payload,tee,source.objectCount(),limits,check);</span>
+<span class="fc" id="L161">                output.flush();check.check();return result;</span>
+<span class="fc" id="L162">            } catch(IOException|RuntimeException|Error failure) {</span>
+                // An invalid pack/header must not cause CheckedInput.close() to drain a rejected large payload.
+<span class="fc" id="L164">                guard.abandoned=true;throw failure;</span>
+            }
+        }
+    }
+    private static void bundleHeader(InputStream input,GitHistoryRestore.Source source,GitHistoryCapture.Limits limits,BackupCheckpoint check)throws IOException {
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if(!line(input,check).equals(&quot;# v2 git bundle&quot;))throw invalid();var actual=new HashMap&lt;String,String&gt;();</span>
+        for(;;) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            check.check();String line=line(input,check);if(line.isEmpty())break;</span>
+<span class="pc bpc" id="L172" title="3 of 8 branches missed.">            if(actual.size()&gt;=limits.maxRefs()||line.length()&lt;42||line.charAt(40)!=' '||!line.substring(0,40).matches(&quot;[0-9a-f]{40}&quot;))throw invalid();</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            if(actual.putIfAbsent(line.substring(41),line.substring(0,40))!=null)throw invalid();</span>
+<span class="fc" id="L174">        }</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        if(!actual.equals(refs(source)))throw invalid();</span>
+<span class="fc" id="L176">    }</span>
+    private static String line(InputStream input,BackupCheckpoint check)throws IOException {
+<span class="fc" id="L178">        var bytes=new ByteArrayOutputStream();</span>
+        for(;;) {
+<span class="pc bpc" id="L180" title="3 of 6 branches missed.">            check.check();int value=input.read();if(value&lt;0||value=='\r'||value==0)throw invalid();</span>
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">            if(value=='\n')break;if(bytes.size()&gt;=MAX_HEADER_LINE_BYTES)throw invalid();bytes.write(value);</span>
+<span class="fc" id="L182">        }</span>
+<span class="fc" id="L183">        var decoder=StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)</span>
+<span class="fc" id="L184">                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);</span>
+<span class="fc" id="L185">        return decoder.decode(java.nio.ByteBuffer.wrap(bytes.toByteArray())).toString();</span>
+    }
+    private static Map&lt;String,String&gt; refs(GitHistoryRestore.Source source) {
+<span class="fc" id="L188">        var result=new TreeMap&lt;&gt;(source.state().refs());result.putAll(source.backupRefs());return result;</span>
+    }
+
+    private static void nativeContainer(VerifiedBackup archive,BackupManifest.Repository repository,Metadata metadata,
+            GitHistoryRestore.Source source,Repository payload,Map&lt;String,BackupEntry&gt; entries,Container paths,
+            GitPackVerification.Result inspection,GitHistoryCapture.Limits limits,BackupCheckpoint check)throws IOException {
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        boolean working=repository.representation()==GitRepresentation.WORKTREE;String git=paths.git;var expected=new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L195">        require(entries,expected,git+&quot;refs/&quot;,out-&gt;{ });</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        require(entries,expected,git+&quot;config&quot;,out-&gt;text(out,&quot;[core]\n\trepositoryformatversion = 0\n\tbare = &quot;+!working</span>
+                +&quot;\n\tfilemode = false\n\tlogallrefupdates = true\n\tautocrlf = false\n&quot;));
+<span class="fc" id="L198">        var selected=metadata.repository.workingCopy();</span>
+<span class="pc bpc" id="L199" title="3 of 4 branches missed.">        if(selected!=null&amp;&amp;!working)throw invalid();</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        String selectedHead=selected==null?source.state().refs().get(Constants.HEAD):selected.refs().get(selected.symbolicHead());</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">        String symbolic=selected==null?source.state().symbolicHead():selected.symbolicHead();</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        if(!Objects.equals(repository.exportedHead(),selectedHead))throw invalid();</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        if(selected!=null) {</span>
+<span class="nc bnc" id="L204" title="All 6 branches missed.">            if(symbolic==null||!symbolic.startsWith(Constants.R_HEADS)||!Repository.isValidRefName(symbolic)</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">                    ||!Objects.equals(source.state().refs().get(symbolic),selectedHead)</span>
+<span class="nc bnc" id="L206" title="All 4 branches missed.">                    ||!selected.refs().equals(selectedHead==null?Map.of():Map.of(symbolic,selectedHead))</span>
+<span class="nc bnc" id="L207" title="All 4 branches missed.">                    ||!selected.requiredCommits().equals(selectedHead==null?Set.of():Set.of(selectedHead))</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                    ||!source.state().workingStates().entrySet().containsAll(selected.workingStates().entrySet())</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">                    ||selected.workingStates().size()&gt;1</span>
+<span class="nc bnc" id="L210" title="All 4 branches missed.">                    ||!selected.workingStates().isEmpty()&amp;&amp;!selected.workingStates().containsKey(symbolic.substring(Constants.R_HEADS.length())))throw invalid();</span>
+        }
+<span class="pc bpc" id="L212" title="2 of 4 branches missed.">        String head=symbolic!=null?&quot;ref: &quot;+symbolic:selectedHead;if(head==null)throw invalid();</span>
+<span class="fc" id="L213">        require(entries,expected,git+&quot;HEAD&quot;,out-&gt;text(out,head+&quot;\n&quot;));</span>
+<span class="fc" id="L214">        require(entries,expected,git+&quot;packed-refs&quot;,out-&gt;{</span>
+<span class="fc" id="L215">            text(out,&quot;# pack-refs with: sorted\n&quot;);var sorted=new TreeMap&lt;String,String&gt;((a,b)-&gt;Arrays.compareUnsigned(a.getBytes(StandardCharsets.UTF_8),b.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">            sorted.putAll(refs(source));for(var ref:sorted.entrySet()) {</span>
+<span class="fc bfc" id="L217" title="All 4 branches covered.">                check.check();if(ref.getKey().equals(Constants.HEAD)||source.symbolicRefs().containsKey(ref.getKey()))continue;</span>
+<span class="fc" id="L218">                text(out,ref.getValue()+&quot; &quot;+ref.getKey()+&quot;\n&quot;);</span>
+<span class="fc" id="L219">            }</span>
+<span class="fc" id="L220">        });</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        for(var alias:source.symbolicRefs().entrySet()){check.check();require(entries,expected,git+alias.getKey(),out-&gt;text(out,&quot;ref: &quot;+alias.getValue()+&quot;\n&quot;));}</span>
+<span class="fc" id="L222">        var logs=new TreeMap&lt;String,List&lt;GitHistoryCapture.Reflog&gt;&gt;();</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        for(var log:source.reflogs())logs.computeIfAbsent(log.ref(),unused-&gt;new ArrayList&lt;&gt;()).add(log);</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for(var group:logs.entrySet())require(entries,expected,git+&quot;logs/&quot;+group.getKey(),out-&gt;{</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            for(var log:group.getValue()) {</span>
+<span class="fc" id="L226">                check.check();var who=new PersonIdent(log.name(),log.email(),Instant.ofEpochSecond(log.epochSeconds()),ZoneOffset.ofTotalSeconds(Math.multiplyExact(log.offsetMinutes(),60)));</span>
+<span class="fc" id="L227">                text(out,log.oldId()+&quot; &quot;+log.newId()+&quot; &quot;+who.toExternalString()+&quot;\t&quot;+log.message()+&quot;\n&quot;);</span>
+<span class="fc" id="L228">            }</span>
+<span class="fc" id="L229">        });</span>
+<span class="fc" id="L230">        String packName=nativePackName(inspection.objectIds());</span>
+<span class="fc" id="L231">        String expectedIndex=git+&quot;objects/pack/pack-&quot;+packName+&quot;.idx&quot;;</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">        if(!paths.index.equals(expectedIndex))throw invalid();expected.add(expectedIndex.substring(0,expectedIndex.length()-4)+&quot;.pack&quot;);</span>
+<span class="fc" id="L233">        Path installed=payload.getDirectory().toPath().resolve(&quot;objects/pack/pack-&quot;+packName+&quot;.idx&quot;);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if(Files.isRegularFile(installed,LinkOption.NOFOLLOW_LINKS))</span>
+<span class="fc" id="L235">            require(entries,expected,expectedIndex,out-&gt;{try(var input=Files.newInputStream(installed)){copy(input,out,check);}});</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        else if(inspection.objectCount()==0)require(entries,expected,expectedIndex,out-&gt;emptyPackIndex(out,inspection.packChecksum()));</span>
+<span class="nc" id="L237">        else throw invalid();</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if(working) {</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">            var tree=selectedHead==null?null:GitTreeCapture.capture(payload,selectedHead,</span>
+<span class="fc" id="L240">                    new GitTreeCapture.Limits(BackupLimits.MAX_ITEMS,limits.maxObjectBytes(),limits.maxTotalBytes()),check);</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            List&lt;GitTreeCapture.File&gt; files=tree==null?List.of():tree.files();</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">            require(entries,expected,git+&quot;index&quot;,out-&gt;{if(tree==null)GitTreeCapture.writeEmptyIndex(out,check);else tree.writeIndex(out,check);});</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            var originals=new HashMap&lt;String,GitTreeCapture.File&gt;();for(var file:files)originals.put(file.path(),file);</span>
+<span class="pc bpc" id="L244" title="3 of 4 branches missed.">            var raw=selected==null||selected.workingStates().isEmpty()?null:workingProof(archive,repository,selected,check);</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">            for(var file:files) {</span>
+<span class="pc bpc" id="L246" title="3 of 4 branches missed.">                check.check();if(raw!=null&amp;&amp;file.path().equals(&quot;architecture.taxdsl&quot;))continue;</span>
+<span class="pc bpc" id="L247" title="3 of 6 branches missed.">                var entry=entries.get(file.path());if(entry==null||entry.length()!=file.length()||!entry.sha256().equals(file.sha256()))throw invalid();expected.add(file.path());</span>
+<span class="fc" id="L248">            }</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">            if(raw!=null) {</span>
+<span class="nc" id="L250">                var entry=entries.get(&quot;architecture.taxdsl&quot;);</span>
+<span class="nc bnc" id="L251" title="All 6 branches missed.">                if(entry==null||entry.length()&gt;16L*1024*1024||!raw.sha256().equals(entry.sha256()))throw invalid();</span>
+<span class="nc" id="L252">                var original=originals.get(&quot;architecture.taxdsl&quot;);</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">                if(raw.state().semanticRevision()==raw.state().checkpointRevision()</span>
+<span class="nc bnc" id="L254" title="All 4 branches missed.">                        &amp;&amp;!raw.sha256().equals(original==null?hex(sha256().digest()):original.sha256()))throw invalid();</span>
+<span class="nc" id="L255">                expected.add(&quot;architecture.taxdsl&quot;);</span>
+            }
+        }
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if(!entries.keySet().equals(expected))throw invalid();check.check();</span>
+<span class="fc" id="L259">    }</span>
+    private static WorkspaceGitHistoryReferences.WorkingCopyProof workingProof(VerifiedBackup archive,BackupManifest.Repository repository,
+            SnapshotContext.RepositoryState selected,BackupCheckpoint check)throws IOException {
+<span class="nc" id="L262">        String branch=selected.symbolicHead().substring(Constants.R_HEADS.length());</span>
+<span class="nc" id="L263">        var matching=new ArrayList&lt;WorkspaceGitHistoryReferences.WorkingCopyProof&gt;();var seen=new HashSet&lt;SourceRecordId&gt;();</span>
+<span class="nc" id="L264">        RestoreArchiveRecords.read(archive,OWNER,&quot;data/workspace/git-working-copy-proofs.ndjson&quot;,&quot;git-working-copy-proofs&quot;,</span>
+                WorkspaceGitHistoryReferences.WorkingCopyProof.class,BackupLimits.MAX_ITEMS,check,row-&gt;{
+<span class="nc bnc" id="L266" title="All 2 branches missed.">                    if(!seen.add(row.sourceId()))throw invalid();</span>
+<span class="nc bnc" id="L267" title="All 4 branches missed.">                    if(row.repository().equals(repository.id())&amp;&amp;row.branch().equals(branch))matching.add(row);</span>
+<span class="nc" id="L268">                });</span>
+<span class="nc bnc" id="L269" title="All 4 branches missed.">        if(matching.size()!=1||!matching.getFirst().state().equals(selected.workingStates().get(branch))</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">                ||!Objects.equals(matching.getFirst().state().checkpointCommit(),selected.refs().get(selected.symbolicHead())))throw invalid();</span>
+<span class="nc" id="L271">        return matching.getFirst();</span>
+    }
+    private static String nativePackName(Set&lt;String&gt; ids) {
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        var digest=sha1();for(String id:new TreeSet&lt;&gt;(ids))digest.update(HexFormat.of().parseHex(id));return hex(digest.digest());</span>
+    }
+    /** Standard empty pack index v2; JGit discards an empty received pack rather than writing this optional file. */
+    private static void emptyPackIndex(OutputStream output,String packChecksum)throws IOException {
+        // An empty v2 index has a fixed 1,052-byte body, independent of archive size.
+<span class="fc" id="L279">        var content=new ByteArrayOutputStream(1_052);var bytes=new DataOutputStream(content);</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        bytes.writeInt(0xff744f63);bytes.writeInt(2);for(int i=0;i&lt;256;i++)bytes.writeInt(0);</span>
+<span class="fc" id="L281">        bytes.write(HexFormat.of().parseHex(packChecksum));bytes.flush();</span>
+<span class="fc" id="L282">        byte[] body=content.toByteArray();var digest=sha1();digest.update(body);</span>
+<span class="fc" id="L283">        output.write(body);output.write(digest.digest());</span>
+<span class="fc" id="L284">    }</span>
+    @FunctionalInterface private interface Writer {void write(OutputStream output)throws IOException;}
+    private static void require(Map&lt;String,BackupEntry&gt; entries,Set&lt;String&gt; expected,String path,Writer writer)throws IOException {
+<span class="pc bpc" id="L287" title="2 of 4 branches missed.">        var entry=entries.get(path);if(entry==null||!expected.add(path))throw invalid();</span>
+<span class="fc" id="L288">        var output=new Fingerprint(entry.length());writer.write(output);</span>
+<span class="fc bfc" id="L289" title="All 4 branches covered.">        if(output.length!=entry.length()||!hex(output.digest.digest()).equals(entry.sha256()))throw invalid();</span>
+<span class="fc" id="L290">    }</span>
+    private static final class Fingerprint extends OutputStream {
+<span class="fc" id="L292">        final MessageDigest digest=sha256();final long maximum;long length;</span>
+<span class="fc" id="L293">        Fingerprint(long maximum){this.maximum=maximum;}</span>
+<span class="fc" id="L294">        @Override public void write(int value)throws IOException{write(new byte[]{(byte)value},0,1);}</span>
+        @Override public void write(byte[] bytes,int offset,int count)throws IOException {
+<span class="fc bfc" id="L296" title="All 2 branches covered.">            if(count&gt;maximum-length)throw invalid();digest.update(bytes,offset,count);length+=count;</span>
+<span class="fc" id="L297">        }</span>
+    }
+    private static final class EntryGuard implements BackupCheckpoint {
+        final BackupCheckpoint check;boolean abandoned;
+<span class="fc" id="L301">        EntryGuard(BackupCheckpoint check){this.check=check;}</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        @Override public void check()throws IOException{if(abandoned)throw invalid();check.check();}</span>
+    }
+    private static BackupCheckpoint checked(BackupCheckpoint checkpoint) {
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">        Objects.requireNonNull(checkpoint);return ()-&gt;{if(Thread.currentThread().isInterrupted())throw new InterruptedIOException(&quot;Original Git preparation cancelled&quot;);checkpoint.check();};</span>
+    }
+    private static InputStream checking(InputStream input,BackupCheckpoint check) {
+<span class="fc" id="L308">        return new FilterInputStream(input) {</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">            @Override public int read()throws IOException{byte[] b=new byte[1];return read(b,0,1)&lt;0?-1:b[0]&amp;0xff;}</span>
+            @Override public int read(byte[] bytes,int offset,int length)throws IOException {
+<span class="fc" id="L311">                check.check();int count=in.read(bytes,offset,Math.min(length,BUFFER_BYTES));check.check();return count;</span>
+            }
+        };
+    }
+    private static void copy(InputStream input,OutputStream output,BackupCheckpoint check)throws IOException {
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        byte[] bytes=new byte[BUFFER_BYTES];for(;;){check.check();int count=input.read(bytes);if(count&lt;0)break;output.write(bytes,0,count);check.check();}</span>
+<span class="fc" id="L317">    }</span>
+<span class="fc" id="L318">    private static void text(OutputStream output,String value)throws IOException{output.write(value.getBytes(StandardCharsets.UTF_8));}</span>
+<span class="fc" id="L319">    private static String hex(byte[] value){return HexFormat.of().formatHex(value);}</span>
+<span class="fc" id="L320">    private static MessageDigest sha256(){return digest(&quot;SHA-256&quot;);}</span>
+<span class="fc" id="L321">    private static SHA1 sha1(){return SHA1.newInstance().setDetectCollision(true);}</span>
+<span class="pc" id="L322">    private static MessageDigest digest(String algorithm){try{return MessageDigest.getInstance(algorithm);}catch(NoSuchAlgorithmException impossible){throw new AssertionError(impossible);}}</span>
+<span class="fc" id="L323">    private static IOException invalid(){return new IOException(&quot;Invalid original Git archive evidence&quot;);}</span>
+    private static void remove(Path directory)throws IOException {
+<span class="fc" id="L325">        boolean interrupted=Thread.interrupted();</span>
+        try {
+<span class="fc" id="L327">            Files.walkFileTree(directory,EnumSet.noneOf(FileVisitOption.class),32,new SimpleFileVisitor&lt;&gt;() {</span>
+<span class="fc" id="L328">                @Override public FileVisitResult visitFile(Path file,BasicFileAttributes attributes)throws IOException{Files.delete(file);return FileVisitResult.CONTINUE;}</span>
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">                @Override public FileVisitResult postVisitDirectory(Path path,IOException failure)throws IOException{if(failure!=null)throw failure;Files.delete(path);return FileVisitResult.CONTINUE;}</span>
+            });
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        } finally{if(interrupted)Thread.currentThread().interrupt();}</span>
+<span class="fc" id="L332">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

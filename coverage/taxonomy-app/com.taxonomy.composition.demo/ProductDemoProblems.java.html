@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductDemoProblems.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.demo</a> &gt; <span class="el_source">ProductDemoProblems.java</span></div><h1>ProductDemoProblems.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.demo;
+
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioException.Kind;
+
+/** Stable, machine-readable problem codes of the product demo (ProblemDetail property {@code code}). */
+final class ProductDemoProblems {
+    static final String RUN_CLOSED = &quot;DEMO_RUN_CLOSED&quot;;
+    static final String SCENARIO_CHANGED = &quot;DEMO_SCENARIO_CHANGED&quot;;
+    static final String ITERATION_UNAVAILABLE = &quot;DEMO_ITERATION_UNAVAILABLE&quot;;
+    static final String REQUIREMENT_MISMATCH = &quot;DEMO_REQUIREMENT_MISMATCH&quot;;
+    static final String PROVIDER_REJECTED = &quot;DEMO_PROVIDER_REJECTED&quot;;
+    static final String CATALOGUE_MISMATCH = &quot;DEMO_CATALOGUE_MISMATCH&quot;;
+    static final String RUN_NOT_FOUND = &quot;DEMO_RUN_NOT_FOUND&quot;;
+    static final String SCENARIO_NOT_FOUND = &quot;DEMO_SCENARIO_NOT_FOUND&quot;;
+
+    private ProductDemoProblems() { }
+
+    static PortfolioException conflict(String code, String message) {
+<span class="fc" id="L20">        return new PortfolioException(Kind.CONFLICT, code, message, null);</span>
+    }
+
+    static PortfolioException validation(String code, String message) {
+<span class="fc" id="L24">        return new PortfolioException(Kind.VALIDATION, code, message, null);</span>
+    }
+
+    static PortfolioException notFound(String code, String message) {
+<span class="fc" id="L28">        return new PortfolioException(Kind.NOT_FOUND, code, message, null);</span>
+    }
+
+    static PortfolioException unavailable(String code, String message) {
+<span class="nc" id="L32">        return new PortfolioException(Kind.UNAVAILABLE, code, message, null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

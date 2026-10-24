@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AccountApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.controller</a> &gt; <span class="el_source">AccountApiController.java</span></div><h1>AccountApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.controller;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.media.SchemaProperty;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.taxonomy.security.service.PasswordChangeService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+/** Self-service account operations for local API clients. */
+@RestController
+@Tag(name = &quot;Account&quot;)
+@RequestMapping(&quot;/api/account&quot;)
+@Profile(&quot;!keycloak&quot;)
+@ConditionalOnProperty(name = &quot;taxonomy.security.change-password-enabled&quot;,
+        havingValue = &quot;true&quot;, matchIfMissing = true)
+public class AccountApiController {
+
+    private final PasswordChangeService passwordChangeService;
+
+<span class="fc" id="L33">    public AccountApiController(PasswordChangeService passwordChangeService) {</span>
+<span class="fc" id="L34">        this.passwordChangeService = passwordChangeService;</span>
+<span class="fc" id="L35">    }</span>
+
+    @PostMapping(&quot;/change-password&quot;)
+    @Operation(summary = &quot;Change the current local account password&quot;,
+            description = &quot;Local authentication only; unavailable in the Keycloak profile or when password change is disabled. Requires currentPassword, a different valid newPassword and matching confirmPassword. Changes only the authenticated account and returns PASSWORD_CHANGED on success.&quot;)
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+            description = &quot;JSON password-change fields. The account is selected exclusively from authentication; additional string fields are ignored. Session-authenticated callers require a CSRF token.&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;,
+                    schema = @Schema(type = &quot;object&quot;,
+                            requiredProperties = {&quot;currentPassword&quot;, &quot;newPassword&quot;, &quot;confirmPassword&quot;},
+                            additionalPropertiesSchema = String.class),
+                    schemaProperties = {
+                            @SchemaProperty(name = &quot;currentPassword&quot;, schema = @Schema(type = &quot;string&quot;,
+                                    format = &quot;password&quot;, accessMode = Schema.AccessMode.WRITE_ONLY,
+                                    description = &quot;Current password of the authenticated local account.&quot;)),
+                            @SchemaProperty(name = &quot;newPassword&quot;, schema = @Schema(type = &quot;string&quot;,
+                                    format = &quot;password&quot;, accessMode = Schema.AccessMode.WRITE_ONLY,
+                                    description = &quot;Replacement password, at least twelve Java UTF-16 code units and different from currentPassword. Non-BMP characters count as two code units in the existing service.&quot;)),
+                            @SchemaProperty(name = &quot;confirmPassword&quot;, schema = @Schema(type = &quot;string&quot;,
+                                    format = &quot;password&quot;, accessMode = Schema.AccessMode.WRITE_ONLY,
+                                    description = &quot;Must exactly match newPassword.&quot;))
+                    }))
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Password changed; the mandatory-change flag is cleared&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;,
+                    schema = @Schema(type = &quot;object&quot;, requiredProperties = {&quot;status&quot;, &quot;message&quot;}),
+                    schemaProperties = {
+                            @SchemaProperty(name = &quot;status&quot;, schema = @Schema(type = &quot;string&quot;,
+                                    allowableValues = &quot;PASSWORD_CHANGED&quot;, description = &quot;Successful password change.&quot;)),
+                            @SchemaProperty(name = &quot;message&quot;, schema = @Schema(type = &quot;string&quot;,
+                                    description = &quot;Human-readable confirmation.&quot;))
+                    }))
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid JSON/body or rejected password change. Domain validation returns PasswordChangeRejection; binding errors are produced by the configured framework error handler.&quot;,
+            content = @Content(mediaType = &quot;application/json&quot;,
+                    schema = @Schema(anyOf = {PasswordChangeRejection.class, PasswordChangeBindingError.class})))
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Authentication required or rejected. Security may reject before the controller; do not depend on a particular error body.&quot;,
+            content = @Content)
+    @ApiResponse(responseCode = &quot;403&quot;, description = &quot;Access denied, including an absent or invalid CSRF token for session-authenticated requests&quot;,
+            content = @Content)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; changePassword(
+            Authentication authentication,
+            @RequestBody Map&lt;String, String&gt; body) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (authentication == null) {</span>
+<span class="fc" id="L77">            return ResponseEntity.status(401).body(Map.of(</span>
+                    &quot;error&quot;, &quot;AUTHENTICATION_REQUIRED&quot;));
+        }
+
+<span class="fc" id="L81">        PasswordChangeService.Result result = passwordChangeService.changePassword(</span>
+<span class="fc" id="L82">                authentication.getName(),</span>
+<span class="fc" id="L83">                body.get(&quot;currentPassword&quot;),</span>
+<span class="fc" id="L84">                body.get(&quot;newPassword&quot;),</span>
+<span class="fc" id="L85">                body.get(&quot;confirmPassword&quot;));</span>
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (result == PasswordChangeService.Result.CHANGED) {</span>
+<span class="fc" id="L88">            return ResponseEntity.ok(Map.of(</span>
+                    &quot;status&quot;, &quot;PASSWORD_CHANGED&quot;,
+                    &quot;message&quot;, &quot;Password changed successfully&quot;));
+        }
+
+<span class="fc" id="L93">        return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="fc" id="L94">                &quot;error&quot;, result.name(),</span>
+<span class="fc" id="L95">                &quot;message&quot;, messageFor(result)));</span>
+    }
+
+    private static String messageFor(PasswordChangeService.Result result) {
+<span class="pc bpc" id="L99" title="1 of 6 branches missed.">        return switch (result) {</span>
+<span class="fc" id="L100">            case USER_NOT_FOUND -&gt; &quot;User not found&quot;;</span>
+<span class="fc" id="L101">            case CURRENT_PASSWORD_INCORRECT -&gt; &quot;Current password is incorrect&quot;;</span>
+<span class="fc" id="L102">            case TOO_SHORT -&gt; &quot;New password must be at least &quot;</span>
+                    + PasswordChangeService.MINIMUM_PASSWORD_LENGTH + &quot; characters&quot;;
+<span class="fc" id="L104">            case CONFIRMATION_MISMATCH -&gt; &quot;New passwords do not match&quot;;</span>
+<span class="fc" id="L105">            case SAME_AS_CURRENT -&gt; &quot;New password must differ from the current password&quot;;</span>
+<span class="nc" id="L106">            case CHANGED -&gt; &quot;Password changed successfully&quot;;</span>
+        };
+    }
+
+    /** Documentation view only: the existing open-map response binding remains unchanged. */
+    @Schema(name = &quot;PasswordChangeRejection&quot;, description = &quot;Rejected domain validation; the password was not changed.&quot;)
+    public interface PasswordChangeRejection {
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
+                allowableValues = {&quot;USER_NOT_FOUND&quot;, &quot;CURRENT_PASSWORD_INCORRECT&quot;, &quot;TOO_SHORT&quot;,
+                        &quot;CONFIRMATION_MISMATCH&quot;, &quot;SAME_AS_CURRENT&quot;},
+                description = &quot;The first failed validation of the current account or password fields.&quot;)
+        String getError();
+
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = &quot;Human-readable reason for the rejection.&quot;)
+        String getMessage();
+    }
+
+    /** Framework binding errors are not restricted to the domain validation code set. */
+    @Schema(name = &quot;PasswordChangeBindingError&quot;, type = &quot;object&quot;,
+            additionalProperties = Schema.AdditionalPropertiesValue.TRUE,
+            description = &quot;Framework error object for an unreadable or missing JSON body; fields depend on the configured error handler.&quot;)
+    public interface PasswordChangeBindingError { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

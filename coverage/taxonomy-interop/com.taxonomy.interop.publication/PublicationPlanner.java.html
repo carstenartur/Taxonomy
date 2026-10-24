@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PublicationPlanner.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.publication</a> &gt; <span class="el_source">PublicationPlanner.java</span></div><h1>PublicationPlanner.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.publication;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.*;
+import com.taxonomy.interop.publication.PublicationEvidence.*;
+import java.util.*;
+import static com.taxonomy.extension.api.integration.PublicationBounds.*;
+
+/** Pure directed planning; every target and dependency is fixed before local or remote effects. */
+public final class PublicationPlanner {
+    private final PublicationDigests digests;
+    private final PublicationPolicy policy;
+    private final PublicationCapabilities capabilities;
+    private final PublicationMappings mappings;
+    public PublicationPlanner(PublicationDigests digests, PublicationPolicy policy, PublicationCapabilities capabilities) {
+<span class="fc" id="L17">        this(digests, policy, capabilities, new PublicationMappings());</span>
+<span class="fc" id="L18">    }</span>
+<span class="fc" id="L19">    public PublicationPlanner(PublicationDigests digests, PublicationPolicy policy, PublicationCapabilities capabilities, PublicationMappings mappings) {</span>
+<span class="fc" id="L20">        this.digests = Objects.requireNonNull(digests); this.policy = Objects.requireNonNull(policy); this.capabilities = Objects.requireNonNull(capabilities); this.mappings = Objects.requireNonNull(mappings);</span>
+<span class="fc" id="L21">    }</span>
+    public PublicationPlan plan(PublicationPreviewEnvelope preview, PublicationReview review) {
+<span class="fc" id="L23">        policy.requireVerified(preview.context(), capabilities); policy.requireAuthority(preview.context(), preview.request().mode());</span>
+<span class="fc" id="L24">        validatePreview(preview);</span>
+<span class="pc bpc" id="L25" title="2 of 4 branches missed.">        if (!preview.request().operationId().equals(review.review().operationId()) || !preview.previewFingerprint().equals(review.review().previewFingerprint()))</span>
+<span class="nc" id="L26">            throw IntegrationProblem.conflict(&quot;PUBLICATION_REVIEW_MISMATCH&quot;);</span>
+<span class="fc" id="L27">        Set&lt;String&gt; ids = new TreeSet&lt;&gt;(); preview.changes().forEach(c -&gt; ids.add(c.id()));</span>
+<span class="fc bfc" id="L28" title="All 4 branches covered.">        if (!review.review().decisions().isEmpty() || !ids.equals(review.resolutions().keySet())) throw invalid(&quot;PUBLICATION_RESOLUTION_COVERAGE&quot;);</span>
+<span class="fc" id="L29">        Set&lt;String&gt; mappedIds = new TreeSet&lt;&gt;(review.review().mappings().keySet()); mappedIds.addAll(review.review().endpoints().keySet());</span>
+<span class="pc bpc" id="L30" title="2 of 6 branches missed.">        if (!ids.containsAll(mappedIds) || mappedIds.stream().anyMatch(id -&gt; review.resolutions().get(id) == PublicationResolution.SKIP)) throw invalid(&quot;PUBLICATION_MAPPING_SELECTION&quot;);</span>
+<span class="fc" id="L31">        List&lt;MappingLoss&gt; losses = allLosses(preview); Set&lt;MappingLoss&gt; resolvedLosses = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L32">        Map&lt;String, Artifact&gt; local = new TreeMap&lt;&gt;(PublicationDigests.items(preview.localDocument()));</span>
+<span class="fc" id="L33">        Map&lt;String, Artifact&gt; remote = new TreeMap&lt;&gt;(PublicationDigests.items(preview.remoteSnapshot().document()));</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (PublicationChange change : preview.changes()) {</span>
+<span class="fc" id="L35">            PublicationResolution resolution = review.resolutions().get(change.id());</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">            if (change.conflicts().contains(&quot;identity&quot;)) throw invalid(&quot;PUBLICATION_IDENTITY_REUSED&quot;);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            if (resolution == PublicationResolution.SKIP) continue;</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">            Artifact target = switch (resolution) {</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">                case MERGE -&gt; { if (!change.conflicts().isEmpty()) throw invalid(&quot;PUBLICATION_FIELD_CONFLICT&quot;); yield change.merged(); }</span>
+<span class="fc" id="L40">                case KEEP_LOCAL -&gt; change.local();</span>
+                case TAKE_REMOTE -&gt; {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                    if (preview.request().mode() == PublicationMode.PUSH) throw IntegrationProblem.conflict(&quot;RECONCILIATION_REQUIRED&quot;); yield change.remote();</span>
+                }
+<span class="pc" id="L44">                case SKIP -&gt; throw new IllegalStateException(&quot;Skipped above&quot;);</span>
+            };
+<span class="fc" id="L46">            var mapped = mappings.apply(preview, change.id(), change.local(), target, review.review().mappings().get(change.id()), review.review().endpoints().get(change.id()), losses);</span>
+<span class="fc" id="L47">            target = mapped.target(); resolvedLosses.addAll(mapped.resolvedLosses()); rejectUnsupportedLoss(losses, change, mapped.resolvedLosses());</span>
+<span class="pc bpc" id="L48" title="2 of 6 branches missed.">            if (target == null &amp;&amp; (change.local() != null || change.remote() != null)</span>
+<span class="pc bpc" id="L49" title="2 of 6 branches missed.">                    &amp;&amp; (change.baseLocal() == null || change.baseRemote() == null || preview.commonBaseline() == null)) throw invalid(&quot;PUBLICATION_DELETE_REQUIRES_COMMON&quot;);</span>
+<span class="fc bfc" id="L50" title="All 4 branches covered.">            if (preview.request().mode() == PublicationMode.PUSH &amp;&amp; !PublicationDiff.equivalent(target, change.local())) throw IntegrationProblem.conflict(&quot;RECONCILIATION_REQUIRED&quot;);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (preview.request().mode() == PublicationMode.SYNCHRONIZE) put(local, change.id(), target);</span>
+<span class="fc" id="L52">            put(remote, change.id(), target);</span>
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">        validateClosure(local, preview); validateClosure(remote, preview);</span>
+<span class="fc" id="L55">        ExchangeDocument localTarget = expand(preview.localDocument(), local, resolvedLosses), remoteTarget = expand(preview.remoteSnapshot().document(), remote, resolvedLosses);</span>
+<span class="fc" id="L56">        List&lt;MappingLoss&gt; reviewedLosses = resolved(losses, resolvedLosses);</span>
+<span class="fc" id="L57">        List&lt;PublicationItemIntent&gt; items = mutations(preview, remote);</span>
+<span class="fc" id="L58">        var unsigned = new PublicationPlan(SCHEMA_VERSION, preview.request().operationId(), preview.context(), preview.request().mode(), preview.commonCheckpointId(), preview.connectionRevision(),</span>
+<span class="fc" id="L59">                digests.fingerprint(preview.request()), digests.fingerprint(review), capabilities, preview.remoteSnapshot(), preview.localDocument(), localTarget, remoteTarget, items, reviewedLosses, &quot;unsigned&quot;);</span>
+<span class="fc" id="L60">        var plan = new PublicationPlan(unsigned.schemaVersion(), unsigned.operationId(), unsigned.context(), unsigned.mode(), unsigned.commonCheckpointId(), unsigned.connectionRevision(), unsigned.requestFingerprint(), unsigned.reviewFingerprint(), unsigned.capabilities(), unsigned.remoteBefore(), unsigned.localBefore(), unsigned.localTarget(), unsigned.remoteTarget(), unsigned.items(), unsigned.losses(), digests.planFingerprint(unsigned));</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (PublicationItemIntent item : items) {</span>
+<span class="fc" id="L62">            try { bounded(capabilities.maxRequestBytes(), digests.request(plan.operationId(), plan.planFingerprint(), capabilities.provider(), capabilities.scope(), item, preview.remoteSnapshot().revision())); }</span>
+<span class="pc" id="L63">            catch (IllegalArgumentException tooLarge) { throw invalid(&quot;PUBLICATION_REQUEST_LIMIT&quot;); }</span>
+<span class="fc" id="L64">        }</span>
+<span class="fc" id="L65">        return plan;</span>
+    }
+    private void validatePreview(PublicationPreviewEnvelope preview) {
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (!preview.previewFingerprint().equals(digests.previewFingerprint(preview))) throw IntegrationProblem.conflict(&quot;PUBLICATION_PREVIEW_CHANGED&quot;);</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">        if (!preview.request().expected().equals(preview.context().internalState()) || !preview.context().externalScope().equals(preview.request().scope().externalScope())</span>
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">                || !preview.context().profile().equals(preview.localDocument().profile()) || !preview.context().profileVersion().equals(preview.localDocument().profileVersion())) throw IntegrationProblem.conflict(&quot;PUBLICATION_CONTEXT_MISMATCH&quot;);</span>
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">        if (!capabilities.provider().equals(preview.remoteSnapshot().provider()) || !capabilities.scope().equals(preview.request().scope())</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">                || !preview.remoteSnapshot().scope().equals(preview.request().scope()) || !preview.request().expectedExternalRevision().equals(preview.remoteSnapshot().revision())) throw IntegrationProblem.conflict(&quot;PUBLICATION_SCOPE_MISMATCH&quot;);</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if (!preview.localDocument().completeScope()) throw invalid(&quot;PUBLICATION_INCOMPLETE_SCOPE&quot;);</span>
+<span class="fc" id="L74">        new PublicationReceiptValidator(digests).validateSnapshot(preview.remoteSnapshot());</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (!new PublicationDiff().compare(preview.commonBaseline(), preview.localDocument(), preview.remoteSnapshot()).equals(preview.changes())) throw IntegrationProblem.conflict(&quot;PUBLICATION_PREVIEW_CHANGED&quot;);</span>
+<span class="fc" id="L76">    }</span>
+    private static List&lt;MappingLoss&gt; allLosses(PublicationPreviewEnvelope preview) {
+<span class="fc" id="L78">        Set&lt;MappingLoss&gt; losses = new LinkedHashSet&lt;&gt;(preview.losses()); losses.addAll(preview.localDocument().losses()); losses.addAll(preview.remoteSnapshot().document().losses());</span>
+<span class="fc" id="L79">        return List.copyOf(losses);</span>
+    }
+    private void rejectUnsupportedLoss(List&lt;MappingLoss&gt; losses, PublicationChange change, Set&lt;MappingLoss&gt; resolved) {
+<span class="pc bpc" id="L82" title="1 of 6 branches missed.">        if (losses.stream().anyMatch(loss -&gt; loss.disposition() == LossDisposition.UNSUPPORTED &amp;&amp; !resolved.contains(loss)</span>
+<span class="pc bpc" id="L83" title="6 of 8 branches missed.">                &amp;&amp; (loss.artifactId() == null || loss.artifactId().equals(change.externalId()) || loss.artifactId().equals(change.id()) || loss.artifactId().equals(&quot;package&quot;)))) throw invalid(&quot;PUBLICATION_MAPPING_LOSS&quot;);</span>
+<span class="fc" id="L84">    }</span>
+    private static List&lt;MappingLoss&gt; resolved(List&lt;MappingLoss&gt; losses, Set&lt;MappingLoss&gt; resolved) {
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        return losses.stream().map(loss -&gt; resolved.contains(loss) ? new MappingLoss(loss.artifactId(), loss.field(), loss.code(), LossDisposition.TRANSFORMED, &quot;Resolved by the frozen explicit field mapping&quot;) : loss).toList();</span>
+    }
+    private void validateClosure(Map&lt;String, Artifact&gt; values, PublicationPreviewEnvelope preview) {
+<span class="fc" id="L89">        Set&lt;String&gt; resources = new HashSet&lt;&gt;(); values.values().forEach(a -&gt; resources.add(a.id()));</span>
+<span class="fc" id="L90">        resources.add(preview.request().scope().rootResource());</span>
+        // Native exchange roots are explicit scope metadata, never arbitrary missing endpoint exemptions.
+<span class="fc" id="L92">        String identifier = preview.remoteSnapshot().document().metadata().get(&quot;identifier&quot;);</span>
+<span class="pc bpc" id="L93" title="1 of 4 branches missed.">        if (identifier != null &amp;&amp; identifier.equals(preview.request().scope().rootResource())) resources.add(identifier);</span>
+<span class="fc" id="L94">        Map&lt;String, Integer&gt; degrees = new HashMap&lt;&gt;(); Map&lt;String, List&lt;String&gt;&gt; dependents = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L95">        Set&lt;String&gt; itemIds = new HashSet&lt;&gt;(); values.values().forEach(item -&gt; itemIds.add(item.id()));</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (Artifact item : values.values()) {</span>
+<span class="fc" id="L97">            int degree = 0;</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (String dependency : PublicationDiff.dependencies(item)) {</span>
+<span class="pc bpc" id="L99" title="1 of 4 branches missed.">                if (!resources.contains(dependency) || dependency.equals(item.id())) throw invalid(&quot;PUBLICATION_DEPENDENCY_MISSING&quot;);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                if (itemIds.contains(dependency)) { degree++; dependents.computeIfAbsent(dependency, ignored -&gt; new ArrayList&lt;&gt;()).add(item.id()); }</span>
+<span class="fc" id="L101">            }</span>
+<span class="fc" id="L102">            degrees.put(item.id(), degree);</span>
+<span class="fc" id="L103">        }</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        Deque&lt;String&gt; ready = new ArrayDeque&lt;&gt;(); degrees.forEach((id, degree) -&gt; { if (degree == 0) ready.add(id); });</span>
+<span class="fc" id="L105">        int visited = 0;</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        while (!ready.isEmpty()) {</span>
+<span class="fc" id="L107">            String id = ready.removeFirst(); visited++;</span>
+<span class="fc bfc" id="L108" title="All 4 branches covered.">            for (String dependent : dependents.getOrDefault(id, List.of())) if (degrees.compute(dependent, (key, count) -&gt; count - 1) == 0) ready.add(dependent);</span>
+<span class="fc" id="L109">        }</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (visited != values.size()) throw invalid(&quot;PUBLICATION_DEPENDENCY_CYCLE&quot;);</span>
+<span class="fc" id="L111">    }</span>
+    private List&lt;PublicationItemIntent&gt; mutations(PublicationPreviewEnvelope preview, Map&lt;String, Artifact&gt; targets) {
+<span class="fc" id="L113">        Map&lt;String, Artifact&gt; before = PublicationDigests.items(preview.remoteSnapshot().document());</span>
+<span class="fc" id="L114">        Set&lt;String&gt; keys = new TreeSet&lt;&gt;(before.keySet()); keys.addAll(targets.keySet());</span>
+<span class="fc" id="L115">        Map&lt;String, PublicationItemIntent&gt; intents = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        for (String key : keys) {</span>
+<span class="fc" id="L117">            Artifact previous = before.get(key), target = targets.get(key);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (PublicationDiff.equivalent(previous, target)) continue;</span>
+<span class="fc bfc" id="L119" title="All 4 branches covered.">            MutationKind mutation = previous == null ? MutationKind.CREATE : target == null ? MutationKind.DELETE : MutationKind.UPDATE;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            Artifact value = target == null ? previous : target;</span>
+<span class="pc bpc" id="L121" title="2 of 4 branches missed.">            if (!capabilities.mutations().contains(mutation) || !capabilities.artifactKinds().contains(value.kind())) throw invalid(&quot;PUBLICATION_MUTATION_UNSUPPORTED&quot;);</span>
+<span class="fc" id="L122">            ResourceState expected = preview.remoteSnapshot().resources().get(value.id());</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            if (expected == null) expected = new ResourceState(value.id(), false, null, null);</span>
+<span class="fc" id="L124">            PublicationItemIntent intent = digests.intent(preview.request().operationId(), mutation, value.id(), expected, target, Set.of());</span>
+<span class="fc" id="L125">            intents.put(value.id(), intent);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (intents.size() &gt; Math.min(MAX_MUTATIONS, capabilities.maxItems())) throw invalid(&quot;PUBLICATION_MUTATION_LIMIT&quot;);</span>
+<span class="fc" id="L127">        }</span>
+<span class="fc" id="L128">        Map&lt;String, Set&lt;String&gt;&gt; dependencies = new TreeMap&lt;&gt;(); intents.keySet().forEach(id -&gt; dependencies.put(id, new TreeSet&lt;&gt;()));</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        for (PublicationItemIntent intent : intents.values()) {</span>
+<span class="fc bfc" id="L130" title="All 4 branches covered.">            if (intent.mutation() != MutationKind.DELETE) for (String dependency : PublicationDiff.dependencies(intent.target())) {</span>
+<span class="fc" id="L131">                PublicationItemIntent parent = intents.get(dependency);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if (parent != null) dependencies.get(intent.resourceId()).add(parent.resourceId());</span>
+<span class="fc" id="L133">            }</span>
+            // Remove/update dependent items before deleting the objects they previously referenced.
+<span class="fc bfc" id="L135" title="All 6 branches covered.">            for (Artifact old : before.values()) if (PublicationDiff.dependencies(old).contains(intent.resourceId()) &amp;&amp; intent.mutation() == MutationKind.DELETE) {</span>
+<span class="fc" id="L136">                PublicationItemIntent dependent = intents.get(old.id());</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                if (dependent == null) throw invalid(&quot;PUBLICATION_DEPENDENCY_MISSING&quot;);</span>
+<span class="fc" id="L138">                dependencies.get(intent.resourceId()).add(dependent.resourceId());</span>
+            }
+<span class="fc" id="L140">        }</span>
+<span class="fc" id="L141">        List&lt;PublicationItemIntent&gt; result = new ArrayList&lt;&gt;(); Set&lt;String&gt; done = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        while (done.size() &lt; intents.size()) {</span>
+<span class="pc bfc" id="L143" title="All 4 branches covered.">            String ready = intents.keySet().stream().filter(id -&gt; !done.contains(id) &amp;&amp; done.containsAll(dependencies.get(id))).findFirst().orElseThrow(() -&gt; invalid(&quot;PUBLICATION_DEPENDENCY_CYCLE&quot;));</span>
+<span class="fc" id="L144">            PublicationItemIntent item = intents.get(ready);</span>
+<span class="fc" id="L145">            Set&lt;String&gt; itemDependencies = new TreeSet&lt;&gt;(); dependencies.get(ready).forEach(id -&gt; itemDependencies.add(intents.get(id).itemId()));</span>
+<span class="fc" id="L146">            PublicationItemIntent frozen = digests.intent(preview.request().operationId(), item.mutation(), item.resourceId(), item.expectedResource(), item.target(), itemDependencies);</span>
+<span class="fc" id="L147">            bounded(capabilities.maxRequestBytes(), frozen); result.add(frozen); done.add(ready);</span>
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">        return List.copyOf(result);</span>
+    }
+    private static ExchangeDocument expand(ExchangeDocument template, Map&lt;String, Artifact&gt; values, Set&lt;MappingLoss&gt; resolved) {
+<span class="fc" id="L152">        var emptyMetadata = new ExchangeDocument(template.profile(), template.profileVersion(), template.externalVersion(), template.completeScope(), template.source(), template.artifacts(), template.relations(), template.placements(), Map.of(), resolved(template.losses(), resolved));</span>
+<span class="fc" id="L153">        return ExchangeItems.expand(emptyMetadata, values);</span>
+    }
+<span class="fc bfc" id="L155" title="All 2 branches covered.">    private static void put(Map&lt;String, Artifact&gt; values, String key, Artifact value) { if (value == null) values.remove(key); else values.put(key, value); }</span>
+<span class="fc" id="L156">    private static IntegrationProblem invalid(String code) { return new IntegrationProblem(code, 422, &quot;Publication selection cannot be represented safely&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

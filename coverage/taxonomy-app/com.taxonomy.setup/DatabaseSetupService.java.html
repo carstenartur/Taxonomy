@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DatabaseSetupService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.setup</a> &gt; <span class="el_source">DatabaseSetupService.java</span></div><h1>DatabaseSetupService.java</h1><pre class="source lang-java linenums">package com.taxonomy.setup;
+
+import com.taxonomy.preferences.PreferencesService;
+import io.swagger.v3.oas.annotations.media.Schema;
+import org.springframework.core.env.Environment;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
+import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Prepares deployment instructions only; never reconfigures the running datasource. */
+@Service
+public class DatabaseSetupService {
+    static final String DISMISSED = &quot;setup.database.dismissed&quot;;
+    private static final String LEGACY_JPA_SCHEMA_PROPERTY = &quot;spring.jpa.properties.javax.persistence.schema-generation.database.action&quot;;
+    static final String SCHEMA_CONFLICT_MESSAGE = &quot;Configuration export is blocked by existing schema overrides. &quot;
+            + &quot;Set spring.jpa.properties.hibernate.hbm2ddl.auto, spring.jpa.properties.jakarta.persistence.schema-generation.database.action &quot;
+            + &quot;and legacy &quot; + LEGACY_JPA_SCHEMA_PROPERTY + &quot; &quot;
+            + &quot;to validate or remove them; also remove any non-validate spring.jpa.hibernate.ddl-auto from command-line, JVM or &quot;
+            + &quot;SPRING_APPLICATION_JSON overrides. Then retry.&quot;;
+<span class="fc" id="L35">    private static final Set&lt;String&gt; DATABASE_PROFILES = Set.of(&quot;hsqldb&quot;, &quot;hsqldb-file&quot;, &quot;postgres&quot;, &quot;mssql&quot;, &quot;oracle&quot;);</span>
+<span class="fc" id="L36">    private static final List&lt;String&gt; SCHEMA_PROPERTIES = List.of(&quot;spring.jpa.hibernate.ddl-auto&quot;,</span>
+            &quot;spring.jpa.properties.hibernate.hbm2ddl.auto&quot;,
+            &quot;spring.jpa.properties.jakarta.persistence.schema-generation.database.action&quot;);
+    private final Environment environment;
+    private final PreferencesService preferences;
+
+<span class="fc" id="L42">    public DatabaseSetupService(Environment environment, PreferencesService preferences) {</span>
+<span class="fc" id="L43">        this.environment = environment;</span>
+<span class="fc" id="L44">        this.preferences = preferences;</span>
+<span class="fc" id="L45">    }</span>
+
+    /** Password-bearing input deliberately has a fixed toString, including on invalid requests. */
+    @Schema(requiredProperties = {&quot;type&quot;, &quot;host&quot;, &quot;port&quot;, &quot;database&quot;, &quot;username&quot;},
+            additionalProperties = Schema.AdditionalPropertiesValue.FALSE)
+<span class="fc" id="L50">    public record ConnectionSettings(String type, String host, Integer port, String database,</span>
+                                     String username,
+                                     @Schema(format = &quot;password&quot;, accessMode = Schema.AccessMode.WRITE_ONLY) String password,
+                                     Boolean tls, String caCertificate) {
+<span class="fc" id="L54">        @Override public String toString() { return &quot;Database connection settings [redacted]&quot;; }</span>
+    }
+<span class="fc" id="L56">    public record State(String database, boolean inMemory, boolean promptRequired, boolean deploymentManaged) { }</span>
+<span class="fc" id="L57">    public record Preview(String jdbcUrl, String profiles, String properties, String helmValues,</span>
+                          List&lt;SetupChecks.Finding&gt; findings) { }
+<span class="fc" id="L59">    public record CheckResult(List&lt;SetupChecks.Finding&gt; findings) { }</span>
+
+    public State status() {
+<span class="fc" id="L62">        String url = environment.getProperty(&quot;spring.datasource.url&quot;, &quot;&quot;);</span>
+<span class="fc" id="L63">        boolean memory = url.startsWith(&quot;jdbc:hsqldb:mem:&quot;);</span>
+<span class="fc" id="L64">        boolean file = url.startsWith(&quot;jdbc:hsqldb:file:&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        String database = url.startsWith(&quot;jdbc:postgresql:&quot;) ? &quot;postgres&quot;</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">                : url.startsWith(&quot;jdbc:sqlserver:&quot;) ? &quot;mssql&quot;</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                : url.startsWith(&quot;jdbc:oracle:&quot;) ? &quot;oracle&quot;</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">                : file ? &quot;hsqldb-file&quot; : url.startsWith(&quot;jdbc:hsqldb:&quot;) ? &quot;hsqldb&quot; : &quot;unknown&quot;;</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        boolean managed = currentProfiles().contains(&quot;kubernetes&quot;)</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">                || !environment.getProperty(&quot;KUBERNETES_SERVICE_HOST&quot;, &quot;&quot;).isBlank();</span>
+<span class="fc bfc" id="L71" title="All 6 branches covered.">        return new State(database, memory, (memory || file) &amp;&amp; !preferences.getBoolean(DISMISSED, false), managed);</span>
+    }
+
+    public void dismiss(String actor) throws IOException {
+<span class="fc" id="L75">        preferences.update(Map.of(DISMISSED, true), actor);</span>
+<span class="fc" id="L76">    }</span>
+
+    public Preview preview(ConnectionSettings input) {
+<span class="fc" id="L79">        validate(input);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (hasSchemaConflict()) { throw new SchemaConflictException(); }</span>
+<span class="fc" id="L81">        return prepare(input);</span>
+    }
+
+    private Preview prepare(ConnectionSettings input) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        boolean tls = !Boolean.FALSE.equals(input.tls());</span>
+<span class="fc" id="L86">        String url = jdbcUrl(input, tls);</span>
+<span class="fc" id="L87">        Set&lt;String&gt; profiles = selectedProfiles(input.type());</span>
+<span class="fc" id="L88">        Map&lt;String, String&gt; proposed = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L89">        proposed.put(&quot;spring.profiles.active&quot;, String.join(&quot;,&quot;, profiles));</span>
+<span class="fc" id="L90">        proposed.put(&quot;spring.datasource.url&quot;, url);</span>
+<span class="fc" id="L91">        proposed.put(&quot;spring.datasource.username&quot;, input.username());</span>
+        // Native Hibernate and JPA actions can otherwise override ddl-auto.
+<span class="fc" id="L93">        SCHEMA_PROPERTIES.forEach(key -&gt; proposed.put(key, &quot;validate&quot;));</span>
+<span class="fc" id="L94">        StringBuilder properties = new StringBuilder(&quot;# Review deployment settings and restart manually; no existing data is transferred.\n&quot;);</span>
+<span class="fc" id="L95">        proposed.forEach((key, value) -&gt; properties.append(key).append('=').append(propertyValue(value)).append('\n'));</span>
+<span class="fc" id="L96">        properties.append(&quot;# Supply the datasource password through your deployment secret mechanism.\n&quot;);</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">        if (input.type().equals(&quot;oracle&quot;) &amp;&amp; tls) {</span>
+<span class="fc" id="L98">            properties.append(&quot;# Verified TCPS uses the JVM trust store; provision trusted database CA certificates there.\n&quot;);</span>
+        }
+<span class="fc" id="L100">        Set&lt;String&gt; helmProfiles = new LinkedHashSet&lt;&gt;(profiles);</span>
+<span class="fc" id="L101">        helmProfiles.add(&quot;kubernetes&quot;);</span>
+<span class="fc" id="L102">        String helm = &quot;# Merge into existing values; retain existingSecret and its secretEnv mappings.\n&quot;</span>
+                + &quot;database:\n  type: existing\n  url: \&quot;\&quot;\n  username: \&quot;\&quot;\n&quot;
+<span class="fc" id="L104">                + &quot;config:\n  SPRING_PROFILES_ACTIVE: \&quot;&quot; + String.join(&quot;,&quot;, helmProfiles) + &quot;\&quot;\n&quot;</span>
+                + &quot;  TAXONOMY_DDL_AUTO: \&quot;validate\&quot;\n&quot;
+                // These names survive the image's sh launcher. Native JPA overrides cannot be safely
+                // replaced by an underscore alias, so preview blocks conflicts instead of exporting it.
+                + &quot;  SPRING_JPA_HIBERNATE_DDL_AUTO: \&quot;validate\&quot;\n&quot;
+                + &quot;  SPRING_JPA_PROPERTIES_HIBERNATE_HBM2DDL_AUTO: \&quot;validate\&quot;\n&quot;
+                + &quot;# Update these keys in the existing Secret separately:\n&quot;
+                + &quot;# SPRING_DATASOURCE_URL=&quot; + url + &quot;\n&quot;
+<span class="fc" id="L112">                + &quot;# SPRING_DATASOURCE_USERNAME=&quot; + input.username() + &quot;\n&quot;</span>
+                + &quot;# Supply the datasource password through your deployment secret mechanism.\n&quot;
+                + &quot;# Review other schema/driver overrides before applying and restarting manually.\n&quot;;
+        // Check the proposed connection/schema only; the running installation's auth and AI settings
+        // are neither copied nor presented as database readiness findings.
+<span class="fc" id="L117">        List&lt;SetupChecks.Finding&gt; findings = new ArrayList&lt;&gt;(SetupChecks.check(proposed::get, Set.of(input.type()))</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">                .stream().filter(f -&gt; f.key().startsWith(&quot;database.&quot;) || f.key().startsWith(&quot;spring.datasource.&quot;)</span>
+<span class="pc bpc" id="L119" title="2 of 4 branches missed.">                        || f.key().equals(&quot;spring.profiles.active&quot;) || SCHEMA_PROPERTIES.contains(f.key())).toList());</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        findings.add(new SetupChecks.Finding(tls ? SetupChecks.Status.OK : SetupChecks.Status.WARNING, &quot;database.tls&quot;,</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                tls ? &quot;TLS with server identity verification is selected; trusted CA certificates must be provisioned in the target environment.&quot;</span>
+<span class="fc" id="L122">                        : &quot;TLS is disabled explicitly; credentials and data may cross the network without transport protection.&quot;));</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (!input.type().equals(&quot;postgres&quot;)) {</span>
+<span class="fc" id="L124">            findings.add(new SetupChecks.Finding(SetupChecks.Status.WARNING, &quot;database.support&quot;,</span>
+                    &quot;SQL Server and Oracle remain evaluation paths; production migration, persistence, restart and recovery acceptance is not established.&quot;));
+        }
+<span class="fc" id="L127">        findings.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;database.deployment&quot;,</span>
+                &quot;Deployment settings remain authoritative. Review driver, dialect, profile includes and schema overrides before applying configuration and restarting manually.&quot;));
+<span class="fc" id="L129">        findings.add(new SetupChecks.Finding(SetupChecks.Status.NOT_CHECKED, &quot;database.transfer&quot;,</span>
+                &quot;No existing records are copied. A connection check does not establish target schema readiness or transfer existing data.&quot;));
+<span class="fc" id="L131">        return new Preview(url, String.join(&quot;,&quot;, profiles), properties.toString(), helm, List.copyOf(findings));</span>
+    }
+
+    /** Checks only an independent JDBC connection, never OIDC discovery or the active datasource. */
+    public CheckResult check(ConnectionSettings input) {
+<span class="fc" id="L136">        validate(input);</span>
+<span class="fc" id="L137">        Preview preview = prepare(input);</span>
+<span class="fc" id="L138">        Map&lt;String, String&gt; connection = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L139">        connection.put(&quot;spring.datasource.url&quot;, preview.jdbcUrl());</span>
+<span class="fc" id="L140">        connection.put(&quot;spring.datasource.username&quot;, input.username());</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        connection.put(&quot;spring.datasource.password&quot;, input.password() == null ? &quot;&quot; : input.password());</span>
+<span class="fc" id="L142">        List&lt;SetupChecks.Finding&gt; findings = new ArrayList&lt;&gt;(preview.findings());</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (hasSchemaConflict()) {</span>
+<span class="fc" id="L144">            findings.add(new SetupChecks.Finding(SetupChecks.Status.WARNING, &quot;database.schema-overrides&quot;, SCHEMA_CONFLICT_MESSAGE));</span>
+        }
+<span class="fc" id="L146">        findings.add(SetupProbe.checkDatabase(connection::get));</span>
+<span class="fc" id="L147">        return new CheckResult(List.copyOf(findings));</span>
+    }
+
+    /** Reads only the schema actions; never rewrites JSON, JVM options or other deployment settings. */
+    private boolean hasSchemaConflict() {
+        try {
+            // Boot's native-property map resolves precedence across direct and bracket notation.
+            // Inspect only these fixed native actions; no other settings are copied, emitted or logged.
+<span class="fc" id="L155">            Map&lt;String, String&gt; nativeSettings = Binder.get(environment)</span>
+<span class="fc" id="L156">                    .bind(&quot;spring.jpa.properties&quot;, Bindable.mapOf(String.class, String.class)).orElse(Map.of());</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            for (String key : List.of(SCHEMA_PROPERTIES.get(1), SCHEMA_PROPERTIES.get(2), LEGACY_JPA_SCHEMA_PROPERTY)) {</span>
+<span class="fc" id="L158">                String bound = nativeSettings.get(key.substring(&quot;spring.jpa.properties.&quot;.length()));</span>
+                // Blank/none also suppress validation when supplied as native Hibernate/JPA settings.
+<span class="fc bfc" id="L160" title="All 4 branches covered.">                if (bound != null &amp;&amp; !isValidate(bound)) { return true; }</span>
+<span class="fc" id="L161">            }</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">            if (environment instanceof ConfigurableEnvironment configurable) {</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                for (var source : configurable.getPropertySources()) {</span>
+                    // Spring Boot's aggregate reflects lower-precedence sources too; inspect real sources.
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                    if (ConfigurationPropertySources.isAttachedConfigurationPropertySource(source)) { continue; }</span>
+                    // Generated shell-safe aliases replace this source, but cannot outrank sources above it.
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                    if (source instanceof SystemEnvironmentPropertySource) { break; }</span>
+                    // Match Binder's relaxed names too, such as command-line ddlAuto.
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                    for (var configurationSource : ConfigurationPropertySources.from(source)) {</span>
+<span class="fc" id="L170">                        var setting = configurationSource.getConfigurationProperty(ConfigurationPropertyName.of(SCHEMA_PROPERTIES.getFirst()));</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                        if (setting != null) {</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                            return !isValidate(environment.resolveRequiredPlaceholders(setting.getValue().toString()));</span>
+                        }
+<span class="fc" id="L174">                    }</span>
+<span class="fc" id="L175">                }</span>
+            }
+<span class="fc" id="L177">            return false;</span>
+<span class="nc" id="L178">        } catch (RuntimeException unresolvedSetting) {</span>
+            // Unresolved schema placeholders cannot establish safe export; never retain their values/causes.
+<span class="nc" id="L180">            return true;</span>
+        }
+    }
+
+<span class="pc bpc" id="L184" title="1 of 4 branches missed.">    private static boolean isValidate(String value) { return value != null &amp;&amp; value.trim().equalsIgnoreCase(&quot;validate&quot;); }</span>
+
+    static final class SchemaConflictException extends RuntimeException {
+<span class="fc" id="L187">        private SchemaConflictException() { super(SCHEMA_CONFLICT_MESSAGE); }</span>
+    }
+
+    private Set&lt;String&gt; currentProfiles() {
+<span class="fc" id="L191">        String[] active = environment.getActiveProfiles();</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        return new LinkedHashSet&lt;&gt;(Arrays.asList(active.length == 0 ? environment.getDefaultProfiles() : active));</span>
+    }
+
+    private Set&lt;String&gt; selectedProfiles(String database) {
+<span class="fc" id="L196">        Set&lt;String&gt; result = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L197">        result.add(database);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        for (String profile : currentProfiles()) {</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (!profile.matches(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,63}&quot;)) { throw invalid(); }</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            if (!DATABASE_PROFILES.contains(profile)) { result.add(profile); }</span>
+<span class="fc" id="L201">        }</span>
+<span class="fc" id="L202">        return result;</span>
+    }
+
+    private static void validate(ConnectionSettings input) {
+<span class="pc bpc" id="L206" title="3 of 6 branches missed.">        if (input == null || input.type() == null || !Set.of(&quot;postgres&quot;, &quot;mssql&quot;, &quot;oracle&quot;).contains(input.type())</span>
+<span class="pc bpc" id="L207" title="2 of 4 branches missed.">                || input.host() == null || input.host().length() &gt; 253</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                || !(input.host().matches(&quot;[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?&quot;)</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                    || input.host().matches(&quot;\\[[A-Fa-f0-9:]{2,45}\\]&quot;))</span>
+<span class="pc bpc" id="L210" title="2 of 6 branches missed.">                || input.port() == null || input.port() &lt; 1 || input.port() &gt; 65535</span>
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">                || input.database() == null || !input.database().matches(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,127}&quot;)</span>
+<span class="pc bpc" id="L212" title="1 of 4 branches missed.">                || input.username() == null || !input.username().matches(&quot;[A-Za-z0-9_@.$\\\\-]{1,128}&quot;)</span>
+<span class="pc bpc" id="L213" title="1 of 4 branches missed.">                || (input.password() != null &amp;&amp; input.password().length() &gt; 4096)) { throw invalid(); }</span>
+<span class="fc" id="L214">        String ca = input.caCertificate();</span>
+<span class="pc bpc" id="L215" title="1 of 8 branches missed.">        if (ca != null &amp;&amp; !ca.isEmpty() &amp;&amp; (!input.type().equals(&quot;postgres&quot;) || Boolean.FALSE.equals(input.tls())</span>
+<span class="pc bpc" id="L216" title="2 of 6 branches missed.">                || ca.length() &gt; 256 || !ca.matches(&quot;/[A-Za-z0-9_./-]+&quot;) || Arrays.asList(ca.split(&quot;/&quot;)).contains(&quot;..&quot;))) {</span>
+<span class="fc" id="L217">            throw invalid();</span>
+        }
+<span class="fc" id="L219">    }</span>
+
+    private static String jdbcUrl(ConnectionSettings input, boolean tls) {
+<span class="fc" id="L222">        String address = input.host() + &quot;:&quot; + input.port();</span>
+<span class="pc bpc" id="L223" title="1 of 4 branches missed.">        return switch (input.type()) {</span>
+<span class="fc" id="L224">            case &quot;postgres&quot; -&gt; &quot;jdbc:postgresql://&quot; + address + &quot;/&quot; + input.database()</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                    + &quot;?sslmode=&quot; + (tls ? &quot;verify-full&quot; : &quot;disable&quot;)</span>
+<span class="fc bfc" id="L226" title="All 4 branches covered.">                    + ((input.caCertificate() == null || input.caCertificate().isEmpty()) ? &quot;&quot;</span>
+<span class="fc" id="L227">                        : &quot;&amp;sslrootcert=&quot; + URLEncoder.encode(input.caCertificate(), StandardCharsets.UTF_8));</span>
+            // Microsoft's authority parser splits on the first colon, including inside IPv6 brackets.
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            case &quot;mssql&quot; -&gt; (input.host().startsWith(&quot;[&quot;)</span>
+<span class="fc" id="L230">                    ? &quot;jdbc:sqlserver://;serverName=&quot; + input.host().substring(1, input.host().length() - 1) + &quot;;portNumber=&quot; + input.port()</span>
+<span class="fc" id="L231">                    : &quot;jdbc:sqlserver://&quot; + address) + &quot;;databaseName=&quot; + input.database()</span>
+                    + &quot;;encrypt=&quot; + tls + &quot;;trustServerCertificate=false&quot;;
+            case &quot;oracle&quot; -&gt; &quot;jdbc:oracle:thin:@(DESCRIPTION=&quot;
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">                    + &quot;(ADDRESS=(PROTOCOL=&quot; + (tls ? &quot;TCPS&quot; : &quot;TCP&quot;) + &quot;)(HOST=&quot; + input.host() + &quot;)(PORT=&quot; + input.port() + &quot;))&quot;</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                    + &quot;(CONNECT_DATA=(SERVICE_NAME=&quot; + input.database() + &quot;))&quot; + (tls ? &quot;(SECURITY=(SSL_SERVER_DN_MATCH=YES))&quot; : &quot;&quot;) + &quot;)&quot;;</span>
+<span class="nc" id="L236">            default -&gt; throw invalid();</span>
+        };
+    }
+
+<span class="fc" id="L240">    private static String propertyValue(String value) { return value.replace(&quot;\\&quot;, &quot;\\\\&quot;); }</span>
+<span class="fc" id="L241">    private static IllegalArgumentException invalid() { return new IllegalArgumentException(&quot;Invalid database connection settings.&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

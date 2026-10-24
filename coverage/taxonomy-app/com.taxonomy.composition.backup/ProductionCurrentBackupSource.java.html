@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductionCurrentBackupSource.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.backup</a> &gt; <span class="el_source">ProductionCurrentBackupSource.java</span></div><h1>ProductionCurrentBackupSource.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.backup;
+
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.jobs.*;
+import com.taxonomy.backup.runtime.*;
+import com.taxonomy.backup.archive.*;
+import com.taxonomy.backup.snapshot.*;
+import com.taxonomy.workspace.backup.*;
+import com.taxonomy.portfolio.backup.*;
+import com.taxonomy.catalog.backup.*;
+import com.taxonomy.analysis.backup.AnalysisBackupContributor;
+import com.taxonomy.architecture.backup.ArchitectureBackupContributor;
+import com.taxonomy.interop.backup.IntegrationBackupContributor;
+import com.taxonomy.templates.backup.TemplateBackupContributor;
+import com.taxonomy.templates.DocumentTemplateGitRepository;
+import com.taxonomy.preferences.storage.PreferencesGitRepository;
+import com.taxonomy.security.backup.PrincipalScopeBackupSelector;
+import com.taxonomy.security.service.PrincipalIdentityService;
+import com.taxonomy.exchange.backup.*;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.ast.*;
+import jakarta.persistence.EntityManagerFactory;
+import javax.sql.DataSource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.security.access.AccessDeniedException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.util.*;
+
+/** Production portable capture assembly. Every read runs under the shared installation capture fence. */
+public final class ProductionCurrentBackupSource implements BackupCaptureSource {
+    private final DataSource database;private final EntityManagerFactory entities;
+    private final BackupMaintenanceLease fence;private final BackupAuthorizationService authorization;private final BackupAccessPolicy access;
+    private final PrincipalIdentityService identities;private final PreferencesGitRepository preferences;private final DocumentTemplateGitRepository templates;
+    private final ConfigurableEnvironment environment;private final BackupFeaturePrerequisites prerequisites;
+    private final List&lt;BackupDataContributor&gt; additional;
+    private final JdbcTemplate jdbc;private final BoundedBackupMetadata metadata;private final String buildCommit;
+    public ProductionCurrentBackupSource(DataSource database,EntityManagerFactory entities,BackupMaintenanceLease fence,
+            BackupAuthorizationService authorization,BackupAccessPolicy access,PrincipalIdentityService identities,
+            PreferencesGitRepository preferences,DocumentTemplateGitRepository templates,ConfigurableEnvironment environment,
+<span class="fc" id="L44">            BackupFeaturePrerequisites prerequisites,List&lt;BackupDataContributor&gt; additional,String buildCommit) {</span>
+<span class="fc" id="L45">        this.database=database;this.entities=entities;this.fence=fence;this.authorization=authorization;this.access=access;</span>
+<span class="fc" id="L46">        this.identities=identities;this.preferences=preferences;this.templates=templates;this.environment=environment;this.prerequisites=prerequisites;</span>
+<span class="fc" id="L47">        this.additional=List.copyOf(additional);this.buildCommit=Objects.requireNonNull(buildCommit);jdbc=new JdbcTemplate(database);metadata=new BoundedBackupMetadata(database);</span>
+<span class="fc" id="L48">    }</span>
+    @Override public void validateRequest(BackupRequest request) {
+<span class="fc" id="L50">        boolean current=Set.of(BackupProfile.CURRENT_STATE,BackupProfile.SELECTED_VERSION,BackupProfile.INSTALLATION_CURRENT).contains(request.profile());</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        boolean history=request.profile()==BackupProfile.REPOSITORY_HISTORY;</span>
+<span class="fc bfc" id="L52" title="All 6 branches covered.">        if((!current &amp;&amp; !history)</span>
+<span class="fc bfc" id="L53" title="All 4 branches covered.">                || current &amp;&amp; !Set.of(GitRepresentation.NONE,GitRepresentation.BUNDLE).contains(request.gitRepresentation())</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">                || history &amp;&amp; !Set.of(GitRepresentation.BUNDLE,GitRepresentation.BARE,GitRepresentation.WORKTREE).contains(request.gitRepresentation())</span>
+<span class="pc bpc" id="L55" title="2 of 4 branches missed.">                || request.secrets()!=SecretsSelection.EXCLUDE || request.scope().selectedRepositories().size()&gt;200)</span>
+<span class="fc" id="L56">            throw new IllegalArgumentException(&quot;This portable export selection is unsupported&quot;);</span>
+<span class="fc" id="L57">        prerequisites.requireCapture();</span>
+<span class="fc" id="L58">    }</span>
+    @Override public BackupExportOptions exportOptions(PrincipalId actor) {
+<span class="fc" id="L60">        var choices=new ArrayList&lt;BackupExportOptions.Selection&gt;();</span>
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">        if(!access.isEnabled(actor) || !access.hasCapability(actor,BackupCapability.EXPORT_CURRENT,new BackupScope.Installation()))return new BackupExportOptions(List.of());</span>
+        // Metadata is filtered by the same current policy as enqueue, status and native download.
+        try {
+<span class="fc" id="L64">            var repositories = metadata.read(&quot;select repository_id,display_name from system_repository order by repository_id&quot;,</span>
+<span class="fc" id="L65">                    List.of(), BackupLimits.MAX_ITEMS, () -&gt; {}, r -&gt; new Choice(new BackupRepositoryKey(r.getString(1), null), r.getString(2)));</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">            for (var row : repositories) if (access.canRead(actor, row.key())) choices.add(choice(row,actor));</span>
+<span class="fc" id="L67">            var workspaces = metadata.read(&quot;select source_repository_id,workspace_id,display_name from user_workspace order by source_repository_id,workspace_id&quot;,</span>
+<span class="fc" id="L68">                    List.of(), BackupLimits.MAX_ITEMS - repositories.size(), () -&gt; {}, r -&gt; new Choice(new BackupRepositoryKey(r.getString(1), r.getString(2)), r.getString(3)));</span>
+<span class="fc bfc" id="L69" title="All 4 branches covered.">            for (var row : workspaces) if (access.canRead(actor, row.key())) choices.add(choice(row,actor));</span>
+<span class="pc" id="L70">        } catch (IOException unavailable) { throw new IllegalStateException(&quot;Backup selection inventory is unavailable&quot;); }</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if(access.hasCapability(actor,BackupCapability.EXPORT_INSTALLATION,new BackupScope.Installation()))</span>
+<span class="nc" id="L72">            choices.add(new BackupExportOptions.Selection(&quot;installation&quot;,null,null,true,&quot;&quot;,false));</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if(choices.size()&gt;BackupLimits.MAX_ITEMS)throw new IllegalStateException(&quot;Backup selection inventory is too large&quot;);</span>
+<span class="fc" id="L74">        return new BackupExportOptions(choices);</span>
+    }
+    private BackupExportOptions.Selection choice(Choice choice,PrincipalId actor) {
+<span class="fc" id="L77">        var key=choice.key();String stable=com.taxonomy.identity.StableIdentityHash.sha256(key.repositoryId()+&quot;\u0000&quot;+Objects.toString(key.workspaceId(),&quot;&quot;));</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        BackupScope scope=key.workspaceId()==null?new BackupScope.Repositories(Map.of(key.repositoryId(),Set.of()))</span>
+<span class="fc" id="L79">                :new BackupScope.Workspace(key.repositoryId(),key.workspaceId());</span>
+<span class="fc" id="L80">        return new BackupExportOptions.Selection(stable,key.repositoryId(),key.workspaceId(),false,</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                choice.label()+&quot; · &quot;+key.repositoryId()+(key.workspaceId()==null?&quot;&quot;:&quot; / &quot;+key.workspaceId()),</span>
+<span class="fc" id="L82">                access.hasCapability(actor,BackupCapability.EXPORT_HISTORY,scope));</span>
+    }
+<span class="fc" id="L84">    private record Choice(BackupRepositoryKey key,String label) { }</span>
+    @Override public CapturedBackup capture(AuthorizedBackupRequest request,Path spool,ArchiveProgress progress)throws IOException {
+<span class="fc" id="L86">        validateRequest(request.request());authorization.requireJobAccess(request.principalId(),request);</span>
+<span class="pc" id="L87">        var actor=identities.find(request.principalId()).filter(p-&gt;p.enabled()).orElseThrow(()-&gt;new AccessDeniedException(&quot;Backup access denied&quot;));</span>
+<span class="fc" id="L88">        var inventory=BackupCoverageInventory.load();</span>
+<span class="fc" id="L89">        var projector=(BackupDocumentProjector) PortfolioStandDocument::project;</span>
+<span class="fc" id="L90">        var gitRepositories=new ExistingGitBackupRepositories(database,entities.unwrap(org.hibernate.SessionFactory.class));</span>
+<span class="fc" id="L91">        var stand=new GitStandBackupSource(database,gitRepositories,projector);</span>
+<span class="fc" id="L92">        var limits=new GitStandBackupSource.Limits(new GitTreeCapture.Limits(BackupLimits.MAX_ITEMS,2L&lt;&lt;30,10L&lt;&lt;30),PortableRows.MAX_RECORD_BYTES);</span>
+<span class="fc" id="L93">        boolean historical=request.request().profile().includesHistory();</span>
+<span class="fc" id="L94">        var currentGit=new GitStandBackupContributor(stand,limits);</span>
+<span class="fc" id="L95">        var historyGit=new GitHistoryBackupContributor(gitRepositories,stand,new WorkspaceGitHistoryReferences(database,gitRepositories),GitHistoryCapture.Limits.defaults(),limits);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        BackupDataContributor git=historical?historyGit:currentGit;</span>
+<span class="fc" id="L97">        var workspace=new WorkspaceBackupContributor(database,projector);</span>
+<span class="fc" id="L98">        var portfolio=new PortfolioBackupContributor(database);var analysis=new AnalysisBackupContributor(database,actor.scopeKey());</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        var closure=new ReferenceClosure(stand,limits,portfolio,analysis,gitRepositories,workspace,historical?historyGit:null);</span>
+<span class="fc" id="L100">        var delegates=new ArrayList&lt;BackupDataContributor&gt;();</span>
+<span class="fc" id="L101">        delegates.add(workspace);delegates.add(git);delegates.add(new StandOwnership(&quot;workspace&quot;,&quot;external.git-servers&quot;,&quot;external-git&quot;,true));</span>
+<span class="fc" id="L102">        delegates.add(portfolio);delegates.add(new StandOwnership(&quot;portfolio&quot;,&quot;storage.git.portfolio&quot;,&quot;git-ownership&quot;,false));</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        delegates.add(analysis);delegates.add(new ArchitectureBackupContributor(database,projector,historical?historyGit::documents:currentGit::documents));</span>
+<span class="fc" id="L104">        delegates.add(new KnowledgeBackupContributor(database,portfolio::analysisReferences,closure::knowledge));</span>
+<span class="fc" id="L105">        delegates.add(new CatalogueSourceBackupContributor(database,snapshot-&gt;Set.of()));</span>
+<span class="fc" id="L106">        delegates.add(new TemplateBackupContributor(templates));</span>
+<span class="fc" id="L107">        delegates.add(new IntegrationBackupContributor(database,closure::integrations));</span>
+<span class="fc" id="L108">        delegates.add(ApplicationBackupComponent.create(database,portfolio::sourceReferences,</span>
+<span class="fc" id="L109">                new PrincipalScopeBackupSelector(database,List.of(workspace::principalScopes,portfolio::principalScopes)),</span>
+<span class="fc" id="L110">                Path.of(environment.getProperty(&quot;taxonomy.backup.source-content-directory&quot;,&quot;./data/source-content&quot;)),preferences,environment));</span>
+<span class="fc" id="L111">        delegates.addAll(additional);</span>
+<span class="fc" id="L112">        var contributors=new ArrayList&lt;BackupContributor&gt;();var components=new TreeMap&lt;BackupComponentId,BackupSnapshotCoordinator.CaptureComponent&gt;(Comparator.comparing(BackupComponentId::value));</span>
+<span class="fc" id="L113">        var owners = inventory.categories().stream().map(BackupInventory.Category::owner).distinct()</span>
+<span class="fc" id="L114">                .sorted(Comparator.comparing(BackupComponentId::value)).toList();</span>
+<span class="pc bpc" id="L115" title="1 of 4 branches missed.">        for (var delegate : delegates) if (!owners.contains(delegate.componentId()))</span>
+<span class="nc" id="L116">            throw new IllegalArgumentException(&quot;Backup contributor has no reviewed inventory owner&quot;);</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for(var owner:owners) {</span>
+            // ApplicationBackupComponent has already verified its exact owned coverage.
+<span class="fc" id="L119">            var owned=delegates.stream().filter(d-&gt;d.componentId().equals(owner)).toList();</span>
+<span class="fc" id="L120">            var contributor=new CompositeBackupDataContributor(owner,1,inventory,owned);contributors.add(contributor);</span>
+<span class="fc" id="L121">            components.put(owner,new BackupSnapshotCoordinator.CaptureComponent(1,BackupCompleteness.COMPLETE,</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                    owner.value().equals(&quot;portfolio&quot;)?Set.of(new BackupComponentId(&quot;workspace&quot;)):Set.of()));</span>
+<span class="fc" id="L123">        }</span>
+<span class="fc" id="L124">        BackupSnapshotCoordinator.Inventory discovery=new BackupSnapshotCoordinator.Inventory() {</span>
+<span class="nc" id="L125">            @Override public BackupSnapshotCoordinator.CapturePlan inspect(AuthorizedBackupRequest authorized)throws IOException {return inspect(authorized,()-&gt;{});}</span>
+            @Override public BackupSnapshotCoordinator.CapturePlan inspect(AuthorizedBackupRequest authorized,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L127">                checkpoint.check();closure.checkpoint=checkpoint;var categories=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L128" title="All 4 branches covered.">                for(var entity:entities.getMetamodel().getEntities())if(entity.getJavaType().getName().startsWith(&quot;com.taxonomy.&quot;))categories.add(entity.getJavaType().getName());</span>
+<span class="fc" id="L129">                inventory.requireClassified(categories);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                var keys=authorized.request().scope() instanceof BackupScope.Installation?installationKeys(checkpoint):authorized.request().scope().selectedRepositories();</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                var repositories=historical?historyGit.inspect(authorized,keys,checkpoint):currentGit.inspect(authorized,keys,checkpoint);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if(authorized.request().profile()==BackupProfile.SELECTED_VERSION)closure.selectedDocuments(authorized,repositories,checkpoint);</span>
+<span class="fc" id="L133">                String installation=jdbc.queryForObject(&quot;select installation_id from principal_installation where registry_key='local'&quot;,String.class);</span>
+<span class="fc" id="L134">                return new BackupSnapshotCoordinator.CapturePlan(environment.getRequiredProperty(&quot;info.app.version&quot;),</span>
+                        buildCommit,installation,repositories,components,
+<span class="fc" id="L136">                        List.of(&quot;external Git services and deployment credentials remain operator-owned; captured local stands do not back up remote servers&quot;),List.of(),</span>
+<span class="fc" id="L137">                        SourceDatabaseWitness.capture(database, checkpoint));</span>
+            }
+        };
+<span class="fc" id="L140">        return new BackupSnapshotCoordinator(fence,authorization,discovery,contributors,spool,</span>
+<span class="fc" id="L141">                BackupSnapshotCoordinator.CaptureLimits.defaults(),Clock.systemUTC(),prerequisites).capture(request,progress);</span>
+    }
+    private Set&lt;BackupRepositoryKey&gt; installationKeys(BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L144">        checkpoint.check();var keys=new HashSet&lt;BackupRepositoryKey&gt;();</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        for (String repository : metadata.read(&quot;select repository_id from system_repository order by repository_id&quot;, List.of(),</span>
+<span class="fc" id="L146">                BackupLimits.MAX_ITEMS, checkpoint, r -&gt; r.getString(1))) keys.add(new BackupRepositoryKey(repository, null));</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (var key : metadata.read(&quot;select source_repository_id,workspace_id from user_workspace order by source_repository_id,workspace_id&quot;, List.of(),</span>
+<span class="fc" id="L148">                BackupLimits.MAX_ITEMS - keys.size(), checkpoint, r -&gt; new BackupRepositoryKey(r.getString(1), r.getString(2)))) {</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">            if (!keys.contains(new BackupRepositoryKey(key.repositoryId(), null))) throw new IOException(&quot;Workspace repository inventory is incomplete&quot;);</span>
+<span class="fc" id="L150">            keys.add(key);</span>
+<span class="fc" id="L151">        }</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if(keys.size()&gt;BackupLimits.MAX_ITEMS)throw new IOException(&quot;Repository inventory limit exceeded&quot;);return Set.copyOf(keys);</span>
+    }
+    private final class ReferenceClosure {
+        private final GitStandBackupSource source;private final GitStandBackupSource.Limits limits;private final PortfolioBackupContributor portfolio;private final AnalysisBackupContributor analysis;private final ExistingGitBackupRepositories repositories;private BackupCheckpoint checkpoint;
+        private final WorkspaceBackupContributor workspace;private final GitHistoryBackupContributor history;
+<span class="fc" id="L157">        ReferenceClosure(GitStandBackupSource source,GitStandBackupSource.Limits limits,PortfolioBackupContributor portfolio,AnalysisBackupContributor analysis,ExistingGitBackupRepositories repositories,WorkspaceBackupContributor workspace,GitHistoryBackupContributor history){this.source=source;this.limits=limits;this.portfolio=portfolio;this.analysis=analysis;this.repositories=repositories;this.workspace=workspace;this.history=history;}</span>
+        KnowledgeBackupContributor.Selection knowledge(SnapshotContext snapshot)throws IOException {
+<span class="fc" id="L159">            var references=new PortableKnowledgeReferences();var checkpoint=Objects.requireNonNull(this.checkpoint,&quot;Capture reference fence&quot;);</span>
+<span class="fc" id="L160">            ProjectedBackupRecords.inspect(portfolio,snapshot,checkpoint,(dataset,record)-&gt;{</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                for(String field:List.of(&quot;nodeCode&quot;,&quot;taxonomyRoot&quot;,&quot;sourceCode&quot;,&quot;targetCode&quot;))references.value(record.get(field));</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                for(String field:List.of(&quot;analysisPayload&quot;,&quot;gapAnalysisPayload&quot;,&quot;patternDetectionPayload&quot;,&quot;recommendationPayload&quot;))references.encoded(record,field);</span>
+<span class="fc" id="L163">            });</span>
+<span class="fc" id="L164">            ProjectedBackupRecords.inspect(analysis,snapshot,checkpoint,(dataset,record)-&gt;{</span>
+<span class="pc bpc" id="L165" title="3 of 4 branches missed.">                switch(dataset) {</span>
+<span class="fc" id="L166">                    case &quot;drafts&quot;-&gt;references.payload(record.get(&quot;payload&quot;));</span>
+<span class="nc" id="L167">                    case &quot;continuations&quot;,&quot;cluster-runs&quot;,&quot;cluster-work&quot;-&gt;{references.encoded(record,&quot;resultJson&quot;);references.encoded(record,&quot;viewJson&quot;);}</span>
+<span class="nc bnc" id="L168" title="All 4 branches missed.">                    case &quot;questions&quot;-&gt;{var value=record.get(&quot;nodeCodesJson&quot;);if(value!=null &amp;&amp; !value.isNull())references.array(PortableRows.json().readTree(value.asText()));}</span>
+                    default-&gt;{ /* Frozen inputs own their complete snapshot; diagnostics contain display labels. */ }
+                }
+<span class="fc" id="L171">            });</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            if(history!=null) {</span>
+<span class="fc" id="L173">                history.visitDocuments(snapshot,GitHistoryCapture.DocumentLimits.defaults(),checkpoint,(reference,body)-&gt;{</span>
+<span class="fc" id="L174">                    String original=StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)</span>
+<span class="fc" id="L175">                            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(body)).toString();</span>
+<span class="fc" id="L176">                    document(new TaxDslParser().parse(original,reference.path()),references,false);</span>
+<span class="fc" id="L177">                });</span>
+                // These are original database bodies, not fabricated commit/path document proofs.
+<span class="fc" id="L179">                ProjectedBackupRecords.inspect(workspace,snapshot,checkpoint,(dataset,record)-&gt;{</span>
+<span class="fc bfc" id="L180" title="All 3 branches covered.">                    List&lt;String&gt; fields=switch(dataset) {</span>
+<span class="fc" id="L181">                        case &quot;working-states&quot;,&quot;checkpoints&quot;-&gt;List.of(&quot;dsl&quot;);</span>
+<span class="fc" id="L182">                        case &quot;operations&quot;-&gt;List.of(&quot;beforeDsl&quot;,&quot;afterDsl&quot;);</span>
+<span class="fc" id="L183">                        default-&gt;List.of();</span>
+                    };
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                    for(String field:fields) {</span>
+<span class="fc" id="L186">                        checkpoint.check();var body=record.get(field);</span>
+<span class="pc bpc" id="L187" title="2 of 4 branches missed.">                        if(body==null || body.isNull())continue;</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">                        if(!body.isTextual())throw new IOException(&quot;Historical editor document has an invalid body&quot;);</span>
+<span class="fc" id="L189">                        document(new TaxDslParser().parse(body.asText(),&quot;workspace-&quot;+dataset+&quot;-&quot;+field+&quot;.taxdsl&quot;),references,false);</span>
+<span class="fc" id="L190">                    }</span>
+<span class="fc" id="L191">                });</span>
+            } else {
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                for(var key:snapshot.repositories().keySet())try(var stand=source.open(snapshot.authorization(),key,limits,checkpoint)) {</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                    if(!stand.state().equals(snapshot.repositories().get(key)))throw new IOException(&quot;Git reference evidence changed during capture&quot;);</span>
+<span class="pc bpc" id="L195" title="1 of 4 branches missed.">                    for(var file:stand.files())if(file.path().toLowerCase(Locale.ROOT).endsWith(&quot;.taxdsl&quot;)) {</span>
+<span class="fc" id="L196">                        var bytes=new ByteArrayOutputStream();stand.copy(file,bytes,checkpoint);</span>
+<span class="fc" id="L197">                        document(new TaxDslParser().parse(bytes.toString(StandardCharsets.UTF_8),file.path()),references,false);</span>
+                    }
+<span class="fc" id="L199">                }</span>
+            }
+<span class="fc" id="L201">            return new KnowledgeBackupContributor.Selection(references.codes,references.hypotheses);</span>
+        }
+        void selectedDocuments(AuthorizedBackupRequest authorization,List&lt;BackupManifest.Repository&gt; repositories,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            for(var repository:repositories)try(var stand=source.open(authorization,repository.id(),limits,checkpoint)) {</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                if(!stand.state().equals(repository.captured()))throw new IOException(&quot;Selected Git evidence changed during capture&quot;);</span>
+<span class="pc bpc" id="L206" title="1 of 4 branches missed.">                for(var file:stand.files())if(file.path().toLowerCase(Locale.ROOT).endsWith(&quot;.taxdsl&quot;)) {</span>
+<span class="fc" id="L207">                    var bytes=new ByteArrayOutputStream();stand.copy(file,bytes,checkpoint);</span>
+<span class="fc" id="L208">                    document(new TaxDslParser().parse(bytes.toString(StandardCharsets.UTF_8),file.path()),new PortableKnowledgeReferences(),true);</span>
+                }
+<span class="fc" id="L210">            }</span>
+<span class="fc" id="L211">        }</span>
+        private void document(DocumentAst document,PortableKnowledgeReferences references,boolean selected)throws IOException {
+<span class="fc" id="L213">            PortableDocumentSourceReferences.requireClosed(document);</span>
+<span class="fc" id="L214">            var elements=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">            for(var block:document.getBlocks()) {</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">                if(block.getHeaderTokens().isEmpty())continue;String id=block.getHeaderTokens().getFirst();</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                Set&lt;String&gt; ids=block.getKind().equals(&quot;element&quot;)?elements:null;</span>
+<span class="pc bpc" id="L218" title="2 of 4 branches missed.">                if(ids!=null &amp;&amp; !ids.add(id))throw new IOException(&quot;Duplicate selected document identity&quot;);</span>
+<span class="pc bpc" id="L219" title="1 of 4 branches missed.">                if(!selected &amp;&amp; block.getKind().equals(&quot;element&quot;)) {</span>
+<span class="fc" id="L220">                    var actual=jdbc.query(&quot;select code,taxonomy_root from taxonomy_node where code=?&quot;,(r,n)-&gt;List.of(r.getString(1),r.getString(2)),id);</span>
+<span class="pc bpc" id="L221" title="7 of 8 branches missed.">                    if(block.property(&quot;taxonomy&quot;)!=null &amp;&amp; (actual.size()!=1 || !id.equals(actual.getFirst().getFirst()) || !block.property(&quot;taxonomy&quot;).equals(actual.getFirst().get(1))))throw new IOException(&quot;Document catalogue identity is missing or inconsistent&quot;);</span>
+<span class="pc bpc" id="L222" title="1 of 4 branches missed.">                    if(actual.size()==1 &amp;&amp; id.equals(actual.getFirst().getFirst()))references.code(id);</span>
+                }
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                for(String property:List.of(&quot;nodeCode&quot;,&quot;sourceCode&quot;,&quot;targetCode&quot;,&quot;taxonomyRoot&quot;))references.code(block.property(property));</span>
+<span class="fc" id="L225">                String hypothesis=block.getExtensions().get(&quot;x-hypothesis-id&quot;);</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">                if(hypothesis!=null)references.hypothesis(hypothesis);</span>
+<span class="fc" id="L227">            }</span>
+<span class="fc" id="L228">            var requirements = new HashSet&lt;String&gt;();</span>
+<span class="pc bpc" id="L229" title="3 of 6 branches missed.">            for (var block : document.getBlocks()) if (block.getKind().equals(&quot;requirement&quot;) &amp;&amp; block.getHeaderTokens().size() == 1)</span>
+<span class="nc" id="L230">                requirements.add(block.getHeaderTokens().getFirst());</span>
+<span class="pc bpc" id="L231" title="4 of 7 branches missed.">            for(var block:document.getBlocks())switch(block.getKind()) {</span>
+                case &quot;relation&quot; -&gt; {
+<span class="nc" id="L233">                    var tokens = block.getHeaderTokens();</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">                    if (tokens.size() != 3) throw new IOException(&quot;Incomplete selected document relation&quot;);</span>
+<span class="nc" id="L235">                    endpoint(elements, tokens.getFirst(), references, selected);</span>
+<span class="nc" id="L236">                    endpoint(elements, tokens.get(2), references, selected);</span>
+<span class="nc" id="L237">                }</span>
+                case &quot;mapping&quot; -&gt; {
+<span class="nc" id="L239">                    var tokens = block.getHeaderTokens();</span>
+<span class="nc bnc" id="L240" title="All 6 branches missed.">                    if (tokens.size() != 3 || !tokens.get(1).equals(&quot;-&gt;&quot;) || !requirements.contains(tokens.getFirst()))</span>
+<span class="nc" id="L241">                        throw new IOException(&quot;Missing selected document mapping requirement&quot;);</span>
+<span class="nc" id="L242">                    endpoint(elements, tokens.get(2), references, selected);</span>
+<span class="nc" id="L243">                }</span>
+                case &quot;view&quot; -&gt; {
+<span class="nc bnc" id="L245" title="All 2 branches missed.">                    for (String id : block.propertyValues(&quot;include&quot;)) endpoint(elements, id, references, selected);</span>
+<span class="nc" id="L246">                }</span>
+                case &quot;evidence&quot; -&gt; {
+<span class="nc" id="L248">                    String relation = block.property(&quot;for-relation&quot;);</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">                    if (relation != null) {</span>
+<span class="nc" id="L250">                        var tokens = relation.split(&quot; &quot;);</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">                        if (tokens.length != 3) throw new IOException(&quot;Invalid document relation evidence&quot;);</span>
+<span class="nc" id="L252">                        endpoint(elements, tokens[0], references, selected);</span>
+<span class="nc" id="L253">                        endpoint(elements, tokens[2], references, selected);</span>
+                    }
+<span class="nc" id="L255">                }</span>
+                default-&gt;{ }
+<span class="fc" id="L257">            }</span>
+<span class="fc" id="L258">        }</span>
+        private void endpoint(Set&lt;String&gt; elements, String id, PortableKnowledgeReferences references, boolean selected) throws IOException {
+<span class="nc bnc" id="L260" title="All 2 branches missed.">            if (elements.contains(id)) return;</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">            if (selected) throw new IOException(&quot;Missing selected document element reference&quot;);</span>
+<span class="nc" id="L262">            var exact = jdbc.queryForList(&quot;select code from taxonomy_node where code=?&quot;, String.class, id);</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">            if (!exact.equals(List.of(id))) throw new IOException(&quot;Missing selected document element reference&quot;);</span>
+<span class="nc" id="L264">            references.code(id);</span>
+<span class="nc" id="L265">        }</span>
+        List&lt;BackupIntegrationScope&gt; integrations(SnapshotContext snapshot,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L267">            var selected=new ArrayList&lt;BackupIntegrationScope&gt;();</span>
+<span class="fc bfc" id="L268" title="All 4 branches covered.">            for(var key:snapshot.repositories().keySet())if(key.workspaceId()!=null) {</span>
+<span class="fc" id="L269">                checkpoint.check();var branches=new TreeSet&lt;String&gt;();</span>
+<span class="fc" id="L270">                try(var session=repositories.open(snapshot.authorization(),key,checkpoint)){branches.addAll(session.branchNames(checkpoint));}</span>
+<span class="fc" id="L271">                branches.addAll(metadata.read(&quot;select distinct branch_name from arch_project where repository_id=? and workspace_id=? order by branch_name&quot;,</span>
+<span class="fc" id="L272">                        List.of(key.repositoryId(), key.workspaceId()), BackupLimits.MAX_ITEMS, checkpoint, r -&gt; r.getString(1)));</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">                for(String branch:branches) {</span>
+<span class="fc" id="L274">                    checkpoint.check();var scope=new BackupIntegrationScope(key,branch);validateIntegrationReferences(scope,checkpoint);selected.add(scope);</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">                    if(selected.size()&gt;BackupLimits.MAX_ITEMS)throw new IOException(&quot;Integration routing limit exceeded&quot;);</span>
+<span class="fc" id="L276">                }</span>
+            }
+<span class="fc" id="L278">            return List.copyOf(selected);</span>
+        }
+        private void validateIntegrationReferences(BackupIntegrationScope scope,BackupCheckpoint checkpoint)throws IOException {
+<span class="fc" id="L281">            String tenant=new com.taxonomy.workspace.model.RepositoryTenantIdentity(scope.repository().repositoryId(),&quot;WORKSPACE:&quot;+scope.repository().workspaceId(),scope.branch()).scopeKey();</span>
+<span class="pc bnc" id="L282" title="All 2 branches missed.">            var connections=jdbc.query(&quot;select id,repository_id,project_id from interop_connection where scope_id=? order by id&quot;,(r,n)-&gt;new IntegrationProject(r.getString(1),r.getString(2),r.getObject(3)==null?null:((Number)r.getObject(3)).longValue()),scope.scopeId());</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">            for(var connection:connections) {</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">                checkpoint.check();if(!scope.repository().repositoryId().equals(connection.repository()))throw new IOException(&quot;Foreign integration repository reference&quot;);</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">                if(connection.project()!=null) {</span>
+<span class="nc" id="L286">                    var actual=jdbc.queryForList(&quot;select scope_key from arch_project where id=?&quot;,String.class,connection.project());</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">                    if(!actual.equals(List.of(tenant)))throw new IOException(&quot;Missing or foreign integration project reference&quot;);</span>
+                }
+<span class="nc bnc" id="L289" title="All 2 branches missed.">                for(var requirement:jdbc.query(&quot;select requirement_id from interop_identity where connection_id=? and scope_id=? and removed=? and requirement_id is not null&quot;,(r,n)-&gt;r.getLong(1),connection.id(),scope.scopeId(),false)) {</span>
+<span class="nc" id="L290">                    checkpoint.check();var actual=jdbc.query(&quot;select scope_key,project_id from project_requirement where id=?&quot;,(r,n)-&gt;new RequirementOwner(r.getString(1),r.getLong(2)),requirement);</span>
+<span class="nc bnc" id="L291" title="All 8 branches missed.">                    if(actual.size()!=1 || !tenant.equals(actual.getFirst().tenant()) || connection.project()!=null &amp;&amp; !connection.project().equals(actual.getFirst().project()))throw new IOException(&quot;Missing or foreign integration requirement reference&quot;);</span>
+<span class="nc" id="L292">                }</span>
+<span class="nc" id="L293">            }</span>
+<span class="fc" id="L294">        }</span>
+<span class="nc" id="L295">        private record IntegrationProject(String id,String repository,Long project) { }</span>
+<span class="nc" id="L296">        private record RequirementOwner(String tenant,Long project) { }</span>
+    }
+    private static final class StandOwnership implements BackupDataContributor {
+        private final BackupComponentId owner;private final String category,dataset;private final boolean external;
+<span class="fc" id="L300">        StandOwnership(String owner,String category,String dataset,boolean external){this.owner=new BackupComponentId(owner);this.category=category;this.dataset=dataset;this.external=external;}</span>
+<span class="fc" id="L301">        public BackupComponentId componentId(){return owner;}public int schemaVersion(){return 1;}public Set&lt;String&gt; categories(){return Set.of(category);}</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        public List&lt;String&gt; omissions(BackupProfile profile){return external?List.of(&quot;workspace.external-git: remote services remain external dependencies; archive contains only captured local stand evidence&quot;):List.of();}</span>
+        public void write(SnapshotContext snapshot,ComponentSink sink)throws IOException {
+<span class="fc" id="L304">            sink.checkpoint();var entries=new ArrayList&lt;Map&lt;String,Object&gt;&gt;();</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            for(var key:snapshot.repositories().keySet()) {</span>
+<span class="fc" id="L306">                var evidence=new LinkedHashMap&lt;String,Object&gt;();evidence.put(&quot;repository&quot;,key);evidence.put(&quot;archiveId&quot;,snapshot.repositoryArchiveIds().get(key));</span>
+<span class="fc" id="L307">                evidence.put(&quot;captured&quot;,snapshot.repositories().get(key));evidence.put(&quot;payloadOwner&quot;,&quot;workspace&quot;);evidence.put(&quot;externalServerBackup&quot;,false);entries.add(evidence);</span>
+<span class="fc" id="L308">            }</span>
+<span class="fc" id="L309">            byte[] document=PortableRows.json().writeValueAsBytes(Map.of(&quot;schemaVersion&quot;,1,&quot;category&quot;,category,&quot;repositories&quot;,entries));</span>
+<span class="fc" id="L310">            try(var input=new ByteArrayInputStream(document)){sink.write(&quot;data/&quot;+owner.value()+&quot;/&quot;+dataset+&quot;.json&quot;,input);}sink.checkpoint();</span>
+<span class="fc" id="L311">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

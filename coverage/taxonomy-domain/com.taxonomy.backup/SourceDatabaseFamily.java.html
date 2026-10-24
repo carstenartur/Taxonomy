@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SourceDatabaseFamily.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">SourceDatabaseFamily.java</span></div><h1>SourceDatabaseFamily.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.util.Locale;
+
+/** Portable source-family evidence; never a connection address or a compatibility promise. */
+<span class="fc" id="L6">public enum SourceDatabaseFamily {</span>
+<span class="fc" id="L7">    HSQLDB, POSTGRESQL, SQL_SERVER, ORACLE;</span>
+
+    public static SourceDatabaseFamily fromProductName(String product) {
+<span class="pc bpc" id="L10" title="1 of 2 branches missed.">        if (product == null) throw new IllegalArgumentException(&quot;Unsupported database family&quot;);</span>
+<span class="fc bfc" id="L11" title="All 5 branches covered.">        return switch (product.toUpperCase(Locale.ROOT)) {</span>
+<span class="fc" id="L12">            case &quot;HSQL DATABASE ENGINE&quot; -&gt; HSQLDB;</span>
+<span class="fc" id="L13">            case &quot;POSTGRESQL&quot; -&gt; POSTGRESQL;</span>
+<span class="fc" id="L14">            case &quot;MICROSOFT SQL SERVER&quot; -&gt; SQL_SERVER;</span>
+<span class="fc" id="L15">            case &quot;ORACLE&quot; -&gt; ORACLE;</span>
+<span class="fc" id="L16">            default -&gt; throw new IllegalArgumentException(&quot;Unsupported database family&quot;);</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

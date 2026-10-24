@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SemanticGitMergeService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">SemanticGitMergeService.java</span></div><h1>SemanticGitMergeService.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.dsl.merge.TaxDslMergeResult;
+import com.taxonomy.dsl.merge.TaxDslSemanticMerger;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.CommitProvenance;
+import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.dircache.DirCacheEntry;
+import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
+import org.eclipse.jgit.lib.ObjectReader;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.merge.MergeStrategy;
+import org.eclipse.jgit.merge.ResolveMerger;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.revwalk.filter.RevFilter;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeSet;
+
+/**
+ * Executes the normal Git merge first and falls back to a block-semantic DSL
+ * merge when the canonical architecture file conflicts textually.
+ */
+@Service
+<span class="fc" id="L41">public class SemanticGitMergeService {</span>
+
+    private static final String DSL_FILE = &quot;architecture.taxdsl&quot;;
+
+<span class="fc" id="L45">    private final TaxDslSemanticMerger semanticMerger = new TaxDslSemanticMerger();</span>
+
+    public MergeOutcome mergeBranches(DslGitRepository repository,
+                                      String fromBranch,
+                                      String intoBranch,
+                                      String author) throws IOException {
+<span class="fc" id="L51">        return mergeBranches(repository, fromBranch, intoBranch, author, null);</span>
+    }
+
+    public MergeOutcome mergeBranches(DslGitRepository repository,
+                                      String fromBranch,
+                                      String intoBranch,
+                                      String author,
+                                      String message) throws IOException {
+<span class="fc" id="L59">        String requestedMessage = normalizeMessage(message);</span>
+<span class="fc" id="L60">        String ordinaryCommit = repository.merge(fromBranch, intoBranch,</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                requestedMessage == null ? null : author, requestedMessage);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (ordinaryCommit != null) {</span>
+<span class="fc" id="L63">            return new MergeOutcome(true, ordinaryCommit, false, List.of(), null);</span>
+        }
+
+<span class="fc" id="L66">        SemanticInputs inputs = semanticInputs(repository, fromBranch, intoBranch);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (inputs.error() != null) {</span>
+<span class="fc" id="L68">            return new MergeOutcome(false, null, false, List.of(inputs.error()), null);</span>
+        }
+<span class="fc" id="L70">        TaxDslMergeResult merge = semanticMerger.merge(</span>
+<span class="fc" id="L71">                inputs.baseDsl(), inputs.oursDsl(), inputs.theirsDsl());</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (!merge.isSuccessful()) {</span>
+<span class="fc" id="L73">            return new MergeOutcome(</span>
+<span class="fc" id="L74">                    false, null, true, merge.conflictIdentifiers(), merge);</span>
+        }
+
+<span class="fc" id="L77">        MergeCommitResult committed = createMergeCommit(</span>
+                repository,
+<span class="fc" id="L79">                inputs.baseCommit(),</span>
+<span class="fc" id="L80">                inputs.oursCommit(),</span>
+<span class="fc" id="L81">                inputs.theirsCommit(),</span>
+                intoBranch,
+                fromBranch,
+<span class="fc" id="L84">                merge.mergedText(),</span>
+                author,
+                requestedMessage);
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (!committed.conflicts().isEmpty()) {</span>
+<span class="fc" id="L88">            return new MergeOutcome(false, null, true, committed.conflicts(), merge);</span>
+        }
+<span class="fc" id="L90">        return new MergeOutcome(true, committed.commitId(), true, List.of(), merge);</span>
+    }
+
+    public MergeOutcome preview(DslGitRepository repository,
+                                String fromBranch,
+                                String intoBranch) throws IOException {
+<span class="fc" id="L96">        SemanticInputs inputs = semanticInputs(repository, fromBranch, intoBranch);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (inputs.error() != null) {</span>
+<span class="nc" id="L98">            return new MergeOutcome(false, null, false, List.of(inputs.error()), null);</span>
+        }
+<span class="fc" id="L100">        TaxDslMergeResult merge = semanticMerger.merge(</span>
+<span class="fc" id="L101">                inputs.baseDsl(), inputs.oursDsl(), inputs.theirsDsl());</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (!merge.isSuccessful()) {</span>
+<span class="nc" id="L103">            return new MergeOutcome(false, null, true, merge.conflictIdentifiers(), merge);</span>
+        }
+        // Like the ordinary in-core Git preview, this may create unreferenced
+        // objects, but never changes a branch, index, or working tree.
+<span class="fc" id="L107">        try (ObjectInserter inserter = repository.getGitRepository().newObjectInserter()) {</span>
+<span class="fc" id="L108">            ObjectId dslBlob = inserter.insert(Constants.OBJ_BLOB,</span>
+<span class="fc" id="L109">                    merge.mergedText().getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L110">            TreeMerge tree = mergeTrees(repository.getGitRepository(), inserter,</span>
+<span class="fc" id="L111">                    inputs.baseCommit(), inputs.oursCommit(), inputs.theirsCommit(), dslBlob);</span>
+<span class="fc" id="L112">            return new MergeOutcome(tree.conflicts().isEmpty(), null, true, tree.conflicts(), merge);</span>
+        }
+    }
+
+    /** Merge three DSL payloads when source and target live in different repositories. */
+    public TaxDslMergeResult mergeContent(String baseDsl, String oursDsl, String theirsDsl) {
+<span class="fc" id="L118">        return semanticMerger.merge(baseDsl, oursDsl, theirsDsl);</span>
+    }
+
+    private SemanticInputs semanticInputs(DslGitRepository repository,
+                                          String fromBranch,
+                                          String intoBranch) throws IOException {
+<span class="fc" id="L124">        Repository git = repository.getGitRepository();</span>
+<span class="fc" id="L125">        Ref fromRef = git.getRefDatabase().exactRef(Constants.R_HEADS + fromBranch);</span>
+<span class="fc" id="L126">        Ref intoRef = git.getRefDatabase().exactRef(Constants.R_HEADS + intoBranch);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (fromRef == null) {</span>
+<span class="fc" id="L128">            return SemanticInputs.error(&quot;Source branch '&quot; + fromBranch + &quot;' not found&quot;);</span>
+        }
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        if (intoRef == null) {</span>
+<span class="nc" id="L131">            return SemanticInputs.error(&quot;Target branch '&quot; + intoBranch + &quot;' not found&quot;);</span>
+        }
+
+<span class="fc" id="L134">        try (RevWalk walk = new RevWalk(git)) {</span>
+<span class="fc" id="L135">            RevCommit theirs = walk.parseCommit(fromRef.getObjectId());</span>
+<span class="fc" id="L136">            RevCommit ours = walk.parseCommit(intoRef.getObjectId());</span>
+<span class="fc" id="L137">            RevCommit base = findMergeBase(git, ours, theirs);</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">            String baseDsl = base == null ? &quot;&quot; : repository.getDslAtCommit(base.name());</span>
+<span class="fc" id="L139">            String oursDsl = repository.getDslAtCommit(ours.name());</span>
+<span class="fc" id="L140">            String theirsDsl = repository.getDslAtCommit(theirs.name());</span>
+<span class="fc" id="L141">            return new SemanticInputs(baseDsl, oursDsl, theirsDsl, base, ours, theirs, null);</span>
+        }
+    }
+
+    private static RevCommit findMergeBase(Repository repository,
+                                           RevCommit ours,
+                                           RevCommit theirs) throws IOException {
+<span class="fc" id="L148">        try (RevWalk baseWalk = new RevWalk(repository)) {</span>
+<span class="fc" id="L149">            baseWalk.setRevFilter(RevFilter.MERGE_BASE);</span>
+<span class="fc" id="L150">            baseWalk.markStart(baseWalk.parseCommit(ours));</span>
+<span class="fc" id="L151">            baseWalk.markStart(baseWalk.parseCommit(theirs));</span>
+<span class="fc" id="L152">            return baseWalk.next();</span>
+        }
+    }
+
+    private static MergeCommitResult createMergeCommit(DslGitRepository source,
+                                            RevCommit base,
+                                            RevCommit ours,
+                                            RevCommit theirs,
+                                            String intoBranch,
+                                            String fromBranch,
+                                            String mergedDsl,
+                                            String authorName,
+                                            String requestedMessage) throws IOException {
+<span class="fc" id="L165">        Repository repository = source.getGitRepository();</span>
+<span class="fc" id="L166">        source.verifyIncoming(theirs.name(), ours.name());</span>
+<span class="fc" id="L167">        PersonIdent actor = actor(authorName);</span>
+
+<span class="fc" id="L169">        try (ObjectInserter inserter = repository.newObjectInserter()) {</span>
+<span class="fc" id="L170">            ObjectId dslBlob = inserter.insert(Constants.OBJ_BLOB,</span>
+<span class="fc" id="L171">                    mergedDsl.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L172">            TreeMerge tree = mergeTrees(repository, inserter, base, ours, theirs, dslBlob);</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (!tree.conflicts().isEmpty()) {</span>
+<span class="fc" id="L174">                return new MergeCommitResult(null, tree.conflicts());</span>
+            }
+
+<span class="fc" id="L177">            CommitBuilder commit = new CommitBuilder();</span>
+<span class="fc" id="L178">            commit.setTreeId(tree.treeId());</span>
+<span class="fc" id="L179">            commit.setParentIds(ours, theirs);</span>
+<span class="fc" id="L180">            commit.setAuthor(actor);</span>
+<span class="fc" id="L181">            commit.setCommitter(actor);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            commit.setMessage(requestedMessage != null</span>
+<span class="fc" id="L183">                    ? requestedMessage</span>
+<span class="fc" id="L184">                    : &quot;Semantic merge branch '&quot; + fromBranch + &quot;' into &quot; + intoBranch);</span>
+<span class="fc" id="L185">            source.signCommit(commit, intoBranch);</span>
+<span class="fc" id="L186">            ObjectId commitId = inserter.insert(commit);</span>
+<span class="fc" id="L187">            inserter.flush();</span>
+
+<span class="fc" id="L189">            RefUpdate update = repository.updateRef(Constants.R_HEADS + intoBranch);</span>
+<span class="fc" id="L190">            update.setExpectedOldObjectId(ours);</span>
+<span class="fc" id="L191">            update.setNewObjectId(commitId);</span>
+<span class="fc" id="L192">            update.setRefLogIdent(actor);</span>
+<span class="fc" id="L193">            update.setRefLogMessage(&quot;semantic merge: &quot; + fromBranch + &quot; into &quot; + intoBranch, false);</span>
+<span class="fc" id="L194">            requireUpdated(update.update(), intoBranch);</span>
+<span class="fc" id="L195">            return new MergeCommitResult(commitId.name(), List.of());</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        }</span>
+    }
+
+    private static TreeMerge mergeTrees(Repository repository,
+                                        ObjectInserter inserter,
+                                        RevCommit base,
+                                        RevCommit ours,
+                                        RevCommit theirs,
+                                        ObjectId mergedDsl) throws IOException {
+        // Merge ordinary auxiliary files independently of the semantic DSL.
+        // Transfer evidence belongs to each original signed parent, not to the
+        // new merge object, so it must not participate in textual file merging.
+<span class="fc" id="L208">        ObjectId baseTree = auxiliaryTree(repository, inserter, base);</span>
+<span class="fc" id="L209">        ObjectId ourTree = auxiliaryTree(repository, inserter, ours);</span>
+<span class="fc" id="L210">        ObjectId theirTree = auxiliaryTree(repository, inserter, theirs);</span>
+<span class="fc" id="L211">        inserter.flush();</span>
+<span class="fc" id="L212">        ResolveMerger merger = (ResolveMerger) MergeStrategy.RESOLVE.newMerger(repository, true);</span>
+<span class="fc" id="L213">        merger.setBase(baseTree);</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (!merger.merge(ourTree, theirTree)) {</span>
+<span class="fc" id="L215">            var paths = new TreeSet&lt;&gt;(merger.getUnmergedPaths());</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (merger.getFailingPaths() != null) paths.addAll(merger.getFailingPaths().keySet());</span>
+<span class="fc" id="L217">            List&lt;String&gt; conflicts = paths.stream().map(path -&gt; &quot;file &quot; + path).toList();</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">            return new TreeMerge(null, conflicts.isEmpty()</span>
+<span class="pc" id="L219">                    ? List.of(&quot;Auxiliary files could not be merged&quot;) : conflicts);</span>
+        }
+
+<span class="fc" id="L222">        Map&lt;String, TreeEntry&gt; mergedFiles = readTree(repository, merger.getResultTreeId());</span>
+<span class="fc" id="L223">        List&lt;String&gt; conflicts = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L224">        mergedFiles.put(DSL_FILE, new TreeEntry(FileMode.REGULAR_FILE, mergedDsl));</span>
+<span class="fc" id="L225">        List&lt;String&gt; orderedPaths = mergedFiles.keySet().stream().sorted().toList();</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        for (int i = 0; i &lt; orderedPaths.size(); i++) {</span>
+<span class="fc" id="L227">            String path = orderedPaths.get(i);</span>
+<span class="pc bfc" id="L228" title="All 2 branches covered.">            for (int j = i + 1; j &lt; orderedPaths.size(); j++) {</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                if (orderedPaths.get(j).startsWith(path + &quot;/&quot;)) {</span>
+<span class="nc" id="L230">                    conflicts.add(&quot;file/directory conflict at &quot; + path);</span>
+<span class="nc" id="L231">                    break;</span>
+                }
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">                if (!orderedPaths.get(j).startsWith(path)) break;</span>
+            }
+        }
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        if (!conflicts.isEmpty()) return new TreeMerge(null, List.copyOf(conflicts));</span>
+
+<span class="fc" id="L238">        return new TreeMerge(writeTree(inserter, mergedFiles), List.of());</span>
+    }
+
+    private static ObjectId auxiliaryTree(Repository repository,
+                                          ObjectInserter inserter,
+                                          RevCommit commit) throws IOException {
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">        Map&lt;String, TreeEntry&gt; files = readTree(repository, commit == null ? null : commit.getTree());</span>
+<span class="fc" id="L245">        files.remove(DSL_FILE);</span>
+<span class="fc" id="L246">        files.remove(CommitProvenance.FILENAME);</span>
+<span class="fc" id="L247">        return writeTree(inserter, files);</span>
+    }
+
+    private static ObjectId writeTree(ObjectInserter inserter,
+                                      Map&lt;String, TreeEntry&gt; files) throws IOException {
+<span class="fc" id="L252">        DirCache cache = DirCache.newInCore();</span>
+<span class="fc" id="L253">        var builder = cache.builder();</span>
+<span class="fc" id="L254">        List&lt;DirCacheEntry&gt; entries = files.entrySet().stream()</span>
+<span class="fc" id="L255">                .map(entry -&gt; {</span>
+<span class="fc" id="L256">                    DirCacheEntry cacheEntry = new DirCacheEntry(entry.getKey());</span>
+<span class="fc" id="L257">                    cacheEntry.setFileMode(entry.getValue().mode());</span>
+<span class="fc" id="L258">                    cacheEntry.setObjectId(entry.getValue().objectId());</span>
+<span class="fc" id="L259">                    return cacheEntry;</span>
+                })
+<span class="fc" id="L261">                .sorted((left, right) -&gt; Arrays.compareUnsigned(left.getRawPath(), right.getRawPath()))</span>
+<span class="fc" id="L262">                .toList();</span>
+<span class="fc" id="L263">        entries.forEach(builder::add);</span>
+<span class="fc" id="L264">        builder.finish();</span>
+<span class="fc" id="L265">        return cache.writeTree(inserter);</span>
+    }
+
+    private static Map&lt;String, TreeEntry&gt; readTree(Repository repository, ObjectId treeId) throws IOException {
+<span class="fc" id="L269">        Map&lt;String, TreeEntry&gt; entries = new HashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        if (treeId == null) return entries;</span>
+<span class="fc" id="L271">        try (ObjectReader reader = repository.newObjectReader();</span>
+<span class="fc" id="L272">             TreeWalk tree = new TreeWalk(reader)) {</span>
+<span class="fc" id="L273">            tree.addTree(treeId);</span>
+<span class="fc" id="L274">            tree.setRecursive(true);</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">            while (tree.next()) {</span>
+<span class="fc" id="L276">                entries.put(tree.getPathString(), new TreeEntry(tree.getFileMode(0), tree.getObjectId(0)));</span>
+            }
+        }
+<span class="fc" id="L279">        return entries;</span>
+    }
+
+    private static PersonIdent actor(String authorName) {
+<span class="pc bpc" id="L283" title="2 of 4 branches missed.">        String effectiveAuthor = authorName == null || authorName.isBlank()</span>
+<span class="pc" id="L284">                ? &quot;semantic-merge&quot; : authorName.strip();</span>
+<span class="fc" id="L285">        return new PersonIdent(effectiveAuthor, &quot;noreply@taxonomy.local&quot;);</span>
+    }
+
+    private static String normalizeMessage(String message) {
+<span class="pc bpc" id="L289" title="1 of 4 branches missed.">        if (message == null || message.isBlank()) {</span>
+<span class="fc" id="L290">            return null;</span>
+        }
+<span class="fc" id="L292">        return message.strip();</span>
+    }
+
+    private static void requireUpdated(RefUpdate.Result result,
+                                       String branch) throws IOException {
+<span class="pc bpc" id="L297" title="6 of 8 branches missed.">        if (result != RefUpdate.Result.NEW</span>
+                &amp;&amp; result != RefUpdate.Result.FAST_FORWARD
+                &amp;&amp; result != RefUpdate.Result.FORCED
+                &amp;&amp; result != RefUpdate.Result.NO_CHANGE) {
+<span class="nc" id="L301">            throw new IOException(&quot;Could not update branch '&quot; + branch</span>
+                    + &quot;' after merge: &quot; + result);
+        }
+<span class="fc" id="L304">    }</span>
+
+    public record MergeOutcome(
+            boolean success,
+            String commitId,
+            boolean semanticFallback,
+            List&lt;String&gt; conflicts,
+            TaxDslMergeResult semanticResult) {
+<span class="fc" id="L312">        public MergeOutcome {</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">            conflicts = conflicts == null ? List.of() : List.copyOf(conflicts);</span>
+<span class="fc" id="L314">        }</span>
+    }
+
+<span class="fc" id="L317">    private record SemanticInputs(</span>
+            String baseDsl,
+            String oursDsl,
+            String theirsDsl,
+            RevCommit baseCommit,
+            RevCommit oursCommit,
+            RevCommit theirsCommit,
+            String error) {
+        static SemanticInputs error(String error) {
+<span class="fc" id="L326">            return new SemanticInputs(null, null, null, null, null, null, error);</span>
+        }
+    }
+
+<span class="fc" id="L330">    private record TreeEntry(FileMode mode, ObjectId objectId) { }</span>
+
+<span class="fc" id="L332">    private record TreeMerge(ObjectId treeId, List&lt;String&gt; conflicts) { }</span>
+
+<span class="fc" id="L334">    private record MergeCommitResult(String commitId, List&lt;String&gt; conflicts) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

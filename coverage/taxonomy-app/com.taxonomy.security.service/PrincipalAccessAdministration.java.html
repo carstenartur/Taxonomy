@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PrincipalAccessAdministration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.service</a> &gt; <span class="el_source">PrincipalAccessAdministration.java</span></div><h1>PrincipalAccessAdministration.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.service;
+
+import com.taxonomy.backup.BackupCapability;
+import com.taxonomy.backup.BackupRepositoryKey;
+import com.taxonomy.backup.PrincipalId;
+import com.taxonomy.security.keycloak.PrincipalJwtAuthenticationToken;
+import com.taxonomy.security.keycloak.PrincipalOidcUser;
+import com.taxonomy.security.model.PrincipalUserDetails;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import javax.sql.DataSource;
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.UUID;
+
+/** Grant changes and their stable-actor audit commit together; login roles are not backup grants. */
+@Service
+public final class PrincipalAccessAdministration {
+    private final JdbcTemplate jdbc;
+    private final PrincipalIdentityService identities;
+    private final TransactionTemplate transaction;
+    private final String lock;
+
+<span class="fc" id="L31">    public PrincipalAccessAdministration(DataSource database, PrincipalIdentityService identities) {</span>
+<span class="fc" id="L32">        this.identities = identities; jdbc = new JdbcTemplate(database);</span>
+<span class="fc" id="L33">        transaction = new TransactionTemplate(new DataSourceTransactionManager(database));</span>
+<span class="fc" id="L34">        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);</span>
+<span class="fc" id="L35">        transaction.setTimeout(30);</span>
+<span class="fc" id="L36">        try (var connection = database.getConnection()) {</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">            lock = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains(&quot;microsoft&quot;)</span>
+<span class="nc" id="L38">                    ? &quot;select installation_id from principal_installation with (updlock, holdlock) where registry_key='local'&quot;</span>
+<span class="fc" id="L39">                    : &quot;select installation_id from principal_installation where registry_key='local' for update&quot;;</span>
+<span class="pc" id="L40">        } catch (java.sql.SQLException error) { throw new IllegalStateException(&quot;Cannot inspect identity database&quot;, error); }</span>
+<span class="fc" id="L41">    }</span>
+
+    public void setCapability(Authentication authentication, PrincipalId target, BackupCapability capability, boolean granted) {
+<span class="fc" id="L44">        Objects.requireNonNull(capability);</span>
+<span class="fc" id="L45">        transaction.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L46">            jdbc.queryForObject(lock, String.class);</span>
+<span class="fc" id="L47">            PrincipalId actor = requireAdministrator(authentication);</span>
+<span class="fc" id="L48">            requireTarget(target);</span>
+<span class="fc" id="L49">            jdbc.update(&quot;delete from backup_capability_grant where principal_id=? and capability=?&quot;, target.value().toString(), capability.name());</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (granted) jdbc.update(&quot;insert into backup_capability_grant values (?, ?)&quot;, target.value().toString(), capability.name());</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            audit(actor, target, granted ? &quot;GRANT_CAPABILITY&quot; : &quot;REVOKE_CAPABILITY&quot;, capability.name());</span>
+<span class="fc" id="L52">        });</span>
+<span class="fc" id="L53">    }</span>
+
+    public void setVersionAccess(Authentication authentication, PrincipalId target, BackupRepositoryKey repository, String commit, boolean granted) {
+<span class="fc" id="L56">        Objects.requireNonNull(repository);</span>
+<span class="fc bfc" id="L57" title="All 6 branches covered.">        if (commit == null || !commit.matches(&quot;[0-9a-f]{40}&quot;) || repository.repositoryId().length() &gt; 255</span>
+<span class="fc bfc" id="L58" title="All 4 branches covered.">                || (repository.workspaceId() != null &amp;&amp; repository.workspaceId().length() &gt; 255)) {</span>
+<span class="fc" id="L59">            throw new IllegalArgumentException(&quot;A supported repository key and exact commit ID are required&quot;);</span>
+        }
+<span class="fc" id="L61">        transaction.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L62">            jdbc.queryForObject(lock, String.class);</span>
+<span class="fc" id="L63">            PrincipalId actor = requireAdministrator(authentication);</span>
+<span class="fc" id="L64">            requireTarget(target);</span>
+<span class="fc" id="L65">            String workspace = PrincipalIdentityService.versionScopeKey(repository);</span>
+<span class="fc" id="L66">            jdbc.update(&quot;delete from backup_version_grant where principal_id=? and repository_id=? and workspace_key=? and commit_id=?&quot;,</span>
+<span class="fc" id="L67">                    target.value().toString(), repository.repositoryId(), workspace, commit);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (granted) jdbc.update(&quot;insert into backup_version_grant values (?, ?, ?, ?)&quot;,</span>
+<span class="fc" id="L69">                    target.value().toString(), repository.repositoryId(), workspace, commit);</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            audit(actor, target, granted ? &quot;GRANT_VERSION&quot; : &quot;REVOKE_VERSION&quot;, repository.repositoryId() + &quot;/&quot; + workspace + &quot;@&quot; + commit);</span>
+<span class="fc" id="L71">        });</span>
+<span class="fc" id="L72">    }</span>
+
+    private PrincipalId requireAdministrator(Authentication authentication) {
+<span class="fc" id="L75">        PrincipalId actor = identities.require(authentication);</span>
+        boolean administrator;
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (authentication.getPrincipal() instanceof PrincipalUserDetails) {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            administrator = jdbc.queryForObject(&quot;select count(*) from app_user u join user_roles ur on ur.user_id=u.id join app_role r on r.id=ur.role_id where u.principal_id=? and r.name='ROLE_ADMIN'&quot;,</span>
+<span class="fc" id="L79">                    Integer.class, actor.value().toString()) &gt; 0;</span>
+        } else {
+<span class="pc bpc" id="L81" title="3 of 4 branches missed.">            administrator = (authentication instanceof PrincipalJwtAuthenticationToken || authentication.getPrincipal() instanceof PrincipalOidcUser)</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                    &amp;&amp; authentication.getAuthorities().stream().anyMatch(authority -&gt; &quot;ROLE_ADMIN&quot;.equals(authority.getAuthority()));</span>
+        }
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (!administrator) throw new AccessDeniedException(&quot;Current administrator authority required&quot;);</span>
+<span class="fc" id="L85">        return actor;</span>
+    }
+
+    private void requireTarget(PrincipalId target) {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (!identities.isEnabled(target)) throw new AccessDeniedException(&quot;Active mapped target identity required&quot;);</span>
+<span class="fc" id="L90">    }</span>
+
+    private void audit(PrincipalId actor, PrincipalId target, String decision, String detail) {
+<span class="fc" id="L93">        jdbc.update(&quot;insert into principal_access_audit values (?, ?, ?, ?, ?, ?)&quot;, UUID.randomUUID().toString(),</span>
+<span class="fc" id="L94">                actor.value().toString(), target.value().toString(), decision, detail, Instant.now().toEpochMilli());</span>
+<span class="fc" id="L95">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

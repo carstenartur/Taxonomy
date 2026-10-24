@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>Pf4jPluginRuntime.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-runtime</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.runtime</a> &gt; <span class="el_source">Pf4jPluginRuntime.java</span></div><h1>Pf4jPluginRuntime.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.runtime;
+
+import com.taxonomy.extension.api.plugin.*;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.shared.extension.TaxonomyExtension;
+import org.pf4j.*;
+
+import java.io.IOException;
+import java.nio.file.*;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
+import java.util.*;
+
+/** Private PF4J adapter. Host contracts, admission, publication and draining remain host-owned. */
+public final class Pf4jPluginRuntime implements AutoCloseable {
+    private final Path root;
+    private final Path cache;
+    private final PluginCatalog catalog;
+<span class="fc" id="L20">    private final PluginArtifactValidator validator = new PluginArtifactValidator();</span>
+<span class="fc" id="L21">    private final Map&lt;String, Installed&gt; installed = new LinkedHashMap&lt;&gt;();</span>
+    private final DefaultPluginManager manager;
+    private boolean closed;
+
+<span class="fc" id="L25">    public Pf4jPluginRuntime(Path root, Path cache, PluginCatalog catalog) {</span>
+<span class="fc" id="L26">        this.catalog = Objects.requireNonNull(catalog);</span>
+        try {
+<span class="fc" id="L28">            this.root = Files.createDirectories(root).toRealPath();</span>
+<span class="fc" id="L29">            Path parent = Files.createDirectories(cache).toRealPath();</span>
+<span class="fc" id="L30">            this.cache = Files.createTempDirectory(parent, &quot;taxonomy-plugins-&quot;);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">            if (Files.getFileStore(this.cache).supportsFileAttributeView(&quot;posix&quot;))</span>
+<span class="fc" id="L32">                Files.setPosixFilePermissions(this.cache, PosixFilePermissions.fromString(&quot;rwx------&quot;));</span>
+<span class="pc" id="L33">        } catch (IOException failure) { throw new IllegalArgumentException(&quot;Cannot prepare local plugin directories&quot;, failure); }</span>
+<span class="fc" id="L34">        manager = new LocalPluginManager(this.cache, validator);</span>
+<span class="fc" id="L35">        manager.setSystemVersion(com.taxonomy.extension.api.plugin.PluginDescriptor.HOST_API_VERSION);</span>
+<span class="fc" id="L36">    }</span>
+
+    public synchronized PluginIdentity install(Path artifact) {
+<span class="fc" id="L39">        return install(artifact, null);</span>
+    }
+
+    /** Verify an earlier selection against the authoritative immutable bytes before opening a loader. */
+    public synchronized PluginIdentity install(Path artifact, PluginIdentity expected) {
+<span class="fc" id="L44">        ensureOpen();</span>
+<span class="fc" id="L45">        Path copy = null;</span>
+<span class="fc" id="L46">        String loaded = null;</span>
+        try {
+<span class="fc" id="L48">            Path source = artifact.toAbsolutePath().normalize();</span>
+<span class="fc bfc" id="L49" title="All 4 branches covered.">            if (!source.startsWith(root) || Files.isSymbolicLink(source)</span>
+<span class="pc bpc" id="L50" title="2 of 4 branches missed.">                    || !source.toRealPath().startsWith(root) || !Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                    || !source.getFileName().toString().endsWith(&quot;.jar&quot;))</span>
+<span class="fc" id="L52">                throw new IllegalArgumentException(&quot;Plugin artifact must be a local JAR inside the configured directory&quot;);</span>
+            // Every loader owns a private copy. Replacement of the operator file cannot affect it.
+<span class="fc" id="L54">            copy = Files.createTempFile(cache, &quot;admission-&quot;, &quot;.jar&quot;);</span>
+<span class="fc" id="L55">            Files.copy(source, copy, StandardCopyOption.REPLACE_EXISTING);</span>
+<span class="fc" id="L56">            var descriptor = validator.validate(copy);</span>
+<span class="fc bfc" id="L57" title="All 4 branches covered.">            if (expected != null &amp;&amp; !expected.equals(descriptor.identity()))</span>
+<span class="fc" id="L58">                throw new IllegalArgumentException(&quot;Plugin artifact changed before admission&quot;);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (installed.containsKey(descriptor.identity().id()))</span>
+<span class="fc" id="L60">                throw new IllegalArgumentException(&quot;Duplicate plugin ID: &quot; + descriptor.identity().id());</span>
+<span class="fc" id="L61">            catalog.validateDescriptor(descriptor);</span>
+<span class="fc" id="L62">            Path immutable = cache.resolve(descriptor.identity().artifactSha256() + &quot;.jar&quot;);</span>
+<span class="fc" id="L63">            Files.move(copy, immutable); copy = immutable;</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            if (Files.getFileStore(copy).supportsFileAttributeView(&quot;posix&quot;))</span>
+<span class="fc" id="L65">                Files.setPosixFilePermissions(copy, PosixFilePermissions.fromString(&quot;r--------&quot;));</span>
+<span class="fc" id="L66">            loaded = manager.loadPlugin(copy);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            if (!descriptor.identity().id().equals(loaded)) throw new IllegalStateException(&quot;Plugin loader identity mismatch&quot;);</span>
+<span class="fc" id="L68">            installed.put(loaded, new Installed(descriptor, copy));</span>
+<span class="fc" id="L69">            return descriptor.identity();</span>
+<span class="fc" id="L70">        } catch (IOException | RuntimeException failure) {</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            if (loaded != null) { String id=loaded; cleanup(() -&gt; manager.unloadPlugin(id), failure); }</span>
+<span class="fc" id="L72">            deleteCopy(copy, failure);</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">            if (failure instanceof IllegalArgumentException invalid) throw invalid;</span>
+<span class="nc" id="L74">            throw new IllegalArgumentException(&quot;Cannot install local plugin artifact&quot;, failure);</span>
+        }
+    }
+
+    public synchronized void start(String pluginId) {
+<span class="fc" id="L79">        ensureOpen();</span>
+<span class="fc" id="L80">        Installed plugin = requireInstalled(pluginId);</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        if (plugin.started) throw new IllegalStateException(&quot;Plugin is already started: &quot; + pluginId);</span>
+        try {
+<span class="fc" id="L83">            catalog.validateDescriptor(plugin.descriptor);</span>
+<span class="fc" id="L84">            ClassLoader loader = manager.getPluginClassLoader(pluginId);</span>
+<span class="fc" id="L85">            List&lt;TaxonomyExtension&gt; contributions = new ArrayList&lt;&gt;();</span>
+            // Parent service providers must never be mistaken for entries in this artifact.
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            for (var provider : ServiceLoader.load(TaxonomyPlugin.class, loader).stream().toList()) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                if (provider.type().getClassLoader() != loader) continue;</span>
+<span class="fc" id="L89">                TaxonomyPlugin instance = provider.get(); plugin.instances.add(instance);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                for (TaxonomyExtension extension : List.copyOf(instance.extensions())) {</span>
+<span class="pc bpc" id="L91" title="1 of 6 branches missed.">                    if (plugin.descriptor.mode() == PluginMode.DYNAMIC</span>
+                            &amp;&amp; !(extension instanceof ReportRendererExtension)
+                            &amp;&amp; !(extension instanceof ExportFormatExtension))
+<span class="nc" id="L94">                        throw new IllegalArgumentException(&quot;DYNAMIC plugins require an export or report renderer contract&quot;);</span>
+<span class="fc" id="L95">                    contributions.add(extension);</span>
+<span class="fc" id="L96">                }</span>
+<span class="fc" id="L97">            }</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (plugin.instances.isEmpty()) throw new IllegalStateException(&quot;No local TaxonomyPlugin service provider&quot;);</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (manager.startPlugin(pluginId) != PluginState.STARTED)</span>
+<span class="nc" id="L100">                throw new IllegalStateException(&quot;Plugin loader did not start: &quot; + pluginId);</span>
+<span class="fc" id="L101">            catalog.publish(plugin.descriptor, contributions);</span>
+<span class="fc" id="L102">            plugin.started = true;</span>
+<span class="fc" id="L103">        } catch (RuntimeException | LinkageError | ServiceConfigurationError failure) {</span>
+<span class="fc" id="L104">            closeInstances(plugin, failure);</span>
+<span class="fc" id="L105">            cleanup(() -&gt; manager.stopPlugin(pluginId), failure);</span>
+<span class="fc" id="L106">            cleanup(() -&gt; {</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                if (!manager.unloadPlugin(pluginId)) throw new IllegalStateException(&quot;Failed plugin loader could not unload&quot;);</span>
+<span class="fc" id="L108">            }, failure);</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">            if (manager.getPlugin(pluginId) == null) {</span>
+<span class="fc" id="L110">                installed.remove(pluginId); deleteCopy(plugin.path, failure);</span>
+            } // Otherwise retain the failed loader's inventory so an operator can retry cleanup.
+
+<span class="fc" id="L113">            throw new IllegalStateException(&quot;Plugin start rejected: &quot; + pluginId, failure);</span>
+<span class="fc" id="L114">        }</span>
+<span class="fc" id="L115">    }</span>
+
+    public synchronized boolean stop(String pluginId, Duration timeout) throws InterruptedException {
+<span class="fc" id="L118">        Installed plugin = requireInstalled(pluginId);</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        if (!plugin.started) return true;</span>
+<span class="fc" id="L120">        catalog.beginDraining(plugin.descriptor.identity());</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (!catalog.awaitReleased(plugin.descriptor.identity(), timeout)) return false;</span>
+<span class="fc" id="L122">        RuntimeException closeFailure = new IllegalStateException(&quot;Plugin resource cleanup failed: &quot; + pluginId);</span>
+<span class="fc" id="L123">        closeInstances(plugin, closeFailure);</span>
+<span class="fc" id="L124">        manager.stopPlugin(pluginId);</span>
+<span class="fc" id="L125">        catalog.remove(plugin.descriptor.identity());</span>
+<span class="fc" id="L126">        plugin.started = false;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (closeFailure.getSuppressed().length != 0) throw closeFailure;</span>
+<span class="fc" id="L128">        return true;</span>
+    }
+
+    public synchronized void unload(String pluginId) {
+<span class="fc" id="L132">        Installed plugin = requireInstalled(pluginId);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (plugin.started) throw new IllegalStateException(&quot;Plugin must finish draining before unloading: &quot; + pluginId);</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        if (!manager.unloadPlugin(pluginId)) throw new IllegalStateException(&quot;Plugin loader could not unload: &quot; + pluginId);</span>
+<span class="fc" id="L135">        installed.remove(pluginId);</span>
+<span class="fc" id="L136">        try { Files.deleteIfExists(plugin.path); }</span>
+<span class="pc" id="L137">        catch (IOException failure) { throw new IllegalStateException(&quot;Cannot remove private plugin copy&quot;, failure); }</span>
+<span class="fc" id="L138">    }</span>
+
+    public synchronized List&lt;com.taxonomy.extension.api.plugin.PluginDescriptor&gt; installed() {
+<span class="fc" id="L141">        return installed.values().stream().map(p -&gt; p.descriptor)</span>
+<span class="fc" id="L142">                .sorted(Comparator.comparing(p -&gt; p.identity().id())).toList();</span>
+    }
+
+<span class="fc" id="L145">    synchronized int openClassLoaders() { return manager.getPlugins().size(); }</span>
+
+<span class="fc" id="L147">    public synchronized boolean isStarted(String id) { return requireInstalled(id).started; }</span>
+    public synchronized boolean isDraining(String id) {
+<span class="fc" id="L149">        Installed plugin = requireInstalled(id);</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">        return plugin.started &amp;&amp; catalog.isDraining(plugin.descriptor.identity());</span>
+    }
+
+    @Override public synchronized void close() {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (closed) return;</span>
+<span class="fc" id="L155">        RuntimeException cleanupFailures = new IllegalStateException(&quot;Plugin shutdown cleanup failed&quot;);</span>
+<span class="fc" id="L156">        List&lt;String&gt; remaining = new ArrayList&lt;&gt;(installed.keySet());</span>
+        // Dependents first, irrespective of installation order.
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        while (!remaining.isEmpty()) {</span>
+<span class="fc" id="L159">            String id = remaining.stream().filter(candidate -&gt; remaining.stream().noneMatch(other -&gt;</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                    !other.equals(candidate) &amp;&amp; installed.get(other).descriptor.requires().stream()</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                            .anyMatch(r -&gt; r.id().equals(candidate)))).findFirst()</span>
+<span class="pc" id="L162">                    .orElseThrow(() -&gt; new IllegalStateException(&quot;Plugin dependency cycle during shutdown&quot;));</span>
+            try {
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                if (!stop(id, Duration.ofSeconds(30))) throw new IllegalStateException(&quot;Plugin still draining: &quot; + id);</span>
+<span class="nc" id="L165">            } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L166">                Thread.currentThread().interrupt(); throw new IllegalStateException(&quot;Plugin shutdown interrupted&quot;, interrupted);</span>
+<span class="fc" id="L167">            } catch (RuntimeException failure) {</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                if (requireInstalled(id).started) throw failure;</span>
+<span class="fc" id="L169">                cleanupFailures.addSuppressed(failure);</span>
+<span class="fc" id="L170">            }</span>
+<span class="fc" id="L171">            unload(id); remaining.remove(id);</span>
+<span class="fc" id="L172">        }</span>
+<span class="fc" id="L173">        try { Files.deleteIfExists(cache); }</span>
+<span class="pc" id="L174">        catch (IOException failure) { throw new IllegalStateException(&quot;Cannot remove private plugin directory&quot;, failure); }</span>
+<span class="fc" id="L175">        closed = true;</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (cleanupFailures.getSuppressed().length &gt; 0) throw cleanupFailures;</span>
+<span class="fc" id="L177">    }</span>
+
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">    private void ensureOpen() { if (closed) throw new IllegalStateException(&quot;Plugin runtime is closed&quot;); }</span>
+    private Installed requireInstalled(String id) {
+<span class="fc" id="L181">        Installed plugin = installed.get(id);</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (plugin == null) throw new IllegalArgumentException(&quot;Plugin is not installed: &quot; + id);</span>
+<span class="fc" id="L183">        return plugin;</span>
+    }
+    private static void cleanup(Runnable action, Throwable failure) {
+<span class="fc" id="L186">        try { action.run(); }</span>
+<span class="nc" id="L187">        catch (RuntimeException | LinkageError | ServiceConfigurationError cleanup) {</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">            if (cleanup != failure) failure.addSuppressed(cleanup);</span>
+<span class="fc" id="L189">        }</span>
+<span class="fc" id="L190">    }</span>
+    private static void closeInstances(Installed plugin, Throwable failure) {
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        for (int i = plugin.instances.size() - 1; i &gt;= 0; i--) {</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">            try { plugin.instances.get(i).close(); } catch (RuntimeException | LinkageError | ServiceConfigurationError close) { if (failure != close) failure.addSuppressed(close); }</span>
+        }
+<span class="fc" id="L195">        plugin.instances.clear();</span>
+<span class="fc" id="L196">    }</span>
+    private static void deleteCopy(Path path, Throwable failure) {
+<span class="pc bfc" id="L198" title="All 2 branches covered.">        if (path != null) try { Files.deleteIfExists(path); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }</span>
+<span class="fc" id="L199">    }</span>
+    private static final class Installed {
+        final com.taxonomy.extension.api.plugin.PluginDescriptor descriptor;
+        final Path path;
+<span class="fc" id="L203">        final List&lt;TaxonomyPlugin&gt; instances = new ArrayList&lt;&gt;();</span>
+        boolean started;
+<span class="fc" id="L205">        Installed(com.taxonomy.extension.api.plugin.PluginDescriptor descriptor, Path path) {</span>
+<span class="fc" id="L206">            this.descriptor = descriptor; this.path = path;</span>
+<span class="fc" id="L207">        }</span>
+    }
+
+    private static final class LocalPluginManager extends DefaultPluginManager {
+        private final PluginArtifactValidator validator;
+<span class="fc" id="L212">        LocalPluginManager(Path cache, PluginArtifactValidator validator) { super(cache); this.validator = validator; }</span>
+        @Override protected PluginDescriptorFinder createPluginDescriptorFinder() {
+<span class="fc" id="L214">            return new PluginDescriptorFinder() {</span>
+<span class="nc" id="L215">                public boolean isApplicable(Path path) { return path.toString().endsWith(&quot;.jar&quot;); }</span>
+                public org.pf4j.PluginDescriptor find(Path path) {
+<span class="fc" id="L217">                    var descriptor = validator.validate(path);</span>
+                    // Dependencies are host capabilities, not access to another plugin's private classes.
+                    // Catalog admission and drain validate them, including dependencies on built-ins.
+<span class="fc" id="L220">                    return new DefaultPluginDescriptor(descriptor.identity().id(), &quot;Taxonomy plugin&quot;,</span>
+<span class="fc" id="L221">                            Plugin.class.getName(), descriptor.identity().version(), descriptor.hostApiRange(), &quot;&quot;, &quot;&quot;);</span>
+                }
+            };
+        }
+        @Override protected PluginLoader createPluginLoader() {
+<span class="fc" id="L226">            return new JarPluginLoader(this) {</span>
+                @Override protected PluginClassLoader createPluginClassLoader(Path path, org.pf4j.PluginDescriptor descriptor) {
+<span class="fc" id="L228">                    return new PluginClassLoader(pluginManager, descriptor, TaxonomyPlugin.class.getClassLoader(), ClassLoadingStrategy.PDA) {</span>
+                        @Override protected boolean shouldDelegateToParent(String name) {
+<span class="fc bfc" id="L230" title="All 4 branches covered.">                            return (name.startsWith(&quot;com.taxonomy.&quot;) &amp;&amp; !name.startsWith(&quot;com.taxonomy.plugins.&quot;))</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                                    || super.shouldDelegateToParent(name);</span>
+                        }
+                    };
+                }
+            };
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

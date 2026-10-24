@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortableDocumentSourceReferences.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.backup</a> &gt; <span class="el_source">PortableDocumentSourceReferences.java</span></div><h1>PortableDocumentSourceReferences.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.backup;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import java.io.IOException;
+import java.util.*;
+
+/** Resolves inline provenance against this exact document, never against a newer live record. */
+final class PortableDocumentSourceReferences {
+    private PortableDocumentSourceReferences() { }
+
+    static void requireClosed(DocumentAst document) throws IOException {
+<span class="fc" id="L13">        Map&lt;String, BlockAst&gt; sources = index(document, &quot;source&quot;);</span>
+<span class="fc" id="L14">        Map&lt;String, BlockAst&gt; versions = index(document, &quot;sourceVersion&quot;);</span>
+<span class="fc" id="L15">        Map&lt;String, BlockAst&gt; fragments = index(document, &quot;sourceFragment&quot;);</span>
+<span class="fc" id="L16">        Set&lt;String&gt; requirements = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        for (var block : document.getBlocks()) {</span>
+<span class="pc bpc" id="L18" title="1 of 4 branches missed.">            if (block.getKind().equals(&quot;requirement&quot;) &amp;&amp; block.getHeaderTokens().size() == 1)</span>
+<span class="fc" id="L19">                requirements.add(block.getHeaderTokens().getFirst());</span>
+<span class="fc" id="L20">        }</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        for (var version : versions.values()) require(sources, version.property(&quot;source&quot;));</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        for (var fragment : fragments.values()) {</span>
+<span class="fc" id="L23">            require(versions, fragment.property(&quot;sourceVersion&quot;));</span>
+<span class="fc" id="L24">            String parent = fragment.property(&quot;parentFragment&quot;);</span>
+<span class="fc bfc" id="L25" title="All 4 branches covered.">            if (parent != null &amp;&amp; !Objects.equals(require(fragments, parent).property(&quot;sourceVersion&quot;), fragment.property(&quot;sourceVersion&quot;)))</span>
+<span class="fc" id="L26">                throw new IOException(&quot;Inconsistent document source fragment ancestry&quot;);</span>
+<span class="fc" id="L27">        }</span>
+        // Iterative walk bounds stack usage and verifies cycles once for the entire document.
+<span class="fc" id="L29">        Set&lt;String&gt; resolved = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (String start : fragments.keySet()) {</span>
+<span class="fc" id="L31">            Set&lt;String&gt; path = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L32">            String id = start;</span>
+<span class="pc bpc" id="L33" title="1 of 4 branches missed.">            while (id != null &amp;&amp; !resolved.contains(id)) {</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">                if (!path.add(id)) throw new IOException(&quot;Cyclic document source fragment ancestry&quot;);</span>
+<span class="fc" id="L35">                id = require(fragments, id).property(&quot;parentFragment&quot;);</span>
+            }
+<span class="fc" id="L37">            resolved.addAll(path);</span>
+<span class="fc" id="L38">        }</span>
+<span class="fc bfc" id="L39" title="All 4 branches covered.">        for (var block : document.getBlocks()) if (block.getKind().equals(&quot;requirementSourceLink&quot;)) {</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            if (!requirements.contains(block.property(&quot;requirement&quot;))) throw new IOException(&quot;Missing document requirement reference&quot;);</span>
+<span class="fc" id="L41">            String source = block.property(&quot;source&quot;), version = block.property(&quot;sourceVersion&quot;);</span>
+<span class="fc" id="L42">            require(sources, source);</span>
+<span class="fc" id="L43">            String fragment = block.property(&quot;sourceFragment&quot;);</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            if (fragment != null) {</span>
+<span class="fc" id="L45">                String fragmentVersion = require(fragments, fragment).property(&quot;sourceVersion&quot;);</span>
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">                if (version != null &amp;&amp; !version.equals(fragmentVersion)) throw new IOException(&quot;Inconsistent document fragment version reference&quot;);</span>
+<span class="fc" id="L47">                version = fragmentVersion;</span>
+            }
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">            if (version != null &amp;&amp; !source.equals(require(versions, version).property(&quot;source&quot;)))</span>
+<span class="fc" id="L50">                throw new IOException(&quot;Inconsistent document source version reference&quot;);</span>
+        }
+<span class="fc" id="L52">    }</span>
+
+    private static Map&lt;String, BlockAst&gt; index(DocumentAst document, String kind) throws IOException {
+<span class="fc" id="L55">        Map&lt;String, BlockAst&gt; blocks = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 4 branches covered.">        for (var block : document.getBlocks()) if (block.getKind().equals(kind)) {</span>
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">            if (block.getHeaderTokens().size() != 1 || blocks.putIfAbsent(block.getHeaderTokens().getFirst(), block) != null)</span>
+<span class="nc" id="L58">                throw new IOException(&quot;Invalid or duplicate document source identity&quot;);</span>
+        }
+<span class="fc" id="L60">        return blocks;</span>
+    }
+
+    private static BlockAst require(Map&lt;String, BlockAst&gt; blocks, String id) throws IOException {
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        BlockAst block = id == null ? null : blocks.get(id);</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (block == null) throw new IOException(&quot;Missing document source reference&quot;);</span>
+<span class="fc" id="L66">        return block;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

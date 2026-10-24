@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PlanningInformation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.planning</a> &gt; <span class="el_source">PlanningInformation.java</span></div><h1>PlanningInformation.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.planning;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+
+/** Bounded namespace on the existing canonical requirement, not an additional authoring store. */
+public final class PlanningInformation {
+    public static final String PREFIX = &quot;x-planning.&quot;;
+    public static final int MAX_ENTRIES = 32;
+    public static final int MAX_CHARACTERS = 65536;
+<span class="fc" id="L20">    private record Key(String id, String version) {}</span>
+<span class="fc" id="L21">    public record View(PlanningEntry entry, boolean supported, String problem) {}</span>
+    private final Map&lt;Key, PlanningProfile&gt; profiles;
+
+<span class="fc" id="L24">    public PlanningInformation() { this(installedProfiles()); }</span>
+    private static List&lt;PlanningProfile&gt; installedProfiles() {
+<span class="fc" id="L26">        List&lt;PlanningProfile&gt; result = new ArrayList&lt;&gt;(List.of(new GoLiveProfile(), new StandardReferenceProfile()));</span>
+<span class="fc" id="L27">        java.util.ServiceLoader.load(PlanningProfile.class).forEach(result::add);</span>
+<span class="fc" id="L28">        return result;</span>
+    }
+<span class="fc" id="L30">    public PlanningInformation(List&lt;PlanningProfile&gt; extensions) {</span>
+<span class="fc" id="L31">        Map&lt;Key, PlanningProfile&gt; registry = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        for (PlanningProfile profile : extensions) {</span>
+<span class="fc" id="L33">            var d = profile.descriptor();</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            if (registry.putIfAbsent(new Key(d.id(), d.version()), profile) != null)</span>
+<span class="fc" id="L35">                throw new IllegalArgumentException(&quot;Duplicate planning profile and version&quot;);</span>
+<span class="fc" id="L36">        }</span>
+<span class="fc" id="L37">        profiles = Map.copyOf(registry);</span>
+<span class="fc" id="L38">    }</span>
+    public List&lt;PlanningProfile.Descriptor&gt; descriptors() {
+<span class="fc" id="L40">        return profiles.values().stream().map(PlanningProfile::descriptor)</span>
+<span class="fc" id="L41">                .sorted(java.util.Comparator.comparing(PlanningProfile.Descriptor::id).thenComparing(PlanningProfile.Descriptor::version)).toList();</span>
+    }
+<span class="fc" id="L43">    public boolean supports(String profile, String version) { return profiles.containsKey(new Key(profile, version)); }</span>
+    public void validatePortable(PlanningEntry entry) {
+<span class="nc" id="L45">        PlanningProfile profile = profiles.get(new Key(entry.profile(), entry.version()));</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        if (profile != null) profile.validate(entry.values());</span>
+<span class="nc" id="L47">    }</span>
+
+    public List&lt;View&gt; read(String dsl, String requirement) {
+<span class="fc" id="L50">        return read(new ArchitectureDslCommands().model(dsl), requirement);</span>
+    }
+    public List&lt;View&gt; read(CanonicalArchitectureModel model, String requirement) {
+<span class="fc" id="L53">        var req = model.getRequirements().stream().filter(r -&gt; requirement.equals(r.getId())).findFirst()</span>
+<span class="pc" id="L54">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown canonical requirement&quot;));</span>
+<span class="fc" id="L55">        List&lt;View&gt; result = new ArrayList&lt;&gt;();</span>
+        List&lt;PlanningEntry&gt; decoded;
+<span class="fc" id="L57">        try { decoded = decode(req.getExtensions()); }</span>
+<span class="fc" id="L58">        catch (IllegalArgumentException invalid) {</span>
+            // Keep the original namespace untouched in DSL. Do not fabricate an editable identity.
+<span class="fc" id="L60">            return List.of(new View(null, false, &quot;INVALID_PLANNING_NAMESPACE&quot;));</span>
+<span class="fc" id="L61">        }</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (PlanningEntry stored : decoded) {</span>
+<span class="fc" id="L63">            PlanningProfile profile = profiles.get(new Key(stored.profile(), stored.version()));</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (profile == null) { result.add(new View(stored, false, &quot;UNSUPPORTED_PROFILE_VERSION&quot;)); continue; }</span>
+            try {
+<span class="fc" id="L66">                result.add(new View(new PlanningEntry(stored.id(), stored.profile(), stored.version(), stored.origin(),</span>
+<span class="fc" id="L67">                        profile.read(model, requirement, stored.values())), true, null));</span>
+<span class="fc" id="L68">            } catch (IllegalArgumentException invalid) {</span>
+                // Retain malformed evidence but never silently interpret it as a valid planning fact.
+<span class="fc" id="L70">                result.add(new View(stored, false, &quot;INVALID_PROFILE_DATA&quot;));</span>
+<span class="fc" id="L71">            }</span>
+<span class="fc" id="L72">        }</span>
+<span class="fc" id="L73">        return List.copyOf(result);</span>
+    }
+    public String upsert(String dsl, String requirement, PlanningEntry entry, boolean preserveUnknown) {
+<span class="fc" id="L76">        BlockAst before = require(dsl, requirement);</span>
+<span class="fc" id="L77">        List&lt;PlanningEntry&gt; current = decode(properties(before));</span>
+<span class="fc" id="L78">        PlanningProfile profile = profiles.get(new Key(entry.profile(), entry.version()));</span>
+<span class="fc" id="L79">        PlanningEntry previous = current.stream().filter(e -&gt; e.id().equals(entry.id())).findFirst().orElse(null);</span>
+<span class="fc bfc" id="L80" title="All 8 branches covered.">        if (!preserveUnknown &amp;&amp; (profile == null || previous != null &amp;&amp; !supports(previous.profile(), previous.version())))</span>
+<span class="fc" id="L81">            throw new IllegalArgumentException(&quot;Unknown planning profiles are read-only&quot;);</span>
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">        if (previous != null &amp;&amp; !previous.profile().equals(entry.profile()))</span>
+<span class="nc" id="L83">            throw new IllegalArgumentException(&quot;A planning entry cannot change its profile identity; remove it explicitly first&quot;);</span>
+        // An unknown incoming version is opaque evidence, not authority to remove a known projection.
+<span class="pc bpc" id="L85" title="1 of 6 branches missed.">        if (profile != null &amp;&amp; previous != null &amp;&amp; !previous.version().equals(entry.version())) {</span>
+<span class="nc" id="L86">            PlanningProfile previousProfile = profiles.get(new Key(previous.profile(), previous.version()));</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">            if (previousProfile != null) dsl = previousProfile.remove(dsl, requirement, entry.id(), previous.values());</span>
+        }
+<span class="fc" id="L89">        Map&lt;String, String&gt; stored = entry.values();</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (profile != null) {</span>
+<span class="fc" id="L91">            var normalized = profile.store(dsl, requirement, entry.id(), entry.values());</span>
+<span class="fc" id="L92">            dsl = normalized.dsl(); stored = normalized.values();</span>
+        }
+<span class="fc" id="L94">        Map&lt;String, String&gt; values = properties(require(dsl, requirement));</span>
+<span class="fc" id="L95">        String prefix = PREFIX + entry.id() + &quot;.&quot;;</span>
+<span class="fc" id="L96">        values.keySet().removeIf(k -&gt; k.startsWith(prefix));</span>
+<span class="fc" id="L97">        values.put(prefix + &quot;profile&quot;, entry.profile()); values.put(prefix + &quot;version&quot;, entry.version());</span>
+<span class="fc" id="L98">        values.put(prefix + &quot;origin&quot;, entry.origin());</span>
+<span class="fc" id="L99">        stored.forEach((key, value) -&gt; values.put(prefix + &quot;value.&quot; + key, value));</span>
+<span class="fc" id="L100">        decode(values); // Bounds apply to the complete requirement, not merely the new entry.</span>
+<span class="fc" id="L101">        return replaceRequirement(dsl, require(dsl, requirement), values);</span>
+    }
+    public String remove(String dsl, String requirement, String id) {
+<span class="fc" id="L104">        PlanningEntry.token(id, &quot;entry id&quot;);</span>
+<span class="fc" id="L105">        BlockAst block = require(dsl, requirement);</span>
+<span class="fc" id="L106">        PlanningEntry entry = decode(properties(block)).stream().filter(e -&gt; id.equals(e.id())).findFirst()</span>
+<span class="pc" id="L107">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown planning entry&quot;));</span>
+<span class="fc" id="L108">        PlanningProfile profile = profiles.get(new Key(entry.profile(), entry.version()));</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        if (profile != null) dsl = profile.remove(dsl, requirement, id, entry.values());</span>
+<span class="fc" id="L110">        Map&lt;String, String&gt; values = properties(require(dsl, requirement));</span>
+<span class="fc" id="L111">        values.keySet().removeIf(k -&gt; k.startsWith(PREFIX + id + &quot;.&quot;));</span>
+<span class="fc" id="L112">        return replaceRequirement(dsl, require(dsl, requirement), values);</span>
+    }
+    /** Portfolio regeneration owns text and business fields, but not workspace planning annotations. */
+    public static BlockAst retain(BlockAst generated, BlockAst existing) {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (existing == null) return generated;</span>
+<span class="fc" id="L117">        Map&lt;String, String&gt; values = properties(generated);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        properties(existing).forEach((key, value) -&gt; { if (key.startsWith(PREFIX)) values.put(key, value); });</span>
+<span class="fc" id="L119">        return copy(generated, values);</span>
+    }
+    public static List&lt;PlanningEntry&gt; decode(Map&lt;String, String&gt; properties) {
+<span class="fc" id="L122">        Map&lt;String, Map&lt;String, String&gt;&gt; groups = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L123">        int characters = 0;</span>
+<span class="fc bfc" id="L124" title="All 4 branches covered.">        for (var property : properties.entrySet()) if (property.getKey().startsWith(PREFIX)) {</span>
+<span class="fc" id="L125">            String suffix = property.getKey().substring(PREFIX.length());</span>
+<span class="fc" id="L126">            int separator = suffix.indexOf('.');</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">            if (separator &lt;= 0) throw new IllegalArgumentException(&quot;Malformed planning namespace&quot;);</span>
+<span class="fc" id="L128">            String id = suffix.substring(0, separator); PlanningEntry.token(id, &quot;entry id&quot;);</span>
+<span class="fc" id="L129">            groups.computeIfAbsent(id, ignored -&gt; new TreeMap&lt;&gt;()).put(suffix.substring(separator + 1), property.getValue());</span>
+<span class="fc" id="L130">            characters += property.getKey().length() + property.getValue().length();</span>
+<span class="pc bpc" id="L131" title="2 of 4 branches missed.">            if (characters &gt; MAX_CHARACTERS || groups.size() &gt; MAX_ENTRIES) throw new IllegalArgumentException(&quot;Planning metadata exceeds the requirement budget&quot;);</span>
+        }
+<span class="fc" id="L133">        List&lt;PlanningEntry&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        for (var group : groups.entrySet()) {</span>
+<span class="fc" id="L135">            Map&lt;String, String&gt; metadata = group.getValue(), values = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            for (var value : metadata.entrySet()) {</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                if (value.getKey().startsWith(&quot;value.&quot;)) values.put(value.getKey().substring(6), value.getValue());</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                else if (!List.of(&quot;profile&quot;, &quot;version&quot;, &quot;origin&quot;).contains(value.getKey())) throw new IllegalArgumentException(&quot;Unknown planning envelope field&quot;);</span>
+<span class="fc" id="L139">            }</span>
+<span class="fc" id="L140">            result.add(new PlanningEntry(group.getKey(), metadata.get(&quot;profile&quot;), metadata.get(&quot;version&quot;), metadata.get(&quot;origin&quot;), values));</span>
+<span class="fc" id="L141">        }</span>
+<span class="fc" id="L142">        return List.copyOf(result);</span>
+    }
+    private static BlockAst require(String dsl, String requirement) {
+<span class="fc" id="L145">        BlockAst block = ArchitectureSemanticPatch.index(dsl).get(&quot;requirement:&quot; + requirement);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (block == null) throw new IllegalArgumentException(&quot;Unknown canonical requirement&quot;);</span>
+<span class="fc" id="L147">        return block;</span>
+    }
+    private static Map&lt;String, String&gt; properties(BlockAst block) {
+<span class="fc" id="L150">        Map&lt;String, String&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        for (PropertyAst p : block.getProperties()) {</span>
+<span class="pc bpc" id="L152" title="3 of 4 branches missed.">            if (result.putIfAbsent(p.key(), p.value()) != null &amp;&amp; p.key().startsWith(PREFIX))</span>
+<span class="nc" id="L153">                throw new IllegalArgumentException(&quot;Duplicate planning field&quot;);</span>
+<span class="fc" id="L154">        }</span>
+<span class="fc" id="L155">        return result;</span>
+    }
+    private static String replaceRequirement(String dsl, BlockAst before, Map&lt;String, String&gt; values) {
+<span class="fc" id="L158">        return ArchitectureSemanticPatch.replace(dsl, before, copy(before, values));</span>
+    }
+    private static BlockAst copy(BlockAst block, Map&lt;String, String&gt; values) {
+<span class="fc" id="L161">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;(block.getExtensions());</span>
+<span class="fc" id="L162">        extensions.keySet().removeIf(k -&gt; k.startsWith(PREFIX));</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        values.forEach((k, v) -&gt; { if (k.startsWith(PREFIX)) extensions.put(k, v); });</span>
+<span class="fc" id="L164">        return new BlockAst(block.getKind(), block.getHeaderTokens(), values.entrySet().stream()</span>
+<span class="fc" id="L165">                .map(e -&gt; new PropertyAst(e.getKey(), e.getValue(), null)).toList(), block.getChildren(), extensions, null);</span>
+    }
+    /** Undo may touch requirement planning fields, never restore unrelated requirement text. */
+    public static boolean planningOnlyChange(String before, String after, String id) {
+<span class="fc" id="L169">        BlockAst a = ArchitectureSemanticPatch.index(before).get(id), b = ArchitectureSemanticPatch.index(after).get(id);</span>
+<span class="pc bpc" id="L170" title="2 of 6 branches missed.">        if (id.startsWith(&quot;requirement:&quot;) &amp;&amp; a != null &amp;&amp; b != null) {</span>
+<span class="fc" id="L171">            Map&lt;String, String&gt; pa = properties(a), pb = properties(b);</span>
+<span class="fc" id="L172">            pa.keySet().removeIf(k -&gt; k.startsWith(PREFIX)); pb.keySet().removeIf(k -&gt; k.startsWith(PREFIX));</span>
+<span class="pc bpc" id="L173" title="2 of 4 branches missed.">            return a.getHeaderTokens().equals(b.getHeaderTokens()) &amp;&amp; pa.equals(pb);</span>
+        }
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        BlockAst any = a == null ? b : a;</span>
+<span class="pc bpc" id="L176" title="2 of 6 branches missed.">        return any != null &amp;&amp; ((&quot;requirementSourceLink&quot;.equals(any.getKind()) &amp;&amp; any.property(&quot;x-planning-entry&quot;) != null)</span>
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">                || List.of(&quot;source&quot;, &quot;sourceVersion&quot;, &quot;sourceFragment&quot;).contains(any.getKind()) &amp;&amp; &quot;true&quot;.equals(any.property(&quot;x-planning-owned&quot;)));</span>
+    }
+    public static void validateReferences(String dsl) {
+<span class="fc" id="L180">        CanonicalArchitectureModel model = new ArchitectureDslCommands().model(dsl);</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (var version : model.getSourceVersions()) {</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">            if (model.getSources().stream().noneMatch(source -&gt; Objects.equals(source.getId(), version.getSourceId())))</span>
+<span class="fc" id="L183">                throw new IllegalArgumentException(&quot;Undo would strand a source edition&quot;);</span>
+<span class="nc" id="L184">        }</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        for (var fragment : model.getSourceFragments()) {</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">            if (model.getSourceVersions().stream().noneMatch(version -&gt; Objects.equals(version.getId(), fragment.getSourceVersionId())))</span>
+<span class="nc" id="L187">                throw new IllegalArgumentException(&quot;Undo would strand a source fragment&quot;);</span>
+<span class="nc" id="L188">        }</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">        for (var link : model.getRequirementSourceLinks()) {</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">            if (model.getRequirements().stream().noneMatch(r -&gt; Objects.equals(r.getId(), link.getRequirementId()))</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">                    || model.getSources().stream().noneMatch(s -&gt; Objects.equals(s.getId(), link.getSourceId()))</span>
+<span class="nc bnc" id="L192" title="All 8 branches missed.">                    || link.getSourceVersionId() != null &amp;&amp; model.getSourceVersions().stream().noneMatch(v -&gt; Objects.equals(v.getId(), link.getSourceVersionId()) &amp;&amp; Objects.equals(v.getSourceId(), link.getSourceId()))</span>
+<span class="nc bnc" id="L193" title="All 8 branches missed.">                    || link.getSourceFragmentId() != null &amp;&amp; model.getSourceFragments().stream().noneMatch(f -&gt; Objects.equals(f.getId(), link.getSourceFragmentId()) &amp;&amp; Objects.equals(f.getSourceVersionId(), link.getSourceVersionId())))</span>
+<span class="nc" id="L194">                throw new IllegalArgumentException(&quot;Undo would strand a canonical source reference&quot;);</span>
+<span class="nc" id="L195">        }</span>
+<span class="fc" id="L196">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

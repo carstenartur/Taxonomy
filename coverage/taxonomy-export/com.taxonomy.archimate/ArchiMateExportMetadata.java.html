@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateExportMetadata.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.archimate</a> &gt; <span class="el_source">ArchiMateExportMetadata.java</span></div><h1>ArchiMateExportMetadata.java</h1><pre class="source lang-java linenums">package com.taxonomy.archimate;
+
+import java.util.List;
+import java.util.Map;
+
+/** Explicit authorized export data; no persistence entities or provider payloads cross this boundary. */
+public record ArchiMateExportMetadata(String modelId, Map&lt;String, ArchiMateProperty&gt; properties,
+                                     Map&lt;String, Map&lt;String, ArchiMateProperty&gt;&gt; elements,
+                                     Map&lt;String, Map&lt;String, ArchiMateProperty&gt;&gt; relationships,
+                                     List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L11">    public ArchiMateExportMetadata {</span>
+<span class="fc" id="L12">        properties = Map.copyOf(properties);</span>
+<span class="fc" id="L13">        elements = copy(elements);</span>
+<span class="fc" id="L14">        relationships = copy(relationships);</span>
+<span class="fc" id="L15">        losses = List.copyOf(losses);</span>
+<span class="fc" id="L16">    }</span>
+
+    private static Map&lt;String, Map&lt;String, ArchiMateProperty&gt;&gt; copy(Map&lt;String, Map&lt;String, ArchiMateProperty&gt;&gt; source) {
+<span class="fc" id="L19">        return source.entrySet().stream().collect(java.util.stream.Collectors.toUnmodifiableMap(</span>
+<span class="fc" id="L20">                Map.Entry::getKey, entry -&gt; Map.copyOf(entry.getValue())));</span>
+    }
+
+    public ArchiMateModel apply(ArchiMateModel model) {
+<span class="fc" id="L24">        var allLosses = new java.util.ArrayList&lt;&gt;(model.losses());</span>
+<span class="fc" id="L25">        allLosses.addAll(losses);</span>
+<span class="fc" id="L26">        return new ArchiMateModel(modelId, model.title(), model.elements().stream().map(element -&gt;</span>
+<span class="fc" id="L27">                new ArchiMateElement(element.id(), element.label(), element.archiMateType(), element.documentation(),</span>
+<span class="fc" id="L28">                        merge(element.properties(), elements.getOrDefault(element.id(), Map.of())))).toList(),</span>
+<span class="fc" id="L29">                model.relationships().stream().map(relation -&gt; new ArchiMateRelationship(relation.id(),</span>
+<span class="fc" id="L30">                        relation.sourceId(), relation.targetId(), relation.archiMateType(), relation.accessType(), relation.name(),</span>
+<span class="fc" id="L31">                        merge(relation.properties(), relationships.getOrDefault(relation.id(), Map.of())))).toList(),</span>
+<span class="fc" id="L32">                model.organizations(), model.views(), merge(model.properties(), properties), allLosses);</span>
+    }
+
+    private static Map&lt;String, ArchiMateProperty&gt; merge(Map&lt;String, ArchiMateProperty&gt; canonical,
+                                                      Map&lt;String, ArchiMateProperty&gt; metadata) {
+<span class="fc" id="L37">        var result = new java.util.TreeMap&lt;&gt;(canonical);</span>
+<span class="fc" id="L38">        metadata.forEach((name, value) -&gt; {</span>
+<span class="pc bpc" id="L39" title="3 of 6 branches missed.">            if (!name.startsWith(&quot;taxonomy.&quot;) || name.startsWith(&quot;taxonomy.loss.&quot;) || name.equals(&quot;taxonomy.id&quot;)) {</span>
+<span class="nc" id="L40">                throw new IllegalArgumentException(&quot;Invalid export metadata name: &quot; + name);</span>
+            }
+<span class="fc" id="L42">            var previous = result.putIfAbsent(name, value);</span>
+<span class="pc bpc" id="L43" title="3 of 4 branches missed.">            if (previous != null &amp;&amp; !previous.equals(value)) throw new IllegalArgumentException(&quot;Conflicting canonical metadata: &quot; + name);</span>
+<span class="fc" id="L44">        });</span>
+<span class="fc" id="L45">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

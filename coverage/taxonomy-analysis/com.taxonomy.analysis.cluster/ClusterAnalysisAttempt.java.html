@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisAttempt.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisAttempt.java</span></div><h1>ClusterAnalysisAttempt.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** A committed transport admission; null observation is unresolved evidence, never inferred success or zero usage. */
+@Entity @DynamicUpdate
+@Table(name = &quot;analysis_cluster_attempt&quot;, indexes = @Index(name = &quot;idx_analysis_cluster_attempt_call&quot;, columnList = &quot;operation_id,call_id,started_at&quot;))
+public class ClusterAnalysisAttempt {
+    @Id @Column(length = 36) String id;
+    @Column(name = &quot;operation_id&quot;, nullable = false, length = 128) String operationId;
+    @Column(name = &quot;call_id&quot;, nullable = false, length = 64) String callId;
+    @Column(name = &quot;invocation_id&quot;, nullable = false, length = 36) String invocationId;
+    @Column(nullable = false, length = 128) String provider;
+    @Column(nullable = false, length = 32) String source;
+    @Column(name = &quot;retry_index&quot;, nullable = false) int retryIndex;
+    @Column(name = &quot;started_at&quot;, nullable = false) long startedAt;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name = &quot;observation_json&quot;) String observationJson;
+<span class="fc" id="L21">    protected ClusterAnalysisAttempt() { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

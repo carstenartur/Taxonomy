@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspacePortfolioDocumentAdapter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">WorkspacePortfolioDocumentAdapter.java</span></div><h1>WorkspacePortfolioDocumentAdapter.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort;
+import com.taxonomy.versioning.service.SemanticGitMergeService;
+import org.springframework.stereotype.Service;
+import java.io.IOException;
+
+/** Captures a repository once and preserves the editor checkpoint/import publication boundary. */
+@Service
+public class WorkspacePortfolioDocumentAdapter implements WorkspacePortfolioDocumentPort {
+    private final DslGitRepositoryFactory repositories;
+    private final SemanticGitMergeService merges;
+    private final WorkspaceArchitectureVersionPort versions;
+
+    public WorkspacePortfolioDocumentAdapter(DslGitRepositoryFactory repositories,
+<span class="fc" id="L19">            SemanticGitMergeService merges, WorkspaceArchitectureVersionPort versions) {</span>
+<span class="fc" id="L20">        this.repositories = repositories;</span>
+<span class="fc" id="L21">        this.merges = merges;</span>
+<span class="fc" id="L22">        this.versions = versions;</span>
+<span class="fc" id="L23">    }</span>
+
+    @Override
+    public DocumentHandle resolveRepository(WorkspaceContext context) throws IOException {
+<span class="fc" id="L27">        DslGitRepository repository = repositories.resolveRepository(context);</span>
+<span class="fc" id="L28">        return new DocumentHandle() {</span>
+            @Override
+            public String getDslAtHead(String branch) throws IOException {
+<span class="fc" id="L31">                return repository.getDslAtHead(branch);</span>
+            }
+
+            @Override
+            public String getHeadCommit(String branch) throws IOException {
+<span class="fc" id="L36">                return repository.getHeadCommit(branch);</span>
+            }
+
+            @Override
+            public String getDslAtCommit(String commitId) throws IOException {
+<span class="fc" id="L41">                return repository.getDslAtCommit(commitId);</span>
+            }
+
+            @Override
+            public String commitDsl(String branch, String dsl, String author, String message) throws IOException {
+<span class="fc" id="L46">                return publish(branch, author, message, () -&gt; repository.commitDsl(branch, dsl, author, message));</span>
+            }
+
+            @Override
+            public String commitDslIfHeadMatches(String branch, String expectedHead, String dsl,
+                    String author, String message) throws IOException {
+<span class="fc" id="L52">                return publish(branch, author, message,</span>
+<span class="fc" id="L53">                        () -&gt; repository.commitDslIfHeadMatches(branch, expectedHead, dsl, author, message));</span>
+            }
+
+            @Override
+            public String verifyHeadForVersion(String branch, String expectedHead,
+                    String author, String message) throws IOException {
+<span class="fc" id="L59">                return publish(branch, author, message, () -&gt; {</span>
+<span class="fc" id="L60">                    String actualHead = repository.getHeadCommit(branch);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                    if (!java.util.Objects.equals(expectedHead, actualHead)) {</span>
+<span class="fc" id="L62">                        throw new com.taxonomy.workspace.service.BranchHeadConflictException(</span>
+                                branch, expectedHead, actualHead, &quot;Portfolio branch changed before publication&quot;);
+                    }
+<span class="fc" id="L65">                    return expectedHead;</span>
+                });
+            }
+
+            @Override
+            public MergeResult mergeBranches(String fromBranch, String intoBranch, String author, String message)
+                    throws IOException {
+<span class="fc" id="L72">                return publish(intoBranch, author, message, () -&gt; {</span>
+<span class="fc" id="L73">                    var outcome = merges.mergeBranches(repository, fromBranch, intoBranch, author, message);</span>
+<span class="fc" id="L74">                    return new MergeResult(outcome.success(), outcome.commitId(), outcome.semanticFallback(), outcome.conflicts());</span>
+                });
+            }
+
+            private &lt;T&gt; T publish(String branch, String author, String message,
+                    WorkspaceArchitectureVersionPort.GitAction&lt;T&gt; action) throws IOException {
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                WorkspaceContext selected = context == null ? new WorkspaceContext(author, null, branch) : context;</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">                RepositoryContext target = selected.workspaceId() == null || selected.workspaceId().isBlank()</span>
+<span class="fc" id="L82">                        ? RepositoryContext.centralWrite(selected.repositoryId(), branch, author)</span>
+<span class="fc" id="L83">                        : RepositoryContext.workspace(selected.repositoryId(), selected.workspaceId(), branch, author);</span>
+                // Acquire the journal/version boundary before the Repository monitor. ORM preparation
+                // and materialization stay outside the monitor; editor pending operations checkpoint first.
+<span class="fc" id="L86">                return versions.version(target, message, () -&gt; {</span>
+<span class="fc" id="L87">                    synchronized (repository.getGitRepository()) {</span>
+<span class="fc" id="L88">                        return action.run();</span>
+                    }
+                });
+            }
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

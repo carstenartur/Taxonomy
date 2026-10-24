@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CatalogueSourceJournal.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-knowledge</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.provenance</a> &gt; <span class="el_source">CatalogueSourceJournal.java</span></div><h1>CatalogueSourceJournal.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.provenance;
+
+import jakarta.persistence.*;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
+import java.time.DateTimeException;
+import java.util.*;
+
+/** Source evidence commits with the catalogue mutation, never in a separate transaction. */
+@Service
+public class CatalogueSourceJournal {
+    private static final String STATE_ID = &quot;base-catalogue&quot;;
+    private final EntityManager em;
+<span class="fc" id="L17">    public enum Use { APPLIED, PARSE_FAILED, NOT_USED, NOT_RETAINED }</span>
+    public record SourceUse(CatalogueSourceBytes input, Use use) {
+<span class="fc" id="L19">        public SourceUse {</span>
+<span class="fc" id="L20">            Objects.requireNonNull(use);</span>
+<span class="pc bpc" id="L21" title="1 of 8 branches missed.">            if ((use == Use.APPLIED || use == Use.PARSE_FAILED) != (input != null))</span>
+<span class="nc" id="L22">                throw new IllegalArgumentException(&quot;Catalogue input use does not match its retained bytes&quot;);</span>
+<span class="fc" id="L23">        }</span>
+<span class="fc" id="L24">        public static SourceUse applied(CatalogueSourceBytes input) { return new SourceUse(input, Use.APPLIED); }</span>
+<span class="fc" id="L25">        public static SourceUse rejected(CatalogueSourceBytes input) { return new SourceUse(input, Use.PARSE_FAILED); }</span>
+<span class="fc" id="L26">        public static SourceUse notUsed() { return new SourceUse(null, Use.NOT_USED); }</span>
+    }
+<span class="fc" id="L28">    public record InputReference(Use use, String sha256, long length) { }</span>
+<span class="fc" id="L29">    public record Snapshot(String id, Instant createdAt, InputReference workbook, InputReference overlay, InputReference relations) { }</span>
+<span class="fc" id="L30">    public CatalogueSourceJournal(EntityManagerFactory factory) { em = SharedEntityManagerCreator.createSharedEntityManager(factory); }</span>
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Snapshot initialize(CatalogueSourceBytes workbook, SourceUse overlay, SourceUse relations) {
+<span class="fc" id="L34">        requireTransaction(); Objects.requireNonNull(workbook);</span>
+<span class="fc" id="L35">        var state = lockState(); var previous = snapshot(state);</span>
+<span class="fc" id="L36">        return record(state, previous, retain(SourceUse.applied(workbook)), retain(overlay), retain(relations));</span>
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Snapshot reconcileOverlay(SourceUse overlay) {
+<span class="fc" id="L41">        requireTransaction();</span>
+<span class="fc" id="L42">        var state = lockState(); var previous = snapshot(state);</span>
+<span class="fc" id="L43">        var unknown = new InputReference(Use.NOT_RETAINED, null, 0);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        return record(state, previous, previous == null ? unknown : previous.workbook(), retain(overlay),</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">                previous == null ? unknown : previous.relations());</span>
+    }
+
+    @Transactional(readOnly = true)
+<span class="fc" id="L49">    public Snapshot current() { return snapshot(em.find(CatalogueSourceState.class, STATE_ID)); }</span>
+
+    /** Acquire before reading or changing any catalogue rows; held until the import commits. */
+    @Transactional(propagation = Propagation.MANDATORY)
+<span class="fc" id="L53">    public void lockForMutation() { requireTransaction(); lockState(); }</span>
+
+    /**
+     * Hold the same database gate as the importer while a complete scalar snapshot is read.
+     * Missing provenance fails closed rather than tagging unversioned current rows as a source.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Snapshot lockForCapture() {
+<span class="fc" id="L61">        requireTransaction();</span>
+<span class="fc" id="L62">        var state = lockExistingState();</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        var current = state == null ? null : snapshot(state);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (current == null) throw new IllegalStateException(&quot;Catalogue source generation is unavailable&quot;);</span>
+<span class="fc" id="L65">        return current;</span>
+    }
+
+    private void requireTransaction() {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (!em.isJoinedToTransaction()) throw new IllegalStateException(&quot;Catalogue source retention requires the catalogue transaction&quot;);</span>
+<span class="fc" id="L70">    }</span>
+
+    private CatalogueSourceState lockState() {
+<span class="fc" id="L73">        var state = lockExistingState();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (state == null) {</span>
+<span class="fc" id="L75">            state = new CatalogueSourceState(); state.id = STATE_ID;</span>
+<span class="fc" id="L76">            em.persist(state); em.flush();</span>
+        }
+<span class="fc" id="L78">        return state;</span>
+    }
+
+    private CatalogueSourceState lockExistingState() {
+        // A real row write serializes captures and imports even on MVCC providers
+        // whose SELECT FOR UPDATE can return a snapshot from before the lock wait.
+<span class="fc" id="L84">        int changed = em.createQuery(&quot;update CatalogueSourceState s set s.rowVersion=s.rowVersion+1 where s.id=:id&quot;)</span>
+<span class="fc" id="L85">                .setParameter(&quot;id&quot;, STATE_ID).executeUpdate();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (changed == 0) return null;</span>
+<span class="fc" id="L87">        var state = em.find(CatalogueSourceState.class, STATE_ID);</span>
+<span class="fc" id="L88">        em.refresh(state);</span>
+<span class="fc" id="L89">        return state;</span>
+    }
+
+    private Snapshot record(CatalogueSourceState state, Snapshot previous, InputReference workbook,
+                            InputReference overlay, InputReference relations) {
+<span class="fc bfc" id="L94" title="All 6 branches covered.">        if (previous != null &amp;&amp; previous.workbook().equals(workbook) &amp;&amp; previous.overlay().equals(overlay)</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                &amp;&amp; previous.relations().equals(relations)) return previous;</span>
+<span class="fc" id="L96">        var revision = new CatalogueSourceRevision(); revision.id = UUID.randomUUID().toString(); revision.createdAt = Instant.now().toString();</span>
+<span class="fc" id="L97">        revision.workbook = workbook.sha256(); revision.workbookUse = workbook.use().name();</span>
+<span class="fc" id="L98">        revision.overlay = overlay.sha256(); revision.overlayUse = overlay.use().name();</span>
+<span class="fc" id="L99">        revision.relations = relations.sha256(); revision.relationsUse = relations.use().name();</span>
+        // Flush immutable evidence before the pointer so SQL foreign keys also hold on providers without JPA association ordering.
+<span class="fc" id="L101">        em.persist(revision); em.flush(); state.currentRevision = revision.id; em.flush();</span>
+<span class="fc" id="L102">        return new Snapshot(revision.id, Instant.parse(revision.createdAt), workbook, overlay, relations);</span>
+    }
+
+    private InputReference retain(SourceUse source) {
+<span class="fc" id="L106">        Objects.requireNonNull(source);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (source.input() == null) return new InputReference(source.use(), null, 0);</span>
+<span class="fc" id="L108">        var input = source.input(); var existing = em.find(CatalogueSourceBlob.class, input.sha256());</span>
+<span class="fc" id="L109">        byte[] content = input.copyForStorage();</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (existing == null) {</span>
+<span class="fc" id="L111">            var blob = new CatalogueSourceBlob(); blob.sha256 = input.sha256(); blob.byteLength = input.length(); blob.payload = content;</span>
+<span class="fc" id="L112">            em.persist(blob); em.flush();</span>
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">        } else if (existing.byteLength != input.length() || !Arrays.equals(existing.payload, content)) {</span>
+<span class="fc" id="L114">            throw new IllegalStateException(&quot;Retained catalogue source bytes differ from their recorded identity&quot;);</span>
+        }
+<span class="fc" id="L116">        return new InputReference(source.use(), input.sha256(), input.length());</span>
+    }
+
+    private Snapshot snapshot(CatalogueSourceState state) {
+<span class="fc bfc" id="L120" title="All 4 branches covered.">        if (state == null || state.currentRevision == null) {</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">            if (em.createQuery(&quot;select count(r) from CatalogueSourceRevision r&quot;, Long.class).getSingleResult() != 0) throw invalid();</span>
+<span class="fc" id="L122">            return null;</span>
+        }
+        try {
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if (!UUID.fromString(state.currentRevision).toString().equals(state.currentRevision)) throw invalid();</span>
+<span class="fc" id="L126">            var revision = em.find(CatalogueSourceRevision.class, state.currentRevision);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (revision == null) throw invalid();</span>
+<span class="fc" id="L128">            return new Snapshot(revision.id, Instant.parse(revision.createdAt),</span>
+<span class="fc" id="L129">                    reference(revision.workbookUse, revision.workbook), reference(revision.overlayUse, revision.overlay),</span>
+<span class="fc" id="L130">                    reference(revision.relationsUse, revision.relations));</span>
+<span class="nc" id="L131">        } catch (IllegalArgumentException | NullPointerException | DateTimeException failure) { throw invalid(); }</span>
+    }
+
+    private InputReference reference(String status, String hash) {
+<span class="fc" id="L135">        var use = Use.valueOf(status);</span>
+<span class="fc bfc" id="L136" title="All 4 branches covered.">        if (use == Use.NOT_USED || use == Use.NOT_RETAINED) {</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (hash != null) throw invalid();</span>
+<span class="fc" id="L138">            return new InputReference(use, null, 0);</span>
+        }
+<span class="pc bpc" id="L140" title="2 of 4 branches missed.">        if (hash == null || !hash.matches(&quot;[0-9a-f]{64}&quot;)) throw invalid();</span>
+<span class="fc" id="L141">        var lengths = em.createQuery(&quot;select b.byteLength from CatalogueSourceBlob b where b.sha256=:hash&quot;, Long.class)</span>
+<span class="fc" id="L142">                .setParameter(&quot;hash&quot;, hash).getResultList();</span>
+<span class="pc bpc" id="L143" title="3 of 6 branches missed.">        if (lengths.size() != 1 || lengths.getFirst() &lt; 0 || lengths.getFirst() &gt; CatalogueSourceBytes.MAX_BYTES) throw invalid();</span>
+<span class="fc" id="L144">        return new InputReference(use, hash, lengths.getFirst());</span>
+    }
+
+<span class="fc" id="L147">    private static IllegalStateException invalid() { return new IllegalStateException(&quot;Retained catalogue source references are inconsistent&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,1025 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ClusterAnalysisStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.cluster</a> &gt; <span class="el_source">ClusterAnalysisStore.java</span></div><h1>ClusterAnalysisStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.cluster;
+
+import com.taxonomy.analysis.dag.*;
+import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
+import com.taxonomy.analysis.dispatch.AnalysisDispatchService;
+import com.taxonomy.analysis.relations.RelationSearchDistribution;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
+import com.taxonomy.dto.*;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import org.hibernate.jpa.HibernateHints;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Clock;
+import java.util.*;
+import java.util.function.Consumer;
+
+/**
+ * Short, per-operation transactions for clustered execution. Provider and broker
+ * I/O never run under these locks. Result callbacks join the completion ledger's
+ * transaction, preserving cancellation and one committed effect on redelivery.
+ */
+public final class ClusterAnalysisStore implements ClusterRelationService.Store {
+    private static final int MAX_JSON_CHARACTERS = 32_000_000;
+    private final EntityManager em;
+    private final TransactionTemplate tx;
+    private final ObjectMapper mapper;
+    private final AnalysisDispatchService dispatch;
+    private final ClusterAnalysisDiagnostics diagnostics;
+    private final com.taxonomy.analysis.recovery.AnalysisContinuationStore continuations;
+<span class="fc" id="L42">    private final AnalysisMessageCodec codec = new AnalysisMessageCodec();</span>
+<span class="fc" id="L43">    private volatile Consumer&lt;AnalysisProgressEvent&gt; events = event -&gt; { };</span>
+
+<span class="fc" id="L45">    public record TaskView(String taskId, String type, String root, String state, int attempts,</span>
+                           Long startedAt, Long finishedAt) { }
+<span class="fc" id="L47">    public record Snapshot(String operationId, ClusterAnalysisState state, long revision,</span>
+                           int completedRoots, int totalRoots, int runningTasks, int queuedTasks,
+                           long createdAt, long updatedAt, List&lt;TaskView&gt; tasks, AnalysisResult result, ClusterAnalysisProgress.View progress) {
+        public Snapshot(String operationId, ClusterAnalysisState state, long revision, int completedRoots, int totalRoots,
+                        int runningTasks, int queuedTasks, long createdAt, long updatedAt, List&lt;TaskView&gt; tasks, AnalysisResult result) {
+<span class="fc" id="L52">            this(operationId, state, revision, completedRoots, totalRoots, runningTasks, queuedTasks, createdAt, updatedAt,</span>
+                    tasks, result, ClusterAnalysisProgress.View.EMPTY);
+<span class="fc" id="L54">        }</span>
+    }
+    /** The same bounded score preview for individual and recovery-list views. */
+    public record ScorePreview(int evaluatedNodes, Map&lt;String, Double&gt; rawScores) {
+        private static final int MAX_PREVIEW_SCORES = 8192;
+<span class="fc" id="L59">        public ScorePreview { rawScores = Map.copyOf(rawScores); }</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        public boolean scoresTruncated() { return evaluatedNodes &gt; rawScores.size(); }</span>
+        static ScorePreview from(AnalysisResult result) {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            var raw = result == null ? Map.&lt;String, Double&gt;of() : result.getRawScores();</span>
+<span class="fc" id="L63">            var scores = new LinkedHashMap&lt;String, Double&gt;();</span>
+<span class="fc" id="L64">            raw.entrySet().stream().limit(MAX_PREVIEW_SCORES).forEach(entry -&gt; scores.put(entry.getKey(), entry.getValue()));</span>
+<span class="fc" id="L65">            return new ScorePreview(raw.size(), scores);</span>
+        }
+    }
+    /** Recovery metadata and bounded scores; snapshot.result is deliberately absent. */
+<span class="fc" id="L69">    public record RecentSnapshot(AnalysisOperationContext context, Snapshot snapshot, ScorePreview scorePreview) { }</span>
+<span class="fc" id="L70">    private record RecentRun(AnalysisOperationContext context, ClusterAnalysisState state, long revision,</span>
+                             int completedRoots, int totalRoots, long createdAt, long updatedAt,
+                             ScorePreview scores) { }
+<span class="fc" id="L73">    public record Input(AnalysisOperationContext context, AnalyzeRequirementCommand command,</span>
+                        boolean executable, String taskInput, int deliveryAttempt) {
+        public Input(AnalysisOperationContext context, AnalyzeRequirementCommand command, boolean executable, String taskInput) {
+<span class="fc" id="L76">            this(context, command, executable, taskInput, 0);</span>
+<span class="fc" id="L77">        }</span>
+    }
+
+    public ClusterAnalysisStore(EntityManager em, PlatformTransactionManager transactions,
+                                ObjectMapper mapper, AnalysisDispatchService dispatch) {
+<span class="fc" id="L82">        this(em, transactions, mapper, dispatch, null);</span>
+<span class="fc" id="L83">    }</span>
+    public ClusterAnalysisStore(EntityManager em, PlatformTransactionManager transactions,
+                                ObjectMapper mapper, AnalysisDispatchService dispatch,
+<span class="fc" id="L86">                                com.taxonomy.analysis.recovery.AnalysisContinuationStore continuations) {</span>
+<span class="fc" id="L87">        this.em = Objects.requireNonNull(em); this.tx = new TransactionTemplate(transactions);</span>
+<span class="fc" id="L88">        this.mapper = Objects.requireNonNull(mapper); this.dispatch = Objects.requireNonNull(dispatch);</span>
+<span class="fc" id="L89">        this.diagnostics = new ClusterAnalysisDiagnostics(em, transactions, mapper, this);</span>
+<span class="fc" id="L90">        this.continuations = continuations;</span>
+<span class="fc" id="L91">    }</span>
+
+<span class="fc" id="L93">    public ClusterAnalysisDiagnostics callDiagnostics() { return diagnostics; }</span>
+    public com.taxonomy.analysis.recovery.AnalysisCheckpointSession checkpointSession(Input input, AnalysisTaskMessage task,
+            String scoringPolicyHash, String relationPolicyHash) {
+<span class="fc" id="L96">        var binding = Objects.requireNonNull(input.command().continuationBinding(), &quot;Continuation binding&quot;);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (continuations == null) throw new IllegalStateException(&quot;Distributed continuation is unavailable&quot;);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (!binding.scoringPolicyHash().equals(scoringPolicyHash)</span>
+<span class="pc bpc" id="L99" title="1 of 4 branches missed.">                || task.taskType() == AnalysisTaskType.RELATION_ANALYSIS &amp;&amp; !binding.relationPolicyHash().equals(relationPolicyHash))</span>
+<span class="fc" id="L100">            throw new IllegalStateException(&quot;Frozen continuation provider or policy changed&quot;);</span>
+<span class="fc" id="L101">        var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);</span>
+<span class="fc" id="L102">        tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L103">            diagnosticAuthority(task, input.deliveryAttempt());</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (!binding.equals(command(input.context()).continuationBinding()))</span>
+<span class="nc" id="L105">                throw new IllegalStateException(&quot;Unexpected continuation command authority&quot;);</span>
+<span class="fc" id="L106">        });</span>
+<span class="fc" id="L107">        var questionOwner = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.QuestionOwner(task.envelope().operationId(),</span>
+<span class="fc" id="L108">                task.taskId().value(), input.deliveryAttempt(), java.util.UUID.randomUUID().toString(),</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                task.taskType().name() + &quot;:&quot; + (task.routingRoot() == null ? &quot;all&quot; : task.routingRoot().code()));</span>
+<span class="fc" id="L110">        return new com.taxonomy.analysis.recovery.AnalysisCheckpointSession(new com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Store() {</span>
+            public com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Checkpoint prepare(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question question) {
+<span class="fc" id="L112">                return tx.execute(status -&gt; { diagnosticAuthority(task, input.deliveryAttempt()); return continuations.prepareDistributed(claim, question, questionOwner); });</span>
+            }
+            public void finish(com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question question, String state, LlmCallDetail detail) {
+<span class="fc" id="L115">                tx.executeWithoutResult(status -&gt; { diagnosticAuthority(task, input.deliveryAttempt()); continuations.finishDistributed(claim, question, state, detail, questionOwner); });</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                if (&quot;PAUSED&quot;.equals(continuations.state(claim))) throw new com.taxonomy.analysis.service.AnalysisStoppedException(</span>
+                        com.taxonomy.analysis.service.AnalysisStoppedException.Reason.AWAITING_DECISION);
+<span class="fc" id="L118">            }</span>
+            public void supersedeEvidence(String kind, String provider,
+                    java.util.function.Predicate&lt;com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question&gt; covered) {
+<span class="nc" id="L121">                tx.executeWithoutResult(status -&gt; {</span>
+<span class="nc" id="L122">                    diagnosticAuthority(task, input.deliveryAttempt());</span>
+<span class="nc" id="L123">                    continuations.supersedeEvidence(claim, kind, provider, covered, questionOwner);</span>
+<span class="nc" id="L124">                });</span>
+<span class="nc" id="L125">            }</span>
+            public void supersedeEvidence(String kind, String provider, Set&lt;String&gt; singletonCodes,
+                    java.util.function.Predicate&lt;com.taxonomy.analysis.recovery.AnalysisCheckpointSession.Question&gt; covered) {
+<span class="fc" id="L128">                tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L129">                    diagnosticAuthority(task, input.deliveryAttempt());</span>
+<span class="fc" id="L130">                    continuations.supersedeEvidence(claim, kind, provider, singletonCodes, covered, questionOwner);</span>
+<span class="fc" id="L131">                });</span>
+<span class="fc" id="L132">            }</span>
+            public void checkActive() {
+<span class="fc" id="L134">                boolean current = Boolean.TRUE.equals(tx.execute(status -&gt; {</span>
+<span class="fc" id="L135">                    var rows = em.createQuery(&quot;select r.state,r.contextJson,w.attempts,w.state from ClusterAnalysisRun r,ClusterAnalysisWork w where r.id=:run and w.id=:work and w.operationId=r.id&quot;, Object[].class)</span>
+<span class="fc" id="L136">                            .setParameter(&quot;run&quot;, task.envelope().operationId()).setParameter(&quot;work&quot;, key(task.taskId().value())).getResultList();</span>
+<span class="pc bpc" id="L137" title="2 of 4 branches missed.">                    return rows.size() == 1 &amp;&amp; input.context().equals(read((String) rows.getFirst()[1], AnalysisOperationContext.class))</span>
+<span class="pc bpc" id="L138" title="2 of 4 branches missed.">                            &amp;&amp; !((ClusterAnalysisState) rows.getFirst()[0]).terminal() &amp;&amp; ((Number) rows.getFirst()[2]).intValue() == input.deliveryAttempt()</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                            &amp;&amp; &quot;RUNNING&quot;.equals(rows.getFirst()[3]);</span>
+                }));
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">                String state = current ? continuations.distributedState(claim, task.envelope().operationId()) : &quot;CANCELLED&quot;;</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                if (!&quot;RUNNING&quot;.equals(state)) throw new com.taxonomy.analysis.service.AnalysisStoppedException(</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                        &quot;PAUSED&quot;.equals(state) ? com.taxonomy.analysis.service.AnalysisStoppedException.Reason.AWAITING_DECISION</span>
+<span class="pc" id="L144">                                : com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED);</span>
+<span class="fc" id="L145">            }</span>
+<span class="fc" id="L146">            public com.taxonomy.dto.RelationSearchReport previousRelations() { return continuations.previousRelations(claim); }</span>
+<span class="fc" id="L147">            public int sourceCohortSize() { return binding.sourceCohortSize(); }</span>
+<span class="fc" id="L148">            public com.taxonomy.analysis.relations.RequirementRelationSearch.BudgetPolicy relationBudget() { return binding.relationBudget(); }</span>
+            public int relationCallsSpent() {
+<span class="fc" id="L150">                return tx.execute(status -&gt; {</span>
+<span class="fc" id="L151">                    diagnosticAuthority(task, input.deliveryAttempt());</span>
+<span class="fc" id="L152">                    return continuations.relationCallsSpent(claim);</span>
+                });
+            }
+            public void beforeRelationCall(int maximum) {
+<span class="fc" id="L156">                tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L157">                    diagnosticAuthority(task, input.deliveryAttempt());</span>
+<span class="fc" id="L158">                    continuations.beforeRelationCall(claim, maximum);</span>
+<span class="fc" id="L159">                });</span>
+<span class="fc" id="L160">            }</span>
+        });
+    }
+<span class="fc" id="L163">    public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task) { return diagnostics.session(task); }</span>
+    @Override public ClusterAnalysisDiagnostics.Session diagnostics(AnalysisTaskMessage task, int deliveryAttempt) {
+<span class="fc" id="L165">        return diagnostics.session(task, deliveryAttempt);</span>
+    }
+    // Called only inside the diagnostics service's short independent transaction.
+    ClusterAnalysisRun diagnosticAuthority(AnalysisTaskMessage task, Integer deliveryAttempt) {
+<span class="fc" id="L169">        var run = requireRun(task.envelope().operationId(), true);</span>
+<span class="fc" id="L170">        requireAuthority(run, context(task.envelope()));</span>
+<span class="fc" id="L171">        var work = requireWork(task);</span>
+<span class="pc bpc" id="L172" title="3 of 10 branches missed.">        if (deliveryAttempt != null &amp;&amp; (run.state.terminal() || !&quot;RUNNING&quot;.equals(work.state)</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                || work.resultJson != null || work.failureReason != null || work.attempts != deliveryAttempt))</span>
+<span class="fc" id="L174">            throw new IllegalStateException(&quot;Diagnostic admission is no longer owned by this delivery&quot;);</span>
+<span class="fc" id="L175">        return run;</span>
+    }
+<span class="fc" id="L177">    ClusterAnalysisWork diagnosticWork(AnalysisTaskMessage task) { return requireWork(task); }</span>
+    RootCatalogueSnapshot progressRoot(AnalysisTaskMessage task) {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        return task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS</span>
+<span class="fc" id="L180">                ? ClusterAnalysisProgress.frozen(shard(context(task.envelope()), task.routingRoot()), mapper,</span>
+<span class="fc" id="L181">                        context(task.envelope()), task.routingRoot().code()) : null;</span>
+    }
+<span class="fc" id="L183">    int diagnosticDelivery(AnalysisTaskMessage task) { return requireWork(task).attempts; }</span>
+    boolean diagnosticTask(AnalysisOperationContext context, String taskId) {
+<span class="fc" id="L185">        var work = em.find(ClusterAnalysisWork.class, key(taskId));</span>
+<span class="pc bpc" id="L186" title="2 of 6 branches missed.">        return work != null &amp;&amp; work.taskId.equals(taskId) &amp;&amp; work.operationId.equals(context.operationId());</span>
+    }
+    void diagnosticChanged(ClusterAnalysisRun run) {
+<span class="fc" id="L189">        long finished = run.updatedAt;</span>
+<span class="fc" id="L190">        appendEvent(run, AnalysisProgressPhase.DIAGNOSTICS_UPDATED);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (run.state.terminal()) run.updatedAt = finished;</span>
+<span class="fc" id="L192">    }</span>
+
+<span class="fc" id="L194">    public void eventPublisher(Consumer&lt;AnalysisProgressEvent&gt; publisher) { events = Objects.requireNonNull(publisher); }</span>
+
+    /** Admit frozen inputs and the first root dispatch intent atomically. */
+    public void admit(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view,
+                       Map&lt;TaxonomyShardRoot, String&gt; shards) {
+<span class="fc" id="L199">        admit(context, command, view, shards, Map.of());</span>
+<span class="fc" id="L200">    }</span>
+
+    public void admit(AnalysisOperationContext context, AnalyzeRequirementCommand command, ViewContext view,
+                       Map&lt;TaxonomyShardRoot, String&gt; shards, Map&lt;TaxonomyShardRoot, String&gt; relationTargets) {
+<span class="fc" id="L204">        validateInput(context, command, shards);</span>
+<span class="fc bfc" id="L205" title="All 4 branches covered.">        boolean needsTargets = command.analysisScope().includesRelations() || command.includeArchitectureView();</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        if (needsTargets</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">                &amp;&amp; !relationTargets.keySet().equals(new HashSet&lt;&gt;(TaxonomyShardRoot.DEFAULT_ROOTS)))</span>
+<span class="nc" id="L208">            throw new IllegalArgumentException(&quot;Relation work requires every frozen target shard&quot;);</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">        if (!needsTargets &amp;&amp; !relationTargets.isEmpty())</span>
+<span class="nc" id="L210">            throw new IllegalArgumentException(&quot;Unrequested relation input&quot;);</span>
+<span class="fc" id="L211">        Map&lt;TaxonomyShardRoot, String&gt; inputs = new LinkedHashMap&lt;&gt;(shards);</span>
+<span class="fc" id="L212">        relationTargets.forEach((root, value) -&gt; {</span>
+<span class="pc bpc" id="L213" title="3 of 6 branches missed.">            if (value == null || value.isBlank() || !root.defaultCatalogueRoot()) throw new IllegalArgumentException(&quot;Missing frozen target&quot;);</span>
+<span class="fc" id="L214">            String previous = inputs.putIfAbsent(root, value);</span>
+<span class="pc bpc" id="L215" title="1 of 4 branches missed.">            if (previous != null &amp;&amp; !previous.equals(value)) throw new IllegalArgumentException(&quot;Conflicting frozen catalogue shard&quot;);</span>
+<span class="fc" id="L216">        });</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">        if (inputs.values().stream().mapToLong(String::length).sum() &gt; MAX_JSON_CHARACTERS)</span>
+<span class="nc" id="L218">            throw new IllegalArgumentException(&quot;Frozen catalogue input exceeds operation bound&quot;);</span>
+<span class="fc" id="L219">        tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L220">            var existing = em.find(ClusterAnalysisRun.class, context.operationId(), LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            if (existing != null) {</span>
+<span class="fc" id="L222">                requireAuthority(existing, context);</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">                if (!json(read(existing.commandJson, AnalyzeRequirementCommand.class)).equals(json(command))) throw new IllegalStateException(&quot;Operation input changed&quot;);</span>
+<span class="fc" id="L224">                return;</span>
+            }
+<span class="fc bfc" id="L226" title="All 2 branches covered.">            if (command.continuationBinding() != null) {</span>
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">                if (continuations == null) throw new IllegalStateException(&quot;Distributed continuation is unavailable&quot;);</span>
+<span class="fc" id="L228">                String oldId = continuations.boundOperation(command.continuationBinding().id());</span>
+<span class="pc bpc" id="L229" title="1 of 4 branches missed.">                if (oldId != null &amp;&amp; !oldId.equals(context.operationId())) {</span>
+<span class="fc" id="L230">                    var old = requireRun(oldId, true);</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                    if (!old.state.terminal()) {</span>
+<span class="fc" id="L232">                        var oldBinding = read(old.commandJson, AnalyzeRequirementCommand.class).continuationBinding();</span>
+<span class="fc" id="L233">                        var nextBinding = command.continuationBinding();</span>
+<span class="pc bpc" id="L234" title="2 of 4 branches missed.">                        if (oldBinding == null || !oldBinding.id().equals(nextBinding.id()))</span>
+<span class="nc" id="L235">                            throw new IllegalStateException(&quot;Superseded operation belongs to another continuation&quot;);</span>
+                        // A retry can revoke the old token before its coordinator settles.
+                        // The new claim still owns that journal's prior evidence before attach.
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                        var handoff = Objects.equals(oldBinding.token(), nextBinding.token()) ? null</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                                : new RelationHandoff(retainedRelations(command), nextBinding.relationBudget() == null</span>
+<span class="fc" id="L240">                                        ? null : nextBinding.relationBudget().callsBeforeExecution());</span>
+<span class="fc" id="L241">                        old.state = ClusterAnalysisState.PARTIAL;</span>
+<span class="fc" id="L242">                        var partial = aggregate(old, handoff); partial.setStatus(&quot;PARTIAL&quot;); partial.setErrorMessage(&quot;SUPERSEDED: explicit continuation decision&quot;);</span>
+<span class="fc bfc" id="L243" title="All 4 branches covered.">                        old.resultJson = json(partial); for (var work : works(old.id)) if (!work.settled) work.state = &quot;STOPPED&quot;;</span>
+<span class="fc" id="L244">                        appendEvent(old, AnalysisProgressPhase.OPERATION_STOPPED);</span>
+                    }
+                }
+<span class="fc" id="L247">                var frozen = inputs.entrySet().stream().sorted(Map.Entry.comparingByKey())</span>
+<span class="fc" id="L248">                        .map(entry -&gt; read(entry.getValue(), com.taxonomy.catalog.snapshot.RootCatalogueSnapshot.class)).toList();</span>
+<span class="pc bpc" id="L249" title="2 of 4 branches missed.">                if (frozen.stream().anyMatch(root -&gt; !DurableClusterAnalysisExecution.source(context).equals(root.source())))</span>
+<span class="nc" id="L250">                    throw new IllegalStateException(&quot;Frozen continuation shard belongs to another source&quot;);</span>
+<span class="fc" id="L251">                String frozenHash = com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(</span>
+<span class="fc" id="L252">                        frozen.stream().map(this::json).toArray(String[]::new));</span>
+<span class="fc" id="L253">                continuations.attach(command.continuationBinding(), command, context.operationId(), oldId,</span>
+<span class="fc" id="L254">                        json(frozen.getFirst().source()), frozenHash, frozen);</span>
+            }
+<span class="fc" id="L256">            var run = new ClusterAnalysisRun();</span>
+<span class="fc" id="L257">            run.id = context.operationId(); run.username = command.username(); run.contextJson = json(context);</span>
+<span class="fc" id="L258">            run.scopeKey = scopeKey(command.workspaceContext());</span>
+<span class="fc" id="L259">            run.projectId = context.requirement().projectId(); run.requirementId = context.requirement().requirementId();</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            run.commandJson = json(command); run.viewJson = view == null ? null : json(view);</span>
+<span class="fc" id="L261">            run.state = ClusterAnalysisState.QUEUED; run.totalRoots = shards.size();</span>
+<span class="fc" id="L262">            run.createdAt = run.updatedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L263">            em.persist(run);</span>
+<span class="fc" id="L264">            List&lt;TaxonomyShardRoot&gt; roots = shards.keySet().stream().sorted().toList();</span>
+<span class="fc" id="L265">            var graph = AnalysisTaskGraph.plan(run.id, roots, false);</span>
+<span class="fc" id="L266">            var messages = factory(context);</span>
+<span class="fc" id="L267">            List&lt;AnalysisTaskMessage&gt; tasks = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            for (int i = 0; i &lt; graph.tasks().size(); i++) {</span>
+<span class="fc" id="L269">                var task = messages.task(graph.tasks().get(i));</span>
+<span class="fc" id="L270">                var work = addWork(task, i, null);</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">                if (command.retainedAnalysis() == null) {</span>
+                    // Persist the policy: older QUEUED rows retain their admitted parallel execution.
+<span class="fc bfc" id="L273" title="All 2 branches covered.">                    if (i &gt; 0) work.state = &quot;WAITING_PREDECESSOR&quot;;</span>
+<span class="fc" id="L274">                    tasks.add(task);</span>
+                } else {
+<span class="fc" id="L276">                    var retained = retainedRoot(command.retainedAnalysis(), task.routingRoot().code());</span>
+<span class="fc" id="L277">                    work.resultJson = json(retained); work.settled = true;</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">                    work.state = &quot;SUCCESS&quot;.equals(retained.getStatus()) ? &quot;COMPLETED&quot; : &quot;PARTIAL&quot;;</span>
+<span class="fc" id="L279">                    work.finishedAt = run.createdAt; run.completedRoots++;</span>
+                }
+            }
+<span class="fc" id="L282">            inputs.forEach((root, value) -&gt; {</span>
+<span class="fc" id="L283">                var input = new ClusterAnalysisInput(); input.id = key(run.id + &quot;:input:&quot; + root);</span>
+<span class="fc" id="L284">                input.operationId = run.id; input.root = root.code(); input.inputJson = value; em.persist(input);</span>
+<span class="fc" id="L285">            });</span>
+<span class="fc" id="L286">            appendEvent(run, AnalysisProgressPhase.PLANNED);</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">            if (command.retainedAnalysis() != null) {</span>
+<span class="fc" id="L288">                advanceRelations(run);</span>
+<span class="fc" id="L289">                appendEvent(run, AnalysisProgressPhase.TASK_COMPLETED);</span>
+<span class="fc" id="L290">            } else dispatch.dispatch(tasks.stream().limit(1).toList());</span>
+<span class="fc" id="L291">        });</span>
+<span class="fc" id="L292">    }</span>
+
+    /** A worker obtains only durable command metadata. Shard payloads are read separately. */
+    public Input start(AnalysisTaskMessage task) {
+<span class="fc" id="L296">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L297">            var run = requireRun(task.envelope().operationId(), true);</span>
+<span class="fc" id="L298">            requireAuthority(run, context(task.envelope()));</span>
+<span class="fc" id="L299">            var work = requireWork(task);</span>
+<span class="pc bpc" id="L300" title="2 of 6 branches missed.">            boolean executable = !run.state.terminal() &amp;&amp; work.resultJson == null &amp;&amp; work.failureReason == null;</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">            if (executable) {</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">                if (&quot;WAITING_PREDECESSOR&quot;.equals(work.state)) throw new AnalysisTaskDeferredException();</span>
+<span class="fc" id="L303">                work.attempts = Math.max(work.attempts + 1, task.envelope().attempt());</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">                if (work.startedAt == null) work.startedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L305">                work.state = &quot;RUNNING&quot;;</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                if (run.state == ClusterAnalysisState.QUEUED) run.state = ClusterAnalysisState.RUNNING;</span>
+<span class="fc" id="L307">                appendEvent(run, AnalysisProgressPhase.TASK_DISPATCHED);</span>
+            }
+<span class="fc" id="L309">            return new Input(read(run.contextJson, AnalysisOperationContext.class),</span>
+<span class="fc" id="L310">                    read(run.commandJson, AnalyzeRequirementCommand.class), executable, work.inputJson, work.attempts);</span>
+        });
+    }
+
+    public String shard(AnalysisOperationContext context, TaxonomyShardRoot root) {
+<span class="fc" id="L315">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L316">            requireAuthority(requireRun(context.operationId(), false), context);</span>
+<span class="fc" id="L317">            var input = em.find(ClusterAnalysisInput.class, key(context.operationId() + &quot;:input:&quot; + root));</span>
+<span class="pc bpc" id="L318" title="2 of 6 branches missed.">            if (input == null || !root.code().equals(input.root) || !context.operationId().equals(input.operationId))</span>
+<span class="fc" id="L319">                throw new IllegalStateException(&quot;Required frozen catalogue shard is absent&quot;);</span>
+<span class="fc" id="L320">            return input.inputJson;</span>
+        });
+    }
+
+    public AnalysisResult rootResults(AnalysisOperationContext context) {
+<span class="fc" id="L325">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L326">            var run = requireRun(context.operationId(), false); requireAuthority(run, context);</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">            if (run.completedRoots != run.totalRoots) throw new IllegalStateException(&quot;Source cohort is not committed&quot;);</span>
+<span class="fc" id="L328">            return aggregate(run);</span>
+        });
+    }
+
+    public AnalyzeRequirementCommand command(AnalysisOperationContext context) {
+<span class="fc" id="L333">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L334">            var run = requireRun(context.operationId(), false); requireAuthority(run, context);</span>
+<span class="fc" id="L335">            return read(run.commandJson, AnalyzeRequirementCommand.class);</span>
+        });
+    }
+
+    /** Lightweight reconciliation for already executing workers after a live-event gap. */
+    public boolean terminal(AnalysisOperationContext context) {
+<span class="nc" id="L341">        return tx.execute(status -&gt; {</span>
+<span class="nc" id="L342">            var rows = em.createQuery(&quot;select r.state,r.contextJson from ClusterAnalysisRun r where r.id=:id&quot;, Object[].class)</span>
+<span class="nc" id="L343">                    .setParameter(&quot;id&quot;, context.operationId()).getResultList();</span>
+<span class="nc bnc" id="L344" title="All 4 branches missed.">            if (rows.size() != 1 || !context.equals(read((String) rows.getFirst()[1], AnalysisOperationContext.class)))</span>
+<span class="nc" id="L345">                throw new IllegalStateException(&quot;Analysis operation is unavailable in this scope&quot;);</span>
+<span class="nc" id="L346">            return ((ClusterAnalysisState) rows.getFirst()[0]).terminal();</span>
+        });
+    }
+
+    public RelationSearchDistribution.Plan relationPlan(AnalysisOperationContext context) {
+<span class="fc" id="L351">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L352">            var run = requireRun(context.operationId(), false); requireAuthority(run, context);</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">            if (run.relationPlanJson == null) throw new IllegalStateException(&quot;Relation preparation is absent&quot;);</span>
+<span class="fc" id="L354">            return read(run.relationPlanJson, RelationSearchDistribution.Plan.class);</span>
+        });
+    }
+
+    public void persistRelationPlan(RelationAnalysisTask task, RelationSearchDistribution.Plan plan) {
+<span class="fc" id="L359">        var run = resultRun(task);</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        if (run.state.terminal()) return;</span>
+<span class="fc" id="L361">        var work = requireWork(task);</span>
+<span class="pc bpc" id="L362" title="2 of 4 branches missed.">        if (task.taskId().relationWorkOrdinal().isPresent() || run.relationPlanJson != null</span>
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">                || !plan.preparationId().equals(run.id + &quot;:relations&quot;)</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">                || !plan.originalSha256().equals(task.envelope().requirement().textSha256())</span>
+<span class="pc bpc" id="L365" title="1 of 2 branches missed.">                || !plan.sourceResultIds().equals(task.prerequisiteTasks().stream().map(AnalysisTaskId::value).toList())</span>
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">                || plan.options().limits().maxWorkItems() &gt; 100_000)</span>
+<span class="nc" id="L367">            throw new IllegalArgumentException(&quot;Relation preparation does not match admitted source cohort&quot;);</span>
+<span class="fc" id="L368">        run.relationPlanJson = json(plan); work.resultJson = run.relationPlanJson;</span>
+<span class="fc" id="L369">        work.state = &quot;COMPLETED&quot;; work.finishedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L370">    }</span>
+
+    /** Disabled hierarchical search retains provisional evidence without a target-work plan. */
+    public void persistScoreOnlyRelations(RelationAnalysisTask task, List&lt;RelationHypothesisDto&gt; hypotheses) {
+<span class="fc" id="L374">        var run = resultRun(task);</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">        if (run.state.terminal()) return;</span>
+<span class="fc" id="L376">        var work = requireWork(task);</span>
+<span class="pc bpc" id="L377" title="6 of 12 branches missed.">        if (task.taskId().relationWorkOrdinal().isPresent() || run.relationPlanJson != null</span>
+                || work.inputJson != null || work.resultJson != null || work.failureReason != null
+                || run.completedRoots != run.totalRoots)
+<span class="nc" id="L380">            throw new IllegalArgumentException(&quot;Score-only relations require an unsettled source preparation&quot;);</span>
+<span class="fc" id="L381">        work.resultJson = json(new ClusterRelationComputation.ScoreOnly(hypotheses));</span>
+<span class="fc" id="L382">        work.state = &quot;COMPLETED&quot;; work.finishedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L383">    }</span>
+
+    public void persistRelationResult(RelationAnalysisTask task, RelationSearchDistribution.WorkResult result) {
+<span class="fc" id="L386">        var run = resultRun(task);</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">        if (run.state.terminal()) return;</span>
+<span class="fc" id="L388">        var work = requireWork(task);</span>
+<span class="pc bpc" id="L389" title="3 of 6 branches missed.">        if (work.resultJson != null || work.failureReason != null || run.relationPlanJson == null</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">                || !read(work.inputJson, RelationSearchDistribution.Work.class).equals(result.work())</span>
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">                || task.taskId().relationWorkOrdinal().orElse(-1) != result.work().ordinal())</span>
+<span class="nc" id="L392">            throw new IllegalArgumentException(&quot;Relation result does not match admitted grant&quot;);</span>
+<span class="fc" id="L393">        var results = new ArrayList&lt;&gt;(relationResults(run.id)); results.add(result);</span>
+<span class="fc" id="L394">        RelationSearchDistribution.combine(read(run.relationPlanJson, RelationSearchDistribution.Plan.class), results);</span>
+<span class="fc" id="L395">        work.resultJson = json(result);</span>
+<span class="pc bpc" id="L396" title="1 of 4 branches missed.">        work.state = result.stopReason().isEmpty() &amp;&amp; result.result().searchExhausted() ? &quot;COMPLETED&quot; : &quot;PARTIAL&quot;;</span>
+<span class="fc" id="L397">        work.finishedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L398">    }</span>
+
+<span class="fc" id="L400">    public void persistRelationFailure(RelationAnalysisTask task, String reason) { persistFailure(task, reason); }</span>
+
+    /** Terminal execution failure, including broker expiry/dead-letter. No negative finding is invented. */
+    public void persistFailure(AnalysisTaskMessage task, String reason) {
+<span class="pc bpc" id="L404" title="2 of 4 branches missed.">        if (reason == null || !reason.matches(&quot;[A-Z_]{1,64}&quot;)) throw new IllegalArgumentException(&quot;Invalid failure code&quot;);</span>
+<span class="fc" id="L405">        var run = resultRun(task);</span>
+<span class="pc bpc" id="L406" title="1 of 2 branches missed.">        if (run.state.terminal()) return;</span>
+<span class="fc" id="L407">        var work = requireWork(task);</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">        if (&quot;WAITING_PREDECESSOR&quot;.equals(work.state)) throw new AnalysisTaskDeferredException();</span>
+<span class="pc bpc" id="L409" title="1 of 4 branches missed.">        if (work.resultJson != null || work.failureReason != null) throw new IllegalStateException(&quot;Task already has a durable effect&quot;);</span>
+        // Only an already admitted target grant can be represented as failed work.
+        // Never fabricate a missing preparation or release an unknown provider allowance.
+<span class="pc bpc" id="L412" title="1 of 6 branches missed.">        if (task.taskType() == AnalysisTaskType.RELATION_ANALYSIS &amp;&amp; work.inputJson != null &amp;&amp; run.relationPlanJson != null) {</span>
+<span class="fc" id="L413">            var plan = read(run.relationPlanJson, RelationSearchDistribution.Plan.class);</span>
+<span class="fc" id="L414">            var grant = read(work.inputJson, RelationSearchDistribution.Work.class);</span>
+<span class="fc" id="L415">            var failed = RelationSearchDistribution.failed(plan, grant, reason);</span>
+<span class="fc" id="L416">            var results = new ArrayList&lt;&gt;(relationResults(run.id)); results.add(failed);</span>
+<span class="fc" id="L417">            RelationSearchDistribution.combine(plan, results);</span>
+<span class="fc" id="L418">            work.resultJson = json(failed);</span>
+        }
+<span class="fc" id="L420">        work.failureReason = reason; work.state = &quot;FAILED&quot;; work.finishedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L421">    }</span>
+
+    private ClusterAnalysisRun resultRun(AnalysisTaskMessage task) {
+<span class="pc bpc" id="L424" title="1 of 2 branches missed.">        if (!TransactionSynchronizationManager.isActualTransactionActive())</span>
+<span class="nc" id="L425">            throw new IllegalStateException(&quot;A result must join its completion transaction&quot;);</span>
+<span class="fc" id="L426">        var run = requireRun(task.envelope().operationId(), true);</span>
+<span class="fc" id="L427">        requireAuthority(run, context(task.envelope())); requireWork(task); return run;</span>
+    }
+
+    /** Fences the prepared effect inside the same ledger transaction as its settlement. */
+    @Override public void verifyDelivery(AnalysisTaskMessage task, int capturedDelivery) {
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">        if (!TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException(&quot;Delivery fencing must join completion transaction&quot;);</span>
+<span class="fc" id="L433">        var run = requireRun(task.envelope().operationId(), true); requireAuthority(run, context(task.envelope()));</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">        if (run.state.terminal()) return;</span>
+<span class="fc" id="L435">        var work = requireWork(task);</span>
+<span class="pc bpc" id="L436" title="2 of 4 branches missed.">        if (work.attempts != capturedDelivery || !&quot;RUNNING&quot;.equals(work.state)) throw new IllegalStateException(&quot;Delivery was superseded&quot;);</span>
+<span class="fc" id="L437">    }</span>
+
+    private AnalysisResult completeContinuation(ClusterAnalysisRun run, AnalysisResult result, boolean cancelled) {
+<span class="fc" id="L440">        var command = read(run.commandJson, AnalyzeRequirementCommand.class);</span>
+        // Cooperative stops bypass FINALIZING, including requests without a continuation.
+        // Project only retained, already-authorized evidence before publishing that result.
+<span class="fc bfc" id="L443" title="All 4 branches covered.">        if (command.includeArchitectureView() &amp;&amp; result.getArchitectureView() == null) {</span>
+<span class="fc" id="L444">            result.setArchitectureView(com.taxonomy.analysis.usecase.PartialArchitectureProjection.complete(</span>
+<span class="fc" id="L445">                    result, null, command.maxArchitectureNodes()));</span>
+        }
+<span class="fc" id="L447">        var binding = command.continuationBinding();</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">        if (binding == null) return result;</span>
+<span class="fc" id="L449">        var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);</span>
+<span class="pc bpc" id="L450" title="1 of 2 branches missed.">        if (!continuations.owns(claim, run.id)) return result;</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">        return cancelled ? continuations.cancel(binding.id(), command.workspaceContext(), result.getRelationSearchReport()).result()</span>
+<span class="fc" id="L452">                : continuations.complete(claim, result, result.getTree());</span>
+    }
+
+    /** Joins the caller's ledger transaction; never starts an independent result transaction. */
+    public void persistResult(AnalysisTaskMessage task, AnalysisResult result) {
+<span class="pc bpc" id="L457" title="1 of 2 branches missed.">        if (!TransactionSynchronizationManager.isActualTransactionActive())</span>
+<span class="nc" id="L458">            throw new IllegalStateException(&quot;A result must join its completion transaction&quot;);</span>
+<span class="fc" id="L459">        var run = requireRun(task.envelope().operationId(), true);</span>
+<span class="fc" id="L460">        requireAuthority(run, context(task.envelope()));</span>
+<span class="fc" id="L461">        var work = requireWork(task);</span>
+<span class="fc bfc" id="L462" title="All 2 branches covered.">        if (run.state.terminal()) return; // Cancellation won. A late computation cannot publish an effect.</span>
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">        if (&quot;WAITING_PREDECESSOR&quot;.equals(work.state)) throw new AnalysisTaskDeferredException();</span>
+<span class="pc bpc" id="L464" title="1 of 2 branches missed.">        if (work.resultJson != null) throw new IllegalStateException(&quot;Task already has a committed result&quot;);</span>
+<span class="fc" id="L465">        work.resultJson = json(Objects.requireNonNull(result));</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">        work.state = &quot;SUCCESS&quot;.equals(result.getStatus()) ? &quot;COMPLETED&quot; : &quot;PARTIAL&quot;;</span>
+<span class="fc" id="L467">        work.finishedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L468">    }</span>
+
+    /** Idempotent coordinator effect, called before acknowledging the completion queue. */
+    public boolean accept(AnalysisCompletionMessage completion) {
+<span class="fc" id="L472">        return Boolean.TRUE.equals(tx.execute(status -&gt; {</span>
+<span class="fc" id="L473">            var run = requireRun(completion.envelope().operationId(), true);</span>
+<span class="fc" id="L474">            requireAuthority(run, context(completion.envelope()));</span>
+<span class="fc" id="L475">            var work = em.find(ClusterAnalysisWork.class, key(completion.taskId().value()));</span>
+<span class="pc bpc" id="L476" title="1 of 2 branches missed.">            if (work == null) throw new IllegalStateException(&quot;Completion has no expected task&quot;);</span>
+<span class="fc" id="L477">            var task = (AnalysisTaskMessage) decode(work.messageJson);</span>
+<span class="fc" id="L478">            AnalysisTaskIdentity.requireSameSource(task.envelope(), completion.envelope());</span>
+<span class="fc bfc" id="L479" title="All 4 branches covered.">            if (run.state.terminal() || work.settled) return false;</span>
+<span class="fc bfc" id="L480" title="All 4 branches covered.">            if (work.resultJson == null &amp;&amp; work.failureReason == null) throw new IllegalStateException(&quot;Completion has no durable result&quot;);</span>
+<span class="fc" id="L481">            work.settled = true;</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">            if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) run.completedRoots++;</span>
+<span class="fc bfc" id="L483" title="All 2 branches covered.">            if (completion.stopsOperation()) {</span>
+<span class="fc" id="L484">                run.state = ClusterAnalysisState.PARTIAL;</span>
+<span class="fc" id="L485">                var result = aggregate(run);</span>
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">                String reason = completion instanceof SubtaxonomyAnalysisCompleted root ? root.stopReason()</span>
+<span class="pc" id="L487">                        : ((RelationAnalysisCompleted) completion).stopReason();</span>
+<span class="fc" id="L488">                result.setStatus(&quot;PARTIAL&quot;); result.setErrorMessage(reason + &quot;: remaining analysis work was stopped&quot;);</span>
+<span class="fc" id="L489">                result.getWarnings().add(result.getErrorMessage()); run.resultJson = json(completeContinuation(run, result, false));</span>
+<span class="fc bfc" id="L490" title="All 4 branches covered.">                for (var pending : works(run.id)) if (!pending.settled) pending.state = &quot;STOPPED&quot;;</span>
+<span class="fc" id="L491">                appendEvent(run, AnalysisProgressPhase.OPERATION_STOPPED); return true;</span>
+            }
+<span class="fc" id="L493">            var command = read(run.commandJson, AnalyzeRequirementCommand.class);</span>
+<span class="fc bfc" id="L494" title="All 2 branches covered.">            if (run.completedRoots == run.totalRoots) {</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">                if (command.analysisScope().includesRelations()) advanceRelations(run);</span>
+<span class="fc" id="L496">                else finish(run);</span>
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">            } else if (task.taskType() == AnalysisTaskType.SUBTAXONOMY_ANALYSIS) {</span>
+                // The next root is released by its predecessor's committed settlement.
+                // Stable dispatch identities keep duplicate completions and recovery idempotent.
+<span class="pc bpc" id="L500" title="1 of 4 branches missed.">                works(run.id).stream().filter(next -&gt; next.taskType.equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())</span>
+<span class="fc" id="L501">                        &amp;&amp; !next.settled).findFirst().filter(next -&gt; &quot;WAITING_PREDECESSOR&quot;.equals(next.state))</span>
+<span class="fc" id="L502">                        .ifPresent(next -&gt; {</span>
+<span class="fc" id="L503">                            next.state = &quot;QUEUED&quot;;</span>
+<span class="fc" id="L504">                            dispatch.dispatch(List.of((AnalysisTaskMessage) decode(next.messageJson)));</span>
+<span class="fc" id="L505">                        });</span>
+            }
+<span class="fc bfc" id="L507" title="All 2 branches covered.">            appendEvent(run, run.state.terminal() ? AnalysisProgressPhase.OPERATION_COMPLETED : AnalysisProgressPhase.TASK_COMPLETED);</span>
+<span class="fc" id="L508">            return true;</span>
+        }));
+    }
+
+    public boolean cancel(AnalysisOperationContext context) {
+<span class="fc" id="L513">        return Boolean.TRUE.equals(tx.execute(status -&gt; {</span>
+<span class="fc" id="L514">            var run = requireRun(context.operationId(), true); requireAuthority(run, context);</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">            if (run.state.terminal()) return false;</span>
+<span class="fc" id="L516">            run.state = ClusterAnalysisState.CANCELLED;</span>
+<span class="fc" id="L517">            var result = aggregate(run);</span>
+<span class="fc" id="L518">            result.setStatus(&quot;PARTIAL&quot;); result.setErrorMessage(&quot;CANCELLED: Analysis stopped cooperatively&quot;);</span>
+<span class="fc" id="L519">            result.getWarnings().add(result.getErrorMessage()); run.resultJson = json(completeContinuation(run, result, true));</span>
+<span class="fc bfc" id="L520" title="All 4 branches covered.">            for (var work : works(run.id)) if (!work.settled) work.state = &quot;STOPPED&quot;;</span>
+<span class="fc" id="L521">            appendEvent(run, AnalysisProgressPhase.OPERATION_STOPPED);</span>
+<span class="fc" id="L522">            return true;</span>
+        }));
+    }
+
+    public Snapshot snapshot(AnalysisOperationContext context) {
+<span class="fc" id="L527">        return tx.execute(status -&gt; {</span>
+            // Keep the revision and all per-task observations coherent with worker updates.
+<span class="fc" id="L529">            var run = requireRun(context.operationId(), true); requireAuthority(run, context);</span>
+<span class="fc" id="L530">            var work = works(run.id);</span>
+<span class="fc" id="L531">            var roots = new HashMap&lt;String, RootCatalogueSnapshot&gt;();</span>
+<span class="fc bfc" id="L532" title="All 8 branches covered.">            boolean restored = run.state.terminal() &amp;&amp; work.stream().allMatch(task -&gt; task.attempts == 0 &amp;&amp; task.startedAt == null);</span>
+<span class="fc" id="L533">            com.taxonomy.catalog.snapshot.CatalogueSourceIdentity frozenSource = null;</span>
+<span class="fc bfc" id="L534" title="All 2 branches covered.">            for (var input : em.createQuery(&quot;select i from ClusterAnalysisInput i where i.operationId=:id&quot;, ClusterAnalysisInput.class)</span>
+<span class="fc" id="L535">                    .setParameter(&quot;id&quot;, run.id).getResultList()) {</span>
+<span class="fc" id="L536">                var root = ClusterAnalysisProgress.frozen(input.inputJson, mapper, context, input.root, restored);</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">                if (root != null) {</span>
+<span class="pc bpc" id="L538" title="1 of 4 branches missed.">                    if (frozenSource != null &amp;&amp; !frozenSource.equals(root.source())) throw new IllegalStateException(&quot;Conflicting frozen progress sources&quot;);</span>
+<span class="fc" id="L539">                    frozenSource = root.source(); roots.put(input.root, root);</span>
+                }
+<span class="fc" id="L541">            }</span>
+<span class="fc" id="L542">            var command = read(run.commandJson, AnalyzeRequirementCommand.class);</span>
+<span class="fc bfc" id="L543" title="All 2 branches covered.">            var result = run.resultJson == null ? null : read(run.resultJson, AnalysisResult.class);</span>
+            // A later continuation rotates its claim. Historical snapshots remain
+            // bound to this operation's committed evidence and cumulative count.
+<span class="pc bpc" id="L546" title="1 of 4 branches missed.">            var committed = run.state.terminal() &amp;&amp; result != null ? result.getRelationSearchReport() : null;</span>
+<span class="fc bfc" id="L547" title="All 2 branches covered.">            var retained = committed == null ? retainedRelations(command) : committed;</span>
+<span class="fc" id="L548">            var progress = ClusterAnalysisProgress.combine(context, run.state, work, roots,</span>
+<span class="pc bpc" id="L549" title="1 of 6 branches missed.">                    command.analysisScope().includesRelations() &amp;&amp; (committed == null || committed.progress() == null)</span>
+<span class="fc" id="L550">                            ? run.relationPlanJson : null, retained, mapper);</span>
+<span class="fc bfc" id="L551" title="All 2 branches covered.">            if (progress.relations() != null) progress = new ClusterAnalysisProgress.View(progress.nodes(),</span>
+<span class="fc bfc" id="L552" title="All 2 branches covered.">                    progress.relations().withBudget(committed == null ? relationBudget(command, progress.relations().budget())</span>
+<span class="fc" id="L553">                            : committed.budget()), progress.phase(), progress.node());</span>
+<span class="fc" id="L554">            var tasks = work.stream().map(w -&gt; new TaskView(w.taskId, w.taskType, w.root, w.state,</span>
+<span class="fc" id="L555">                    w.attempts, w.startedAt, w.finishedAt)).toList();</span>
+<span class="fc" id="L556">            return new Snapshot(run.id, run.state, run.revision, run.completedRoots, run.totalRoots,</span>
+<span class="fc" id="L557">                    (int) tasks.stream().filter(t -&gt; t.state().equals(&quot;RUNNING&quot;)).count(),</span>
+<span class="fc bfc" id="L558" title="All 4 branches covered.">                    (int) tasks.stream().filter(t -&gt; t.state().equals(&quot;QUEUED&quot;) || t.state().equals(&quot;WAITING_PREDECESSOR&quot;)).count(), run.createdAt, run.updatedAt,</span>
+                    tasks, result, progress);
+        });
+    }
+
+    public AnalysisOperationContext authorize(String id, String owner, WorkspaceContext workspace) {
+<span class="pc" id="L564">        return findAuthorized(id, owner, workspace).orElseThrow(() -&gt; new IllegalStateException(&quot;Analysis operation is unavailable in this scope&quot;));</span>
+    }
+
+    public Optional&lt;AnalysisOperationContext&gt; findAuthorized(String id, String owner, WorkspaceContext workspace) {
+<span class="fc" id="L568">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L569">            var run = em.find(ClusterAnalysisRun.class, id);</span>
+<span class="fc bfc" id="L570" title="All 2 branches covered.">            if (run == null) return Optional.empty();</span>
+<span class="fc" id="L571">            var command = read(run.commandJson, AnalyzeRequirementCommand.class);</span>
+<span class="fc bfc" id="L572" title="All 4 branches covered.">            if (!Objects.equals(run.username, owner) || !Objects.equals(command.workspaceContext(), workspace))</span>
+<span class="fc" id="L573">                throw new SecurityException(&quot;Analysis operation is unavailable in this scope&quot;);</span>
+<span class="fc" id="L574">            return Optional.of(read(run.contextJson, AnalysisOperationContext.class));</span>
+        });
+    }
+
+    public List&lt;AnalysisOperationContext&gt; recent(String owner, WorkspaceContext workspace, Long projectId, Long requirementId) {
+<span class="fc" id="L579">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L580">            var query = em.createQuery(&quot;select r.contextJson from ClusterAnalysisRun r where r.username=:owner and r.scopeKey=:scope&quot;</span>
+<span class="fc bfc" id="L581" title="All 2 branches covered.">                    + (projectId == null ? &quot;&quot; : &quot; and r.projectId=:project&quot;)</span>
+<span class="fc bfc" id="L582" title="All 2 branches covered.">                    + (requirementId == null ? &quot;&quot; : &quot; and r.requirementId=:requirement&quot;)</span>
+                    + &quot; order by r.createdAt desc,r.id&quot;, String.class)
+<span class="fc" id="L584">                    .setParameter(&quot;owner&quot;, owner).setParameter(&quot;scope&quot;, scopeKey(workspace)).setMaxResults(50);</span>
+<span class="fc bfc" id="L585" title="All 2 branches covered.">            if (projectId != null) query.setParameter(&quot;project&quot;, projectId);</span>
+<span class="fc bfc" id="L586" title="All 2 branches covered.">            if (requirementId != null) query.setParameter(&quot;requirement&quot;, requirementId);</span>
+<span class="fc" id="L587">            return query.getResultList().stream().map(value -&gt; read(value, AnalysisOperationContext.class)).toList();</span>
+        });
+    }
+
+    /**
+     * Recovery-list read model: one bounded run projection and one task-status projection.
+     * Keep the committed result's score evidence for the existing preview, without loading
+     * command, frozen inputs, task messages/results or the result's presentation object graph.
+     */
+    public List&lt;RecentSnapshot&gt; recentSnapshots(String owner, WorkspaceContext workspace,
+                                                Long projectId, Long requirementId) {
+<span class="fc" id="L598">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L599">            var query = em.createQuery(&quot;select r.id,r.contextJson,r.state,r.revision,r.completedRoots,r.totalRoots,&quot;</span>
+                    + &quot;r.createdAt,r.updatedAt,r.resultJson,r.projectId,r.requirementId from ClusterAnalysisRun r where r.username=:owner and r.scopeKey=:scope&quot;
+<span class="fc bfc" id="L601" title="All 2 branches covered.">                    + (projectId == null ? &quot;&quot; : &quot; and r.projectId=:project&quot;)</span>
+<span class="fc bfc" id="L602" title="All 2 branches covered.">                    + (requirementId == null ? &quot;&quot; : &quot; and r.requirementId=:requirement&quot;)</span>
+                    + &quot; order by r.createdAt desc,r.id&quot;, Object[].class)
+<span class="fc" id="L604">                    .setParameter(&quot;owner&quot;, owner).setParameter(&quot;scope&quot;, scopeKey(workspace)).setMaxResults(50);</span>
+<span class="fc bfc" id="L605" title="All 2 branches covered.">            if (projectId != null) query.setParameter(&quot;project&quot;, projectId);</span>
+<span class="fc bfc" id="L606" title="All 2 branches covered.">            if (requirementId != null) query.setParameter(&quot;requirement&quot;, requirementId);</span>
+            // Compact each row while consuming the cursor: do not retain a page of
+            // full result JSON strings alongside the bounded score previews.
+<span class="fc" id="L609">            query.setHint(HibernateHints.HINT_FETCH_SIZE, 1);</span>
+            List&lt;RecentRun&gt; runs;
+<span class="fc" id="L611">            try (var rows = query.getResultStream()) {</span>
+<span class="fc" id="L612">                runs = rows.map(row -&gt; recentRun(row, workspace)).toList();</span>
+            }
+<span class="fc bfc" id="L614" title="All 2 branches covered.">            if (runs.isEmpty()) return List.of();</span>
+<span class="fc" id="L615">            var operationIds = runs.stream().map(run -&gt; run.context().operationId()).toList();</span>
+<span class="fc" id="L616">            var taskRows = em.createQuery(&quot;select w.operationId,w.taskId,w.taskType,w.root,w.state,w.attempts,w.startedAt,w.finishedAt&quot;</span>
+                    + &quot; from ClusterAnalysisWork w where w.operationId in :ids order by w.operationId,w.ordinal&quot;, Object[].class)
+<span class="fc" id="L618">                    .setParameter(&quot;ids&quot;, operationIds).getResultList();</span>
+<span class="fc" id="L619">            var tasksByOperation = new HashMap&lt;String, List&lt;TaskView&gt;&gt;();</span>
+<span class="fc bfc" id="L620" title="All 2 branches covered.">            for (var row : taskRows) {</span>
+<span class="fc" id="L621">                tasksByOperation.computeIfAbsent((String) row[0], ignored -&gt; new ArrayList&lt;&gt;())</span>
+<span class="fc" id="L622">                        .add(new TaskView((String) row[1], (String) row[2], (String) row[3], (String) row[4],</span>
+<span class="fc" id="L623">                                (Integer) row[5], (Long) row[6], (Long) row[7]));</span>
+<span class="fc" id="L624">            }</span>
+<span class="fc" id="L625">            return runs.stream().map(run -&gt; {</span>
+<span class="fc" id="L626">                String id = run.context().operationId();</span>
+<span class="fc" id="L627">                var tasks = List.copyOf(tasksByOperation.getOrDefault(id, List.of()));</span>
+<span class="fc" id="L628">                var snapshot = new Snapshot(id, run.state(), run.revision(), run.completedRoots(), run.totalRoots(),</span>
+<span class="fc" id="L629">                        (int) tasks.stream().filter(task -&gt; task.state().equals(&quot;RUNNING&quot;)).count(),</span>
+<span class="fc bfc" id="L630" title="All 4 branches covered.">                        (int) tasks.stream().filter(task -&gt; task.state().equals(&quot;QUEUED&quot;) || task.state().equals(&quot;WAITING_PREDECESSOR&quot;)).count(),</span>
+<span class="fc" id="L631">                        run.createdAt(), run.updatedAt(), tasks, null);</span>
+<span class="fc" id="L632">                return new RecentSnapshot(run.context(), snapshot, run.scores());</span>
+<span class="fc" id="L633">            }).toList();</span>
+        });
+    }
+
+    private RecentRun recentRun(Object[] row, WorkspaceContext workspace) {
+<span class="fc" id="L638">        var context = read((String) row[1], AnalysisOperationContext.class);</span>
+<span class="fc" id="L639">        var authority = context.authority();</span>
+        // The projection must not turn a mismatched context into another run's
+        // identity, nor bypass the immutable scope bound at admission/restore.
+<span class="fc bfc" id="L642" title="All 2 branches covered.">        if (!context.operationId().equals(row[0])</span>
+<span class="fc bfc" id="L643" title="All 2 branches covered.">                || !Objects.equals(authority.repositoryId(), workspace.repositoryId())</span>
+<span class="fc bfc" id="L644" title="All 2 branches covered.">                || !Objects.equals(authority.workspaceId(), workspace.workspaceId())</span>
+<span class="fc bfc" id="L645" title="All 2 branches covered.">                || !Objects.equals(authority.branch(), workspace.currentBranch())</span>
+<span class="fc bfc" id="L646" title="All 2 branches covered.">                || !Objects.equals(context.requirement().projectId(), row[9])</span>
+<span class="fc bfc" id="L647" title="All 2 branches covered.">                || !Objects.equals(context.requirement().requirementId(), row[10]))</span>
+<span class="fc" id="L648">            throw new IllegalStateException(&quot;Analysis operation source identity mismatch&quot;);</span>
+<span class="fc" id="L649">        return new RecentRun(context, (ClusterAnalysisState) row[2], (Long) row[3], (Integer) row[4], (Integer) row[5],</span>
+<span class="fc" id="L650">                (Long) row[6], (Long) row[7], scoreEvidence((String) row[8]));</span>
+    }
+
+    private ScorePreview scoreEvidence(String resultJson) {
+<span class="fc bfc" id="L654" title="All 2 branches covered.">        if (resultJson == null) return ScorePreview.from(null);</span>
+<span class="fc" id="L655">        try (var parser = mapper.createParser(resultJson)) {</span>
+<span class="fc" id="L656">            var token = parser.nextToken();</span>
+<span class="fc bfc" id="L657" title="All 2 branches covered.">            if (token == JsonToken.VALUE_NULL) {</span>
+<span class="fc" id="L658">                requireResultEnd(parser);</span>
+<span class="fc" id="L659">                return ScorePreview.from(null);</span>
+            }
+<span class="pc bpc" id="L661" title="1 of 2 branches missed.">            if (token != JsonToken.START_OBJECT) throw new IllegalArgumentException(&quot;Invalid committed analysis result&quot;);</span>
+<span class="fc" id="L662">            var result = new AnalysisResult();</span>
+            // This reader binds a nested field; the enclosing result legitimately has
+            // more tokens. Validate document completion with the outer parser instead.
+<span class="fc" id="L665">            var scoresReader = mapper.readerForMapOf(Integer.class)</span>
+<span class="fc" id="L666">                    .without(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);</span>
+<span class="fc bfc" id="L667" title="All 2 branches covered.">            while (parser.nextToken() == JsonToken.PROPERTY_NAME) {</span>
+<span class="fc" id="L668">                String field = parser.currentName();</span>
+<span class="fc" id="L669">                parser.nextToken();</span>
+<span class="fc bfc" id="L670" title="All 2 branches covered.">                if (field.equals(&quot;rawScores&quot;)) result.setRawScores(scoresReader.readValue(parser));</span>
+<span class="fc bfc" id="L671" title="All 2 branches covered.">                else if (field.equals(&quot;scores&quot;)) result.setScores(scoresReader.readValue(parser));</span>
+<span class="fc" id="L672">                else parser.skipChildren();</span>
+<span class="fc" id="L673">            }</span>
+<span class="pc bpc" id="L674" title="1 of 2 branches missed.">            if (parser.currentToken() != JsonToken.END_OBJECT)</span>
+<span class="nc" id="L675">                throw new IllegalArgumentException(&quot;Invalid committed analysis result&quot;);</span>
+<span class="fc" id="L676">            requireResultEnd(parser);</span>
+<span class="fc" id="L677">            return ScorePreview.from(result);</span>
+<span class="pc bpc" id="L678" title="1 of 2 branches missed.">        }</span>
+    }
+
+    private void requireResultEnd(JsonParser parser) {
+<span class="pc bpc" id="L682" title="1 of 4 branches missed.">        if (mapper.isEnabled(DeserializationFeature.FAIL_ON_TRAILING_TOKENS) &amp;&amp; parser.nextToken() != null)</span>
+<span class="fc" id="L683">            throw new IllegalArgumentException(&quot;Invalid committed analysis result&quot;);</span>
+<span class="fc" id="L684">    }</span>
+
+    /** Add presentation-only enrichment without replacing the committed assessment. */
+    public void enrich(AnalysisOperationContext context, AnalysisResult enriched) {
+<span class="nc" id="L688">        finalizeResult(context, enriched);</span>
+<span class="nc" id="L689">    }</span>
+
+    /** Complete presentation preparation before exposing a terminal, retrievable result. */
+    public void finalizeResult(AnalysisOperationContext context, AnalysisResult enriched) {
+<span class="fc" id="L693">        tx.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L694">            var run = requireRun(context.operationId(), true); requireAuthority(run, context);</span>
+<span class="fc bfc" id="L695" title="All 2 branches covered.">            if (run.state != ClusterAnalysisState.FINALIZING) return;</span>
+<span class="fc" id="L696">            var result = read(run.resultJson, AnalysisResult.class);</span>
+<span class="fc bfc" id="L697" title="All 2 branches covered.">            if (!result.getRawScores().equals(enriched.getRawScores())</span>
+<span class="pc bpc" id="L698" title="1 of 2 branches missed.">                    || !Objects.equals(result.getRelationSearchReport(), enriched.getRelationSearchReport()))</span>
+<span class="fc" id="L699">                throw new IllegalArgumentException(&quot;Enrichment cannot replace committed assessment evidence&quot;);</span>
+<span class="fc" id="L700">            result.setArchitectureView(enriched.getArchitectureView());</span>
+<span class="fc" id="L701">            result.setWarnings(enriched.getWarnings()); result.setErrorMessage(enriched.getErrorMessage());</span>
+<span class="fc" id="L702">            result.setStatus(enriched.getStatus()); run.resultJson = json(result);</span>
+<span class="fc" id="L703">            result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));</span>
+<span class="fc" id="L704">            run.resultJson = json(result);</span>
+<span class="fc bfc" id="L705" title="All 2 branches covered.">            run.state = &quot;SUCCESS&quot;.equals(result.getStatus()) ? ClusterAnalysisState.COMPLETED : ClusterAnalysisState.PARTIAL;</span>
+<span class="fc" id="L706">            run.resultJson = json(completeContinuation(run, result, false));</span>
+<span class="fc" id="L707">            appendEvent(run, AnalysisProgressPhase.OPERATION_COMPLETED);</span>
+<span class="fc" id="L708">        });</span>
+<span class="fc" id="L709">    }</span>
+
+    public List&lt;AnalysisProgressEvent&gt; events(AnalysisOperationContext context, long after, int limit) {
+<span class="pc bpc" id="L712" title="3 of 6 branches missed.">        if (after &lt; 0 || limit &lt; 1 || limit &gt; 1000) throw new IllegalArgumentException(&quot;Invalid event replay window&quot;);</span>
+<span class="fc" id="L713">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L714">            requireAuthority(requireRun(context.operationId(), false), context);</span>
+<span class="fc" id="L715">            return em.createQuery(&quot;select e from ClusterAnalysisEvent e where e.operationId=:id and e.revision&gt;:after order by e.revision&quot;, ClusterAnalysisEvent.class)</span>
+<span class="fc" id="L716">                    .setParameter(&quot;id&quot;, context.operationId()).setParameter(&quot;after&quot;, after).setMaxResults(limit).getResultList().stream()</span>
+<span class="fc" id="L717">                    .map(e -&gt; (AnalysisProgressEvent) decode(e.eventJson)).toList();</span>
+        });
+    }
+
+    /** Read the current committed notification without advancing the operation's revision. */
+    public AnalysisProgressEvent latestEvent(AnalysisOperationContext context) {
+<span class="fc" id="L723">        return tx.execute(status -&gt; {</span>
+<span class="fc" id="L724">            var run = requireRun(context.operationId(), false);</span>
+<span class="fc" id="L725">            requireAuthority(run, context);</span>
+<span class="fc" id="L726">            var record = em.find(ClusterAnalysisEvent.class, key(run.id + &quot;:event:&quot; + run.revision));</span>
+<span class="pc bpc" id="L727" title="3 of 6 branches missed.">            if (record == null || !run.id.equals(record.operationId) || record.revision != run.revision</span>
+<span class="pc bpc" id="L728" title="1 of 2 branches missed.">                    || !(decode(record.eventJson) instanceof AnalysisProgressEvent event)</span>
+<span class="pc bpc" id="L729" title="2 of 4 branches missed.">                    || event.sequence() != run.revision || !context.equals(context(event.envelope()))) {</span>
+<span class="nc" id="L730">                throw new IllegalStateException(&quot;Analysis operation has no matching committed progress event&quot;);</span>
+            }
+<span class="fc" id="L732">            return event;</span>
+        });
+    }
+
+    private void finish(ClusterAnalysisRun run) {
+<span class="fc" id="L737">        var result = aggregate(run);</span>
+<span class="fc bfc" id="L738" title="All 2 branches covered.">        run.state = &quot;SUCCESS&quot;.equals(result.getStatus()) ? ClusterAnalysisState.COMPLETED : ClusterAnalysisState.PARTIAL;</span>
+<span class="fc bfc" id="L739" title="All 2 branches covered.">        if (read(run.commandJson, AnalyzeRequirementCommand.class).includeArchitectureView()) run.state = ClusterAnalysisState.FINALIZING;</span>
+<span class="fc bfc" id="L740" title="All 2 branches covered.">        run.resultJson = json(run.state.terminal() ? completeContinuation(run, result, false) : result);</span>
+<span class="fc" id="L741">    }</span>
+
+    private void advanceRelations(ClusterAnalysisRun run) {
+<span class="fc" id="L744">        run.state = ClusterAnalysisState.RELATIONS;</span>
+<span class="fc" id="L745">        var context = read(run.contextJson, AnalysisOperationContext.class);</span>
+<span class="fc" id="L746">        var tasks = works(run.id);</span>
+<span class="fc" id="L747">        var prerequisites = tasks.stream().filter(w -&gt; w.taskType.equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name()))</span>
+<span class="fc" id="L748">                .map(w -&gt; new AnalysisTaskId(w.taskId)).toList();</span>
+<span class="fc" id="L749">        var relationTasks = tasks.stream().filter(w -&gt; w.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name())).toList();</span>
+<span class="fc bfc" id="L750" title="All 2 branches covered.">        if (relationTasks.isEmpty()) {</span>
+<span class="fc" id="L751">            var roots = TaxonomyShardRoot.DEFAULT_ROOTS.stream().sorted().toList();</span>
+<span class="fc" id="L752">            var node = new AnalysisTaskGraph.Node(AnalysisTaskId.relation(run.id, roots), AnalysisTaskType.RELATION_ANALYSIS, roots, prerequisites);</span>
+<span class="fc" id="L753">            var preparation = factory(context).task(node);</span>
+<span class="fc" id="L754">            addWork(preparation, run.totalRoots, null); dispatch.dispatch(List.of(preparation)); return;</span>
+        }
+<span class="fc bfc" id="L756" title="All 2 branches covered.">        if (run.relationPlanJson == null) {</span>
+<span class="pc bpc" id="L757" title="1 of 2 branches missed.">            if (relationTasks.stream().allMatch(w -&gt; w.settled)) finish(run);</span>
+<span class="fc" id="L758">            return;</span>
+        }
+<span class="fc" id="L760">        var plan = read(run.relationPlanJson, RelationSearchDistribution.Plan.class);</span>
+<span class="pc bpc" id="L761" title="1 of 6 branches missed.">        var results = relationTasks.stream().filter(w -&gt; w.settled &amp;&amp; w.inputJson != null &amp;&amp; w.resultJson != null)</span>
+<span class="fc" id="L762">                .map(w -&gt; read(w.resultJson, RelationSearchDistribution.WorkResult.class)).toList();</span>
+<span class="fc" id="L763">        List&lt;AnalysisTaskMessage&gt; admitted = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L764" title="All 2 branches covered.">        for (var grant : RelationSearchDistribution.ready(plan, results)) {</span>
+<span class="fc" id="L765">            var id = AnalysisTaskId.relationWork(run.id, grant.targetRoot(), grant.ordinal());</span>
+<span class="fc bfc" id="L766" title="All 2 branches covered.">            if (tasks.stream().anyMatch(w -&gt; w.taskId.equals(id.value()))) continue;</span>
+<span class="fc" id="L767">            var header = new AnalysisEnvelope(2, AnalysisMessageType.RELATION_ANALYSIS_TASK, run.id, id,</span>
+<span class="fc" id="L768">                    AnalysisTaskType.RELATION_ANALYSIS, context.authority(), context.requirement(), List.of(grant.targetRoot()),</span>
+<span class="fc" id="L769">                    1, AnalysisTaskId.relation(run.id, TaxonomyShardRoot.DEFAULT_ROOTS).value(), context.correlationId(),</span>
+<span class="fc" id="L770">                    java.time.Instant.now(), null);</span>
+<span class="fc" id="L771">            var task = new RelationAnalysisTask(header, List.of(grant.targetRoot()), prerequisites);</span>
+<span class="fc" id="L772">            addWork(task, run.totalRoots + 1 + grant.ordinal(), json(grant)); admitted.add(task);</span>
+<span class="fc" id="L773">        }</span>
+<span class="fc bfc" id="L774" title="All 2 branches covered.">        if (!admitted.isEmpty()) dispatch.dispatch(admitted);</span>
+<span class="fc bfc" id="L775" title="All 2 branches covered.">        else if (relationTasks.stream().allMatch(w -&gt; w.settled)) finish(run);</span>
+<span class="fc" id="L776">    }</span>
+
+    private List&lt;RelationSearchDistribution.WorkResult&gt; relationResults(String id) {
+<span class="fc bfc" id="L779" title="All 6 branches covered.">        return works(id).stream().filter(w -&gt; w.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name())</span>
+                        &amp;&amp; w.inputJson != null &amp;&amp; w.resultJson != null)
+<span class="fc" id="L781">                .map(w -&gt; read(w.resultJson, RelationSearchDistribution.WorkResult.class)).toList();</span>
+    }
+
+    /** Retained prerequisites are durable evidence, never broker-dispatched scoring work. */
+    private AnalysisResult retainedRoot(AnalysisResult retained, String root) {
+<span class="fc" id="L786">        var tree = retained.getTree().stream().filter(node -&gt; root.equals(node.getCode())).toList();</span>
+<span class="pc bpc" id="L787" title="1 of 2 branches missed.">        if (tree.isEmpty()) throw new IllegalArgumentException(&quot;Retained source catalogue root is absent&quot;);</span>
+<span class="fc" id="L788">        var codes = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L789">        java.util.function.Consumer&lt;TaxonomyNodeDto&gt; collect = new java.util.function.Consumer&lt;&gt;() {</span>
+<span class="pc bpc" id="L790" title="1 of 2 branches missed.">            public void accept(TaxonomyNodeDto node) { codes.add(node.getCode()); if (node.getChildren() != null) node.getChildren().forEach(this); }</span>
+        };
+<span class="fc" id="L792">        tree.forEach(collect);</span>
+<span class="fc" id="L793">        var raw = new LinkedHashMap&lt;String, Double&gt;(); var reasons = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L794" title="All 2 branches covered.">        retained.getRawScores().forEach((code, score) -&gt; { if (codes.contains(code)) raw.put(code, score); });</span>
+<span class="fc bfc" id="L795" title="All 2 branches covered.">        retained.getReasons().forEach((code, reason) -&gt; { if (codes.contains(code)) reasons.put(code, reason); });</span>
+<span class="fc" id="L796">        var result = new AnalysisResult(raw, tree); result.setReasons(reasons); result.setProvider(retained.getProvider());</span>
+<span class="fc" id="L797">        result.setAnalysisScope(new AnalysisScope(Set.of(root), AnalysisMode.TAXONOMIES_ONLY));</span>
+<span class="fc" id="L798">        var missing = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="pc bpc" id="L799" title="1 of 2 branches missed.">        if (retained.getAnalysisCoverage() != null) retained.getAnalysisCoverage().nodes().forEach((code, assessment) -&gt; {</span>
+<span class="pc bpc" id="L800" title="1 of 4 branches missed.">            if (codes.contains(code) &amp;&amp; assessment.state() == AnalysisCoverage.State.UNKNOWN) missing.put(code, assessment.reason());</span>
+<span class="fc" id="L801">        });</span>
+<span class="fc" id="L802">        result.setAnalysisCoverage(AnalysisCoverage.derive(tree, raw, result.getScores(), missing, null));</span>
+<span class="pc bpc" id="L803" title="1 of 2 branches missed.">        result.setStatus(result.getAnalysisCoverage().hasOpenEvaluations() ? &quot;PARTIAL&quot; : &quot;SUCCESS&quot;);</span>
+<span class="fc" id="L804">        return result;</span>
+    }
+
+<span class="fc" id="L807">    private record RelationHandoff(RelationSearchReport previous, Integer finalCalls) { }</span>
+
+<span class="fc" id="L809">    private AnalysisResult aggregate(ClusterAnalysisRun run) { return aggregate(run, null); }</span>
+
+    private AnalysisResult aggregate(ClusterAnalysisRun run, RelationHandoff handoff) {
+<span class="fc" id="L812">        var scores = new LinkedHashMap&lt;String, Double&gt;(); var reasons = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L813">        var contexts = new LinkedHashMap&lt;String, AnalysisScoreSemantics.NodeContext&gt;();</span>
+<span class="fc" id="L814">        List&lt;TaxonomyNodeDto&gt; tree = new ArrayList&lt;&gt;(); List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L815">        List&lt;TaxonomyDiscrepancy&gt; discrepancies = new ArrayList&lt;&gt;(); List&lt;ProductCoverageGap&gt; gaps = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L816">        var coverage = new ClusterAnalysisCoverage();</span>
+<span class="fc" id="L817">        var command = read(run.commandJson, AnalyzeRequirementCommand.class);</span>
+<span class="fc" id="L818">        var retained = command.retainedAnalysis();</span>
+<span class="fc bfc" id="L819" title="All 4 branches covered.">        var previousRelations = handoff == null || handoff.previous() == null ? retainedRelations(command) : handoff.previous();</span>
+<span class="fc bfc" id="L820" title="All 2 branches covered.">        String provider = retained == null ? null : retained.getProvider();</span>
+<span class="fc bfc" id="L821" title="All 2 branches covered.">        if (retained != null) warnings.addAll(retained.getWarnings());</span>
+<span class="fc bfc" id="L822" title="All 2 branches covered.">        for (var work : works(run.id)) {</span>
+<span class="fc bfc" id="L823" title="All 2 branches covered.">            if (retained != null) break;</span>
+<span class="fc bfc" id="L824" title="All 2 branches covered.">            if (!work.taskType.equals(AnalysisTaskType.SUBTAXONOMY_ANALYSIS.name())) continue;</span>
+<span class="fc bfc" id="L825" title="All 2 branches covered.">            if (work.resultJson == null) {</span>
+<span class="fc" id="L826">                coverage.add(work.root, null);</span>
+<span class="fc" id="L827">                warnings.add(work.root + &quot;: &quot; + Objects.toString(work.failureReason, &quot;unexecuted root&quot;) + &quot;; no negative finding&quot;);</span>
+<span class="fc" id="L828">                continue;</span>
+            }
+<span class="fc" id="L830">            var result = read(work.resultJson, AnalysisResult.class);</span>
+<span class="fc" id="L831">            coverage.add(work.root, result);</span>
+<span class="fc bfc" id="L832" title="All 2 branches covered.">            for (var score : result.getRawScores().entrySet()) {</span>
+<span class="pc bpc" id="L833" title="1 of 2 branches missed.">                if (scores.putIfAbsent(score.getKey(), score.getValue()) != null)</span>
+<span class="nc" id="L834">                    throw new IllegalStateException(&quot;Conflicting catalogue identities across root results&quot;);</span>
+<span class="fc" id="L835">            }</span>
+<span class="fc" id="L836">            reasons.putAll(result.getReasons()); contexts.putAll(result.getScoreSemanticsContext());</span>
+<span class="pc bpc" id="L837" title="1 of 2 branches missed.">            if (result.getTree() != null) tree.addAll(result.getTree());</span>
+<span class="fc" id="L838">            warnings.addAll(result.getWarnings()); discrepancies.addAll(result.getDiscrepancies());</span>
+<span class="fc" id="L839">            gaps.addAll(result.getProductCoverageGaps()); provider = result.getProvider();</span>
+<span class="fc bfc" id="L840" title="All 2 branches covered.">            if (!&quot;SUCCESS&quot;.equals(result.getStatus())) warnings.add(work.root + &quot;: &quot;</span>
+<span class="fc" id="L841">                    + Objects.toString(result.getErrorMessage(), &quot;partial assessment&quot;));</span>
+<span class="fc" id="L842">        }</span>
+<span class="fc bfc" id="L843" title="All 2 branches covered.">        var result = retained == null ? new AnalysisResult(scores, tree) : read(json(retained), AnalysisResult.class);</span>
+<span class="fc bfc" id="L844" title="All 2 branches covered.">        if (retained == null) { result.setReasons(reasons); result.setScoreSemanticsContext(contexts); }</span>
+<span class="fc" id="L845">        var context = read(run.contextJson, AnalysisOperationContext.class);</span>
+<span class="fc bfc" id="L846" title="All 2 branches covered.">        if (retained == null) result.setAnalysisCoverage(coverage.combine(context.authority(),</span>
+<span class="fc" id="L847">                root -&gt; read(shard(context, TaxonomyShardRoot.of(root)), RootCatalogueSnapshot.class)));</span>
+<span class="fc bfc" id="L848" title="All 6 branches covered.">        for (var work : works(run.id)) if (work.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name()) &amp;&amp; work.failureReason != null)</span>
+<span class="fc" id="L849">            warnings.add(work.failureReason + &quot;: relation work incomplete; no negative finding&quot;);</span>
+<span class="fc bfc" id="L850" title="All 2 branches covered.">        if (run.relationPlanJson != null) {</span>
+<span class="fc" id="L851">            var report = RelationSearchDistribution.combine(read(run.relationPlanJson, RelationSearchDistribution.Plan.class),</span>
+<span class="fc" id="L852">                    relationResults(run.id), previousRelations);</span>
+<span class="fc" id="L853">            report = report.withBudget(relationBudget(command, report.budget()));</span>
+<span class="fc" id="L854">            result.setRelationSearchReport(report); result.setProvisionalRelations(List.of());</span>
+<span class="fc bfc" id="L855" title="All 2 branches covered.">            if (!report.isSearchExhausted()) {</span>
+<span class="fc" id="L856">                String summary = &quot;RELATION_SEARCH_PARTIAL: &quot; + report.totalCalls() + &quot;/&quot; + report.maxCalls()</span>
+<span class="fc" id="L857">                        + &quot; evaluation attempts; &quot; + report.result().unfinished().size() + &quot; unfinished search batches.&quot;</span>
+<span class="fc bfc" id="L858" title="All 2 branches covered.">                        + (report.stopReason().isEmpty() ? &quot;&quot; : &quot; &quot; + report.stopReason());</span>
+<span class="fc" id="L859">                result.setErrorMessage(summary); warnings.add(summary); warnings.addAll(report.warnings());</span>
+            }
+        }
+<span class="fc bfc" id="L862" title="All 2 branches covered.">        if (run.relationPlanJson == null) {</span>
+<span class="fc bfc" id="L863" title="All 2 branches covered.">            if (previousRelations != null) result.setRelationSearchReport(</span>
+<span class="fc" id="L864">                    previousRelations.withBudget(relationBudget(command, null)));</span>
+<span class="fc" id="L865">            result.setProvisionalRelations(works(run.id).stream()</span>
+<span class="pc bpc" id="L866" title="1 of 6 branches missed.">                    .filter(work -&gt; work.taskType.equals(AnalysisTaskType.RELATION_ANALYSIS.name())</span>
+                            &amp;&amp; work.inputJson == null &amp;&amp; work.resultJson != null)
+<span class="fc" id="L868">                    .flatMap(work -&gt; read(work.resultJson, ClusterRelationComputation.ScoreOnly.class).hypotheses().stream())</span>
+<span class="fc" id="L869">                    .toList());</span>
+        }
+<span class="fc" id="L871">        var report = result.getRelationSearchReport();</span>
+<span class="pc bpc" id="L872" title="2 of 8 branches missed.">        if (handoff != null &amp;&amp; handoff.finalCalls() != null &amp;&amp; report != null &amp;&amp; report.budget() != null) {</span>
+<span class="fc" id="L873">            var usage = report.budget();</span>
+<span class="fc" id="L874">            var oldPolicy = command.continuationBinding().relationBudget();</span>
+<span class="pc bpc" id="L875" title="1 of 2 branches missed.">            int before = oldPolicy == null ? usage.spentCalls() - usage.newCalls() : oldPolicy.callsBeforeExecution();</span>
+<span class="fc" id="L876">            result.setRelationSearchReport(report.withBudget(usage.withSpentCalls(handoff.finalCalls(), before)));</span>
+        }
+<span class="fc" id="L878">        result.setWarnings(warnings);</span>
+<span class="fc bfc" id="L879" title="All 2 branches covered.">        if (retained == null) { result.setDiscrepancies(discrepancies); result.setProductCoverageGaps(gaps); }</span>
+<span class="pc bpc" id="L880" title="1 of 6 branches missed.">        result.setProvider(provider); result.setStatus(warnings.isEmpty() &amp;&amp; (retained == null || &quot;SUCCESS&quot;.equals(retained.getStatus())) ? &quot;SUCCESS&quot; : &quot;PARTIAL&quot;);</span>
+<span class="fc" id="L881">        result.setAnalysisOperationId(run.id);</span>
+<span class="fc" id="L882">        result.setAnalysisProviderId(read(run.commandJson, AnalyzeRequirementCommand.class).provider());</span>
+<span class="fc" id="L883">        result.setAnalysisScope(read(run.commandJson, AnalyzeRequirementCommand.class).analysisScope());</span>
+<span class="fc" id="L884">        result.setAnalysisReasonLength(read(run.commandJson, AnalyzeRequirementCommand.class).analysisReasonLength());</span>
+<span class="fc" id="L885">        result.setAnalysisLanguage(read(run.commandJson, AnalyzeRequirementCommand.class).analysisLanguage());</span>
+<span class="fc bfc" id="L886" title="All 2 branches covered.">        result.setViewContext(run.viewJson == null ? null : read(run.viewJson, ViewContext.class));</span>
+<span class="fc" id="L887">        result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));</span>
+<span class="fc" id="L888">        return result;</span>
+    }
+
+    private RelationSearchReport retainedRelations(AnalyzeRequirementCommand command) {
+<span class="fc bfc" id="L892" title="All 2 branches covered.">        if (!command.analysisScope().includesRelations()) return null;</span>
+<span class="fc" id="L893">        var binding = command.continuationBinding();</span>
+<span class="pc bpc" id="L894" title="1 of 4 branches missed.">        if (continuations != null &amp;&amp; binding != null) {</span>
+<span class="fc" id="L895">            var previous = continuations.previousRelations(new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(</span>
+<span class="fc" id="L896">                    binding.id(), binding.token(), null));</span>
+<span class="fc bfc" id="L897" title="All 2 branches covered.">            if (previous != null) return previous;</span>
+        }
+<span class="fc bfc" id="L899" title="All 2 branches covered.">        return command.retainedAnalysis() == null ? null : command.retainedAnalysis().getRelationSearchReport();</span>
+    }
+
+    /** Read committed new-call counts without reopening or mutating a paused/terminal claim. */
+    private RelationSearchBudget relationBudget(AnalyzeRequirementCommand command, RelationSearchBudget usage) {
+<span class="fc" id="L904">        var binding = command.continuationBinding();</span>
+<span class="pc bpc" id="L905" title="1 of 4 branches missed.">        if (continuations == null || binding == null) return usage;</span>
+<span class="fc" id="L906">        var policy = binding.relationBudget();</span>
+<span class="fc bfc" id="L907" title="All 2 branches covered.">        if (policy != null) {</span>
+<span class="fc bfc" id="L908" title="All 4 branches covered.">            boolean currentAdmission = usage != null &amp;&amp; usage.spentCalls() - usage.newCalls() == policy.callsBeforeExecution()</span>
+<span class="pc bpc" id="L909" title="2 of 4 branches missed.">                    &amp;&amp; usage.callsPerSlice() == policy.callsPerSlice() &amp;&amp; usage.maxTotalCalls() == policy.maxTotalCalls()</span>
+<span class="pc bpc" id="L910" title="2 of 4 branches missed.">                    &amp;&amp; usage.automatic() == policy.automatic() &amp;&amp; usage.sourcesPerSlice() == policy.sourcesPerSlice()</span>
+<span class="pc bpc" id="L911" title="2 of 4 branches missed.">                    &amp;&amp; usage.workItemsPerSlice() == policy.workItemsPerSlice() &amp;&amp; usage.sourceCohortSize() == policy.sourceCohortSize();</span>
+<span class="fc bfc" id="L912" title="All 2 branches covered.">            usage = new RelationSearchBudget(policy.callsPerSlice(), policy.maxTotalCalls(), currentAdmission ? usage.newCalls() : 0,</span>
+<span class="fc bfc" id="L913" title="All 2 branches covered.">                    currentAdmission ? usage.spentCalls() : policy.callsBeforeExecution(), policy.automatic(),</span>
+<span class="fc bfc" id="L914" title="All 2 branches covered.">                    currentAdmission ? usage.slices() : 0, policy.sourcesPerSlice(), policy.workItemsPerSlice(), policy.sourceCohortSize());</span>
+        }
+<span class="fc bfc" id="L916" title="All 2 branches covered.">        if (usage == null) return null;</span>
+<span class="fc" id="L917">        var counts = em.createQuery(&quot;select r.relationCallsSpent from AnalysisContinuationRun r where r.id=:id and r.claimToken=:token&quot;, Integer.class)</span>
+<span class="fc" id="L918">                .setParameter(&quot;id&quot;, binding.id()).setParameter(&quot;token&quot;, binding.token()).getResultList();</span>
+<span class="pc bpc" id="L919" title="1 of 4 branches missed.">        if (counts.isEmpty() || counts.getFirst() == null) return usage;</span>
+<span class="pc bpc" id="L920" title="1 of 2 branches missed.">        int before = policy == null ? usage.spentCalls() - usage.newCalls() : policy.callsBeforeExecution();</span>
+<span class="fc" id="L921">        return usage.withSpentCalls(counts.getFirst(), before);</span>
+    }
+
+    private void appendEvent(ClusterAnalysisRun run, AnalysisProgressPhase phase) {
+<span class="fc" id="L925">        run.revision++; run.updatedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L926">        var context = read(run.contextJson, AnalysisOperationContext.class);</span>
+<span class="fc" id="L927">        var event = factory(context).progress(run.revision, phase, null, run.completedRoots, run.totalRoots);</span>
+<span class="fc" id="L928">        var record = new ClusterAnalysisEvent(); record.id = key(run.id + &quot;:event:&quot; + run.revision);</span>
+<span class="fc" id="L929">        record.operationId = run.id; record.revision = run.revision; record.eventJson = encode(event); em.persist(record);</span>
+<span class="fc" id="L930">        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {</span>
+            @Override public void afterCommit() {
+<span class="fc" id="L932">                try { events.accept(event); }</span>
+<span class="pc" id="L933">                catch (RuntimeException ignored) { /* Durable replay remains authoritative after a live delivery gap. */ }</span>
+<span class="fc" id="L934">            }</span>
+        });
+<span class="fc" id="L936">    }</span>
+
+    private ClusterAnalysisWork addWork(AnalysisTaskMessage task, int ordinal, String input) {
+<span class="fc" id="L939">        var work = new ClusterAnalysisWork(); work.id = key(task.taskId().value());</span>
+<span class="fc" id="L940">        work.operationId = task.envelope().operationId(); work.taskId = task.taskId().value();</span>
+<span class="fc bfc" id="L941" title="All 2 branches covered.">        work.taskType = task.taskType().name(); work.root = task.routingRoot() == null ? null : task.routingRoot().code();</span>
+<span class="fc" id="L942">        work.ordinal = ordinal; work.messageJson = encode(task); work.inputJson = input; work.state = &quot;QUEUED&quot;;</span>
+<span class="fc" id="L943">        em.persist(work);</span>
+<span class="fc" id="L944">        return work;</span>
+    }
+    private ClusterAnalysisRun requireRun(String id, boolean lock) {
+<span class="fc bfc" id="L947" title="All 2 branches covered.">        if (lock) {</span>
+            // A real row write serializes the short coordinator mutation on every
+            // supported MVCC database. Some SELECT FOR UPDATE implementations can
+            // return a pre-lock snapshot: that would allocate the same event revision
+            // twice. Refresh after the write; never hold this lock during computation.
+<span class="fc" id="L952">            int changed = em.createQuery(&quot;update ClusterAnalysisRun r set r.version=r.version+1 where r.id=:id&quot;)</span>
+<span class="fc" id="L953">                    .setParameter(&quot;id&quot;, id).executeUpdate();</span>
+<span class="fc bfc" id="L954" title="All 2 branches covered.">            if (changed != 1) throw new IllegalStateException(&quot;Analysis operation is unavailable in this scope&quot;);</span>
+        }
+<span class="fc" id="L956">        var run = em.find(ClusterAnalysisRun.class, id);</span>
+<span class="pc bpc" id="L957" title="1 of 2 branches missed.">        if (run == null) throw new IllegalStateException(&quot;Analysis operation is unavailable in this scope&quot;);</span>
+<span class="fc bfc" id="L958" title="All 2 branches covered.">        if (lock) em.refresh(run);</span>
+<span class="fc" id="L959">        return run;</span>
+    }
+    private ClusterAnalysisWork requireWork(AnalysisTaskMessage task) {
+<span class="fc" id="L962">        var work = em.find(ClusterAnalysisWork.class, key(task.taskId().value()));</span>
+<span class="pc bpc" id="L963" title="2 of 4 branches missed.">        if (work == null || !work.taskId.equals(task.taskId().value())) throw new IllegalStateException(&quot;Unexpected analysis task&quot;);</span>
+<span class="fc" id="L964">        var expected = (AnalysisTaskMessage) decode(work.messageJson);</span>
+<span class="fc" id="L965">        AnalysisTaskIdentity.requireSameSource(expected.envelope(), task.envelope());</span>
+<span class="pc bpc" id="L966" title="1 of 4 branches missed.">        if (expected instanceof RelationAnalysisTask relation &amp;&amp; task instanceof RelationAnalysisTask delivered</span>
+<span class="pc bpc" id="L967" title="2 of 4 branches missed.">                &amp;&amp; (!relation.prerequisiteTasks().equals(delivered.prerequisiteTasks()) || !relation.targetRoots().equals(delivered.targetRoots())))</span>
+<span class="nc" id="L968">            throw new IllegalStateException(&quot;Relation input references changed&quot;);</span>
+<span class="fc" id="L969">        return work;</span>
+    }
+    private List&lt;ClusterAnalysisWork&gt; works(String operation) {
+<span class="fc" id="L972">        return em.createQuery(&quot;select w from ClusterAnalysisWork w where w.operationId=:id order by w.ordinal&quot;, ClusterAnalysisWork.class)</span>
+<span class="fc" id="L973">                .setParameter(&quot;id&quot;, operation).getResultList();</span>
+    }
+    private void requireAuthority(ClusterAnalysisRun run, AnalysisOperationContext context) {
+<span class="fc bfc" id="L976" title="All 2 branches covered.">        if (!read(run.contextJson, AnalysisOperationContext.class).equals(context))</span>
+<span class="fc" id="L977">            throw new IllegalStateException(&quot;Analysis operation source identity mismatch&quot;);</span>
+<span class="fc" id="L978">    }</span>
+    private static void validateInput(AnalysisOperationContext context, AnalyzeRequirementCommand command,
+                                      Map&lt;TaxonomyShardRoot, String&gt; shards) {
+<span class="fc" id="L981">        Objects.requireNonNull(context); Objects.requireNonNull(command); Objects.requireNonNull(shards);</span>
+<span class="pc bpc" id="L982" title="2 of 6 branches missed.">        if (command.retainedAnalysis() != null &amp;&amp; (command.continuationBinding() == null || !command.analysisScope().includesRelations()))</span>
+<span class="nc" id="L983">            throw new IllegalArgumentException(&quot;Retained relation input requires explicit continuation authority&quot;);</span>
+<span class="fc" id="L984">        var workspace = Objects.requireNonNull(command.workspaceContext());</span>
+        // Bind the immutable source identity before evaluating caller-supplied input.
+<span class="fc" id="L986">        var authority = context.authority();</span>
+<span class="fc bfc" id="L987" title="All 6 branches covered.">        if (!context.requirement().matches(command.businessText()) || command.username() == null || command.username().isBlank()</span>
+<span class="fc bfc" id="L988" title="All 2 branches covered.">                || !command.username().equals(workspace.username())</span>
+<span class="fc bfc" id="L989" title="All 2 branches covered.">                || !authority.repositoryId().equals(workspace.repositoryId())</span>
+<span class="fc bfc" id="L990" title="All 2 branches covered.">                || !Objects.equals(authority.workspaceId(), workspace.workspaceId())</span>
+<span class="fc bfc" id="L991" title="All 2 branches covered.">                || !Objects.equals(authority.branch(), workspace.currentBranch()))</span>
+<span class="fc" id="L992">            throw new IllegalStateException(&quot;Operation input does not match its immutable authority&quot;);</span>
+<span class="pc bpc" id="L993" title="4 of 8 branches missed.">        if (shards.isEmpty() || shards.size() &gt; 8 || shards.keySet().stream().anyMatch(r -&gt; !r.defaultCatalogueRoot()</span>
+<span class="pc bpc" id="L994" title="1 of 2 branches missed.">                || !command.analysisScope().selects(r.code()))) throw new IllegalArgumentException(&quot;Invalid selected catalogue shards&quot;);</span>
+<span class="pc bpc" id="L995" title="1 of 2 branches missed.">        if (!command.analysisScope().taxonomyRoots().isEmpty()</span>
+<span class="fc" id="L996">                &amp;&amp; !shards.keySet().stream().map(TaxonomyShardRoot::code).collect(java.util.stream.Collectors.toSet())</span>
+<span class="pc bpc" id="L997" title="1 of 2 branches missed.">                .equals(command.analysisScope().taxonomyRoots())) throw new IllegalArgumentException(&quot;Incomplete selected catalogue shards&quot;);</span>
+<span class="fc" id="L998">        long characters = 0;</span>
+<span class="pc bpc" id="L999" title="2 of 6 branches missed.">        for (String value : shards.values()) { if (value == null || value.isBlank()) throw new IllegalArgumentException(&quot;Missing shard input&quot;); characters += value.length(); }</span>
+<span class="pc bpc" id="L1000" title="1 of 2 branches missed.">        if (characters &gt; MAX_JSON_CHARACTERS) throw new IllegalArgumentException(&quot;Frozen catalogue input exceeds operation bound&quot;);</span>
+<span class="fc" id="L1001">    }</span>
+    public static AnalysisOperationContext context(AnalysisEnvelope envelope) {
+<span class="fc" id="L1003">        return new AnalysisOperationContext(envelope.operationId(), envelope.authority(), envelope.requirement(), envelope.correlationId());</span>
+    }
+<span class="fc" id="L1005">    private static AnalysisMessageFactory factory(AnalysisOperationContext context) { return new AnalysisMessageFactory(context, Clock.systemUTC()); }</span>
+    private String json(Object value) {
+<span class="fc" id="L1007">        String result = mapper.writeValueAsString(value);</span>
+<span class="pc bpc" id="L1008" title="1 of 2 branches missed.">        if (result.length() &gt; MAX_JSON_CHARACTERS) throw new IllegalArgumentException(&quot;Analysis payload exceeds operation bound&quot;);</span>
+<span class="fc" id="L1009">        return result;</span>
+    }
+<span class="fc" id="L1011">    private &lt;T&gt; T read(String json, Class&lt;T&gt; type) { return mapper.readValue(json, type); }</span>
+<span class="fc" id="L1012">    private String encode(AnalysisMessage message) { return new String(codec.encode(message), StandardCharsets.UTF_8); }</span>
+<span class="fc" id="L1013">    private AnalysisMessage decode(String json) { return codec.decode(json.getBytes(StandardCharsets.UTF_8)); }</span>
+    private static String key(String value) {
+<span class="fc" id="L1015">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(value.getBytes(StandardCharsets.UTF_8))); }</span>
+<span class="nc" id="L1016">        catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+    public static String scopeKey(WorkspaceContext scope) {
+<span class="fc" id="L1019">        Objects.requireNonNull(scope, &quot;workspace scope&quot;);</span>
+<span class="fc" id="L1020">        var parts = java.util.Arrays.asList(scope.username(), scope.repositoryId(), scope.workspaceId(), scope.currentBranch());</span>
+<span class="fc bfc" id="L1021" title="All 2 branches covered.">        return key(parts.stream().map(value -&gt; value == null ? &quot;-1:&quot; : value.length() + &quot;:&quot; + value)</span>
+<span class="fc" id="L1022">                .collect(java.util.stream.Collectors.joining()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

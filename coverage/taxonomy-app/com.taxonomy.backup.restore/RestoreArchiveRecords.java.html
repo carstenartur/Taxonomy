@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RestoreArchiveRecords.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup.restore</a> &gt; <span class="el_source">RestoreArchiveRecords.java</span></div><h1>RestoreArchiveRecords.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup.restore;
+
+import com.fasterxml.jackson.core.*;
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.taxonomy.backup.*;
+import com.taxonomy.backup.archive.VerifiedBackup;
+import com.taxonomy.exchange.backup.PortableRows;
+import java.io.*;
+import java.util.*;
+
+/** Bounded owner DTO reader. Types are supplied by compiled owner adapters, never archive fields. */
+public final class RestoreArchiveRecords {
+<span class="fc" id="L14">    private static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()</span>
+<span class="fc" id="L15">            .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(100)</span>
+<span class="fc" id="L16">                    .maxStringLength(PortableRows.MAX_RECORD_BYTES).maxNumberLength(100).build())</span>
+<span class="fc" id="L17">            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L18">            .disable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).build())</span>
+<span class="fc" id="L19">            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS,</span>
+                    DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES)
+<span class="fc" id="L21">            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).addModule(canonicalUuids()).build();</span>
+    private RestoreArchiveRecords() { }
+    private static com.fasterxml.jackson.databind.module.SimpleModule canonicalUuids() {
+<span class="fc" id="L24">        var module=new com.fasterxml.jackson.databind.module.SimpleModule();</span>
+<span class="fc" id="L25">        module.addDeserializer(UUID.class,new JsonDeserializer&lt;UUID&gt;() {</span>
+            @Override public UUID deserialize(JsonParser parser,DeserializationContext context)throws IOException {
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">                if(!parser.hasToken(JsonToken.VALUE_STRING))throw JsonMappingException.from(parser,&quot;Invalid canonical UUID&quot;);</span>
+<span class="fc" id="L28">                String value=parser.getText();</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">                if(!value.matches(&quot;[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}&quot;))throw JsonMappingException.from(parser,&quot;Invalid canonical UUID&quot;);</span>
+<span class="fc" id="L30">                return UUID.fromString(value);</span>
+            }
+<span class="fc" id="L32">        });return module;</span>
+    }
+    @FunctionalInterface public interface Visitor&lt;T extends Record&gt; { void accept(T value) throws IOException; }
+
+    /** A fixed owner-provided discriminator table is the only authority for selecting record types. */
+    public static void readVariants(VerifiedBackup archive, BackupComponentId owner, String path, String kind,
+            Map&lt;String, Class&lt;? extends Record&gt;&gt; variants, int maximumRows, BackupCheckpoint checkpoint,
+            Visitor&lt;Record&gt; visitor) throws IOException {
+<span class="fc" id="L40">        var approved = variants(variants); requireOwner(archive, owner, path);</span>
+<span class="fc" id="L41">        try (var input = archive.openEntry(path, checkpoint)) {</span>
+<span class="fc" id="L42">            readVariants(input, kind, archive.manifest().request().profile(), approved, maximumRows, checkpoint, visitor);</span>
+        }
+<span class="fc" id="L44">    }</span>
+    static void readVariants(InputStream input, String kind, BackupProfile profile,
+            Map&lt;String, Class&lt;? extends Record&gt;&gt; variants, int maximumRows, BackupCheckpoint checkpoint,
+            Visitor&lt;Record&gt; visitor) throws IOException {
+<span class="fc" id="L48">        var approved = variants(variants);</span>
+<span class="fc" id="L49">        readRows(input, kind, profile, bytes -&gt; {</span>
+<span class="fc" id="L50">            var value = JSON.readTree(bytes);</span>
+<span class="pc bpc" id="L51" title="2 of 4 branches missed.">            var discriminator = value == null || !value.isObject() ? null : value.get(&quot;recordType&quot;);</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">            if (discriminator == null || !discriminator.isTextual()) throw invalid();</span>
+<span class="fc" id="L53">            var type = approved.get(discriminator.textValue());</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (type == null) throw invalid();</span>
+<span class="fc" id="L55">            return JSON.treeToValue(value, type);</span>
+        }, maximumRows, checkpoint, visitor);
+<span class="fc" id="L57">    }</span>
+    private static Map&lt;String, Class&lt;? extends Record&gt;&gt; variants(Map&lt;String, Class&lt;? extends Record&gt;&gt; values) {
+<span class="pc bpc" id="L59" title="3 of 6 branches missed.">        if (values == null || values.isEmpty() || values.size() &gt; 16) throw new IllegalArgumentException(&quot;Invalid portable record types&quot;);</span>
+<span class="fc" id="L60">        var approved = Map.copyOf(values);</span>
+<span class="fc" id="L61">        approved.forEach((kind, type) -&gt; {</span>
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">            if (!kind.matches(&quot;[a-z][a-z0-9-]{0,63}&quot;) || !type.isRecord()) throw new IllegalArgumentException(&quot;Invalid portable record types&quot;);</span>
+<span class="fc" id="L63">        });</span>
+<span class="fc" id="L64">        return approved;</span>
+    }
+
+    public static &lt;T extends Record&gt; void read(VerifiedBackup archive, BackupComponentId owner, String path,
+            String kind, Class&lt;T&gt; type, int maximumRows, BackupCheckpoint checkpoint, Visitor&lt;T&gt; visitor) throws IOException {
+<span class="fc" id="L69">        requireOwner(archive, owner, path);</span>
+<span class="fc" id="L70">        try (var input = archive.openEntry(path, checkpoint)) {</span>
+<span class="fc" id="L71">            read(input, kind, archive.manifest().request().profile(), type, maximumRows, checkpoint, visitor);</span>
+        }
+<span class="fc" id="L73">    }</span>
+
+    /** Standalone owner documents use the same strict compiled DTO contract as NDJSON records. */
+    public static &lt;T extends Record&gt;T document(VerifiedBackup archive,BackupComponentId owner,String path,
+                                               Class&lt;T&gt; type,BackupCheckpoint checkpoint)throws IOException {
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if(!type.isRecord())throw new IllegalArgumentException(&quot;Invalid typed restore document&quot;);</span>
+<span class="fc" id="L79">        requireOwner(archive,owner,path);</span>
+<span class="fc" id="L80">        try(var input=archive.openEntry(path, checkpoint)) {</span>
+<span class="fc" id="L81">            checkpoint.check();byte[] bytes=input.readNBytes(BackupLimits.MAX_MANIFEST_BYTES+1);checkpoint.check();</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            if(bytes.length&gt;BackupLimits.MAX_MANIFEST_BYTES)throw invalid();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">            T value=JSON.readValue(bytes,type);if(value==null)throw invalid();return value;</span>
+<span class="nc" id="L84">        } catch(InterruptedIOException cancelled){throw cancelled();}</span>
+<span class="nc" id="L85">        catch(JsonProcessingException|IllegalArgumentException malformed){throw invalid();}</span>
+    }
+
+    public static boolean declares(VerifiedBackup archive, BackupComponentId owner, String path) {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        return archive.manifest().components().stream().anyMatch(component -&gt; component.id().equals(owner)</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                &amp;&amp; component.entryPaths().contains(path));</span>
+    }
+    private static void requireOwner(VerifiedBackup archive, BackupComponentId owner, String path) throws IOException {
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (!declares(archive, owner, path)) throw new IOException(&quot;Portable restore resource is not declared by its owner&quot;);</span>
+<span class="fc" id="L94">    }</span>
+
+    public static Optional&lt;SourceDatabaseMetadata&gt; sourceDatabase(VerifiedBackup archive, BackupCheckpoint checkpoint) throws IOException {
+<span class="fc" id="L97">        requireOwner(archive, new BackupComponentId(&quot;capture-proof&quot;), &quot;verification/capture.json&quot;);</span>
+<span class="fc" id="L98">        try (var input = archive.openEntry(&quot;verification/capture.json&quot;, checkpoint)) {</span>
+<span class="fc" id="L99">            checkpoint.check(); byte[] bytes = input.readNBytes(BackupLimits.MAX_MANIFEST_BYTES + 1); checkpoint.check();</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (bytes.length &gt; BackupLimits.MAX_MANIFEST_BYTES) throw invalid();</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">            var proof = JSON.readTree(bytes); var source = proof == null ? null : proof.get(&quot;sourceDatabase&quot;);</span>
+<span class="fc" id="L102">            boolean declared = archive.manifest().requiredFeatures().contains(SourceDatabaseMetadata.REQUIRED_FEATURE);</span>
+<span class="pc bpc" id="L103" title="1 of 4 branches missed.">            if (source == null) { if (declared) throw invalid(); return Optional.empty(); }</span>
+<span class="pc bpc" id="L104" title="3 of 6 branches missed.">            if (!declared || !source.isObject() || source.size() != 2) throw invalid();</span>
+<span class="fc" id="L105">            return Optional.of(JSON.treeToValue(source, SourceDatabaseMetadata.class));</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        } catch (InterruptedIOException cancelled) { throw cancelled(); }</span>
+<span class="nc" id="L107">        catch (RuntimeException | IOException malformed) { throw invalid(); }</span>
+    }
+
+    /** Package boundary used by tests; production access always requires VerifiedBackup and declared owner. */
+    static &lt;T extends Record&gt; void read(InputStream input, String kind, BackupProfile profile, Class&lt;T&gt; type,
+            int maximumRows, BackupCheckpoint checkpoint, Visitor&lt;T&gt; visitor) throws IOException {
+<span class="pc bpc" id="L113" title="2 of 4 branches missed.">        if (type == null || !type.isRecord()) throw new IllegalArgumentException(&quot;Invalid typed restore reader&quot;);</span>
+<span class="fc" id="L114">        readRows(input, kind, profile, bytes -&gt; JSON.readValue(bytes, type), maximumRows, checkpoint, visitor);</span>
+<span class="fc" id="L115">    }</span>
+    @FunctionalInterface private interface Decoder&lt;T extends Record&gt; { T decode(byte[] bytes) throws IOException; }
+    private static &lt;T extends Record&gt; void readRows(InputStream input, String kind, BackupProfile profile, Decoder&lt;T&gt; decoder,
+            int maximumRows, BackupCheckpoint checkpoint, Visitor&lt;T&gt; visitor) throws IOException {
+<span class="pc bpc" id="L119" title="3 of 6 branches missed.">        if (maximumRows &lt; 0 || maximumRows &gt; 1_000_000</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">                || kind == null || !kind.matches(&quot;[a-z][a-z0-9-]{0,63}&quot;)) throw new IllegalArgumentException(&quot;Invalid typed restore reader&quot;);</span>
+<span class="fc" id="L121">        Objects.requireNonNull(profile); Objects.requireNonNull(checkpoint); Objects.requireNonNull(visitor);</span>
+<span class="fc" id="L122">        var line = new ByteArrayOutputStream(); byte[] buffer = new byte[8192]; int rows = -1;</span>
+        try {
+            for (;;) {
+<span class="fc" id="L125">                checkpoint.check(); int count = input.read(buffer); checkpoint.check();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                if (count &lt; 0) break;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                for (int offset = 0; offset &lt; count; offset++) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                    if (buffer[offset] != '\n') {</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                        if (line.size() &gt;= PortableRows.MAX_RECORD_BYTES) throw new IOException(&quot;Portable restore record size limit exceeded&quot;);</span>
+<span class="fc" id="L130">                        line.write(buffer[offset]); continue;</span>
+                    }
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                    if (line.size() == 0) throw invalid();</span>
+<span class="fc" id="L133">                    byte[] bytes = line.toByteArray(); line.reset();</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                    if (rows == -1) {</span>
+<span class="fc" id="L135">                        var header = JSON.readValue(bytes, PortableRows.Header.class);</span>
+<span class="pc bpc" id="L136" title="1 of 6 branches missed.">                        if (header.schemaVersion() != 1 || !kind.equals(header.kind()) || profile != header.profile()) throw invalid();</span>
+<span class="fc" id="L137">                        rows = 0;</span>
+<span class="fc" id="L138">                    } else {</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                        if (rows &gt;= maximumRows) throw new IOException(&quot;Portable restore row limit exceeded&quot;);</span>
+<span class="fc" id="L140">                        T record = decoder.decode(bytes);</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">                        if (record == null) throw invalid();</span>
+<span class="fc" id="L142">                        checkpoint.check(); visitor.accept(record); rows++; checkpoint.check();</span>
+                    }
+                }
+<span class="fc" id="L145">            }</span>
+<span class="pc bpc" id="L146" title="1 of 4 branches missed.">            if (line.size() != 0 || rows &lt; 0) throw invalid();</span>
+<span class="fc" id="L147">        } catch (InterruptedIOException interrupted) { throw cancelled(); }</span>
+<span class="fc" id="L148">        catch (JsonProcessingException | IllegalArgumentException malformed) { throw invalid(); }</span>
+<span class="fc" id="L149">    }</span>
+<span class="fc" id="L150">    private static IOException invalid() { return new IOException(&quot;Invalid or unsupported portable restore dataset&quot;); }</span>
+    private static InterruptedIOException cancelled() {
+<span class="fc" id="L152">        Thread.currentThread().interrupt(); return new InterruptedIOException(&quot;Portable restore inspection was cancelled&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

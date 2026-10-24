@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BackupSourceReference.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.backup</a> &gt; <span class="el_source">BackupSourceReference.java</span></div><h1>BackupSourceReference.java</h1><pre class="source lang-java linenums">package com.taxonomy.backup;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/** Explicit dependency of an authorized business record, never a business-key tenant lookup. */
+public record BackupSourceReference(SourceRecordId owner, SourceRecordId artifact,
+                                    SourceRecordId version, List&lt;SourceRecordId&gt; fragments) {
+<span class="fc" id="L10">    public BackupSourceReference {</span>
+<span class="fc" id="L11">        Objects.requireNonNull(owner);</span>
+<span class="fc" id="L12">        fragments = List.copyOf(fragments);</span>
+<span class="pc bpc" id="L13" title="1 of 2 branches missed.">        if (fragments.size() &gt; 10_000) throw new IllegalArgumentException(&quot;Too many source fragments&quot;);</span>
+<span class="fc" id="L14">        requireKind(artifact, &quot;application.source-artifact&quot;);</span>
+<span class="fc" id="L15">        requireKind(version, &quot;application.source-version&quot;);</span>
+<span class="fc" id="L16">        fragments.forEach(id -&gt; requireKind(Objects.requireNonNull(id), &quot;application.source-fragment&quot;));</span>
+<span class="fc" id="L17">    }</span>
+    private static void requireKind(SourceRecordId reference, String kind) {
+<span class="pc bpc" id="L19" title="1 of 4 branches missed.">        if (reference != null &amp;&amp; !reference.kind().equals(kind)) throw new IllegalArgumentException(&quot;Wrong source reference kind&quot;);</span>
+<span class="fc" id="L20">    }</span>
+    @FunctionalInterface public interface Selector {
+        List&lt;BackupSourceReference&gt; select(SnapshotContext snapshot) throws IOException;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

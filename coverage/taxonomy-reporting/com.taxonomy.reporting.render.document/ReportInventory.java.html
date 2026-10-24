@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReportInventory.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-reporting</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reporting.render.document</a> &gt; <span class="el_source">ReportInventory.java</span></div><h1>ReportInventory.java</h1><pre class="source lang-java linenums">package com.taxonomy.reporting.render.document;
+
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.reporting.api.document.DecisionTreeOverview;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
+/** Counts the captured report selection, never a top-N ranking or repeated figure detail panels. */
+public final class ReportInventory {
+    private ReportInventory() { }
+
+    public static List&lt;String&gt; diagram(DiagramModel graph, boolean german) {
+<span class="fc" id="L16">        var nodes = new LinkedHashMap&lt;String, com.taxonomy.diagram.DiagramNode&gt;();</span>
+<span class="fc" id="L17">        graph.nodes().forEach(node -&gt; nodes.putIfAbsent(node.id(), node));</span>
+<span class="fc" id="L18">        long containers = nodes.values().stream().filter(node -&gt; node.container()).count();</span>
+<span class="fc" id="L19">        long relations = graph.edges().stream().map(edge -&gt; edge.id()).distinct().count();</span>
+<span class="fc" id="L20">        Map&lt;String, Integer&gt; types = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        nodes.values().stream().filter(node -&gt; !node.container()).forEach(node -&gt; types.merge(</span>
+<span class="pc bpc" id="L22" title="3 of 4 branches missed.">                node.type() == null ? (german ? &quot;Nicht zugeordnet&quot; : &quot;Unclassified&quot;) : node.type(), 1, Integer::sum));</span>
+<span class="fc" id="L23">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        lines.add((german ? &quot;Gespeicherte Architektur: &quot; : &quot;Saved architecture: &quot;) + (nodes.size() - containers)</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">                + (german ? &quot; Elemente · Navigationsknoten: &quot; : &quot; elements · Navigation nodes: &quot;) + containers</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">                + (german ? &quot; · Beziehungen: &quot; : &quot; · Relationships: &quot;) + relations);</span>
+<span class="fc" id="L27">        types.forEach((type, count) -&gt; lines.add(type + &quot;: &quot; + count));</span>
+<span class="fc" id="L28">        Map&lt;String, Integer&gt; statuses = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L29">        var seenRelations = new java.util.HashSet&lt;String&gt;();</span>
+<span class="fc" id="L30">        graph.edges().stream().filter(edge -&gt; seenRelations.add(edge.id())).forEach(edge -&gt;</span>
+<span class="fc" id="L31">                statuses.merge(com.taxonomy.export.DiagramPresentation.relationshipStatus(edge.metadata(), german), 1, Integer::sum));</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        statuses.forEach((status, count) -&gt; lines.add((german ? &quot;Beziehungen - &quot; : &quot;Relationships - &quot;) + status + &quot;: &quot; + count));</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        lines.add(german ? &quot;Fachliche Bestätigung ist in diesem Diagrammmodell nicht aufgezeichnet. KI-Prüfung ist keine Freigabe.&quot;</span>
+<span class="fc" id="L34">                : &quot;Human confirmation is not recorded in this diagram model. AI verification is not approval.&quot;);</span>
+<span class="fc" id="L35">        return List.copyOf(lines);</span>
+    }
+
+    public static List&lt;String&gt; tree(DecisionTreeOverview tree, boolean german) {
+<span class="fc" id="L39">        var seen = new java.util.HashSet&lt;String&gt;();</span>
+<span class="fc" id="L40">        Map&lt;String, Integer&gt; roots = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        String root = german ? &quot;Nicht zugeordnet&quot; : &quot;Unclassified&quot;;</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (var row : tree.rows()) {</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            if (row.depth() == 0) root = row.code();</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (seen.add(row.code())) roots.merge(root, 1, Integer::sum);</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">        var lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        lines.add((german ? &quot;Knoten der Berichtsauswahl (einschließlich Navigation): &quot;</span>
+<span class="fc" id="L48">                : &quot;Report selection nodes (including navigation): &quot;) + seen.size());</span>
+<span class="fc" id="L49">        roots.forEach((code, count) -&gt; lines.add(code + &quot;: &quot; + count));</span>
+<span class="fc" id="L50">        return List.copyOf(lines);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

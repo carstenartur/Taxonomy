@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationBackupJson.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.backup</a> &gt; <span class="el_source">IntegrationBackupJson.java</span></div><h1>IntegrationBackupJson.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.backup;
+
+import java.io.IOException;
+import com.taxonomy.exchange.backup.PortableRows;
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.cfg.CoercionAction;
+import tools.jackson.databind.cfg.CoercionInputShape;
+import tools.jackson.databind.cfg.EnumFeature;
+import tools.jackson.databind.type.LogicalType;
+import tools.jackson.databind.json.JsonMapper;
+
+/** Explicit contract binding, with no raw JSON forwarding or source-bearing exceptions. */
+final class IntegrationBackupJson {
+    private static final int MAX_CHARS = PortableRows.MAX_RECORD_BYTES / 2;
+<span class="fc" id="L19">    private static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()</span>
+<span class="fc" id="L20">                    .streamReadConstraints(StreamReadConstraints.builder().maxDocumentLength(MAX_CHARS)</span>
+<span class="fc" id="L21">                            .maxStringLength(MAX_CHARS).maxNestingDepth(64).maxNameLength(2048)</span>
+<span class="fc" id="L22">                            .maxNumberLength(32).maxTokenCount(1_000_000).build())</span>
+<span class="fc" id="L23">                    .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)</span>
+<span class="fc" id="L24">                    .disable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).build())</span>
+<span class="fc" id="L25">            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS,</span>
+                    DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+<span class="fc" id="L27">            .enable(EnumFeature.FAIL_ON_NUMBERS_FOR_ENUMS)</span>
+<span class="fc" id="L28">            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)</span>
+<span class="fc" id="L29">            .withCoercionConfig(LogicalType.Textual, config -&gt; config</span>
+<span class="fc" id="L30">                    .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)</span>
+<span class="fc" id="L31">                    .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)</span>
+<span class="fc" id="L32">                    .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail))</span>
+<span class="fc" id="L33">            .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT).build();</span>
+    private IntegrationBackupJson() { }
+    static &lt;T&gt; T read(String value, Class&lt;T&gt; type) throws IOException {
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (value == null) return null;</span>
+        try {
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            if (value.length() &gt; MAX_CHARS) throw new IllegalArgumentException();</span>
+<span class="fc" id="L39">            return JSON.readValue(value, type);</span>
+        }
+<span class="fc" id="L41">        catch (RuntimeException failure) { throw new IOException(&quot;Invalid or unsupported integration backup evidence&quot;); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

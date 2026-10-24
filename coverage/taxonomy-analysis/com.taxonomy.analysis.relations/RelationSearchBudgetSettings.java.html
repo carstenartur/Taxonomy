@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationSearchBudgetSettings.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RelationSearchBudgetSettings.java</span></div><h1>RelationSearchBudgetSettings.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+/** Deployment defaults plus committed runtime overrides, captured once per admitted execution. */
+@Service
+<span class="fc" id="L11">public class RelationSearchBudgetSettings {</span>
+    @Autowired(required = false)
+    private AnalysisRuntimeSettings runtimeSettings;
+
+<span class="fc" id="L15">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-calls:256}&quot;)</span>
+    private int defaultMaxCalls = 256;
+<span class="fc" id="L17">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-total-calls:4096}&quot;)</span>
+    private int defaultMaxTotalCalls = 4096;
+<span class="fc" id="L19">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.auto-continue:true}&quot;)</span>
+    private boolean defaultAutoContinue = true;
+<span class="fc" id="L21">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-sources:128}&quot;)</span>
+    private int defaultMaxSources = 128;
+<span class="fc" id="L23">    @Value(&quot;${taxonomy.analysis.relations.hierarchical.max-work-items:4096}&quot;)</span>
+    private int defaultMaxWorkItems = 4096;
+
+    @PostConstruct
+<span class="fc" id="L27">    void validate() { configuredDefaults(); }</span>
+
+    public Snapshot snapshot() {
+<span class="fc" id="L30">        Snapshot defaults = configuredDefaults();</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (runtimeSettings == null) return defaults;</span>
+<span class="fc" id="L32">        AnalysisRuntimeSettings captured = runtimeSettings.snapshot();</span>
+<span class="fc" id="L33">        return new Snapshot(captured.getInt(&quot;analysis.relations.max-calls&quot;, defaults.maxCalls()),</span>
+<span class="fc" id="L34">                captured.getInt(&quot;analysis.relations.max-total-calls&quot;, defaults.maxTotalCalls()),</span>
+<span class="fc" id="L35">                captured.getBoolean(&quot;analysis.relations.auto-continue&quot;, defaults.autoContinue()),</span>
+<span class="fc" id="L36">                captured.getInt(&quot;analysis.relations.max-sources&quot;, defaults.maxSources()),</span>
+<span class="fc" id="L37">                captured.getInt(&quot;analysis.relations.max-work-items&quot;, defaults.maxWorkItems()));</span>
+    }
+
+    private Snapshot configuredDefaults() {
+<span class="fc" id="L41">        return new Snapshot(defaultMaxCalls, defaultMaxTotalCalls, defaultAutoContinue, defaultMaxSources, defaultMaxWorkItems);</span>
+    }
+
+    /** Resource limits are independent of the semantic authority for accepted relation evidence. */
+    public record Snapshot(int maxCalls, int maxTotalCalls, boolean autoContinue, int maxSources, int maxWorkItems) {
+<span class="fc" id="L46">        public Snapshot {</span>
+<span class="fc" id="L47">            requireRange(&quot;analysis.relations.max-calls&quot;, maxCalls, 0, 10_000);</span>
+<span class="fc" id="L48">            requireRange(&quot;analysis.relations.max-total-calls&quot;, maxTotalCalls, 0, 10_000);</span>
+<span class="fc" id="L49">            requireRange(&quot;analysis.relations.max-sources&quot;, maxSources, 1, 256);</span>
+<span class="fc" id="L50">            requireRange(&quot;analysis.relations.max-work-items&quot;, maxWorkItems, 1, 100_000);</span>
+<span class="fc" id="L51">        }</span>
+
+        private static void requireRange(String key, int value, int min, int max) {
+<span class="fc bfc" id="L54" title="All 4 branches covered.">            if (value &lt; min || value &gt; max)</span>
+<span class="fc" id="L55">                throw new IllegalArgumentException(key + &quot; must be an integer between &quot; + min + &quot; and &quot; + max);</span>
+<span class="fc" id="L56">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

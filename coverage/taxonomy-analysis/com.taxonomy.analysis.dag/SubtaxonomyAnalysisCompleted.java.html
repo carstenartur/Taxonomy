@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SubtaxonomyAnalysisCompleted.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.dag</a> &gt; <span class="el_source">SubtaxonomyAnalysisCompleted.java</span></div><h1>SubtaxonomyAnalysisCompleted.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.dag;
+
+import java.util.Objects;
+import java.util.regex.Pattern;
+import java.math.BigDecimal;
+
+/**
+ * Completion of one {@link SubtaxonomyAnalysisTask}. Carries counts and the root
+ * relevance only; the scored result itself stays in the authoritative result store.
+ *
+ * @param rootScore   root relevance (0–100) when assessed, otherwise {@code null}
+ * @param scoredNodes number of nodes assessed by this task
+ * @param stopReason  typed cooperative stop reason for {@link AnalysisTaskOutcome#STOPPED}
+ */
+public record SubtaxonomyAnalysisCompleted(AnalysisEnvelope envelope, TaxonomyShardRoot root,
+                                           AnalysisTaskOutcome outcome, Double rootScore,
+                                           int scoredNodes, String stopReason)
+        implements AnalysisCompletionMessage {
+
+    // The shared wire vocabulary is finite; a syntactically valid unknown reason
+    // must not reach a worker that can only handle these cooperative-stop outcomes.
+<span class="fc" id="L22">    static final Pattern REASON = Pattern.compile(</span>
+            &quot;CANCELLED|MEMORY_PRESSURE|TIME_LIMIT|AWAITING_DECISION|PROVIDER_PLUGIN_UNAVAILABLE|PROVIDER_CONFIGURATION_CHANGED|PROVIDER_BINDING_REQUIRED|PROVIDER_CONFIGURATION_REVISION_REQUIRED&quot;);
+
+    public SubtaxonomyAnalysisCompleted(AnalysisEnvelope envelope, TaxonomyShardRoot root,
+            AnalysisTaskOutcome outcome, Number rootScore, int scoredNodes, String stopReason) {
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        this(envelope, root, outcome, rootScore == null ? null :</span>
+<span class="fc" id="L28">                Double.valueOf(requirePercentage(rootScore)), scoredNodes, stopReason);</span>
+<span class="fc" id="L29">    }</span>
+
+<span class="fc" id="L31">    public SubtaxonomyAnalysisCompleted {</span>
+<span class="fc" id="L32">        Objects.requireNonNull(envelope, &quot;envelope&quot;);</span>
+<span class="fc" id="L33">        Objects.requireNonNull(root, &quot;root&quot;);</span>
+<span class="fc" id="L34">        Objects.requireNonNull(outcome, &quot;outcome&quot;);</span>
+<span class="fc" id="L35">        envelope.requireType(AnalysisMessageType.SUBTAXONOMY_ANALYSIS_COMPLETED);</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        if (!AnalysisTaskId.subtaxonomy(envelope.operationId(), root).equals(envelope.taskId())) {</span>
+<span class="nc" id="L37">            throw new IllegalArgumentException(&quot;Completion does not belong to the root task&quot;);</span>
+        }
+<span class="pc bpc" id="L39" title="2 of 8 branches missed.">        if (rootScore != null &amp;&amp; (!Double.isFinite(rootScore) || rootScore &lt; 0 || rootScore &gt; 100)) {</span>
+<span class="fc" id="L40">            throw new IllegalArgumentException(&quot;rootScore must be within 0..100&quot;);</span>
+        }
+<span class="pc bpc" id="L42" title="1 of 6 branches missed.">        if (envelope.schemaVersion() == 1 &amp;&amp; rootScore != null &amp;&amp; rootScore != Math.rint(rootScore)) {</span>
+<span class="fc" id="L43">            throw new IllegalArgumentException(&quot;Version1 completion requires an integer percentage&quot;);</span>
+        }
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        if (scoredNodes &lt; 0) throw new IllegalArgumentException(&quot;scoredNodes must be &gt;= 0&quot;);</span>
+<span class="fc bfc" id="L46" title="All 6 branches covered.">        if ((outcome == AnalysisTaskOutcome.STOPPED) != (stopReason != null)) {</span>
+<span class="fc" id="L47">            throw new IllegalArgumentException(&quot;stopReason is required exactly for STOPPED outcomes&quot;);</span>
+        }
+<span class="fc bfc" id="L49" title="All 4 branches covered.">        if (stopReason != null &amp;&amp; !REASON.matcher(stopReason).matches()) {</span>
+<span class="fc" id="L50">            throw new IllegalArgumentException(&quot;Invalid stopReason&quot;);</span>
+        }
+<span class="fc" id="L52">    }</span>
+
+    @Override
+    public boolean stopsOperation() {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        return outcome == AnalysisTaskOutcome.STOPPED;</span>
+    }
+
+    private static double requirePercentage(Number number) {
+        final BigDecimal value;
+        try {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            value = number instanceof BigDecimal decimal ? decimal : new BigDecimal(number.toString());</span>
+<span class="fc" id="L63">        } catch (NumberFormatException invalid) {</span>
+<span class="fc" id="L64">            throw new IllegalArgumentException(&quot;rootScore must be a finite percentage within 0..100&quot;, invalid);</span>
+<span class="fc" id="L65">        }</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">        if (value.signum() &lt; 0 || value.compareTo(BigDecimal.valueOf(100)) &gt; 0) {</span>
+<span class="fc" id="L67">            throw new IllegalArgumentException(&quot;rootScore must be within 0..100&quot;);</span>
+        }
+<span class="fc" id="L69">        double result = value.doubleValue();</span>
+<span class="pc bpc" id="L70" title="1 of 6 branches missed.">        if (!Double.isFinite(result) || result == 0d &amp;&amp; value.signum() != 0) {</span>
+<span class="fc" id="L71">            throw new IllegalArgumentException(&quot;rootScore is outside the supported numeric precision&quot;);</span>
+        }
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        return result == 0d ? 0d : result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
