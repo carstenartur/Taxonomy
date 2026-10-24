@@ -5,6 +5,7 @@ import com.taxonomy.testsupport.BrowserSession;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -78,7 +79,22 @@ class TaxonomyTreeLayoutIT {
         finally { if (server != null) server.stop(0); }
     }
 
-    @BeforeEach void fixture() { driver.get(session.origin() + "/fixture"); }
+    @BeforeEach void fixture() {
+        driver.get(session.origin() + "/fixture");
+        driver.executeScript("""
+                const proto=CanvasRenderingContext2D.prototype;
+                window.originalCanvasPaintMethods={clearRect:proto.clearRect,
+                    fillText:proto.fillText,strokeText:proto.strokeText};
+                """);
+    }
+
+    @AfterEach void restoreCanvasPaintMethods() {
+        // Prototype instrumentation belongs to one measurement, not the browser session.
+        driver.executeScript("""
+                if(window.originalCanvasPaintMethods)
+                    Object.assign(CanvasRenderingContext2D.prototype,window.originalCanvasPaintMethods);
+                """);
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"renderTreeDiagram", "renderTreeCanvas"})
@@ -182,6 +198,22 @@ class TaxonomyTreeLayoutIT {
                 return errors;
                 """);
         assertThat(violations).as(renderer + " occupied label bounds").isEqualTo(java.util.List.of());
+    }
+
+    @Test void paintMeasurementsRemainIsolatedWithoutNavigatingBetweenRenderers() {
+        // Exercise the same cleanup JUnit invokes, even when the document is retained.
+        for (String renderer : new String[]{"renderTreeDiagram", "renderTreeCanvas", "renderTreeCanvas"}) {
+            longLabelsAndScoreBadgesFitWithoutOverlappingOtherNodes(renderer);
+            if (renderer.equals("renderTreeCanvas"))
+                assertThat(driver.executeScript("return painted.length")).isEqualTo(10L);
+            restoreCanvasPaintMethods();
+        }
+        collapsedMarkersHaveADarkGlyphAndLightHaloEvenAtOnePercent("renderTreeCanvas");
+        restoreCanvasPaintMethods();
+        assertThat(driver.executeScript("""
+                return Object.entries(originalCanvasPaintMethods).every(
+                    ([name,method])=>CanvasRenderingContext2D.prototype[name]===method);
+                """)).as("Canvas measurement hooks must not leak into later tests").isEqualTo(true);
     }
 
     @Test void defaultExportKeepsDeeperBranchesCollapsed() {
