@@ -220,6 +220,7 @@ class ProductionHistoryBackupIT {
     }
     private BackupArchiveReader reader()throws IOException {
         var versions=new HashMap<BackupComponentId,Integer>();for(var owner:BackupCoverageInventory.load().categories())versions.put(owner.owner(),1);
+        versions.put(new BackupComponentId("knowledge"),2);
         versions.put(new BackupComponentId("capture-proof"),1);
         return new BackupArchiveReader(ArchiveProtectionProvider.unprotected(),ArchiveLimits.defaults(),application.getEnvironment().getProperty("info.app.version"),versions,application.getBean(BackupFeaturePrerequisites.class));
     }

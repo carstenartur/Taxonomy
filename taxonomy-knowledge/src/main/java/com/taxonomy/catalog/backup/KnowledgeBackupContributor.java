@@ -19,6 +19,8 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 
 /** Explicit catalogue and review schemas, selected before any payload or archive entry is read. */
 public final class KnowledgeBackupContributor implements BackupDataContributor {
+    /** Complete knowledge owner version, shared by its capture delegates. */
+    public static final int SCHEMA_VERSION = 2;
     private static final int MAX_IDENTITIES = 100_000;
     private final PortableRows rows;
     private final BackupAnalysisReference.Selector analyses;
@@ -40,7 +42,7 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
         rows = new PortableRows(database); this.analyses = Objects.requireNonNull(analyses); this.selections = Objects.requireNonNull(selections);
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("knowledge"); }
-    @Override public int schemaVersion() { return 1; }
+    @Override public int schemaVersion() { return SCHEMA_VERSION; }
     @Override public Set<String> categories() { return Set.of("com.taxonomy.catalog.model.TaxonomyNode", "com.taxonomy.catalog.model.TaxonomyRelation",
             "com.taxonomy.relations.model.RelationHypothesis", "com.taxonomy.relations.model.RelationEvidence",
             "com.taxonomy.relations.model.RelationProposal", "com.taxonomy.relations.model.RelationProjectionRecovery",
@@ -77,10 +79,10 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
                 reference(r,"knowledge.relation","id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"owner_username"),
                 reference(r,"knowledge.node","source_node_id"),reference(r,"knowledge.node","target_node_id"),text(r,"source_code"),text(r,"target_code"),
                 enumeration(r,"relation_type",RelationType.class),text(r,"description"),text(r,"provenance"),number(r,"weight"),r.getBoolean("bidirectional")));
-        rows.writeBatches(sink,"knowledge","hypothesis",profile,batches("select id,repository_id,workspace_id,owner_username,source_node_id,target_node_id,"
+        rows.writeBatches(sink,"knowledge","hypothesis",profile,batches("select id,repository_id,workspace_id,branch_name,owner_username,source_node_id,target_node_id,"
                 + "relation_type,status,confidence,analysis_session_id,project_id,requirement_id,analysis_snapshot_id,applied_in_current_analysis,created_at "
                 + "from relation_hypothesis where id in ",hypotheses,"id"), r -> new HypothesisRecord(
-                reference(r,"knowledge.hypothesis","id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"owner_username"),
+                reference(r,"knowledge.hypothesis","id"),text(r,"repository_id"),text(r,"workspace_id"),text(r,"branch_name"),text(r,"owner_username"),
                 text(r,"source_node_id"),text(r,"target_node_id"),enumeration(r,"relation_type",RelationType.class),enumeration(r,"status",HypothesisStatus.class),
                 decimal(r,"confidence"),text(r,"analysis_session_id"),reference(r,"portfolio.project","project_id"),
                 reference(r,"portfolio.requirement","requirement_id"),reference(r,"portfolio.analysis-snapshot","analysis_snapshot_id"),
@@ -228,7 +230,7 @@ public final class KnowledgeBackupContributor implements BackupDataContributor {
                              String parentCode,SourceRecordId parent,String taxonomyRoot,int level,String dataset,String externalId,String source,String reference,Long sortOrder,String state) { }
     public record RelationRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String owner,SourceRecordId sourceNode,SourceRecordId targetNode,
                                  String sourceCode,String targetCode,RelationType relationType,String description,String provenance,Long weight,boolean bidirectional) { }
-    public record HypothesisRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String owner,String sourceCode,String targetCode,RelationType relationType,
+    public record HypothesisRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String branchName,String owner,String sourceCode,String targetCode,RelationType relationType,
                                    HypothesisStatus status,String confidence,String analysisSession,SourceRecordId project,SourceRecordId requirement,SourceRecordId analysisSnapshot,boolean appliedInCurrentAnalysis,String createdAt) { }
     public record EvidenceRecord(SourceRecordId sourceId,SourceRecordId hypothesis,String evidenceType,String summary,String fullText,String confidence,String modelName,String modelVersion,String promptVersion,String inputSnapshot,String createdAt) { }
     public record ProposalRecord(SourceRecordId sourceId,String repositoryId,String workspaceId,String owner,SourceRecordId sourceNode,SourceRecordId targetNode,String sourceCode,String targetCode,

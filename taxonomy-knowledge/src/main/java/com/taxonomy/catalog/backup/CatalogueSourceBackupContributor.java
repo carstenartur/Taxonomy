@@ -42,7 +42,7 @@ public final class CatalogueSourceBackupContributor implements BackupDataContrib
         this.database = Objects.requireNonNull(database); rows = new PortableRows(database); this.selection = Objects.requireNonNull(selection);
     }
     @Override public BackupComponentId componentId() { return new BackupComponentId("knowledge"); }
-    @Override public int schemaVersion() { return 1; }
+    @Override public int schemaVersion() { return KnowledgeBackupContributor.SCHEMA_VERSION; }
     @Override public Set<String> categories() { return Set.of("com.taxonomy.catalog.provenance.CatalogueSourceBlob",
             "com.taxonomy.catalog.provenance.CatalogueSourceRevision", "com.taxonomy.catalog.provenance.CatalogueSourceState", "storage.files.catalogue"); }
     @Override public List<String> omissions(BackupProfile profile) {
