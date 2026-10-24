@@ -296,6 +296,13 @@ Taxonomy 1.5.1 includes the repository-scoped storage, context, and service foun
 
 ## Security and bounded runtime state
 
+The storage dependency is updated to released `jgit-storage-hibernate-core:0.11.4`.
+PostgreSQL JDBC is pinned to `42.7.14`, incorporating the fixes for
+[CVE-2026-107314](https://github.com/pgjdbc/pgjdbc/security/advisories/GHSA-rhp9-mr79-r74h)
+and [CVE-2026-107315](https://github.com/pgjdbc/pgjdbc/security/advisories/GHSA-f64h-wr5q-3qf3).
+Taxonomy retains its synchronization safeguard for the
+[upstream lock-order issue](https://github.com/carstenartur/jgit-storage-hibernate/issues/363).
+
 Both managed Jackson lines include the Databind fixes for CVE-2026-91776 and
 CVE-2026-91777: Jackson 2.22.3 and 3.1.7. The fixes bound polymorphic type-id caching
 and address quadratic forward-reference resolution. Maven Enforcer rejects the
