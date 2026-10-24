@@ -139,6 +139,7 @@ class KnowledgeExportIT {
         }
         RelationHypothesis hypothesis(String repository, String workspace, String session) {
             var h = new RelationHypothesis(); h.setRepositoryId(repository); h.setWorkspaceId(workspace);
+            h.setBranchName("draft");
             h.setSourceNodeId("A"); h.setTargetNodeId("B"); h.setRelationType(RelationType.DEPENDS_ON); h.setAnalysisSessionId(session); return persist(h);
         }
         void evidence(RelationHypothesis hypothesis, String text) {
