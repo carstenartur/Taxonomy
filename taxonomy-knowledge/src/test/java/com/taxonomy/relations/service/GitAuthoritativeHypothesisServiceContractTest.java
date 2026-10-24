@@ -311,10 +311,10 @@ class GitAuthoritativeHypothesisServiceContractTest {
     void retryBindsTheFirstExactPersistedIdentityWithoutRepublishingOrReturningOldRows() {
         arrangeWorkspace("alice", "review", "repo-a");
         RelationHypothesisDto dto = dto();
-        when(hypotheses.existsInRepositoryWorkspaceSession("repo-a",
+        when(hypotheses.existsInRepositoryWorkspaceSessionAndBranch("repo-a",
                 RelationHypothesis.scopeKeyFor("workspace-a"), RelationHypothesis.sessionScopeKeyFor("session-1"),
-                "BP", "CP", RelationType.REALIZES)).thenReturn(true);
-        when(hypotheses.findByAnalysisSessionIdInRepositoryWorkspace("repo-a", "workspace-a", "session-1"))
+                "BP", "CP", RelationType.REALIZES, "review")).thenReturn(true);
+        when(hypotheses.findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("repo-a", "workspace-a", "session-1", "review"))
                 .thenReturn(List.of(
                         hypothesis(11L, RelationType.SUPPORTS, "BP", "CP"),
                         hypothesis(12L, RelationType.REALIZES, "CR", "CP"),
@@ -326,7 +326,7 @@ class GitAuthoritativeHypothesisServiceContractTest {
                 new WorkspaceContext("alice", "workspace-a", "review"))).isEmpty();
 
         assertThat(dto.getHypothesisId()).isEqualTo(42L);
-        verify(hypotheses).findByAnalysisSessionIdInRepositoryWorkspace("repo-a", "workspace-a", "session-1");
+        verify(hypotheses).findByAnalysisSessionIdInRepositoryWorkspaceAndBranch("repo-a", "workspace-a", "session-1", "review");
         verify(hypotheses, never()).save(any(RelationHypothesis.class));
         verifyNoInteractions(publication, evidence, nodes, relations, reviews, readiness, repositories);
     }
@@ -350,11 +350,11 @@ class GitAuthoritativeHypothesisServiceContractTest {
         assertThat(saved.getWorkspaceId()).isEqualTo("workspace-a");
         assertThat(saved.getAnalysisSessionId()).isNotBlank();
         verify(publication).publishSnapshot(org.mockito.ArgumentMatchers.eq(CONTEXT),
-                org.mockito.ArgumentMatchers.eq("draft"),
+                org.mockito.ArgumentMatchers.eq(CONTEXT.branch()),
                 org.mockito.ArgumentMatchers.contains("analysis-session:" + saved.getAnalysisSessionId()),
                 org.mockito.ArgumentMatchers.eq("Auto-generated from analysis session " + saved.getAnalysisSessionId()));
         verifyNoMoreInteractions(publication);
-        verify(hypotheses, never()).findByAnalysisSessionIdInRepositoryWorkspace(anyString(), anyString(), anyString());
+        verify(hypotheses, never()).findByAnalysisSessionIdInRepositoryWorkspaceAndBranch(anyString(), anyString(), anyString(), anyString());
         verifyNoInteractions(repositories, workspaces, reviews, readiness);
     }
 

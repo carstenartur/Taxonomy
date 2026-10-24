@@ -18,6 +18,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HsqlLegacyUpgradeMigratorTest {
 
     @Test
+    void preHibernateHookUsesRecordedHypothesisProjectAndPreservesItAfterWorkspaceChanges() throws Exception {
+        try(Connection connection=legacySchema()) {
+            execute(connection,"INSERT INTO arch_project VALUES (1,'known','old','w-1')");
+            HsqlLegacyUpgradeMigrator.bindPortfolio(connection);
+            hypothesisTable(connection);
+            execute(connection,"INSERT INTO relation_hypothesis VALUES (1,'primary','w-1','BP','CP','SUPPORTS','session',1)");
+            execute(connection,"UPDATE user_workspace SET current_branch='changed'");
+            var database=new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true);
+            HsqlLegacyUpgradeMigrator.migrate(database);
+            HsqlLegacyUpgradeMigrator.migrate(database);
+            assertEquals("draft",scalar(connection,"SELECT branch_name FROM relation_hypothesis"));
+            assertFalse(nullable(connection,"RELATION_HYPOTHESIS","BRANCH_NAME"));
+        }
+    }
+
+    @Test
+    void preHibernateHookRejectsUnlinkedLegacyHypothesisBeforePortfolioInference() throws Exception {
+        try(Connection connection=legacySchema()) {
+            hypothesisTable(connection);
+            execute(connection,"INSERT INTO relation_hypothesis VALUES (1,'primary','w-1','BP','CP','SUPPORTS','session',NULL)");
+            var database=new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true);
+            var error=assertThrows(IllegalStateException.class,()->HsqlLegacyUpgradeMigrator.migrate(database));
+            org.assertj.core.api.Assertions.assertThat(error).hasStackTraceContaining("missing_provenance");
+            assertEquals("1",scalar(connection,"SELECT COUNT(*) FROM relation_hypothesis"));
+        }
+    }
+
+    private void hypothesisTable(Connection connection) throws Exception {
+        execute(connection,"CREATE TABLE relation_hypothesis(id BIGINT PRIMARY KEY,repository_id VARCHAR(255),workspace_id VARCHAR(255),source_node_id VARCHAR(255),target_node_id VARCHAR(255),relation_type VARCHAR(255),analysis_session_id VARCHAR(255),project_id BIGINT)");
+    }
+
+    @Test
     void bindsPopulatedLegacyParentChainAndPreservesBranchAfterRestart() throws Exception {
         try (Connection connection = legacySchema()) {
             execute(connection, "INSERT INTO arch_project VALUES (1, 'central', 'old-central', NULL)");

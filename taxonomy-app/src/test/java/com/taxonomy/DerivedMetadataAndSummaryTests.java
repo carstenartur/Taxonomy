@@ -28,6 +28,8 @@ import org.springframework.security.test.context.support.WithMockUser;
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
 class DerivedMetadataAndSummaryTests {
+    @org.springframework.beans.factory.annotation.Autowired
+    com.taxonomy.workspace.service.WorkspaceResolver workspaceResolver;
 
     @Autowired
     private MockMvc mockMvc;
@@ -77,7 +79,7 @@ class DerivedMetadataAndSummaryTests {
 
     @Test
     void buildSummaryReturnsValidResult() {
-        ArchitectureSummary summary = summaryService.buildSummary();
+        ArchitectureSummary summary = summaryService.buildSummary(workspaceResolver.resolveCurrentRepositoryContext());
 
         assertThat(summary).isNotNull();
         assertThat(summary.generatedAt()).isNotNull();
@@ -87,7 +89,7 @@ class DerivedMetadataAndSummaryTests {
 
     @Test
     void summaryNextStepsContainGuidance() {
-        ArchitectureSummary summary = summaryService.buildSummary();
+        ArchitectureSummary summary = summaryService.buildSummary(workspaceResolver.resolveCurrentRepositoryContext());
 
         assertThat(summary.nextSteps())
                 .anyMatch(step -> step.action() != null && !step.action().isBlank());

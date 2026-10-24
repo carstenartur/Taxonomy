@@ -14,6 +14,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SchemaContractMigrationRepositoryBackfillTest {
+    @Test
+    void retainedBranchAuthorityContract() throws Exception {
+        var database=new DriverManagerDataSource("jdbc:hsqldb:mem:branch-contract-"+UUID.randomUUID(),"SA","");
+        HypothesisBranchMigrationContract.verify(database);
+    }
+
 
     @Test
     void mapsAllRelationWorkflowsToWorkspaceSourceRepositories() throws Exception {
@@ -121,6 +127,7 @@ class SchemaContractMigrationRepositoryBackfillTest {
                     analysis_session_id varchar(255),
                     workspace_id varchar(255),
                     owner_username varchar(255),
+                    branch_name varchar(255),
                     constraint uq_hypothesis_workspace_session_relation
                         unique (workspace_id, source_node_id, target_node_id,
                                 relation_type, analysis_session_id))
@@ -184,8 +191,8 @@ class SchemaContractMigrationRepositoryBackfillTest {
                     relation_type,
                     analysis_session_id,
                     workspace_id,
-                    owner_username)
-                values ('BP', 'CP', 'SUPPORTS', %s, %s, '%s')
+                    owner_username, branch_name)
+                values ('BP', 'CP', 'SUPPORTS', %s, %s, '%s', 'recorded-branch')
                 """.formatted(session, workspace, owner));
     }
 
@@ -209,8 +216,8 @@ class SchemaContractMigrationRepositoryBackfillTest {
                     analysis_session_id,
                     analysis_session_scope_key,
                     workspace_id,
-                    owner_username)
-                values ('%s', '%s', 'BP', 'CP', 'SUPPORTS', %s, '%s', %s, '%s')
+                    owner_username, branch_name)
+                values ('%s', '%s', 'BP', 'CP', 'SUPPORTS', %s, '%s', %s, '%s', 'recorded-branch')
                 """.formatted(
                         repositoryId,
                         workspaceScope,

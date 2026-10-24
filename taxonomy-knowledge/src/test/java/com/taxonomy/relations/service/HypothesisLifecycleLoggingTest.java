@@ -94,7 +94,7 @@ class HypothesisLifecycleLoggingTest {
             assertThat(hypothesis.getStatus()).isEqualTo(HypothesisStatus.PROVISIONAL);
         });
         ArgumentCaptor<String> dsl = ArgumentCaptor.forClass(String.class);
-        verify(publication).publishSnapshot(eq(CONTEXT), eq("draft"), dsl.capture(), any());
+        verify(publication).publishSnapshot(eq(CONTEXT), eq(CONTEXT.branch()), dsl.capture(), any());
         assertThat(dsl.getValue()).contains(SOURCE, TARGET, SESSION);
         assertSafeLogs();
         assertThat(events.list).extracting(ILoggingEvent::getFormattedMessage).anySatisfy(message ->
@@ -107,8 +107,8 @@ class HypothesisLifecycleLoggingTest {
     @ValueSource(booleans = {true, false})
     void acceptanceLogsOutcomeWithoutPrivateHypothesisIdentity(boolean nodesPresent) {
         RelationHypothesis hypothesis = hypothesis();
-        when(hypotheses.findByIdInRepositoryWorkspace(
-                CONTEXT.repositoryId(), HYPOTHESIS_ID, CONTEXT.workspaceId()))
+        when(hypotheses.findByIdInRepositoryWorkspaceAndBranch(
+                CONTEXT.repositoryId(), HYPOTHESIS_ID, CONTEXT.workspaceId(), CONTEXT.branch()))
                 .thenReturn(Optional.of(hypothesis));
         if (nodesPresent) {
             when(nodes.findByCode(SOURCE)).thenReturn(Optional.of(node(SOURCE)));
@@ -169,6 +169,7 @@ class HypothesisLifecycleLoggingTest {
         RelationHypothesis hypothesis = new RelationHypothesis();
         hypothesis.setId(HYPOTHESIS_ID);
         hypothesis.setRepositoryId(CONTEXT.repositoryId());
+        hypothesis.setBranchName(CONTEXT.branch());
         hypothesis.setWorkspaceId(CONTEXT.workspaceId());
         hypothesis.setOwnerUsername(CONTEXT.username());
         hypothesis.setSourceNodeId(SOURCE);

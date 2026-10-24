@@ -1051,6 +1051,7 @@ class DslApiControllerTest {
         repositoryStateService.ensureWorkspaceState(username);
         RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
         hypothesis.setRepositoryId(context.repositoryId());
+        hypothesis.setBranchName(context.branch());
         hypothesis.setWorkspaceId(context.workspaceId());
         hypothesis.setOwnerUsername(context.username());
     }

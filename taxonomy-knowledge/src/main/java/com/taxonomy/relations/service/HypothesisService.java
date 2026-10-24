@@ -123,18 +123,19 @@ public class HypothesisService {
                     requireText(dto.getRelationType(), "relationType").toUpperCase(Locale.ROOT));
             String sourceCode = requireText(dto.getSourceCode(), "sourceCode");
             String targetCode = requireText(dto.getTargetCode(), "targetCode");
-            if (hypothesisRepository.existsInRepositoryWorkspaceSession(
+            if (hypothesisRepository.existsInRepositoryWorkspaceSessionAndBranch(
                     tenant.repositoryId(),
                     RelationHypothesis.scopeKeyFor(tenant.workspaceId()),
                     RelationHypothesis.sessionScopeKeyFor(effectiveSessionId),
                     sourceCode,
                     targetCode,
-                    relationType)) {
+                    relationType, tenant.branch())) {
                 continue;
             }
 
             RelationHypothesis entity = new RelationHypothesis();
             entity.setRepositoryId(tenant.repositoryId());
+            entity.setBranchName(tenant.branch());
             entity.setSourceNodeId(sourceCode);
             entity.setTargetNodeId(targetCode);
             entity.setRelationType(relationType);
@@ -270,10 +271,10 @@ public class HypothesisService {
             HypothesisStatus status, RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
         return tenant.workspaceId() == null
-                ? hypothesisRepository.findCentralByRepositoryAndStatus(
-                        tenant.repositoryId(), status)
-                : hypothesisRepository.findVisibleByRepositoryAndWorkspaceAndStatus(
-                        tenant.repositoryId(), tenant.workspaceId(), status);
+                ? hypothesisRepository.findCentralByRepositoryAndStatusAndBranch(
+                        tenant.repositoryId(), status, tenant.branch())
+                : hypothesisRepository.findVisibleByRepositoryAndWorkspaceAndStatusAndBranch(
+                        tenant.repositoryId(), tenant.workspaceId(), status, tenant.branch());
     }
 
     @Transactional(readOnly = true)
@@ -286,9 +287,9 @@ public class HypothesisService {
     public List<RelationHypothesis> findAll(RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
         return tenant.workspaceId() == null
-                ? hypothesisRepository.findCentralByRepository(tenant.repositoryId())
-                : hypothesisRepository.findVisibleByRepositoryAndWorkspace(
-                        tenant.repositoryId(), tenant.workspaceId());
+                ? hypothesisRepository.findCentralByRepositoryAndBranch(tenant.repositoryId(), tenant.branch())
+                : hypothesisRepository.findVisibleByRepositoryAndWorkspaceAndBranch(
+                        tenant.repositoryId(), tenant.workspaceId(), tenant.branch());
     }
 
     @Transactional(readOnly = true)
@@ -299,8 +300,9 @@ public class HypothesisService {
     @Transactional(readOnly = true)
     public List<RelationEvidence> findEvidence(
             Long hypothesisId, RepositoryContext context) {
-        requireReadableHypothesis(hypothesisId, requireContext(context));
-        return evidenceRepository.findByHypothesisId(hypothesisId);
+        RelationHypothesis parent = requireReadableHypothesis(hypothesisId, requireContext(context));
+        return evidenceRepository.findByHypothesisIdAndRepositoryIdAndWorkspaceScopeKeyAndBranchName(
+                parent.getId(), parent.getRepositoryId(), parent.getWorkspaceScopeKey(), parent.getBranchName());
     }
 
     @Transactional(readOnly = true)
@@ -311,15 +313,15 @@ public class HypothesisService {
 
     private RelationHypothesis requireReadableHypothesis(
             Long hypothesisId, RepositoryContext context) {
-        return hypothesisRepository.findByIdVisibleInRepositoryWorkspace(
-                        context.repositoryId(), hypothesisId, context.workspaceId())
+        return hypothesisRepository.findByIdVisibleInRepositoryWorkspaceAndBranch(
+                        context.repositoryId(), hypothesisId, context.workspaceId(), context.branch())
                 .orElseThrow(() -> hypothesisNotFound(hypothesisId));
     }
 
     private RelationHypothesis requireWritableHypothesis(
             Long hypothesisId, RepositoryContext context) {
-        return hypothesisRepository.findByIdInRepositoryWorkspace(
-                        context.repositoryId(), hypothesisId, context.workspaceId())
+        return hypothesisRepository.findByIdInRepositoryWorkspaceAndBranch(
+                        context.repositoryId(), hypothesisId, context.workspaceId(), context.branch())
                 .orElseThrow(() -> hypothesisNotFound(hypothesisId));
     }
 
@@ -360,18 +362,23 @@ public class HypothesisService {
             List<RelationHypothesis> hypotheses,
             String sessionId,
             RepositoryContext context) {
+        for (RelationHypothesis hypothesis : hypotheses) {
+            if (!context.repositoryId().equals(hypothesis.getRepositoryId())
+                    || !Objects.equals(context.workspaceId(), hypothesis.getWorkspaceId())
+                    || !context.branch().equals(hypothesis.getBranchName())) {
+                throw new IllegalArgumentException("Hypothesis publication authority mismatch");
+            }
+        }
         String dslText = generateCanonicalDsl(hypotheses, sessionId);
-        String branch = hypotheses.stream()
-                .anyMatch(h -> h.getStatus() == HypothesisStatus.ACCEPTED)
-                ? "accepted" : "draft";
+        String branch = context.branch();
         try {
             dslPublication.publishSnapshot(
                     context,
                     branch,
                     dslText,
                     "Auto-generated from analysis session " + sessionId);
-            log.info("Committed hypotheses as canonical DSL (scope={}, branch={}, count={})",
-                    context.scope(), branch, hypotheses.size());
+            log.info("Committed hypotheses as canonical DSL (scope={}, count={})",
+                    context.scope(), hypotheses.size());
         } catch (IOException e) {
             throw new IllegalStateException("Failed to commit canonical hypothesis DSL", e);
         }

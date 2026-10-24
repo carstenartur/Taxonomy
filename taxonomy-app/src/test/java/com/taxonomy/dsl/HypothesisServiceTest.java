@@ -41,6 +41,12 @@ class HypothesisServiceTest {
     @Autowired
     private SystemRepositoryService systemRepositoryService;
 
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired private com.taxonomy.workspace.storage.DslGitRepositoryFactory gitRepositories;
+    @Autowired private com.taxonomy.relations.service.HypothesisReviewStateStore reviewStates;
+    @Autowired private com.taxonomy.relations.service.AnalysisHypothesisLinkPort links;
+    @Autowired private com.taxonomy.architecture.service.ArchitectureSummaryService summaries;
+
     private RepositoryContext centralWrite;
     private RepositoryContext alpha;
     private RepositoryContext beta;
@@ -55,6 +61,107 @@ class HypothesisServiceTest {
                 primary.getRepositoryId(), "workspace-alpha", "draft", "alice");
         beta = RepositoryContext.workspace(
                 primary.getRepositoryId(), "workspace-beta", "draft", "bob");
+    }
+
+    @Test
+    void identicalSessionOnAnotherBranchHasIndependentAuthority() throws Exception {
+        RepositoryContext main = RepositoryContext.workspace(
+                alpha.repositoryId(), alpha.workspaceId(), "main", alpha.username());
+        var dtos = List.of(new RelationHypothesisDto("BP", "P", "CP", "C",
+                "SUPPORTS", 0.7, "branch evidence"));
+        var selected = hypothesisService.persistFromAnalysis(dtos, "branch-overlap", alpha);
+        var other = hypothesisService.persistFromAnalysis(dtos, "branch-overlap", main);
+        assertThat(other).hasSize(1);
+        assertThat(other.getFirst().getBranchName()).isEqualTo("main");
+        var git=gitRepositories.resolveRepository(alpha);
+        String selectedHead=git.getHeadCommit(alpha.branch());
+        assertThat(selectedHead).isNotBlank();
+        var mutations=org.mockito.Mockito.mock(com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.class);
+        var reviews=new com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService(reviewStates,mutations);
+        var command=new com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata("branch-regression","selected-head");
+        assertThatThrownBy(()->reviews.accept(other.getFirst().getId(),alpha,selectedHead,command))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not found");
+        assertThatThrownBy(()->reviews.reject(other.getFirst().getId(),alpha,selectedHead,command))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not found");
+        org.mockito.Mockito.verifyNoInteractions(mutations);
+        assertThat(git.getHeadCommit(alpha.branch())).isEqualTo(selectedHead);
+        assertThat(reviewStates.require(other.getFirst().getId(),main).status()).isEqualTo(HypothesisStatus.PROVISIONAL);
+        assertThat(hypothesisService.findAll(alpha)).extracting(RelationHypothesis::getId)
+                .contains(selected.getFirst().getId()).doesNotContain(other.getFirst().getId());
+        assertThatThrownBy(() -> hypothesisService.applyForSession(other.getFirst().getId(), alpha))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not found");
+        assertThatThrownBy(() -> hypothesisService.accept(other.getFirst().getId(), alpha))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not found");
+        assertThatThrownBy(() -> reviewStates.require(other.getFirst().getId(), alpha))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not found");
+        assertThatThrownBy(() -> hypothesisService.findEvidence(other.getFirst().getId(), alpha))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not found");
+    }
+
+    @Test
+    void exactBranchUniquenessIncludesCentralAndAbsentSession() {
+        var main = RepositoryContext.centralWrite(centralWrite.repositoryId(), " main ", "system");
+        var upper = RepositoryContext.centralWrite(centralWrite.repositoryId(), "Main", "system");
+        var draft = RepositoryContext.centralWrite(centralWrite.repositoryId(), "draft", "system");
+        RelationHypothesis a = createTestHypothesis(null, main);
+        RelationHypothesis b = createTestHypothesis(null, upper);
+        RelationHypothesis c = createTestHypothesis(null, draft);
+        assertThat(a.getBranchName()).isEqualTo("main");
+        assertThat(b.getId()).isNotEqualTo(a.getId());
+        assertThat(c.getId()).isNotEqualTo(a.getId());
+        assertThatThrownBy(() -> createTestHypothesis(null, main))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> new RelationHypothesis().setBranchName("  "))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void evidenceCompositeForeignKeyRejectsAConflictingBranch() {
+        var parent = hypothesisService.persistFromAnalysis(List.of(new RelationHypothesisDto(
+                "BP", "P", "CP", "C", "SUPPORTS", .8, "FK evidence")), "evidence-fk", alpha).getFirst();
+        assertThatThrownBy(() -> jdbc.update("UPDATE relation_evidence SET branch_name=? WHERE hypothesis_id=?",
+                "other", parent.getId())).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(hypothesisService.findEvidence(parent.getId(), alpha)).singleElement().satisfies(e -> {
+            assertThat(e.getRepositoryId()).isEqualTo(parent.getRepositoryId());
+            assertThat(e.getWorkspaceScopeKey()).isEqualTo(parent.getWorkspaceScopeKey());
+            assertThat(e.getBranchName()).isEqualTo(parent.getBranchName());
+        });
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void snapshotLinkingSelectsOneBranchOfAnOverlappingSession() {
+        var main = RepositoryContext.workspace(alpha.repositoryId(), alpha.workspaceId(), "main", alpha.username());
+        var selected=createTestHypothesis("link-overlap", alpha);
+        var foreign=createTestHypothesis("link-overlap", main);
+        links.linkSnapshot(alpha.repositoryId(), alpha.workspaceId(), alpha.branch(), "link-overlap", 111L, 222L, "selected-snapshot");
+        assertThat(selected.getAnalysisSnapshotId()).isEqualTo("selected-snapshot");
+        assertThat(foreign.getAnalysisSnapshotId()).isNull();
+    }
+
+    @Test
+    void visibleCountAndStatusKeepOnlySameBranchCentralBaseline() throws Exception {
+        var sameCentral=RepositoryContext.centralWrite(alpha.repositoryId(),alpha.branch(),"system");
+        var other=RepositoryContext.workspace(alpha.repositoryId(),alpha.workspaceId(),"summary-other",alpha.username());
+        long before=hypothesisRepository.countVisibleInRepositoryWorkspaceAndBranch(alpha.repositoryId(),alpha.workspaceId(),alpha.branch());
+        var baseline=createTestHypothesis("count-baseline",sameCentral);
+        var own=createTestHypothesis("count-own",alpha);
+        var foreign=createTestHypothesis("count-foreign",other);
+        assertThat(summaries.buildSummary(alpha).totalHypotheses()).isEqualTo((int)before+2);
+        var resolver=org.mockito.Mockito.mock(com.taxonomy.workspace.service.WorkspaceResolver.class);
+        org.mockito.Mockito.when(resolver.resolveCurrentRepositoryContext()).thenReturn(alpha);
+        var controller=new com.taxonomy.architecture.controller.ArchitectureSummaryApiController(summaries,
+                org.mockito.Mockito.mock(com.taxonomy.architecture.service.DerivedMetadataService.class),
+                org.mockito.Mockito.mock(com.taxonomy.catalog.service.TaxonomyService.class),resolver);
+        org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build()
+                .perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/architecture/summary"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.totalHypotheses").value((int)before+2));
+        assertThat(hypothesisRepository.countVisibleInRepositoryWorkspaceAndBranch(alpha.repositoryId(),alpha.workspaceId(),alpha.branch())).isEqualTo(before+2);
+        assertThat(hypothesisService.findByStatus(HypothesisStatus.PROVISIONAL,alpha)).extracting(RelationHypothesis::getId)
+                .contains(baseline.getId(),own.getId()).doesNotContain(foreign.getId());
+        assertThatThrownBy(() -> hypothesisService.applyForSession(baseline.getId(),alpha))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not found");
     }
 
     @Test
@@ -233,6 +340,7 @@ class HypothesisServiceTest {
             RepositoryContext context) {
         RelationHypothesis h = new RelationHypothesis();
         h.setRepositoryId(context.repositoryId());
+        h.setBranchName(context.branch());
         h.setSourceNodeId("CR");
         h.setTargetNodeId("CO");
         h.setRelationType(RelationType.REALIZES);

@@ -97,6 +97,9 @@ class DslMaterializeLoggingTest {
         verify(documents).save(document.capture());
         assertThat(document.getValue().getRawContent()).isEqualTo(dsl);
         assertThat(document.getValue().getPath()).isEqualTo(PRIVATE_PATH);
+        ArgumentCaptor<RelationHypothesis> saved = ArgumentCaptor.forClass(RelationHypothesis.class);
+        verify(hypotheses).save(saved.capture());
+        assertThat(saved.getValue().getBranchName()).isEqualTo(CONTEXT.branch());
         assertSafeLogs();
         assertThat(events.list).singleElement().satisfies(event ->
                 assertThat(event.getFormattedMessage())
@@ -128,10 +131,24 @@ class DslMaterializeLoggingTest {
     }
 
     @Test
+    void incrementalHypothesisKeepsTheSelectedBranch() {
+        ArchitectureDslDocument after=new ArchitectureDslDocument();
+        after.setId(2L); after.setPath(PRIVATE_PATH); after.setBranch(CONTEXT.branch());
+        after.setRawContent(ELEMENTS+relation("proposed"));
+        when(documents.findById(2L)).thenReturn(Optional.of(after));
+        var result=service.materializeIncremental(null,2L);
+        assertThat(result.hypothesesCreated()).isEqualTo(1);
+        var saved=ArgumentCaptor.forClass(RelationHypothesis.class);
+        verify(hypotheses).save(saved.capture());
+        assertThat(saved.getValue().getBranchName()).isEqualTo(CONTEXT.branch());
+    }
+
+    @Test
     void incrementalMaterializationLogsCountsWithoutTenantOrDocumentIdentity() {
         ArchitectureDslDocument after = new ArchitectureDslDocument();
         after.setId(2L);
         after.setPath(PRIVATE_PATH);
+        after.setBranch(CONTEXT.branch());
         after.setRawContent(ELEMENTS + relation("accepted"));
         when(documents.findById(2L)).thenReturn(Optional.of(after));
 

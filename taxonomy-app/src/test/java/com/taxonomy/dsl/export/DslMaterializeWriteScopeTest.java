@@ -62,7 +62,23 @@ class DslMaterializeWriteScopeTest {
         verifyNoInteractions(fixture.relations(), fixture.hypotheses());
     }
 
+    @Test
+    void contradictoryCompleteAndStoredBranchesFailBeforeWrites() {
+        Fixture f=fixture(RepositoryContext.workspace("repo-a","w","main","alice"));
+        assertThatThrownBy(()->f.service().materialize(BASE_DSL,"a.taxdsl","draft","commit"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("branch");
+        var after=document(2L,BASE_DSL); after.setBranch("draft");
+        when(f.documents().findById(2L)).thenReturn(Optional.of(after));
+        assertThatThrownBy(()->f.service().materializeIncremental(null,2L))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("branch");
+        verifyNoInteractions(f.relations(),f.hypotheses());
+        org.mockito.Mockito.verify(f.documents(),org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
     private static Fixture fixture() {
+        return fixture(RepositoryContext.centralRead("repo-a","main","alice"));
+    }
+    private static Fixture fixture(RepositoryContext context) {
         TaxonomyRelationService relations = mock(TaxonomyRelationService.class);
         RelationHypothesisRepository hypotheses =
                 mock(RelationHypothesisRepository.class);
@@ -70,7 +86,7 @@ class DslMaterializeWriteScopeTest {
                 mock(ArchitectureDslDocumentRepository.class);
         WorkspaceResolver resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(
-                RepositoryContext.centralRead("repo-a", "main", "alice"));
+                context);
         DslMaterializeService service = new DslMaterializeService(
                 relations, hypotheses, documents, null, resolver, null);
         return new Fixture(service, relations, hypotheses, documents);

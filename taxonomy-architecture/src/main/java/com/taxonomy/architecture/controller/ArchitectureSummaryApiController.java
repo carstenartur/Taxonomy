@@ -32,13 +32,16 @@ public class ArchitectureSummaryApiController {
     private final ArchitectureSummaryService summaryService;
     private final DerivedMetadataService metadataService;
     private final TaxonomyService taxonomyService;
+    private final com.taxonomy.workspace.service.WorkspaceResolver workspaceResolver;
 
     public ArchitectureSummaryApiController(ArchitectureSummaryService summaryService,
                                             DerivedMetadataService metadataService,
-                                            TaxonomyService taxonomyService) {
+                                            TaxonomyService taxonomyService,
+                                            com.taxonomy.workspace.service.WorkspaceResolver workspaceResolver) {
         this.summaryService = summaryService;
         this.metadataService = metadataService;
         this.taxonomyService = taxonomyService;
+        this.workspaceResolver = workspaceResolver;
     }
 
     @GetMapping("/summary")
@@ -46,7 +49,7 @@ public class ArchitectureSummaryApiController {
             description = "Returns key findings (top capabilities, processes, services, hubs, gaps) " +
                     "and recommended next actions based on the current architecture state.")
     public ResponseEntity<ArchitectureSummary> getSummary() {
-        return ResponseEntity.ok(summaryService.buildSummary());
+        return ResponseEntity.ok(summaryService.buildSummary(workspaceResolver.resolveCurrentRepositoryContext()));
     }
 
     @PostMapping("/metadata/recompute")

@@ -56,8 +56,8 @@ class HypothesisDslIntegrityTest {
                 nodeRepository,
                 new DslWorkspacePublicationAdapter(repositoryFactory),
                 org.mockito.Mockito.mock(com.taxonomy.workspace.service.WorkspaceRepositoryContextPort.class));
-        when(hypothesisRepository.existsInRepositoryWorkspaceSession(
-                anyString(), anyString(), anyString(), anyString(), anyString(), any()))
+        when(hypothesisRepository.existsInRepositoryWorkspaceSessionAndBranch(
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), anyString()))
                 .thenReturn(false);
         when(hypothesisRepository.save(any(RelationHypothesis.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

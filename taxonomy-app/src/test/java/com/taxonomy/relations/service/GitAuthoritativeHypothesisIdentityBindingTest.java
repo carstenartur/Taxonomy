@@ -43,6 +43,12 @@ class GitAuthoritativeHypothesisIdentityBindingTest {
         assertThat(firstDto.getHypothesisId())
                 .isEqualTo(first.getFirst().getId());
 
+        RepositoryContext otherBranch=RepositoryContext.centralWrite(context.repositoryId(), "identity-other", context.username());
+        RelationHypothesisDto otherDto=hypothesis();
+        var other=hypothesisService.persistFromAnalysis(List.of(otherDto),sessionId,otherBranch);
+        assertThat(other).hasSize(1);
+        assertThat(otherDto.getHypothesisId()).isNotEqualTo(firstDto.getHypothesisId());
+
         RelationHypothesisDto retriedDto = hypothesis();
         var retry = hypothesisService.persistFromAnalysis(
                 List.of(retriedDto), sessionId, context);

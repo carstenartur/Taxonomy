@@ -490,3 +490,50 @@ The `Database Compatibility` workflow runs PostgreSQL diagnostics and Selenium
 on relevant pull requests, all six database scenarios weekly, and a selected
 family on manual dispatch. Every command is documented in
 [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+
+### Hypothesis branch authority when upgrading to 1.5.1
+
+V43 (PostgreSQL) and the portable schema contract require an explicit branch for
+all relation hypotheses. Existing nonblank branches remain authoritative on
+restart. A legacy row without a branch is backfilled only through its recorded
+analysis snapshot or project, with matching repository, workspace and canonical
+portfolio scope. An overlapping analysis-session string, current workspace
+branch, repository default, or review status is never sufficient evidence.
+Evidence rows inherit the validated parent's exact repository/workspace/branch
+and retain a composite foreign key to that parent. A workspace can read the
+central baseline only on the selected branch; mutations remain workspace-exact.
+
+If provenance is absent, dangling or contradictory, startup stops without
+removing hypotheses or evidence. The error contains bounded reason counts and at
+most 20 numeric row IDs; those IDs refer to hypotheses unless the reason names
+evidence. To remediate:
+
+1. Keep all application writers stopped and preserve a verified full backup.
+2. Inspect the reported IDs offline. Recover the recorded snapshot/project
+   links and canonical repository/workspace/branch identity from trustworthy
+   historical records or a backup. Repair only links and identities that can be
+   proven; never assign all rows to `draft` or the current workspace branch.
+3. Correct conflicting populated evidence authority to its proven parent only
+   after verifying the historical link. Rerun startup; the migration reports the
+   next bounded set if further conflicts remain.
+4. If the original authority cannot be recovered, export/archive/removal of the
+   affected hypotheses **and their dependent evidence** requires an explicit
+   operator decision and a retained backup. The migration never performs that
+   deletion automatically. Do not bypass the migration or edit published V7.
+
+The retained HSQLDB upgrade prepares this contract before Hibernate. The shipped
+Oracle and SQL Server compatibility profiles disable Flyway, so their portable
+initializer also runs before Hibernate; the normal runner repeats the idempotent
+checks. Interrupted DDL can be resumed, including Oracle's independently committed
+DDL phases. These profiles still require their existing native compatibility
+lanes; local HSQLDB results do not qualify Oracle or SQL Server.
+
+SQL Server stores the new branch authority as Unicode with binary `BIN2`
+comparison so `Main`, `main` and non-ASCII Git refs remain distinct. Its exact
+business key was already wider in declared capacity than the nonclustered index
+limit before this change. SQL Server allows variable-width declarations above
+that limit, but an actual combined key above **1,700 bytes** cannot be indexed.
+The migration retains exact keys and fails rather than replacing authority with
+a lossy or hashed identity. Verify the native lane and real key lengths before
+using that compatibility profile. See Microsoft's [maximum capacity limits](https://learn.microsoft.com/en-us/sql/sql-server/maximum-capacity-specifications-for-sql-server?view=sql-server-ver17)
+and [collation and Unicode support](https://learn.microsoft.com/en-us/sql/relational-databases/collations/collation-and-unicode-support/).

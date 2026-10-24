@@ -115,6 +115,7 @@ public class DslMaterializeService {
         }
 
         RepositoryContext context = currentRepositoryContext();
+        requireSelectedBranch(branch, context);
         int relationsCreated = 0;
         int hypothesesCreated = 0;
 
@@ -196,12 +197,20 @@ public class DslMaterializeService {
     /** Materialize only the delta between two stored DSL versions. */
     @Transactional
     public MaterializeResult materializeIncremental(Long beforeDocId, Long afterDocId) {
+        RepositoryContext context = currentRepositoryContext();
+        if (beforeDocId != null) {
+            requireSelectedBranch(documentRepository.findById(beforeDocId)
+                    .orElseThrow(() -> new IllegalArgumentException("Before document not found: " + beforeDocId))
+                    .getBranch(), context);
+        }
+        requireSelectedBranch(documentRepository.findById(afterDocId)
+                .orElseThrow(() -> new IllegalArgumentException("After document not found: " + afterDocId))
+                .getBranch(), context);
         ModelDiff diff = diffDocuments(beforeDocId, afterDocId);
 
         int relationsCreated = 0;
         int hypothesesCreated = 0;
         List<String> warnings = new ArrayList<>();
-        RepositoryContext context = currentRepositoryContext();
 
         for (ArchitectureRelation relation : diff.addedRelations()) {
             String status = relation.getStatus() != null
@@ -268,6 +277,12 @@ public class DslMaterializeService {
                 relationsCreated, hypothesesCreated, afterDocId);
     }
 
+    private static void requireSelectedBranch(String branch, RepositoryContext context) {
+        if (branch == null || !context.branch().equals(branch.strip())) {
+            throw new IllegalArgumentException("Materialization branch does not match selected context");
+        }
+    }
+
     private RelationHypothesis toHypothesis(
             ArchitectureRelation relation,
             HypothesisStatus status,
@@ -275,6 +290,7 @@ public class DslMaterializeService {
             RepositoryContext context) {
         RelationHypothesis hypothesis = new RelationHypothesis();
         hypothesis.setRepositoryId(context.repositoryId());
+        hypothesis.setBranchName(context.branch());
         hypothesis.setSourceNodeId(relation.getSourceId());
         hypothesis.setTargetNodeId(relation.getTargetId());
         hypothesis.setRelationType(RelationType.valueOf(relation.getRelationType()));
