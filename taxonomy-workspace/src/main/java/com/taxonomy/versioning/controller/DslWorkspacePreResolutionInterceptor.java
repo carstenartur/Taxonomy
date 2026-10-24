@@ -29,20 +29,22 @@ import java.util.regex.Pattern;
  * by analysis and graph-search endpoints whose results carry workspace-scoped
  * hypotheses or relation visibility.</p>
  *
- * <p>An explicit central selection may read historical portfolio records through
- * GET/HEAD. Its repository, branch and actor must still match the request-bound
- * context; writes, analysis and Git operations require an isolated workspace.</p>
+ * <p>An explicit central selection may read historical portfolio records or the
+ * supported central graph source through GET/HEAD. Its repository, branch and
+ * actor must still match the request-bound context; writes, analysis and Git
+ * operations require an isolated workspace.</p>
  */
 @Component
 public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor {
 
     // Keep this an explicit list: some GET endpoints (notably Copilot status)
     // can schedule work or promote snapshots, and therefore require isolation.
-    private static final List<Pattern> PORTFOLIO_READ_PATHS = List.of(
+    private static final List<Pattern> CENTRAL_READ_PATHS = List.of(
             "/api/(?:projects|solutions|products)(?:/[0-9]+)?/?",
             "/api/projects/[0-9]+/requirements(?:/[0-9]+(?:/(?:versions|snapshots))?)?/?",
             "/api/projects/[0-9]+/(?:analysis-jobs(?:/[^/]+)?|snapshots/[^/]+|portfolio|conflicts|reports/[^/]+)/?",
-            "/api/projects/[0-9]+/solutions(?:/[0-9]+/products)?/?")
+            "/api/projects/[0-9]+/solutions(?:/[0-9]+/products)?/?",
+            "/api/search/graph")
             .stream().map(Pattern::compile).toList();
 
     private final WorkspaceResolver workspaceResolver;
@@ -59,11 +61,11 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
                              HttpServletResponse response,
                              Object handler) {
         String username = workspaceResolver.resolveCurrentUsername();
-        // 1.3 portfolios can legitimately belong to the central repository.
-        // An explicit central selection may read those records, without creating
-        // workspace state or turning historical data into a personal workspace.
+        // 1.3 portfolios and the legacy graph source belong to the central repository.
+        // An explicit central selection may read them without creating workspace
+        // state or turning historical data into a personal workspace.
         // Git operations and every mutation retain the isolation contract below.
-        if (isExplicitCentralPortfolioRead(request)) {
+        if (isExplicitCentralRead(request)) {
             RepositoryContext repository = workspaceResolver.resolveCurrentRepositoryContext();
             WorkspaceContext workspace = workspaceResolver.resolveCurrentContext();
             if (repository == null || workspace == null
@@ -74,7 +76,7 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
                     || !Objects.equals(repository.username(), workspace.username())
                     || !Objects.equals(repository.username(), username)) {
                 throw new IllegalStateException(
-                        "Central portfolio read did not resolve one matching repository, branch and actor");
+                        "Central read did not resolve one matching repository, branch and actor");
             }
             return true;
         }
@@ -120,7 +122,7 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
         return true;
     }
 
-    private static boolean isExplicitCentralPortfolioRead(HttpServletRequest request) {
+    private static boolean isExplicitCentralRead(HttpServletRequest request) {
         if (!"GET".equals(request.getMethod()) && !"HEAD".equals(request.getMethod())) {
             return false;
         }
@@ -133,7 +135,7 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
         }
         String requestPath = path;
         return "".equals(WorkspaceContextResolver.requestedWorkspaceId(request))
-                && PORTFOLIO_READ_PATHS.stream()
+                && CENTRAL_READ_PATHS.stream()
                         .anyMatch(pattern -> pattern.matcher(requestPath).matches());
     }
 }

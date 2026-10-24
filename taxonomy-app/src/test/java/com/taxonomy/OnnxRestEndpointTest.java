@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import com.taxonomy.search.LocalOnnxIndexInitializer;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -124,7 +125,10 @@ class OnnxRestEndpointTest {
             }
             Thread.sleep(READINESS_POLL_INTERVAL.toMillis());
         }
+        // The global relation index belongs to the primary central source;
+        // an implicit workspace has no proven branch projection yet.
         mockMvc.perform(get("/api/search/graph")
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, "")
                         .param("q", "communications")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())

@@ -6,6 +6,7 @@ import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.error.SearchUnavailableException;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -138,9 +139,13 @@ public class SearchApiController {
     private RepositoryContext currentRepositoryContext() {
         try {
             String username = workspaceResolver.resolveCurrentUsername();
-            repositoryStateService.ensureWorkspaceState(username);
             RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
             if (context == null) throw new SearchUnavailableException();
+            // The interceptor validates explicit central reads before this lookup.
+            // Reading that canonical source must not create workspace state.
+            if (context.scope() != RepositoryScope.CENTRAL_READ) {
+                repositoryStateService.ensureWorkspaceState(username);
+            }
             return context;
         } catch (AccessDeniedException denied) {
             throw denied;
