@@ -382,6 +382,27 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
+      "toContext": "architecture",
+      "toPackage": "com.taxonomy.architecture.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.architecture",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.architecture",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
       "classDependencyCount": 8
@@ -391,7 +412,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 6
     },
     {
       "fromContext": "app-composition",
@@ -587,7 +608,7 @@
       "fromPackage": "com.taxonomy.composition.dsl.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
@@ -852,6 +873,13 @@
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.shared.config",
       "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.shared.config",
+      "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 1
     },
@@ -889,20 +917,6 @@
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
       "classDependencyCount": 4
-    },
-    {
-      "fromContext": "architecture",
-      "fromPackage": "com.taxonomy.architecture.controller",
-      "toContext": "knowledge",
-      "toPackage": "com.taxonomy.catalog.model",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "architecture",
-      "fromPackage": "com.taxonomy.architecture.controller",
-      "toContext": "knowledge",
-      "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 1
     },
     {
       "fromContext": "architecture",
@@ -994,6 +1008,13 @@
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
       "classDependencyCount": 2
+    },
+    {
+      "fromContext": "architecture",
+      "fromPackage": "com.taxonomy.architecture.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 1
     },
     {
       "fromContext": "dsl-adapters",
@@ -1217,7 +1238,7 @@
       "fromPackage": "com.taxonomy.relations.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 51
+      "classDependencyCount": 52
     },
     {
       "fromContext": "knowledge",
@@ -1231,7 +1252,7 @@
       "fromPackage": "com.taxonomy.search.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "knowledge",

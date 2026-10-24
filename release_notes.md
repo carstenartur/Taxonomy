@@ -282,6 +282,14 @@ The upgrade derives legacy branches only from consistent recorded project or
 analysis-snapshot links. Missing or conflicting provenance stops migration with
 bounded diagnostics and retains the data for operator correction.
 
+Materialization with an omitted branch uses the selected authorized branch for
+the document, projection and response context. Explicit contradictory branches
+remain rejected. Typed knowledge backup payloads include the stored hypothesis
+branch and use component schema version 2; the portable NDJSON envelope remains
+version 1. Staged HSQLDB restore migration V13 enforces the same required branch
+and composite evidence authority. Populated staging data without that authority
+stops migration and remains intact for operator correction.
+
 ### Integrated multi-repository technical foundation
 
 Taxonomy 1.5.1 includes the repository-scoped storage, context, and service foundation needed for future multi-repository operation. This is not yet a generally supported public multi-repository product surface. The `/api/repositories/**` API remains disabled by default, and the broader tenancy, recovery, authority, cache, UX, and end-to-end isolation programme remains tracked separately. The established primary-repository/workspace behaviour is the supported default for 1.5.1.

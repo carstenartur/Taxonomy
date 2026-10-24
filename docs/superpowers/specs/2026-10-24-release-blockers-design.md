@@ -52,6 +52,39 @@ KNN semantics and model filtering where supported. Document the scope limit;
 do not imply that global model readiness proves a particular branch searchable.
 Full branch semantic indexing remains the broader #741 work.
 
+The graph HTTP read route must expose that supported explicit central source.
+It uses the existing central GET/HEAD validation of the request-bound repository,
+branch and actor, with no personal-workspace provisioning for that selection.
+The exception is limited to the graph read route; mutations, analysis and Git
+operations retain the isolated-workspace requirement. Source/head validation
+still decides whether the selected graph is available.
+
+## Reviewed context dependencies
+
+The authority corrections use the following workspace-owned APIs and values.
+The workspace-aware summary HTTP controller belongs in application composition,
+alongside the existing report and architecture HTTP bridges. The independent
+architecture module must not resolve the current workspace implicitly. Its
+summary service instead accepts the explicit context value. Moving the HTTP
+controller preserves all three routes and retains the architecture feature gate.
+
+| Caller | Workspace API or value | Reason |
+| --- | --- | --- |
+| `SchemaContractMigrator` | `RepositoryTenantIdentity` | Validate the recorded repository/workspace identity before accepting linked legacy branch provenance. |
+| `ArchitectureSummaryApiController` in application composition | `WorkspaceResolver` | Resolve the authenticated request's canonical scope for hypothesis counts outside the independent architecture module. |
+| `ArchitectureSummaryService` | `RepositoryContext` | Carry that scope through the existing summary operation. |
+| `GraphSearchAuthorityService` | `RepositoryContext` | Bind relation-source and head inspection to the canonical branch context. |
+| `DslDocumentApiController` | `RepositoryContext` | Return the same selected branch used by materialization when the optional branch parameter is omitted. |
+| `SearchApiController` | `RepositoryScope` | Skip personal-workspace provisioning only for the validated `CENTRAL_READ` graph selection. |
+
+These calls use the workspace-owned resolver API and identity/context values.
+They keep authorization and identity normalization in their existing owner.
+The baseline records only independently reviewed, measured class-pair changes,
+including the summary controller's relocated catalogue and architecture-service
+dependencies. Context classification, module topology, the prohibition on
+implicit workspace resolution inside architecture, cycle checks and the exact
+ratchet remain in force.
+
 ## Verification and release request
 
 Use failing regressions at real production boundaries, then focused existing
