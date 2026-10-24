@@ -111,6 +111,72 @@ class LayeredDiagramLayoutServiceTest {
     }
 
     @Test
+    void explicitCrossingReductionIsDeterministicAndRetainsSemanticLayersAndParents() {
+        DiagramModel model = crossingFixture();
+        DiagramScene stable = service.layout(model);
+        DiagramScene reduced = service.layout(model, DiagramLayout.Strategy.REDUCE_CROSSINGS);
+        assertThat(service.layout(model, DiagramLayout.Strategy.STABLE)).isEqualTo(stable);
+        assertThat(crosses(stable)).isTrue();
+        assertThat(crosses(reduced)).isFalse();
+        assertThat(service.layout(model, DiagramLayout.Strategy.REDUCE_CROSSINGS)).isEqualTo(reduced);
+        var shuffled = new DiagramModel(model.title(), model.nodes().reversed(), model.edges().reversed(), model.layout());
+        assertThat(service.layout(shuffled, DiagramLayout.Strategy.REDUCE_CROSSINGS)).isEqualTo(reduced);
+        assertThat(model.nodes()).extracting(DiagramNode::id).containsExactly("a", "b", "c", "d");
+        for (var node : reduced.nodes()) {
+            var input = model.nodes().stream().filter(original -> original.id().equals(node.id())).findFirst().orElseThrow();
+            assertThat(node.layer()).isEqualTo(input.layer());
+            assertThat(node.parentId()).isEqualTo(input.parentId());
+            assertThat(node.depth()).isEqualTo(input.depth());
+        }
+    }
+
+    @Test
+    void pinnedOrderingSurvivesRelationChangesAndNewOrRemovedNodesHaveDeterministicFallback() {
+        var reference = crossingFixture();
+        var edges = new java.util.ArrayList<>(reference.edges());
+        edges.add(new DiagramEdge("three", "a", "c", "REALIZED_BY", 0));
+        edges.add(new DiagramEdge("four", "b", "d", "REALIZED_BY", 0));
+        var current = new DiagramModel(reference.title(), reference.nodes(), edges, reference.layout());
+        var baseline = service.layout(reference, DiagramLayout.Strategy.REDUCE_CROSSINGS);
+        var pinned = service.layout(current, DiagramLayout.Strategy.REDUCE_CROSSINGS, reference);
+        assertThat(pinned.nodes()).isEqualTo(baseline.nodes());
+        assertThat(pinned.edges()).hasSize(4);
+        assertThat(service.layout(current, DiagramLayout.Strategy.REDUCE_CROSSINGS).nodes()).isNotEqualTo(baseline.nodes());
+        var changedNodes = new java.util.ArrayList<>(reference.nodes());
+        changedNodes.removeIf(node -> node.id().equals("c"));
+        changedNodes.add(new DiagramNode("e", "New system", "System", 0, false, 2));
+        var changed = new DiagramModel(reference.title(), changedNodes, edges, reference.layout());
+        var changedScene = service.layout(changed, DiagramLayout.Strategy.REDUCE_CROSSINGS, reference);
+        assertThat(changedScene.nodes()).extracting(node -> node.id()).containsExactly("a", "b", "d", "e");
+        assertThat(service.layout(changed, DiagramLayout.Strategy.REDUCE_CROSSINGS, reference)).isEqualTo(changedScene);
+        assertThat(service.layout(null, DiagramLayout.Strategy.REDUCE_CROSSINGS).isEmpty()).isTrue();
+    }
+
+    @Test
+    void strategyNamesDefaultToStableAndRejectUnknownValues() {
+        assertThat(DiagramLayout.Strategy.fromId(null)).isEqualTo(DiagramLayout.Strategy.STABLE);
+        assertThat(DiagramLayout.Strategy.fromId("stable")).isEqualTo(DiagramLayout.Strategy.STABLE);
+        assertThat(DiagramLayout.Strategy.fromId("reduce-crossings")).isEqualTo(DiagramLayout.Strategy.REDUCE_CROSSINGS);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> DiagramLayout.Strategy.fromId("surprise"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static DiagramModel crossingFixture() {
+        return new DiagramModel("Crossing fixture", List.of(
+                new DiagramNode("a", "A", "Capability", 0, false, 1),
+                new DiagramNode("b", "B", "Capability", 0, false, 1),
+                new DiagramNode("c", "C", "System", 0, false, 2, 1, false, "parent", false),
+                new DiagramNode("d", "D", "System", 0, false, 2)), List.of(
+                new DiagramEdge("one", "a", "d", "REALIZED_BY", 0),
+                new DiagramEdge("two", "b", "c", "REALIZED_BY", 0)), new DiagramLayout("LR", true));
+    }
+
+    private static boolean crosses(DiagramScene scene) {
+        var first = scene.edges().get(0); var second = scene.edges().get(1);
+        return (first.sourceY() - second.sourceY()) * (first.targetY() - second.targetY()) < 0;
+    }
+
+    @Test
     void returnsExplicitEmptySceneForMissingArchitecture() {
         DiagramScene scene = service.layout(
                 new DiagramModel("Empty", List.of(), List.of(), new DiagramLayout("LR", true)));

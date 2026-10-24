@@ -368,16 +368,30 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.dto",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.architecture",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.service",
+      "classDependencyCount": 5
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
-      "classDependencyCount": 2
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 5
     },
     {
       "fromContext": "app-composition",

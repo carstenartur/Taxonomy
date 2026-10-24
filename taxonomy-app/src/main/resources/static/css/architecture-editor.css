@@ -58,3 +58,36 @@ dialog::backdrop { background: #17243aaa; }
 /* Planning metadata is readable without nested scrolling, including unknown profiles. */
 #editorPlanningValues dd { margin-inline-start: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 #editorPlanningStatus { overflow-wrap: anywhere; }
+
+.editor-layout-controls select { width: auto; flex: 1; min-width: 10rem; }
+.editor-lens-panel { border-top: 1px solid #aab5c4; margin-top: 1rem; }
+.editor-check { display: flex; gap: .6rem; align-items: center; }
+.editor-check input { width: 1.2rem; height: 1.2rem; }
+#editorLensBudget { width: 5rem; }
+.editor-lens-states, .editor-lens-suggestions { padding-left: 1.3rem; overflow-wrap: anywhere; }
+.editor-lens-state { margin: .4rem 0; }
+.editor-lens-state.examining { font-weight: 700; text-decoration: underline; }
+.editor-lens-suggestions li { margin: .5rem 0; }
+.editor-lens-suggestions button { text-align: left; overflow-wrap: anywhere; }
+.editor-lens-suggestions small { display: block; }
+.editor-lens-suggestions button[aria-pressed="true"] { border: 2px solid #7142a0; }
+#editorLensReview { border-left: 4px solid #7142a0; padding: 0 1rem; overflow-wrap: anywhere; }
+.editor-lens-rationale, #editorLensReview blockquote { white-space: pre-wrap; }
+#editorLensReview blockquote { margin: .5rem 0; padding: .5rem; background: #f1f4f8; }
+.editor-lens-notice { font-weight: 600; }
+#editorLensError { color: #8f210f; white-space: pre-wrap; overflow-wrap: anywhere; }
+#editorGraph .editor-lens-ring { fill: #7142a00c; stroke: #7142a0; stroke-width: 2; pointer-events: none; }
+#editorGraph .editor-ghost { stroke: #7142a0; stroke-width: 3; stroke-dasharray: 8 5; fill: none; cursor: pointer; }
+#editorGraph .editor-ghost.selected, #editorGraph .editor-ghost:focus { stroke-width: 5; outline: none; }
+#editorGraph .lens-queued rect { stroke-dasharray: 4 4; }
+#editorGraph .lens-examining rect { stroke: #7142a0; stroke-width: 4; stroke-dasharray: 10 4; animation: editor-lens-scan 1.2s linear infinite; }
+#editorGraph .lens-suggestions rect { stroke: #146b55; stroke-width: 4; }
+#editorGraph .lens-unassessed rect { stroke: #986000; stroke-width: 3; stroke-dasharray: 3 4; }
+#editorGraph .lens-failed rect, #editorGraph .lens-stale rect { stroke: #8f210f; stroke-dasharray: 2 5; }
+@keyframes editor-lens-scan { to { stroke-dashoffset: -28; } }
+@media (prefers-reduced-motion: reduce) { #editorGraph .lens-examining rect { animation: none; } }
+@media (forced-colors: active) {
+    #editorGraph .editor-ghost, #editorGraph .editor-lens-ring { stroke: Highlight; }
+    #editorGraph .lens-examining rect, #editorGraph .lens-suggestions rect, #editorGraph .lens-unassessed rect,
+    #editorGraph .lens-failed rect, #editorGraph .lens-stale rect { stroke: Highlight; }
+}

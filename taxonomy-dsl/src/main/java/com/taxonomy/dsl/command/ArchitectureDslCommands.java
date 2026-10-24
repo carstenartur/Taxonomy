@@ -84,7 +84,7 @@ public final class ArchitectureDslCommands {
             case CreateArchitectureElement create -> createElement(source, blocks, create);
             case UpdateArchitectureElement update -> updateElement(source, blocks, update);
             case DeleteArchitectureElement delete -> deleteElement(source, blocks, delete.id());
-            case CreateArchitectureRelation create -> createRelation(source, blocks, create.relation(), create.status());
+            case CreateArchitectureRelation create -> createRelation(source, blocks, create.relation(), create.status(), create.properties());
             case UpdateArchitectureRelation update -> updateRelation(source, blocks, update.relation(), update.status());
             case DeleteArchitectureRelation delete -> deleteRelation(source, blocks, delete.relation());
             case MoveOrGroupElement move -> move(source, blocks, move);
@@ -370,13 +370,15 @@ public final class ArchitectureDslCommands {
         return ArchitectureSemanticPatch.replace(source, existing, null);
     }
 
-    private String createRelation(String source, Map<String, BlockAst> blocks, RelationKey relation, String status) {
+    private String createRelation(String source, Map<String, BlockAst> blocks, RelationKey relation, String status,
+                                  Map<String, String> properties) {
         String key = "relation:" + relation.id();
         if (blocks.containsKey(key)) throw problem("DUPLICATE_RELATION", "relation", "Relation already exists");
         validateRelation(blocks, relation);
         requireStatus(status);
-        BlockAst created = block("relation", List.of(relation.sourceId(), relation.relationType(), relation.targetId()),
-                Map.of("status", status == null ? "proposed" : status), null);
+        Map<String, String> values = new LinkedHashMap<>(properties);
+        values.put("status", status == null ? "proposed" : status);
+        BlockAst created = block("relation", List.of(relation.sourceId(), relation.relationType(), relation.targetId()), values, null);
         Map<String, BlockAst> changed = new LinkedHashMap<>(blocks);
         changed.put(key, created);
         validateContainment(changed);
@@ -415,7 +417,7 @@ public final class ArchitectureDslCommands {
             }
         }
         return command.parentId() == null ? next : createRelation(next, ArchitectureSemanticPatch.index(next),
-                new RelationKey(command.parentId(), "CONTAINS", command.id()), "proposed");
+                new RelationKey(command.parentId(), "CONTAINS", command.id()), "proposed", Map.of());
     }
 
     private static void validateRelation(Map<String, BlockAst> blocks, RelationKey relation) {

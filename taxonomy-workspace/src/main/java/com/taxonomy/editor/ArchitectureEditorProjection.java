@@ -2,6 +2,7 @@ package com.taxonomy.editor;
 
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramLayout;
+import com.taxonomy.diagram.DiagramLayout.Strategy;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.diagram.DiagramScene;
@@ -25,7 +26,14 @@ public class ArchitectureEditorProjection {
     public record Schema(List<String> elementTypes, List<String> elementProperties,
                          List<String> relationTypes, List<String> relationStatuses,
                          Map<String, Map<String, java.util.Set<String>>> relationRules,
-                         Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode) {
+                         Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode,
+                         String layoutStrategy, Long layoutRevision) {
+        public Schema(List<String> elementTypes, List<String> elementProperties, List<String> relationTypes,
+                      List<String> relationStatuses, Map<String, Map<String, java.util.Set<String>>> relationRules,
+                      Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode) {
+            this(elementTypes, elementProperties, relationTypes, relationStatuses, relationRules, typeRoots,
+                    properties, layoutMode, "stable", null);
+        }
         public List<com.taxonomy.dsl.planning.PlanningProfile.Descriptor> getPlanningProfiles() {
             return new com.taxonomy.dsl.planning.PlanningInformation().descriptors();
         }
@@ -46,7 +54,41 @@ public class ArchitectureEditorProjection {
     }
 
     public View project(ArchitectureEditorService.Document document, boolean mayEdit) {
+        return project(document, mayEdit, Strategy.STABLE, null);
+    }
+
+    public View project(ArchitectureEditorService.Document document, boolean mayEdit, Strategy strategy,
+                        ArchitectureEditorService.Document layoutReference) {
+        Long layoutRevision = layoutReference == null ? null : layoutReference.context().revision();
+        if (layoutRevision == null && strategy == Strategy.REDUCE_CROSSINGS
+                && "WORKSPACE_REVISION".equals(document.source())) {
+            layoutRevision = document.context().revision();
+        }
+        requireLayoutRevision(document, strategy, layoutRevision);
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());
+        DiagramModel diagram = diagram(model, document.context().branch());
+        DiagramModel reference = layoutReference == null ? null : diagram(
+                new ArchitectureDslCommands().model(layoutReference.dsl()), document.context().branch());
+        DiagramScene scene = layout.layout(diagram, strategy, reference);
+        Schema schema = new Schema(types(), ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().sorted().toList(),
+                DslValidator.relationTypes().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),
+                DslValidator.relationTypeRules(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(),
+                strategy == Strategy.STABLE ? "DERIVED_SERVER_LAYOUT" : "DERIVED_SERVER_LAYOUT_REDUCE_CROSSINGS",
+                strategy.id(), layoutRevision);
+        return new View(document, model, scene, schema, mayEdit && "PRIVATE_WORKSPACE".equals(document.context().writeMode())
+                && "READY".equals(document.projectionState()),
+                model.getElements().stream().map(element -> new SearchEntry(element.getId(),
+                        (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList());
+    }
+
+    public static void requireLayoutRevision(ArchitectureEditorService.Document document, Strategy strategy, Long revision) {
+        if (revision != null && (revision < 0 || revision > document.context().revision()
+                || strategy != Strategy.REDUCE_CROSSINGS || !"WORKSPACE_REVISION".equals(document.source()))) {
+            throw new IllegalArgumentException("Layout reference must be a retained workspace revision at or before the selected revision");
+        }
+    }
+
+    private DiagramModel diagram(CanonicalArchitectureModel model, String branch) {
         Map<String, String> parents = new java.util.LinkedHashMap<>();
         model.getRelations().stream().filter(relation -> "CONTAINS".equals(relation.getRelationType()))
                 .forEach(relation -> parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));
@@ -60,14 +102,7 @@ public class ArchitectureEditorProjection {
         List<DiagramEdge> edges = model.getRelations().stream().map(relation -> new DiagramEdge(
                 relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId(),
                 relation.getSourceId(), relation.getTargetId(), relation.getRelationType(), 0)).toList();
-        DiagramScene scene = layout.layout(new DiagramModel("Architecture · " + document.context().branch(), nodes, edges, new DiagramLayout("LR", true)));
-        Schema schema = new Schema(types(), ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().sorted().toList(),
-                DslValidator.relationTypes().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),
-                DslValidator.relationTypeRules(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(), "DERIVED_SERVER_LAYOUT");
-        return new View(document, model, scene, schema, mayEdit && "PRIVATE_WORKSPACE".equals(document.context().writeMode())
-                && "READY".equals(document.projectionState()),
-                model.getElements().stream().map(element -> new SearchEntry(element.getId(),
-                        (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList());
+        return new DiagramModel("Architecture · " + branch, nodes, edges, new DiagramLayout("LR", true));
     }
 
     private static List<String> types() { return TaxonomyRootTypes.TYPE_TO_ROOT.keySet().stream().sorted().toList(); }

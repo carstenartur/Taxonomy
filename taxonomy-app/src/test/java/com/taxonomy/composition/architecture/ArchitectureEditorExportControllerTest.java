@@ -117,6 +117,143 @@ class ArchitectureEditorExportControllerTest {
     }
 
     @Test
+    void optionalLayoutReducesCrossingsAndUsesTheSameExactRevisionForSvgAndPdf() throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        String dsl = """
+                element arch-a type Capability {
+                  title: "First capability";
+                }
+                element arch-b type Capability {
+                  title: "Second capability";
+                }
+                element arch-c type System {
+                  title: "First system";
+                }
+                element arch-d type System {
+                  title: "Second system";
+                }
+                relation arch-a REALIZED_BY arch-d {
+                  status: accepted;
+                }
+                relation arch-b REALIZED_BY arch-c {
+                  status: accepted;
+                }
+                """;
+        var document = new ArchitectureEditorService.Document(
+                Context.of(scope, null, 3), dsl, "READY", List.of(), List.of(),
+                0, null, "WORKSPACE_REVISION");
+        when(service.read(scope, null, 3L)).thenReturn(document);
+        var mvc = standaloneSetup(editor, exports).build();
+        String query = "?repositoryId=repo-a&workspaceScopeKey=workspace-a&branch=draft&revision=3";
+        var response = mvc.perform(get("/api/architecture/editor" + query + "&layout=reduce-crossings"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.getContentAsString());
+        var edges = json.path("scene").path("edges");
+        double sourceDifference = edges.get(0).path("sourceY").asDouble() - edges.get(1).path("sourceY").asDouble();
+        double targetDifference = edges.get(0).path("targetY").asDouble() - edges.get(1).path("targetY").asDouble();
+        assertThat(sourceDifference * targetDifference).as("the two edges must no longer cross").isPositive();
+        assertThat(json.path("document").path("dsl").asText()).isEqualTo(dsl);
+        assertThat(json.path("schema").path("layoutMode").asText()).isEqualTo("DERIVED_SERVER_LAYOUT_REDUCE_CROSSINGS");
+        var svg = mvc.perform(get("/api/architecture/editor.svg" + query + "&layout=reduce-crossings"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertThat(svg.getHeader("X-Taxonomy-Layout-Source")).isEqualTo("DERIVED_SERVER_LAYOUT_REDUCE_CROSSINGS");
+        assertThat(svg.getHeader("ETag")).isEqualTo("\"workspace-revision-3\"");
+        for (var edge : edges) {
+            assertThat(svg.getContentAsString()).contains(String.format(java.util.Locale.ROOT, "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\"", edge.path("sourceX").asDouble(), edge.path("sourceY").asDouble(), edge.path("targetX").asDouble(), edge.path("targetY").asDouble()));
+        }
+        var pdf = mvc.perform(get("/api/architecture/editor.pdf" + query + "&layout=reduce-crossings"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertThat(pdf.getHeader("X-Taxonomy-Layout-Source")).isEqualTo(svg.getHeader("X-Taxonomy-Layout-Source"));
+        assertThat(pdf.getHeader("ETag")).isEqualTo(svg.getHeader("ETag"));
+        try (var parsed = org.apache.pdfbox.Loader.loadPDF(pdf.getContentAsByteArray())) {
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(parsed)).contains("First capability", "Second system");
+        }
+    }
+
+    @Test
+    void optimizedUrlPinsItsInitialRevisionForRelationRefreshAndExactRevisionExports() throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        String elements = """
+                element arch-a type Capability {
+                  title: "First capability";
+                }
+                element arch-b type Capability {
+                  title: "Second capability";
+                }
+                element arch-c type System {
+                  title: "First system";
+                }
+                element arch-d type System {
+                  title: "Second system";
+                }
+                """;
+        String before = elements + """
+                relation arch-a REALIZED_BY arch-d {
+                  status: accepted;
+                }
+                relation arch-b REALIZED_BY arch-c {
+                  status: accepted;
+                }
+                """;
+        String after = before + """
+                relation arch-a REALIZED_BY arch-c {
+                  status: accepted;
+                }
+                relation arch-b REALIZED_BY arch-d {
+                  status: accepted;
+                }
+                """;
+        for (long revision : List.of(3L, 4L)) when(service.read(scope, null, revision)).thenReturn(
+                new ArchitectureEditorService.Document(Context.of(scope, null, revision), revision == 3 ? before : after,
+                        "READY", List.of(), List.of(), 0, null, "WORKSPACE_REVISION"));
+        var mvc = standaloneSetup(editor, exports).build();
+        String scopeQuery = "?repositoryId=repo-a&workspaceScopeKey=workspace-a&branch=draft&layout=reduce-crossings";
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var first = mapper.readTree(mvc.perform(get("/api/architecture/editor" + scopeQuery + "&revision=3"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(first.path("schema").path("layoutRevision").asLong(-1))
+                .as("opening an optimized workspace URL captures its initial ordering revision").isEqualTo(3L);
+        String query = scopeQuery + "&layoutRevision=" + first.path("schema").path("layoutRevision").asLong() + "&revision=";
+        var next = mapper.readTree(mvc.perform(get("/api/architecture/editor" + query + "4"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(next.path("scene").path("nodes")).isEqualTo(first.path("scene").path("nodes"));
+        assertThat(next.path("scene").path("edges").size()).isEqualTo(4);
+        assertThat(next.path("schema").path("layoutRevision").asLong()).isEqualTo(3L);
+        var svg = mvc.perform(get("/api/architecture/editor.svg" + query + "4"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertThat(svg.getHeader("ETag")).isEqualTo("\"workspace-revision-4\"");
+        for (var edge : next.path("scene").path("edges")) assertThat(svg.getContentAsString()).contains(
+                String.format(java.util.Locale.ROOT, "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\"",
+                        edge.path("sourceX").asDouble(), edge.path("sourceY").asDouble(),
+                        edge.path("targetX").asDouble(), edge.path("targetY").asDouble()));
+        mvc.perform(get("/api/architecture/editor.pdf" + query + "4"))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("ETag", "\"workspace-revision-4\""));
+        for (String invalid : List.of("-1", "5")) mvc.perform(get("/api/architecture/editor" + query.replace("layoutRevision=3", "layoutRevision=" + invalid) + "4"))
+                .andExpect(status().isBadRequest());
+        when(service.read(scope, HEAD, null)).thenReturn(new ArchitectureEditorService.Document(
+                Context.of(scope, HEAD), before, "HISTORICAL", List.of(), List.of(), 0, null, "GIT_CHECKPOINT"));
+        mvc.perform(get("/api/architecture/editor" + scopeQuery + "&commit=" + HEAD))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.schema.layoutRevision").isEmpty());
+        mvc.perform(get("/api/architecture/editor" + scopeQuery.replace("reduce-crossings", "stable") + "&revision=3"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.schema.layoutRevision").isEmpty());
+        mvc.perform(get("/api/architecture/editor.svg").param("repositoryId", "repo-a").param("workspaceScopeKey", "workspace-a")
+                        .param("branch", "draft").param("commit", HEAD).param("layout", "reduce-crossings").param("layoutRevision", "3"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void unknownLayoutIsRejectedInsteadOfSilentlyUsingStableCoordinates() throws Exception {
+        var mvc = standaloneSetup(editor, exports).build();
+        for (String path : List.of("/api/architecture/editor", "/api/architecture/editor.svg", "/api/architecture/editor.pdf")) {
+            mvc.perform(get(path).param("layout", "surprise").param("repositoryId", "repo-a")
+                            .param("workspaceScopeKey", "workspace-a").param("branch", "draft").param("revision", "3"))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void uncheckpointedJsonSvgAndPdfExposeTheSameSemanticRevision() throws Exception {
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
         String dsl = "element arch-instance type System {\n  title: \"Uncheckpointed title\";\n}\n";

@@ -98,6 +98,57 @@ class ArchitectureEditorServiceTest {
         assertThat(fixture.journal.read(alice).operations()).hasSize(1);
     }
 
+    @Test void acceptedFocusProvenanceSurvivesWireDispatchCheckpointAndOperationUndoRedo() throws Exception {
+        execute(new SemanticCommand(new CreateArchitectureElement("arch-child", "Component", Map.of("title", "Child"))));
+        var resolver = mock(com.taxonomy.workspace.service.WorkspaceResolver.class);
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(alice);
+        var controller = new ArchitectureEditorController(service,
+                new ArchitectureEditorProjection(new com.taxonomy.export.LayeredDiagramLayoutService()), resolver);
+        var properties = new LinkedHashMap<String, String>();
+        properties.put("provenance", "architecture-focus");
+        properties.put("x-focus-rationale", "Rationale " + "r".repeat(1500));
+        properties.put("x-focus-evidence", "[{\"elementId\":\"arch-existing\",\"quote\":\"Original\"}]");
+        properties.put("x-focus-revision", "1");
+        properties.put("x-focus-method", "LOCAL_CANDIDATES");
+        properties.put("x-focus-source-hash", "a".repeat(64));
+        var request = new ArchitectureEditorController.WireCommand(service.read(alice, null).context(), metadata(),
+                "CREATE_RELATION", null, null, properties, "arch-existing", "CONTAINS", "arch-child", "accepted", null, null);
+        var accepted = controller.execute(request, "\"workspace-revision-1\"", null).getBody();
+        String retained = service.read(alice, null).dsl();
+        var relation = new com.taxonomy.dsl.command.ArchitectureDslCommands().model(retained).getRelations().getFirst();
+        assertThat(relation.getStatus()).isEqualTo("accepted");
+        assertThat(relation.getProvenance()).isEqualTo("architecture-focus");
+        assertThat(relation.getExtensions()).containsAllEntriesOf(properties.entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("x-")).collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+        assertThat(controller.execute(request, "\"workspace-revision-1\"", null).getBody().replayed()).isTrue();
+        var changed = new LinkedHashMap<>(properties);
+        changed.put("x-focus-rationale", "A different design hypothesis");
+        var retry = new ArchitectureEditorController.WireCommand(request.context(), request.metadata(),
+                "CREATE_RELATION", null, null, changed, "arch-existing", "CONTAINS", "arch-child", "accepted", null, null);
+        assertCode(() -> controller.execute(retry, "\"workspace-revision-1\"", null), "COMMAND_ID_REUSED");
+        assertThat(fixture.journal.read(alice).operations()).hasSize(2);
+        var checkpoint = service.checkpoint(alice, new CreateCheckpointCommand(service.read(alice, null).context(), metadata()));
+        assertThat(fixture.repositories.resolveRepository(alice).getDslAtCommit(checkpoint.commitId())).isEqualTo(retained);
+        var undo = execute(new UndoArchitectureCommand(UUID.fromString(accepted.operationId())));
+        assertThat(service.read(alice, null).dsl()).doesNotContain("relation arch-existing CONTAINS arch-child", "x-focus-rationale");
+        execute(new RedoArchitectureCommand(UUID.fromString(undo.operationId())));
+        var restarted = new ArchitectureEditorService(fixture.repositories, fixture.journal, new ArchitectureCheckpointWriter());
+        assertThat(restarted.read(alice, null).dsl()).isEqualTo(retained);
+    }
+
+    @Test void relationWithoutFocusPropertiesKeepsItsExistingJournalFingerprint() throws Exception {
+        execute(new SemanticCommand(new CreateArchitectureElement("arch-child", "Component", Map.of("title", "Child"))));
+        var metadata = new Metadata("00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003", "Focus relation review");
+        var request = new Command(service.read(alice, null).context(), metadata,
+                new SemanticCommand(new CreateArchitectureRelation(new RelationKey("arch-existing", "CONTAINS", "arch-child"), "accepted")));
+        service.execute(alice, request);
+        // Literal SHA-256 of the prior length-prefixed journal payload; empty properties append no fields.
+        assertThat(fixture.journal.operation(alice, metadata.commandId()).fingerprint())
+                .isEqualTo("cdc28a1aa5433097c3726a568f89a4f3635740fb1aebef9296768ec0f447279f");
+        assertThat(service.execute(alice, request).replayed()).isTrue();
+    }
+
     @Test void historyAndNormalEditsDoNotLoadHistoricalBodiesButInversesLoadTheirExactTarget() throws Exception {
         execute(update("History target"));
         execute(new SemanticCommand(new CreateArchitectureElement("arch-other", "Component", Map.of("title", "Unrelated"))));

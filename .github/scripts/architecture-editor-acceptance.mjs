@@ -208,6 +208,91 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await commit();
     assert.equal(await page.locator('#editorTitle').inputValue(), `Updated system ${suffix}`);
     assert.ok((await page.locator('#editorDsl').inputValue()).includes(`Updated system ${suffix}`));
+
+    // Give the authored pair a deterministic lexical lead over unrelated catalogue elements.
+    const focusDescription = `focus${suffix}alpha focus${suffix}beta focus${suffix}gamma`;
+    for (const id of [system, component]) {
+      await select(id);
+      await page.locator('#editorDescription').fill(focusDescription);
+      await preview(() => page.locator('#editorPreviewElement').click());
+      await commit();
+    }
+    await select(system);
+
+    // Real focus endpoint + semantic journal: explicit optimization, local discovery, one-step acceptance and exact UUID undo.
+    const arrangeResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor')
+      && new URL(r.url()).searchParams.get('layout') === 'reduce-crossings');
+    await page.locator('#editorLayout').selectOption('reduce-crossings');
+    await page.locator('#editorArrange').click();
+    const arranged = await (await arrangeResponse).json();
+    assert.equal(arranged.schema.layoutStrategy, 'reduce-crossings');
+    assert.equal(arranged.schema.layoutRevision, arranged.document.context.revision);
+    await page.waitForFunction(() => !document.getElementById('editorLensEnabled').disabled);
+    await page.locator('#editorFocus').click();
+    await page.locator('#editorLensUseAi').uncheck();
+    await page.locator('#editorLensEnabled').check();
+    const investigationResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/focus/suggestions'));
+    await page.locator('#editorLensInspect').focus(); await page.keyboard.press('Enter');
+    const investigated = await investigationResponse;
+    assert.equal(investigated.status(), 200, await investigated.text());
+    const investigation = await investigated.json();
+    assert.equal(investigation.outcome, 'LOCAL_CANDIDATES'); assert.equal(investigation.modelCalls, 0);
+    const proposal = investigation.suggestions.find(s => [s.sourceId, s.targetId].includes(component));
+    assert.ok(proposal, 'A newly created editor element outside the selected focus is an eligible target');
+    const proposalButton = page.locator('#editorLensSuggestions button').filter({ hasText: `${proposal.sourceId} → ${proposal.targetId} · ${proposal.relationType}` });
+    await proposalButton.focus(); await page.keyboard.press('Enter');
+    assert.equal(await proposalButton.evaluate(button => document.activeElement === button), true, 'Selecting a proposal retains keyboard focus');
+    assert.ok((await page.locator('#editorLensReview').innerText()).includes(proposal.rationale));
+    assert.equal(await page.locator('#editorPreviewDialog').isVisible(), false);
+    const frameBeforeFocusAccept = await page.locator('#editorGraph .editor-node[aria-pressed="true"]').evaluate(node => ({
+      node: node.getAttribute('transform'), camera: node.parentElement.getAttribute('transform')
+    }));
+    // Lose the response AFTER the real command commits, then retry the same command through the real endpoint.
+    let focusCommit, focusAttempts;
+    try {
+      await page.evaluate(() => {
+        const original = window.ArchitectureEditorApi.execute;
+        window.__focusRetry = { original, attempts: [] };
+        window.ArchitectureEditorApi.execute = async command => {
+          if (command.kind !== 'CREATE_RELATION' || command.properties?.provenance !== 'architecture-focus') return original(command);
+          window.__focusRetry.attempts.push(JSON.parse(JSON.stringify(command)));
+          const result = await original(command);
+          if (window.__focusRetry.attempts.length === 1) throw Object.assign(new Error('Lost accepted response fixture'), { status: 0 });
+          return result;
+        };
+      });
+      await page.locator('#editorLensReview button[data-focus-action="accept"]').focus(); await page.keyboard.press('Enter');
+      await page.getByRole('button', { name: 'Retry the same acceptance', exact: true }).waitFor();
+      const focusCommitResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/commands'));
+      await page.getByRole('button', { name: 'Retry the same acceptance', exact: true }).click();
+      focusCommit = await (await focusCommitResponse).json();
+      assert.equal(focusCommit.replayed, true);
+      await page.waitForFunction(revision => new URL(location.href).searchParams.get('revision') === String(revision)
+        && !document.getElementById('editorLensEnabled').disabled, focusCommit.context.revision);
+    } finally {
+      focusAttempts = await page.evaluate(() => {
+        const recovery = window.__focusRetry;
+        if (!recovery) return [];
+        window.ArchitectureEditorApi.execute = recovery.original;
+        delete window.__focusRetry;
+        return recovery.attempts;
+      });
+    }
+    assert.deepEqual(focusAttempts[0], focusAttempts[1], 'Ambiguous focus acceptance retries the exact operation UUID and evidence');
+    assert.ok((await page.locator('#editorDsl').inputValue()).includes('provenance: "architecture-focus"'));
+    assert.deepEqual(await page.locator('#editorGraph .editor-node[aria-pressed="true"]').evaluate(node => ({
+      node: node.getAttribute('transform'), camera: node.parentElement.getAttribute('transform')
+    })), frameBeforeFocusAccept, 'Acceptance must preserve optimized node positions and the camera');
+    assert.equal(await page.locator('#editorPreviewDialog').isVisible(), false, 'Focus review is the single confirmation');
+    const focusUndoResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/commands'));
+    await page.locator('#editorLensReview button[data-focus-action="undo"]').click();
+    const focusUndo = await (await focusUndoResponse).json();
+    await page.waitForFunction(revision => new URL(location.href).searchParams.get('revision') === String(revision)
+      && !document.getElementById('editorLensEnabled').disabled, focusUndo.context.revision);
+    assert.equal(focusUndo.change.dsl.includes(`relation ${proposal.sourceId} ${proposal.relationType} ${proposal.targetId}`), false);
+    await page.locator('#editorLensEnabled').uncheck();
+    measurements.focus = { localOnly: true, outsideFocusElement: component, acceptance: focusCommit.operationId,
+      undo: focusUndo.operationId, retryReplayed: true, stableCameraAndLayout: true, keyboardReview: true };
     const deepLink = page.url();
     const currentParams = new URL(deepLink).searchParams;
     currentParams.set('workspaceId', currentParams.get('workspaceScopeKey'));
@@ -350,15 +435,19 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
             width: initialRect.width, height: initialRect.height }, label: { height: initialLabel.height },
           nodes: svg.querySelectorAll('.editor-node').length, edges: svg.querySelectorAll('.editor-edge').length };
         adapter.fit(); await settle();
+        adapter.presentFocus({ enabled: true, states: {}, label: value => value,
+          suggestions: scene.edges.slice(0, 64).map(edge => ({ ...edge, id: `proposal-${edge.id}` })) });
         const fitTransform = window.d3.zoomTransform(svg);
         const completeModelFits = fitTransform.x >= 0 && fitTransform.y >= 0
           && fitTransform.x + scene.width * fitTransform.k <= 1000
           && fitTransform.y + scene.height * fitTransform.k <= 420;
         const renderMs = Math.round(performance.now() - started);
         const visibleNodes = svg.querySelectorAll('.editor-node').length;
+        const visibleEdges = svg.querySelectorAll('.editor-edge, .editor-ghost').length;
+        const visibleSuggestions = svg.querySelectorAll('.editor-ghost').length;
         const markerId = svg.querySelector('marker').id;
         const markerIsUnique = document.querySelectorAll('#' + markerId).length === 1;
-        const edgesUseOwnMarker = [...svg.querySelectorAll('.editor-edge')]
+        const edgesUseOwnMarker = [...svg.querySelectorAll('.editor-edge, .editor-ghost')]
           .every(edge => edge.getAttribute('marker-end') === 'url(#' + markerId + ')');
         const focusStarted = performance.now();
         adapter.select(scene.nodes[count - 1].id); adapter.focus(); await settle();
@@ -375,7 +464,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
         zoomTarget.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true }));
         await settle();
         const afterZoom = svg.querySelector('g').getAttribute('transform');
-        const measurement = { count, width, renderMs, focusMs, visibleNodes, markerIsUnique, edgesUseOwnMarker,
+        const measurement = { count, width, renderMs, focusMs, visibleNodes, visibleEdges, visibleSuggestions, markerIsUnique, edgesUseOwnMarker,
           initialFrame, completeModelFits, sceneUnchanged: JSON.stringify(scene) === originalScene,
           selectedNodeWidth: selectedRect.width, selectedLabelHeight: selectedLabel.height,
           keyboardPanFromNode: beforePan !== afterPan, keyboardZoomFromObject: afterPan !== afterZoom,
@@ -399,7 +488,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(measurement.sceneUnchanged, true, 'Local framing must not change complete scene or export geometry');
     assert.ok(measurement.selectedNodeWidth >= 180 && measurement.selectedLabelHeight >= 10,
       'Focus selection must remain readable after a complete-model fit');
-    assert.ok(measurement.visibleNodes <= 200 && measurement.domElements <= 1100);
+    assert.ok(measurement.visibleNodes <= 200 && measurement.visibleEdges <= 400 && measurement.domElements <= 1100);
+    assert.ok(measurement.visibleSuggestions > 0, 'Rendering limits must include visible focus proposals');
     assert.equal(measurement.selectedVisible, true);
     assert.equal(measurement.markerIsUnique, true, 'Concurrent editor renderers must have distinct SVG marker IDs');
     assert.equal(measurement.edgesUseOwnMarker, true, 'Edges must reference the marker owned by their renderer');
