@@ -126,11 +126,15 @@ class SearchFailureHttpTest {
 
     @Test
     void workspaceFailureReturns503BeforeRetrieval() throws Exception {
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(RepositoryContext.workspace(
+                "fixture-repository", "fixture-workspace", "draft", "test-user"));
         doThrow(new IllegalStateException("private-workspace"))
                 .when(repository).ensureWorkspaceState("test-user");
         mvc.perform(get("/api/search/graph").param("q", "query"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(content().string(not(containsString("private-"))));
+        verify(repository).ensureWorkspaceState("test-user");
+        verifyNoInteractions(authority);
         verify(embeddings, never()).embedQuery(anyString());
     }
 }
