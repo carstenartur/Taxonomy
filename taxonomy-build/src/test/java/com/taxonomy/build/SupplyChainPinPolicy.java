@@ -8,10 +8,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -24,7 +26,7 @@ final class SupplyChainPinPolicy {
     private static final Pattern SHA_REFERENCE = Pattern.compile(
             "^[^@]+@[0-9a-fA-F]{40}$");
     private static final Pattern FROM = Pattern.compile(
-            "^\\s*FROM\\s+([^\\s]+)", Pattern.CASE_INSENSITIVE);
+            "^\\s*FROM\\s+([^\\s]+)(?:\\s+AS\\s+([^\\s#]+))?", Pattern.CASE_INSENSITIVE);
     private static final Pattern COMPOSE_IMAGE = Pattern.compile(
             "^\\s*image:\\s*([^\\s#]+)");
     private static final Pattern DIGEST_REFERENCE = Pattern.compile(
@@ -113,6 +115,7 @@ final class SupplyChainPinPolicy {
         int checked = 0;
         Path dockerfile = root.resolve("Dockerfile");
         if (Files.isRegularFile(dockerfile)) {
+            Set<String> stages = new HashSet<>();
             List<String> lines = readLines(dockerfile);
             for (int index = 0; index < lines.size(); index++) {
                 Matcher matcher = FROM.matcher(lines.get(index));
@@ -120,7 +123,12 @@ final class SupplyChainPinPolicy {
                     continue;
                 }
                 String image = matcher.group(1);
-                if ("scratch".equalsIgnoreCase(image) || image.startsWith("${")) {
+                // Only earlier stages are internal; a new alias cannot exempt its own base.
+                boolean internalStage = stages.contains(image.toLowerCase(Locale.ROOT));
+                if (matcher.group(2) != null) {
+                    stages.add(matcher.group(2).toLowerCase(Locale.ROOT));
+                }
+                if (internalStage || "scratch".equalsIgnoreCase(image) || image.startsWith("${")) {
                     continue;
                 }
                 checked++;

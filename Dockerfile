@@ -85,9 +85,23 @@ RUN --mount=type=cache,target=/root/.m2/repository \
 # by default. Operators opt in explicitly through JAVA_TOOL_OPTIONS.
 FROM otel/autoinstrumentation-java:2.28.1@sha256:41b92978e61d13d4f32c6eb20c6ae7821a73ffdec8539bc6a73858e884b411d8 AS opentelemetry
 
+# ---- optional pinned local model ----
+# This stage is independent of the application build, so unchanged model bytes
+# remain cacheable across application releases. The default target does not use it.
+FROM eclipse-temurin:21-jre-jammy@sha256:d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13 AS onnx-model
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY .github/scripts/download-embedding-model.sh /usr/local/bin/download-embedding-model.sh
+COPY deploy/container/onnx/ /opt/taxonomy/models/multilingual-minilm/
+RUN MODEL_PROFILE=MULTILINGUAL_MINILM_L12 \
+      MODEL_DIRECTORY=/opt/taxonomy/models/multilingual-minilm \
+      bash /usr/local/bin/download-embedding-model.sh \
+    && chmod -R a=rX /opt/taxonomy/models
+
 # ---- runtime stage ----
 # Tag retained for readability; digest prevents mutable-tag supply-chain drift.
-FROM eclipse-temurin:21-jre-jammy@sha256:d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13
+FROM eclipse-temurin:21-jre-jammy@sha256:d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13 AS runtime
 # OCI Image Specification labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.description="Spring Boot web application that loads a C3-taxonomy catalogue and provides full-text search, KNN vector search, architecture-overlay DSL editing, and LLM-assisted analysis." \
@@ -158,3 +172,25 @@ STOPSIGNAL SIGTERM
 # The OpenTelemetry agent is deliberately absent from this command. It is only
 # attached when an operator sets JAVA_TOOL_OPTIONS=-javaagent:/opt/opentelemetry/opentelemetry-javaagent.jar.
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
+
+# ---- ready-to-use local ONNX variant: docker build --target onnx ----
+# Model files are immutable; native libraries are extracted to the writable /tmp
+# cache. Explicit CPU selection avoids a first-start CUDA-library download.
+FROM runtime AS onnx
+COPY --from=onnx-model /opt/taxonomy/models/ /opt/taxonomy/models/
+LABEL org.opencontainers.image.description="Taxonomy Architecture Analyzer with bundled multilingual ONNX embeddings for offline semantic search and similarity scoring." \
+      org.opencontainers.image.licenses="MIT AND Apache-2.0" \
+      com.taxonomy.image.variant="onnx"
+ENV LLM_PROVIDER=LOCAL_ONNX \
+    TAXONOMY_EMBEDDING_ENABLED=true \
+    TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12 \
+    TAXONOMY_EMBEDDING_MODEL_DIR=/opt/taxonomy/models/multilingual-minilm \
+    TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false \
+    RUST_FLAVOR=cpu \
+    DJL_CACHE_DIR=/tmp/djl-cache \
+    JAVA_OPTS="-XX:+UseSerialGC -Xss512k -Xmx768m -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp"
+
+# Keep ordinary docker build and all existing unsuffixed tags on the standard
+# variant. BuildKit skips the independent model stage unless onnx is requested.
+FROM runtime AS standard
+LABEL com.taxonomy.image.variant="standard"

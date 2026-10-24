@@ -32,6 +32,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "taxonomy.image" -}}
+{{- $variant := .Values.image.variant | default "standard" -}}
+{{- if not (has $variant (list "standard" "onnx")) -}}
+{{- fail "image.variant must be standard or onnx" -}}
+{{- end -}}
+{{- $variantSuffix := ternary "-onnx" "" (eq $variant "onnx") -}}
 {{- $configuredTag := .Values.image.tag | default "" -}}
 {{- $digest := .Values.image.digest | default "" -}}
 {{- if and $configuredTag $digest -}}
@@ -41,7 +46,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- $releaseAppVersion := regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$" $appVersion -}}
 {{- $snapshotAppVersion := contains "SNAPSHOT" (upper $appVersion) -}}
 {{- $deriveReleaseTag := and (empty $configuredTag) (empty $digest) $releaseAppVersion (not $snapshotAppVersion) -}}
-{{- $derivedTag := ternary (printf "v%s" $appVersion) "" $deriveReleaseTag -}}
+{{- $derivedTag := ternary (printf "v%s%s" $appVersion $variantSuffix) "" $deriveReleaseTag -}}
 {{- $tag := default $derivedTag $configuredTag -}}
 {{- if $digest -}}
 {{- if not (regexMatch "^sha256:[0-9a-f]{64}$" $digest) -}}
@@ -52,9 +57,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- $requiredTag := required "image.tag or image.digest is required; only packaged non-SNAPSHOT releases derive v<appVersion> automatically" $tag -}}
 {{- $releaseTag := regexMatch "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$" $requiredTag -}}
 {{- $snapshotTag := contains "SNAPSHOT" (upper $requiredTag) -}}
-{{- $commitTag := regexMatch "^sha-[0-9a-f]{7,40}$" $requiredTag -}}
+{{- $commitTag := regexMatch "^sha-[0-9a-f]{7,40}(-onnx)?$" $requiredTag -}}
 {{- if or $snapshotTag (not (or $releaseTag $commitTag)) -}}
-{{- fail "image.tag must be an immutable release tag (vX.Y.Z with an optional Docker-safe non-SNAPSHOT prerelease suffix) or sha-<7-40 lowercase hex commit>" -}}
+{{- fail "image.tag must be an immutable release tag (vX.Y.Z with an optional Docker-safe non-SNAPSHOT prerelease suffix) or sha-<7-40 lowercase hex commit> with an optional -onnx suffix" -}}
 {{- end -}}
 {{- printf "%s:%s" .Values.image.repository $requiredTag -}}
 {{- end -}}

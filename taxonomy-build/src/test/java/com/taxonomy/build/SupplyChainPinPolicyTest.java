@@ -57,6 +57,40 @@ class SupplyChainPinPolicyTest {
     }
 
     @Test
+    void acceptsReuseOfPreviouslyDefinedDockerBuildStages(@TempDir Path root)
+            throws Exception {
+        write(root, "Dockerfile", """
+                FROM eclipse-temurin@sha256:%s AS runtime
+                FROM runtime AS onnx
+                FROM onnx AS standard
+                """.formatted(IMAGE_DIGEST));
+
+        SupplyChainPinPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.passed()).isTrue();
+        assertThat(inspection.checkedProductionImages()).isEqualTo(1);
+        assertThat(inspection.violations()).isEmpty();
+    }
+
+    @Test
+    void requiresDigestsForUnknownAndNotYetDefinedDockerBases(@TempDir Path root)
+            throws Exception {
+        write(root, "Dockerfile", """
+                FROM future AS early
+                FROM eclipse-temurin@sha256:%s AS future
+                FROM unknown AS unknown
+                """.formatted(IMAGE_DIGEST));
+
+        SupplyChainPinPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.passed()).isFalse();
+        assertThat(inspection.checkedProductionImages()).isEqualTo(3);
+        assertThat(inspection.violations()).containsExactly(
+                "Dockerfile:1: production build image is not digest-pinned: future",
+                "Dockerfile:3: production build image is not digest-pinned: unknown");
+    }
+
+    @Test
     void reportsEveryMutableActionAndProductionImageWithItsSourceLine(
             @TempDir Path root) throws Exception {
         write(root, ".github/workflows/ci.yml", """

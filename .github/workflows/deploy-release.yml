@@ -352,12 +352,48 @@ jobs:
           output: release-image-trivy.sarif
           exit-code: '1'
 
+      - name: Build and publish immutable ONNX release image
+        id: release_onnx_image
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          builder: ${{ steps.release_builder.outputs.name }}
+          context: .
+          target: onnx
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/taxonomy:v${{ steps.release_parameters.outputs.release_version }}-onnx
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.title=Taxonomy Architecture Analyzer
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release_parameters.outputs.release_version }}
+            org.opencontainers.image.revision=${{ steps.release_source.outputs.sha }}
+          build-args: |
+            BUILD_DATE=${{ steps.release_source.outputs.created }}
+            VCS_REF=${{ steps.release_source.outputs.sha }}
+            VERSION=${{ steps.release_parameters.outputs.release_version }}
+
+      - name: Scan immutable ONNX release image digest
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/taxonomy@${{ steps.release_onnx_image.outputs.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          format: sarif
+          output: release-onnx-image-trivy.sarif
+          exit-code: '1'
+
       - name: Bind release evidence and Helm deployment to immutable image digest
         if: steps.release_parameters.outputs.dry_run != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
           IMAGE_DIGEST: ${{ steps.release_image.outputs.digest }}
+          ONNX_IMAGE_DIGEST: ${{ steps.release_onnx_image.outputs.digest }}
           RELEASE_SOURCE_SHA: ${{ steps.release_source.outputs.sha }}
         shell: bash
         run: |
@@ -367,10 +403,15 @@ jobs:
             exit 1
           fi
 
+          if [[ ! "$ONNX_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::ONNX build did not return a valid immutable image digest"
+            exit 1
+          fi
           tag="v${RELEASE_VERSION}"
           repository="ghcr.io/${GITHUB_REPOSITORY_OWNER}/taxonomy"
           immutable_image="${repository}@${IMAGE_DIGEST}"
           docker buildx imagetools inspect "$immutable_image" >/dev/null
+          docker buildx imagetools inspect "${repository}@${ONNX_IMAGE_DIGEST}" >/dev/null
 
           artifact_dir="$RUNNER_TEMP/helm-release"
           mkdir -p "$artifact_dir" target
@@ -401,7 +442,20 @@ jobs:
               json.dumps(payload, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
+          onnx_payload = dict(payload,
+              imageVariant="onnx",
+              image=f"{os.environ['immutable_image'].split('@')[0]}@{os.environ['ONNX_IMAGE_DIGEST']}",
+              digest=os.environ["ONNX_IMAGE_DIGEST"],
+          )
+          Path("target/release-onnx-image-evidence.json").write_text(
+              json.dumps(onnx_payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
           PY
+          cp target/release-onnx-image-evidence.json \
+            "$artifact_dir/taxonomy-${RELEASE_VERSION}-onnx-image-evidence.json"
+          cp release-onnx-image-trivy.sarif \
+            "$artifact_dir/taxonomy-${RELEASE_VERSION}-onnx-image-trivy.sarif"
           cp "$evidence_file" \
             "$artifact_dir/taxonomy-${RELEASE_VERSION}-image-evidence.json"
           cp release-image-trivy.sarif \
@@ -434,6 +488,26 @@ jobs:
             sha256sum "${release_checksum_inputs[@]}" \
               > "taxonomy-${RELEASE_VERSION}-release.sha256"
           )
+          onnx_checksum_inputs=(
+            "taxonomy-${RELEASE_VERSION}-onnx-image-evidence.json"
+            "taxonomy-${RELEASE_VERSION}-onnx-image-trivy.sarif"
+          )
+          if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+            onnx_manifest="$artifact_dir/taxonomy-${RELEASE_VERSION}-onnx-kubernetes-digest.yaml"
+            helm template taxonomy deploy/helm/taxonomy \
+              -f deploy/helm/taxonomy/values-onnx.yaml \
+              --namespace taxonomy \
+              --set-string image.tag='' \
+              --set-string "image.digest=${ONNX_IMAGE_DIGEST}" \
+              --set existingSecret=taxonomy-secrets > "$onnx_manifest"
+            grep -Fq "image: \"${repository}@${ONNX_IMAGE_DIGEST}\"" "$onnx_manifest"
+            onnx_checksum_inputs+=("taxonomy-${RELEASE_VERSION}-onnx-kubernetes-digest.yaml")
+          fi
+          (
+            cd "$artifact_dir"
+            sha256sum "${onnx_checksum_inputs[@]}" \
+              > "taxonomy-${RELEASE_VERSION}-onnx-release.sha256"
+          )
           gh release upload "$tag" "$artifact_dir"/* --clobber
 
       - name: Archive immutable release image evidence
@@ -444,6 +518,8 @@ jobs:
           path: |
             release-image-trivy.sarif
             target/release-image-evidence.json
+            release-onnx-image-trivy.sarif
+            target/release-onnx-image-evidence.json
           if-no-files-found: warn
           retention-days: 90
 
@@ -453,6 +529,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
           IMAGE_DIGEST: ${{ steps.release_image.outputs.digest }}
+          ONNX_IMAGE_DIGEST: ${{ steps.release_onnx_image.outputs.digest }}
+          RELEASE_SOURCE_SHA: ${{ steps.release_source.outputs.sha }}
           EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}
           RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
@@ -479,7 +557,10 @@ jobs:
           for expected in \
             "taxonomy-${RELEASE_VERSION}-image-evidence.json" \
             "taxonomy-${RELEASE_VERSION}-image-trivy.sarif" \
-            "taxonomy-${RELEASE_VERSION}-release.sha256"; do
+            "taxonomy-${RELEASE_VERSION}-release.sha256" \
+            "taxonomy-${RELEASE_VERSION}-onnx-image-evidence.json" \
+            "taxonomy-${RELEASE_VERSION}-onnx-image-trivy.sarif" \
+            "taxonomy-${RELEASE_VERSION}-onnx-release.sha256"; do
             if ! grep -Fxq "$expected" <<< "$assets"; then
               echo "::error::Draft release is missing required image evidence $expected"
               exit 1
@@ -490,6 +571,7 @@ jobs:
               "taxonomy-${RELEASE_VERSION}.tgz" \
               "taxonomy-${RELEASE_VERSION}-kubernetes.yaml" \
               "taxonomy-${RELEASE_VERSION}-kubernetes-digest.yaml" \
+              "taxonomy-${RELEASE_VERSION}-onnx-kubernetes-digest.yaml" \
               "taxonomy-${RELEASE_VERSION}-helm.sha256"; do
               if ! grep -Fxq "$expected" <<< "$assets"; then
                 echo "::error::Draft release is missing required Helm asset $expected"
@@ -509,6 +591,23 @@ jobs:
             echo "::error::Release image evidence records $evidence_digest, expected $IMAGE_DIGEST"
             exit 1
           fi
+
+          docker buildx imagetools inspect "${repository}@${ONNX_IMAGE_DIGEST}" >/dev/null
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = json.loads(Path('target/release-onnx-image-evidence.json').read_text())
+          expected_image = f"ghcr.io/{os.environ['GITHUB_REPOSITORY_OWNER']}/taxonomy@{os.environ['ONNX_IMAGE_DIGEST']}"
+          if (evidence.get('digest') != os.environ['ONNX_IMAGE_DIGEST']
+                  or evidence.get('image') != expected_image
+                  or evidence.get('imageVariant') != 'onnx'
+                  or evidence.get('sourceCommit') != os.environ['RELEASE_SOURCE_SHA']
+                  or evidence.get('releaseVersion') != os.environ['RELEASE_VERSION']
+                  or evidence.get('scan', {}).get('result') != 'passed'):
+              raise SystemExit('ONNX release image evidence does not match the scanned release variant')
+          PY
 
           is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
           git fetch origin "refs/heads/main:refs/remotes/origin/main" --force

@@ -1,0 +1,21 @@
+# Local source-build overlay for docker-compose.prod.yml (Caddy + persistent HSQLDB).
+# Configure DOMAIN and a unique TAXONOMY_ADMIN_PASSWORD in .env first.
+# docker compose -f docker-compose.prod.yml -f docker-compose.onnx.yml up -d --build
+services:
+  taxonomy:
+    build:
+      target: onnx
+    # Explicit values override .env and the standard image's opt-in defaults.
+    environment:
+      LLM_PROVIDER: LOCAL_ONNX
+      TAXONOMY_EMBEDDING_ENABLED: "true"
+      TAXONOMY_EMBEDDING_MODEL_PROFILE: MULTILINGUAL_MINILM_L12
+      TAXONOMY_EMBEDDING_MODEL_DIR: /opt/taxonomy/models/multilingual-minilm
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
+      RUST_FLAVOR: cpu
+      DJL_CACHE_DIR: /tmp/djl-cache
+      JAVA_OPTS: "-XX:+UseSerialGC -Xss512k -Xmx768m -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp"
+    # Starting limit; measure whole-process/native usage for the actual workload.
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]

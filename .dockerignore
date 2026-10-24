@@ -1,6 +1,9 @@
 # Version-control and IDE metadata
 .git
-.github
+.github/*
+!.github/scripts
+.github/scripts/*
+!.github/scripts/download-embedding-model.sh
 .idea
 .vscode
 .settings
@@ -59,4 +62,5 @@ CHANGELOG*.md
 
 # Keep Docker build inputs explicitly copied by Dockerfile available:
 # pom.xml, mvnw, .mvn/wrapper, module pom.xml/src trees, docs,
-# LICENSE, NOTICE, THIRD-PARTY-NOTICES.md and observability configuration.
+# LICENSE, NOTICE, THIRD-PARTY-NOTICES.md, observability configuration and the
+# pinned downloader/model notices used only by the optional onnx build target.

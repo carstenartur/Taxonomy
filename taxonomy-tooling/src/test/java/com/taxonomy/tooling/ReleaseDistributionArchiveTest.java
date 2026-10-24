@@ -135,6 +135,16 @@ class ReleaseDistributionArchiveTest {
                         + function + "\ncollect_release_artifacts\n");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"image-evidence.json", "image-trivy.sarif", "release.sha256"})
+    void publicationRejectsMissingOnnxEvidenceAsset(String suffix, @TempDir Path root) throws Exception {
+        String missing = "taxonomy-1.5.0-onnx-" + suffix;
+        Result result = publicationAssets(root, (imageAssets() + ARCHIVE + "\n" + ARCHIVE + ".sha256\n")
+                .replace(missing + "\n", ""));
+        assertThat(result.exitCode()).as(result.output()).isNotZero();
+        assertThat(result.output()).contains(missing);
+    }
+
     private static Result publicationAssets(Path root, String assets) throws Exception {
         Path bin = Files.createDirectories(root.resolve("bin"));
         Path gh = bin.resolve("gh");
@@ -151,7 +161,9 @@ class ReleaseDistributionArchiveTest {
 
     private static String imageAssets() {
         return "taxonomy-1.5.0-image-evidence.json\ntaxonomy-1.5.0-image-trivy.sarif\n"
-                + "taxonomy-1.5.0-release.sha256\n";
+                + "taxonomy-1.5.0-release.sha256\n"
+                + "taxonomy-1.5.0-onnx-image-evidence.json\ntaxonomy-1.5.0-onnx-image-trivy.sarif\n"
+                + "taxonomy-1.5.0-onnx-release.sha256\n";
     }
 
     private static void fixture(Path root) throws Exception {

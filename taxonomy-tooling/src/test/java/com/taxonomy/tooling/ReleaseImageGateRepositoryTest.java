@@ -115,6 +115,53 @@ class ReleaseImageGateRepositoryTest {
                 .anyMatch(message -> message.contains("final main"));
     }
 
+    @Test
+    void deliveryPublishesBothVariantsWithoutChangingTheStandardChannels() throws Exception {
+        String delivery = Files.readString(findRepositoryRoot().resolve(".github/workflows/delivery.yml"));
+        for (String tag : List.of("main", "latest", "${{ github.event.workflow_run.head_branch }}",
+                "sha-${{ github.event.workflow_run.head_sha }}")) {
+            assertThat(delivery).contains("type=raw,value=" + tag);
+            assertThat(delivery).contains("type=raw,value=" + tag + "-onnx");
+        }
+        int onnx = delivery.indexOf("- name: Build and push embedded ONNX Docker image");
+        assertThat(onnx).isPositive();
+        String onnxBuild = stepBlock(delivery, onnx);
+        assertThat(onnxBuild).contains("target: onnx", "tags: ${{ steps.meta_onnx.outputs.tags }}",
+                "VERSION=${{ steps.meta.outputs.version }}",
+                "BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}",
+                "VCS_REF=${{ github.event.workflow_run.head_sha }}");
+        assertThat(onnxBuild).contains("labels: |\n            ${{ steps.meta.outputs.labels }}",
+                "org.opencontainers.image.description=Taxonomy Architecture Analyzer with bundled multilingual ONNX embeddings for offline semantic search and similarity scoring.",
+                "org.opencontainers.image.licenses=MIT AND Apache-2.0",
+                "com.taxonomy.image.variant=onnx");
+        assertThat(onnxBuild.indexOf("${{ steps.meta.outputs.labels }}"))
+                .isLessThan(onnxBuild.indexOf("org.opencontainers.image.licenses=MIT AND Apache-2.0"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"digest", "nonblocking", "disabled", "continue", "attestation", "target", "source"})
+    void onnxVariantCannotReuseStandardEvidenceOrBypassItsGate(String mutation) throws Exception {
+        String workflow = releaseWorkflow();
+        int scan = workflow.indexOf("- name: Scan immutable ONNX release image digest");
+        String scanBlock = stepBlock(workflow, scan);
+        int build = workflow.indexOf("- name: Build and publish immutable ONNX release image");
+        String buildBlock = stepBlock(workflow, build);
+        String invalid = switch (mutation) {
+            case "digest" -> workflow.replace(scanBlock, scanBlock.replace(
+                    "steps.release_onnx_image.outputs.digest", "steps.release_image.outputs.digest"));
+            case "nonblocking" -> workflow.replace(scanBlock, scanBlock.replace("exit-code: '1'", "exit-code: '0'"));
+            case "disabled" -> workflow.replace(scanBlock, scanBlock.replace(
+                    "if: steps.release_parameters.outputs.dry_run != 'true'", "if: false"));
+            case "continue" -> workflow.replace(scanBlock, scanBlock + "\n        continue-on-error: true");
+            case "attestation" -> workflow.replace(buildBlock, buildBlock.replace("sbom: true", "sbom: false"));
+            case "target" -> workflow.replace(buildBlock, buildBlock.replace("target: onnx", "target: standard"));
+            case "source" -> workflow.replace(buildBlock, buildBlock.replace(
+                    "VCS_REF=${{ steps.release_source.outputs.sha }}", "VCS_REF=main"));
+            default -> throw new IllegalArgumentException(mutation);
+        };
+        assertThat(failures(invalid)).as(mutation).anyMatch(message -> message.contains("ONNX"));
+    }
+
     static List<String> failures(String workflow) {
         List<String> failures = new ArrayList<>();
         require(workflow, "id: release_image",
@@ -281,6 +328,46 @@ class ReleaseImageGateRepositoryTest {
                 }
                 previous = position;
             }
+        }
+        int onnxBuild = indexOf(workflow, "- name: Build and publish immutable ONNX release image",
+                "ONNX image build", failures);
+        int onnxScan = indexOf(workflow, "- name: Scan immutable ONNX release image digest",
+                "ONNX image scan", failures);
+        if (allPresent(build, onnxBuild, onnxScan, bind) && !(build < onnxBuild && onnxBuild < onnxScan && onnxScan < bind)) {
+            failures.add("ONNX build and blocking scan must precede evidence binding");
+        }
+        if (onnxBuild >= 0) {
+            String block = stepBlock(workflow, onnxBuild);
+            for (String required : List.of("id: release_onnx_image", "target: onnx", "context: .",
+                    "if: steps.release_parameters.outputs.dry_run != 'true'",
+                    "builder: ${{ steps.release_builder.outputs.name }}", "provenance: mode=max", "sbom: true",
+                    "taxonomy:v${{ steps.release_parameters.outputs.release_version }}-onnx",
+                    "BUILD_DATE=${{ steps.release_source.outputs.created }}",
+                    "VCS_REF=${{ steps.release_source.outputs.sha }}",
+                    "VERSION=${{ steps.release_parameters.outputs.release_version }}")) {
+                require(block, required, "ONNX build must preserve " + required, failures);
+            }
+            if (build >= 0 && workflow.substring(build, onnxBuild).contains("git checkout")) {
+                failures.add("ONNX and standard must build from the same immutable checkout");
+            }
+        }
+        if (onnxScan >= 0) {
+            String block = stepBlock(workflow, onnxScan);
+            for (String required : List.of("if: steps.release_parameters.outputs.dry_run != 'true'",
+                    "image-ref: ghcr.io/${{ github.repository_owner }}/taxonomy@${{ steps.release_onnx_image.outputs.digest }}",
+                    "severity: HIGH,CRITICAL", "ignore-unfixed: false", "exit-code: '1'",
+                    "output: release-onnx-image-trivy.sarif")) {
+                require(block, required, "ONNX scan must preserve " + required, failures);
+            }
+            if (block.contains("continue-on-error:")) failures.add("ONNX scan must remain blocking");
+        }
+        if (bind >= 0) {
+            String block = stepBlock(workflow, bind);
+            require(block, "ONNX_IMAGE_DIGEST: ${{ steps.release_onnx_image.outputs.digest }}",
+                    "ONNX evidence must consume its own image digest", failures);
+            require(block, "imageVariant=\"onnx\"", "ONNX evidence must identify its variant", failures);
+            require(block, "taxonomy-${RELEASE_VERSION}-onnx-release.sha256",
+                    "ONNX evidence must have its own checksums", failures);
         }
         return List.copyOf(failures);
     }
