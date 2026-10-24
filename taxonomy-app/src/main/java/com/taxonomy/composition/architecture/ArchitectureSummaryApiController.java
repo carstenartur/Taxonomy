@@ -1,4 +1,4 @@
-package com.taxonomy.architecture.controller;
+package com.taxonomy.composition.architecture;
 
 import com.taxonomy.dto.ArchitectureSummary;
 import com.taxonomy.dto.NodeGraphMetadata;
@@ -24,6 +24,7 @@ import java.util.Map;
  *     <li>Trigger for metadata recomputation</li>
  * </ul>
  */
+@com.taxonomy.shared.features.ConditionalOnFeature({"architecture"})
 @RestController
 @RequestMapping("/api/architecture")
 @Tag(name = "Architecture Intelligence")

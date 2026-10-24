@@ -150,7 +150,7 @@ class HypothesisServiceTest {
         assertThat(summaries.buildSummary(alpha).totalHypotheses()).isEqualTo((int)before+2);
         var resolver=org.mockito.Mockito.mock(com.taxonomy.workspace.service.WorkspaceResolver.class);
         org.mockito.Mockito.when(resolver.resolveCurrentRepositoryContext()).thenReturn(alpha);
-        var controller=new com.taxonomy.architecture.controller.ArchitectureSummaryApiController(summaries,
+        var controller=new com.taxonomy.composition.architecture.ArchitectureSummaryApiController(summaries,
                 org.mockito.Mockito.mock(com.taxonomy.architecture.service.DerivedMetadataService.class),
                 org.mockito.Mockito.mock(com.taxonomy.catalog.service.TaxonomyService.class),resolver);
         org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build()
