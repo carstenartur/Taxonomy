@@ -100,7 +100,7 @@ public class DslDocumentApiController {
         result.put("hypothesesCreated", matResult.hypothesesCreated());
         result.put("documentId", matResult.documentId());
 
-        String effectiveBranch = branch != null ? branch : "draft";
+        String effectiveBranch = workspaceResolver.resolveCurrentRepositoryContext().branch();
         result.put("viewContext", dslOps.getViewContext(effectiveBranch));
 
         if (!matResult.valid()) {

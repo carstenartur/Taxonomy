@@ -115,7 +115,11 @@ public class DslMaterializeService {
         }
 
         RepositoryContext context = currentRepositoryContext();
-        requireSelectedBranch(branch, context);
+        // The API branch is optional; an explicit branch must still agree with
+        // the already-authorized selection used for every projection below.
+        if (branch != null) {
+            requireSelectedBranch(branch, context);
+        }
         int relationsCreated = 0;
         int hypothesesCreated = 0;
 
@@ -156,7 +160,7 @@ public class DslMaterializeService {
 
         ArchitectureDslDocument document = new ArchitectureDslDocument();
         document.setPath(path != null ? path : "inline");
-        document.setBranch(branch);
+        document.setBranch(context.branch());
         document.setCommitId(commitId);
         document.setNamespace(namespace);
         document.setDslVersion(dslVersion);
@@ -168,7 +172,7 @@ public class DslMaterializeService {
                 context.scope(), relationsCreated, hypothesesCreated);
 
         if (repositoryStateService != null && commitId != null) {
-            repositoryStateService.recordProjection(context.username(), commitId, branch);
+            repositoryStateService.recordProjection(context.username(), commitId, context.branch());
         }
 
         return new MaterializeResult(true, List.of(), validation.getWarnings(),
