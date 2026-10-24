@@ -434,9 +434,9 @@ final class SchemaContractMigrator {
             }
             // Discover actual SQL Server dependencies, including Hibernate-created
             // unique keys and non-unique scope indexes, before changing collation.
-            Set<String> indexes = new LinkedHashSet<>();
+            Map<String, Boolean> indexes = new LinkedHashMap<>();
             try (PreparedStatement query = c.prepareStatement("""
-                    SELECT DISTINCT i.name
+                    SELECT DISTINCT i.name, i.is_unique_constraint, i.is_primary_key
                     FROM sys.indexes i
                     JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
                     JOIN sys.columns col ON col.object_id=ic.object_id AND col.column_id=ic.column_id
@@ -447,10 +447,17 @@ final class SchemaContractMigrator {
                 query.setString(1, table.schema());
                 query.setString(2, table.name());
                 try (ResultSet rs = query.executeQuery()) {
-                    while (rs.next()) indexes.add(rs.getString(1));
+                    while (rs.next()) indexes.put(rs.getString(1), rs.getBoolean(2) || rs.getBoolean(3));
                 }
             }
-            for (String index : indexes) dropConstraintOrIndex(c, table, index);
+            // Do not probe with failing DDL inside the migration transaction.
+            for (var index : indexes.entrySet()) {
+                execute(c, index.getValue()
+                        ? "ALTER TABLE " + qualified(c, table)
+                                + " DROP CONSTRAINT " + quoted(c, index.getKey())
+                        : "DROP INDEX " + quoted(c, index.getKey())
+                                + " ON " + qualified(c, table));
+            }
             execute(c, "ALTER TABLE " + qualified(c, table)
                     + " ALTER COLUMN branch_name NVARCHAR(255) COLLATE Latin1_General_100_BIN2 NOT NULL");
         }
