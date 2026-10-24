@@ -512,6 +512,12 @@ class KeycloakSecurityContainerIT {
                         clientId, username, response.statusCode(), response.body())
                 .isEqualTo(200);
         String token = MAPPER.readTree(response.body()).get("access_token").asText();
+        JsonNode audience = jwtClaims(token).path("aud");
+        assertThat(audience.isTextual()
+                ? CLIENT_ID.equals(audience.asText())
+                : audience.isArray() && audience.valueStream().anyMatch(value -> CLIENT_ID.equals(value.asText())))
+                .as("Keycloak-issued access token for client %s must target the Taxonomy API", clientId)
+                .isTrue();
         identityKey(token);
         return token;
     }

@@ -277,7 +277,7 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 | `TAXONOMY_SECURITY_LOCAL_USERS_ENABLED` | `taxonomy.security.local-users-enabled` | Basis `true`; Keycloak `false` | Lokale Benutzer-/Rollendienste. |
 | `TAXONOMY_SECURITY_CHANGE_PASSWORD_ENABLED` | `taxonomy.security.change-password-enabled` | Basis `true`; Keycloak `false` | Lokale Passwortänderung. |
 | `TAXONOMY_DIRECT_WORD_ENABLED` | `taxonomy.document-templates.direct-word-enabled` | Basis `true`; Keycloak `false` | `ms-word:`-Links nur mit passender WebDAV-Authentifizierung. |
-| `KEYCLOAK_CLIENT_ID` | OAuth2-Client | `taxonomy-app` | OIDC-Client-ID. |
+| `KEYCLOAK_CLIENT_ID` | OAuth2-Client / Resource-Server-Audience | `taxonomy-app` | OIDC-Browser-Client-ID und standardmäßig erforderliche API-Access-Token-Audience. Dieselbe Audience im Keycloak-Access-Token-Mapper konfigurieren. Für eine separate API-Audience `spring.security.oauth2.resourceserver.jwt.audiences` überschreiben. |
 | `KEYCLOAK_CLIENT_SECRET` | OAuth2-Client | leer | Vertrauliches Client-Secret. |
 | `KEYCLOAK_ISSUER_URI` | Client und Resource Server | lokale Realm-URL | Issuer für Discovery und Tokenprüfung. |
 | `KEYCLOAK_JWK_SET_URI` | Resource Server | lokale Zertifikats-URL | Expliziter JWK-Endpunkt. |

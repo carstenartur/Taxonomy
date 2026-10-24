@@ -146,6 +146,14 @@ Ensure realm roles are included in the JWT token:
 4. Add to ID token: Yes
 5. Add to access token: Yes
 
+### 6. Include the API audience in access tokens
+
+The Keycloak profile requires an access-token `aud` containing `taxonomy-app` by default. A valid signature, issuer and `azp` (authorized party) alone do not satisfy this requirement. Tokens with another audience or no audience receive HTTP 401; a list of audiences is accepted when it contains the configured API audience.
+
+For each client authorized to call this API, add an **Audience** mapper to its dedicated client scope (or an explicitly assigned API client scope). Set **Included Client Audience** to `taxonomy-app`, **Add to access token** to **On**, and **Add to ID token** to **Off**. The realm export uses `oidc-audience-mapper` with `included.client.audience=taxonomy-app` and `access.token.claim=true`. Keep the existing role mappers. The shipped realm includes this mapper for a fresh import; an existing realm needs the mapper added before upgrading the application. Obtain a new access token afterward and verify its `aud` before testing the API.
+
+The application defaults `spring.security.oauth2.resourceserver.jwt.audiences` to `${KEYCLOAK_CLIENT_ID:taxonomy-app}`. If you set `KEYCLOAK_CLIENT_ID` to a custom client, change **Included Client Audience** to that client as well. For a distinct API resource, set the standard Spring property `spring.security.oauth2.resourceserver.jwt.audiences` (environment variable `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES`) to that resource, and configure **Included Custom Audience** with the same value. For example, use `taxonomy-api` in both places. Keep the required audience nonempty. Overriding only the standard Spring browser client-ID property does not change the `KEYCLOAK_CLIENT_ID` placeholder; set the API audience explicitly in that case.
+
 ---
 
 ## Application Configuration
@@ -158,9 +166,12 @@ SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak:8180/realms
 SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8180/realms/taxonomy/protocol/openid-connect/certs
 
 # Client credentials (for token exchange / service-to-service)
-SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_ID=taxonomy-app
+KEYCLOAK_CLIENT_ID=taxonomy-app
 SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET=<client-secret-from-keycloak>
 SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI=http://keycloak:8180/realms/taxonomy
+
+# Optional distinct API audience; configure its Keycloak audience mapper too
+# SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES=taxonomy-api
 ```
 
 ### Spring Security Configuration Changes

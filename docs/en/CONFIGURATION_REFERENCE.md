@@ -272,7 +272,7 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 | `TAXONOMY_SECURITY_LOCAL_USERS_ENABLED` | `taxonomy.security.local-users-enabled` | base `true`; Keycloak `false` | Enables local user/role services. Do not override to true in Keycloak mode without a deliberate mixed-identity design. |
 | `TAXONOMY_SECURITY_CHANGE_PASSWORD_ENABLED` | `taxonomy.security.change-password-enabled` | base `true`; Keycloak `false` | Enables the local password-change surface. Keycloak normally owns credentials. |
 | `TAXONOMY_DIRECT_WORD_ENABLED` | `taxonomy.document-templates.direct-word-enabled` | base `true`; Keycloak `false` | Shows `ms-word:` direct-edit links. Enable only when Word can authenticate to the WebDAV endpoint. |
-| `KEYCLOAK_CLIENT_ID` | OAuth2 client registration | `taxonomy-app` | OIDC browser client ID. |
+| `KEYCLOAK_CLIENT_ID` | OAuth2 client registration / resource-server audience | `taxonomy-app` | OIDC browser client ID and default required API access-token audience. Configure the same audience in the Keycloak access-token mapper. Override `spring.security.oauth2.resourceserver.jwt.audiences` for a distinct API audience. |
 | `KEYCLOAK_CLIENT_SECRET` | OAuth2 client registration | empty | Confidential-client secret; provide through a secret store. |
 | `KEYCLOAK_ISSUER_URI` | OAuth2 client and resource-server issuer | local realm URI | Public issuer URI used for discovery and token validation. |
 | `KEYCLOAK_JWK_SET_URI` | resource-server JWK endpoint | local realm certificates URI | Explicit key endpoint, useful when internal and public Keycloak routes differ. |

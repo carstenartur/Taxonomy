@@ -56,6 +56,16 @@ export KEYCLOAK_ADMIN_URL=http://your-keycloak-host:8180
 
 ---
 
+## Access-Token-Audience vor dem Upgrade vorbereiten
+
+Die Keycloak-API verlangt jetzt eine `aud` im Access-Token, die `KEYCLOAK_CLIENT_ID` enthält (Standard: `taxonomy-app`). Tokens ohne diese Audience erhalten HTTP 401, auch wenn Issuer, Signatur und Rollen gültig sind. `azp` ersetzt `aud` nicht.
+
+Ergänzen Sie vor dem Upgrade eines bestehenden Systems im dedizierten Scope jedes zum API-Zugriff berechtigten Clients einen **Audience**-Mapper: **Included Client Audience** = `taxonomy-app`, **Add to access token** = **On**, **Add to ID token** = **Off**. Rollen-Mapper und bestehende Identitätseinstellungen bleiben erhalten. Der mitgelieferte Realm-Export enthält den Mapper für neue Importe; er migriert einen bestehenden Realm nicht automatisch. Fordern Sie ein neues Access-Token an und prüfen Sie die erforderliche `aud`, bevor die Anwendungsänderung bereitgestellt wird.
+
+Bei einer eigenen `KEYCLOAK_CLIENT_ID` muss der Mapper denselben Client nennen. Für eine separate API-Audience verwenden Sie die Standard-Spring-Eigenschaft `spring.security.oauth2.resourceserver.jwt.audiences`, beispielsweise `export SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES=taxonomy-api`, und setzen **Included Custom Audience** in Keycloak auf `taxonomy-api`. Die Audience darf nicht leer sein. Ein alleiniger Standard-Spring-Override für die Browser-Client-ID aktualisiert den Standard aus `KEYCLOAK_CLIENT_ID` nicht; konfigurieren Sie dann die API-Audience ausdrücklich. Die [Keycloak-Einrichtung](KEYCLOAK_SETUP.md#6-api-audience-in-access-tokens-aufnehmen) beschreibt Mapper und Anwendungskonfiguration.
+
+---
+
 ## Bestehende Benutzer zuordnen
 
 Wenn Sie von Form-Login zu Keycloak migrieren, erstellen Sie passende Benutzer im Keycloak-Realm mit denselben Benutzernamen und Rollen:
