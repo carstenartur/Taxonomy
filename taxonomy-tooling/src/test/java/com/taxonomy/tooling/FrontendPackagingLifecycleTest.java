@@ -52,7 +52,10 @@ class FrontendPackagingLifecycleTest {
 
         prepare(true);
         var fixturePom=XmlSupport.parse(fixture.resolve("pom.xml"));
-        Element executions=XmlSupport.descendants(fixturePom.getDocumentElement(),"executions").getFirst();
+        Element frontend=XmlSupport.descendants(fixturePom.getDocumentElement(),"plugin").stream()
+                .filter(e -> "frontend-maven-plugin".equals(XmlSupport.childText(e,"artifactId")))
+                .findFirst().orElseThrow();
+        Element executions=XmlSupport.child(frontend,"executions");
         var build=XmlSupport.parse(root.resolve("taxonomy-build/pom.xml")).getDocumentElement();
         XmlSupport.descendants(build,"execution").stream()
                 .filter(e -> Set.of("install-pinned-browser-test-dependencies","install-pinned-playwright-browsers")
@@ -103,7 +106,10 @@ class FrontendPackagingLifecycleTest {
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId><version>3.5.0</version></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.15.0</version></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.6</version></plugin>
-            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.5.1</version></plugin>
+            <!-- This fixture checks frontend/Surefire ordering, not archive packaging.
+                 Keep its offline child independent of archive-plugin caches. -->
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.5.1</version>
+            <executions><execution><id>default-jar</id><phase>none</phase></execution></executions></plugin>
             </plugins></pluginManagement><plugins>%s</plugins></build><profiles>%s</profiles></project>
             """.formatted(npmInputs ? "<modules><module>child</module></modules>" : "",plugin,profiles));
         Files.createDirectories(fixture.resolve(".mvn/wrapper"));
