@@ -21,6 +21,34 @@ function reply(call, outcome = 'ASSESSED', suggestions = []) {
 }
 const suggestion = { id: 'relation-1', sourceId: 'arch-a', targetId: 'arch-outside-focus', relationType: 'SUPPORTS',
     rationale: 'A design hypothesis, not an observed deployment.', evidence: [{ elementId: 'arch-a', field: 'description', quote: '<script>literal text</script>' }], properties: {} };
+// Minimal DOM fixture executes the real pinned-panel rendering and event handlers.
+function panelFixture() {
+    const document = { activeElement: null };
+    class Element {
+        constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.disabled = false; this.text = ''; }
+        set textContent(value) { this.text = String(value); this.children = []; }
+        get textContent() { return this.text + this.children.map(child => child.textContent).join(''); }
+        append(...nodes) { this.children.push(...nodes); }
+        replaceChildren(...nodes) { if (this.contains(document.activeElement)) document.activeElement = document.body; this.text = ''; this.children = nodes; }
+        contains(other) { return this === other || this.children.some(child => child.contains(other)); }
+        setAttribute(key, value) { this[key] = value; }
+        querySelectorAll(tag) { return this.children.flatMap(child => [...(child.tagName === tag ? [child] : []), ...child.querySelectorAll(tag)]); }
+        querySelector() { return this.querySelectorAll('button').find(button => !button.disabled); }
+        focus() { document.activeElement = this; }
+    }
+    const ids = Object.create(null), calls = [], accepted = [];
+    document.body = new Element('body'); document.activeElement = document.body;
+    document.createElement = tag => new Element(tag);
+    document.getElementById = id => ids[id] || (ids[id] = new Element('div'));
+    global.document = document;
+    const panel = window.ArchitectureFocusPanel({ t: (...parts) => parts.join(' '),
+        request: body => new Promise((resolve, reject) => calls.push({ body, resolve, reject })),
+        present() {}, accept: item => accepted.push(item), undo() {}, canUndo: () => true, locate() {} });
+    panel.setContext(context(3), true); panel.select('arch-a');
+    ids.editorLensEnabled.checked = true; ids.editorLensEnabled.onchange();
+    return { panel, ids, calls, accepted, inspect() { ids.editorLensInspect.onclick(); },
+        retry() { ids.editorLensStates.querySelectorAll('button')[0].onclick(); } };
+}
 (async () => {
     const { session: s, calls, dwell } = fixture();
     s.observe(['arch-a']); dwell(); await flush(); assert.equal(calls.length, 0, 'No background I/O before explicit enable');
@@ -58,8 +86,10 @@ const suggestion = { id: 'relation-1', sourceId: 'arch-a', targetId: 'arch-outsi
     assert.equal(g.session.snapshot().states['arch-a'], 'failed', 'Failed is distinct from assessed without suggestions');
     g.session.observe(['arch-a']); g.dwell(); await flush(); assert.equal(g.calls.length, 1, 'Failures are not silently retried');
     g.session.inspect('arch-a', true); await flush(); assert.equal(g.calls.length, 2, 'Explicit retry is allowed within budget');
+    assert.equal(g.session.snapshot().errors['arch-a'], undefined, 'Explicit retry clears the previous request error');
     reply(g.calls[1], 'NO_CANDIDATES'); await flush();
     assert.equal(g.session.snapshot().states['arch-a'], 'noCandidates');
+    assert.equal(g.session.snapshot().errors['arch-a'], undefined, 'Successful retry never displays a superseded failure');
     g.session.setContext({ ...context(3), workspaceScopeKey: 'different' }, false);
     assert.equal(g.session.snapshot().enabled, false, 'Unavailable or read-only scope stops investigation');
     const h = fixture(); h.session.setEnabled(true); h.session.inspect('constructor'); await flush();
@@ -72,5 +102,74 @@ const suggestion = { id: 'relation-1', sourceId: 'arch-a', targetId: 'arch-outsi
     revisit.session.inspect('arch-a'); await flush(); reply(revisit.calls[1], 'ASSESSED', [suggestion]); await flush();
     assert.equal(revisit.session.snapshot().suggestions.length, 1);
     assert.equal(revisit.session.snapshot().suggestions[0].stale, false, 'A fresh investigation after Back/Forward replaces a stale copy of the same result');
+    revisit.session.setContext(context(4), true); revisit.session.setContext(context(3), true);
+    revisit.session.inspect('arch-a'); await flush(); reply(revisit.calls[2], 'LOCAL_CANDIDATES', [suggestion]); await flush();
+    assert.equal(revisit.session.snapshot().suggestions[0].stale, false, 'Fresh local investigation replaces a stale assessed result after Back/Forward');
+    assert.equal(revisit.session.snapshot().suggestions[0].outcome, 'LOCAL_CANDIDATES');
+    const refreshed = { ...suggestion, rationale: 'Fresh assessed rationale',
+        evidence: [{ elementId: 'arch-a', field: 'description', quote: 'Fresh exact source excerpt' }],
+        properties: { 'x-focus-rationale': 'Fresh assessed rationale', 'x-focus-evidence': 'Fresh exact source excerpt' } };
+    const panel = panelFixture(); panel.inspect(); await flush();
+    reply(panel.calls[0], 'FAILED', [{ ...suggestion, rationale: 'Old fallback rationale' }]); await flush();
+    assert.ok(panel.ids.editorLensReview.textContent.includes('Old fallback rationale'));
+    panel.retry(); await flush(); reply(panel.calls[1], 'ASSESSED', [refreshed]); await flush();
+    assert.ok(panel.ids.editorLensReview.textContent.includes('Fresh assessed rationale'), 'Successful retry refreshes the actual pinned rationale');
+    assert.ok(panel.ids.editorLensReview.textContent.includes('Fresh exact source excerpt'), 'Successful retry refreshes pinned evidence');
+    assert.ok(panel.ids.editorLensReview.textContent.includes('AI:test'), 'Pinned method reflects the assessed retry');
+    assert.ok(!panel.ids.editorLensReview.textContent.includes('Old fallback rationale'));
+    panel.ids.editorLensReview.querySelectorAll('button').find(button => button.dataset.focusAction === 'accept').onclick();
+    assert.deepEqual(panel.accepted[0].properties, refreshed.properties, 'Acceptance receives the refreshed persistence payload');
+    const pinnedRationale = panel.ids.editorLensReview.children.find(child => child.textContent === refreshed.rationale);
+    panel.panel.select('arch-b'); panel.inspect(); await flush(); reply(panel.calls[2], 'NO_CANDIDATES'); await flush();
+    assert.ok(panel.ids.editorLensReview.children.includes(pinnedRationale), 'Unrelated queue updates preserve pinned text selection nodes');
+
+    const dedup = fixture(); dedup.session.setEnabled(true); dedup.session.inspect('arch-a'); await flush();
+    reply(dedup.calls[0], 'ASSESSED', [{ ...suggestion, targetId: 'arch-b' }]); await flush();
+    const originalDuplicate = dedup.session.snapshot().suggestions[0];
+    dedup.session.inspect('arch-b'); await flush();
+    reply(dedup.calls[1], 'ASSESSED', [{ ...refreshed, targetId: 'arch-b' }]); await flush();
+    assert.equal(dedup.session.snapshot().suggestions[0], originalDuplicate, 'Ordinary overlapping investigations retain normal deduplication');
+
+    const quality = fixture(); quality.session.setEnabled(true); quality.session.inspect('arch-a'); await flush();
+    reply(quality.calls[0], 'ASSESSED', [{ ...refreshed, targetId: 'arch-b' }]); await flush();
+    const assessed = quality.session.snapshot().suggestions[0];
+    quality.session.inspect('arch-b'); await flush(); quality.calls[1].reject(new Error('other focus unavailable')); await flush();
+    quality.session.inspect('arch-b', true); await flush();
+    reply(quality.calls[2], 'FAILED', [{ ...suggestion, targetId: 'arch-b', rationale: 'Unassessed failed retry fallback' }]); await flush();
+    assert.equal(quality.session.snapshot().suggestions[0], assessed, 'Failed retry cannot downgrade assessed evidence shared with another focus');
+    quality.session.inspect('arch-b', true); await flush();
+    reply(quality.calls[3], 'UNASSESSED', [{ ...suggestion, targetId: 'arch-b', rationale: 'Unavailable provider fallback' }]); await flush();
+    assert.equal(quality.session.snapshot().suggestions[0], assessed, 'Unassessed retry cannot replace assessed evidence');
+
+    const reassessed = fixture(); reassessed.session.setEnabled(true); reassessed.session.inspect('arch-a'); await flush();
+    reply(reassessed.calls[0], 'ASSESSED', [{ ...suggestion, targetId: 'arch-b' }]); await flush();
+    reassessed.session.inspect('arch-b'); await flush(); reassessed.calls[1].reject(new Error('retry required')); await flush();
+    reassessed.session.inspect('arch-b', true); await flush();
+    reply(reassessed.calls[2], 'ASSESSED', [{ ...refreshed, targetId: 'arch-b' }]); await flush();
+    assert.equal(reassessed.session.snapshot().suggestions[0].rationale, refreshed.rationale, 'A successful assessed retry may refresh previously assessed evidence');
+    assert.deepEqual(reassessed.session.snapshot().suggestions[0].properties, refreshed.properties);
+
+    const retry = fixture(); retry.session.setEnabled(true); retry.session.inspect('arch-a'); await flush();
+    const choices = [suggestion, { ...suggestion, id: 'dismissed', targetId: 'arch-dismissed' },
+        { ...suggestion, id: 'accepted', targetId: 'arch-accepted' }, { ...suggestion, id: 'pending', targetId: 'arch-pending' }];
+    reply(retry.calls[0], 'FAILED', choices); await flush();
+    const originals = retry.session.snapshot().suggestions;
+    retry.session.dismiss(originals[1].id);
+    const acceptance = { operationId: 'accepted-operation', context: context(4) };
+    retry.session.accepted(originals[2].id, acceptance);
+    const pendingCommand = Object.freeze({ metadata: Object.freeze({ commandId: 'frozen-command' }),
+        properties: Object.freeze({ 'x-focus-rationale': 'Previously previewed payload' }) });
+    originals[3].command = pendingCommand; originals[3].previewed = true;
+    retry.session.inspect('arch-a', true); await flush();
+    reply(retry.calls[1], 'ASSESSED', choices.map(item => ({ ...item, rationale: refreshed.rationale, evidence: refreshed.evidence, properties: refreshed.properties })));
+    await flush();
+    const afterRetry = retry.session.snapshot().suggestions;
+    assert.equal(afterRetry.length, 3, 'Retry never resurrects a dismissed decision');
+    assert.equal(afterRetry.find(item => item.id === originals[0].id).rationale, refreshed.rationale);
+    assert.equal(afterRetry.find(item => item.id === originals[2].id), originals[2], 'Accepted decisions survive retries');
+    assert.equal(originals[2].accepted, acceptance);
+    assert.equal(afterRetry.find(item => item.id === originals[3].id), originals[3], 'A pending acceptance retains its exact hypothesis');
+    assert.equal(originals[3].command, pendingCommand, 'Pending command UUID and payload remain frozen');
+    assert.equal(originals[3].rationale, suggestion.rationale);
     console.log('Focus queue: dwell, deduplication, pause, budget, exact-context suppression, local provenance and explicit retry passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

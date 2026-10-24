@@ -16,13 +16,15 @@ window.ArchitectureFocusSession = function (options) {
     }
     function clearDwell() { dwell.forEach(cancel); dwell.clear(); }
     function canQueue(id) { return id && (!states[id] || states[id] === 'stale'); }
-    function enqueue(id) {
+    function enqueue(id, retry) {
         if (!enabled || !available || paused || locked || !canQueue(id) || used + queue.length >= budget) return;
-        states[id] = 'queued'; queue.push(id); changed(); pump();
+        if (retry) delete errors[id];
+        states[id] = 'queued'; queue.push({ id: id, retry: Boolean(retry) }); changed(); pump();
     }
     function pump() {
         if (!enabled || !available || paused || locked || active || used >= budget || !queue.length) return;
-        var request = { id: queue.shift(), epoch: epoch, context: context };
+        var queued = queue.shift();
+        var request = { id: queued.id, retry: queued.retry, epoch: epoch, context: context };
         active = request; used++; states[request.id] = 'examining'; changed();
         Promise.resolve().then(function () {
             return options.request({ context: request.context, sourceId: request.id, candidateLimit: 8, useAi: useAi,
@@ -42,7 +44,10 @@ window.ArchitectureFocusSession = function (options) {
             result.suggestions.slice(0, 8).forEach(function (value) {
                 var id = key + '\u001f' + value.id;
                 var previous = suggestions.find(function (s) { return s.id === id; });
-                if (previous && !previous.stale) return;
+                // A retried investigation may replace fallback evidence, never a reviewed decision or uncertain command.
+                if (previous && (previous.dismissed || previous.accepted || previous.command
+                        || (!previous.stale && previous.outcome === 'ASSESSED' && result.outcome !== 'ASSESSED')
+                        || (!previous.stale && !request.retry))) return;
                 if (previous) suggestions = suggestions.filter(function (s) { return s.id !== id; });
                 suggestions.push(Object.assign({}, value, { id: id, context: request.context, method: result.method,
                     outcome: result.outcome, sourceHash: result.sourceHash, stale: false }));
@@ -85,7 +90,7 @@ window.ArchitectureFocusSession = function (options) {
         inspect: function (id, retry) {
             if (retry && states[id] === 'failed') delete states[id];
             if (dwell.has(id)) { cancel(dwell.get(id)); dwell.delete(id); }
-            enqueue(id);
+            enqueue(id, retry);
         },
         review: function (id) { reviewed = id; changed(); },
         dismiss: function (id) {
@@ -152,7 +157,9 @@ window.ArchitectureFocusPanel = function (options) {
         var reviewWasFocused = review.contains(document.activeElement);
         if (reviewWasFocused) reviewFocus = document.activeElement.dataset.focusAction || null;
         // Preserve text selection and keyboard focus while queue updates arrive.
-        var reviewKey = chosen && [chosen.id, chosen.stale, Boolean(chosen.accepted), chosen.undone, state.locked, state.available].join('|');
+        var reviewKey = chosen && JSON.stringify([chosen.id, chosen.stale, Boolean(chosen.accepted), chosen.undone,
+            state.locked, state.available, chosen.rationale, chosen.evidence, chosen.method, chosen.outcome,
+            chosen.sourceHash, chosen.properties]);
         if (reviewKey !== lastReview) {
             lastReview = reviewKey; review.replaceChildren();
             if (!chosen) review.append(node('p', t('editor.lens.empty')));

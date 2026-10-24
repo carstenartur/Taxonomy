@@ -116,7 +116,12 @@ public class ArchitectureFocusSuggestionService {
             var options = completionOptions(candidates, fields, request.candidateLimit());
             if (options.budgetText(prompt).length() > 60_000) throw new IllegalArgumentException("Focus prompt exceeds its bounded envelope");
             String providerId = llm.isMockMode() ? "MOCK" : llm.getActiveProviderId().value();
-            promptBudget.requireWithinBudget(options.budgetText(prompt), providerId);
+            var target = promptBudget.requireWithinBudget(options.budgetText(prompt), providerId);
+            if (!target.available()) {
+                String fallbackMethod = LOCAL + ":AI_UNAVAILABLE";
+                return response(request, hash, fallbackMethod, "UNASSESSED", 0, candidates,
+                        local(request, hash, candidates, fallbackMethod));
+            }
             String raw = AnalysisRunControl.call(provider, "ARCHITECTURE_FOCUS", () -> {
                 calls[0]++;
                 var detail = new LlmCallDetail();
@@ -205,7 +210,8 @@ public class ArchitectureFocusSuggestionService {
         var requirements = new HashSet<String>();
         model.getMappings().stream().filter(m -> focusId.equals(m.getElementId()))
                 .forEach(m -> requirements.add(m.getRequirementId()));
-        model.getRequirements().stream().filter(r -> requirements.contains(r.getId()))
+        // Evidence identities have no source kind, so requirements must not impersonate offered endpoints.
+        model.getRequirements().stream().filter(r -> requirements.contains(r.getId()) && !endpoints.contains(r.getId()))
                 .sorted(Comparator.comparing(com.taxonomy.dsl.model.ArchitectureRequirement::getId)).limit(3).forEach(r -> {
                     putField(fields, r.getId(), "title", r.getTitle());
                     putField(fields, r.getId(), "text", r.getText());

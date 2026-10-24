@@ -1,5 +1,9 @@
 package com.taxonomy.composition.architecture;
 
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetHealth;
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetMode;
+import com.taxonomy.analysis.dto.AiTargetDtos.PromptBudget;
 import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.LlmCompletionOptions;
 import com.taxonomy.analysis.service.LlmService;
@@ -262,10 +266,84 @@ class ArchitectureFocusSuggestionServiceTest {
         verify(llm, never()).callLlmRaw(anyString(), any());
     }
 
+    @Test void unavailableAdmittedProviderReturnsUnassessedWithoutAttemptingCompletion() throws Exception {
+        generative(null);
+        when(budget.requireWithinBudget(anyString(), eq("TEST_PROVIDER"))).thenReturn(target(false));
+        var response = service.investigate(scope, request(true));
+        assertThat(response.outcome()).isEqualTo("UNASSESSED");
+        assertThat(response.method()).isEqualTo("LOCAL_TEXT_UNASSESSED:AI_UNAVAILABLE");
+        assertThat(response.modelCalls()).isZero();
+        assertThat(response.suggestions()).isNotEmpty();
+        verify(llm, never()).callLlmRaw(anyString(), any());
+    }
+
+    @Test void availableProviderEmptyResponseStillCountsTheAttemptAndFails() throws Exception {
+        generative(null);
+        var response = service.investigate(scope, request(true));
+        assertThat(response.outcome()).isEqualTo("FAILED");
+        assertThat(response.modelCalls()).isEqualTo(1);
+        verify(llm, times(1)).callLlmRaw(anyString(), any());
+    }
+
+    @Test void collidingMappedRequirementIdsCannotOverwriteEitherArchitectureEndpointTitle() throws Exception {
+        when(editor.read(scope, null, null)).thenReturn(doc(DSL + collidingRequirements()));
+        generative("{\"suggestions\":[]}");
+        service.investigate(scope, request(true));
+        var prompt = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(llm).callLlmRaw(prompt.capture(), any());
+        assertThat(prompt.getValue()).contains("Order processing service", "Order processing application")
+                .doesNotContain("Colliding requirement service title", "Colliding requirement application title",
+                        "Requirement-only service claim", "Requirement-only application claim");
+    }
+
+    @Test void collidingRequirementTextCannotSatisfyEitherEndpointEvidence() throws Exception {
+        when(editor.read(scope, null, null)).thenReturn(doc(DSL + collidingRequirements()));
+        generative("{\"suggestions\":[]}");
+        String original = validReply("Processes and validates customer orders");
+        for (String reply : List.of(
+                original.replace("\"field\":\"description\",\"quote\":\"Processes and validates customer orders\"",
+                        "\"field\":\"text\",\"quote\":\"Requirement-only service claim\""),
+                original.replace("\"field\":\"description\",\"quote\":\"Submits customer orders for validation\"",
+                        "\"field\":\"text\",\"quote\":\"Requirement-only application claim\""))) {
+            when(llm.callLlmRaw(anyString(), any())).thenReturn(reply);
+            var response = service.investigate(scope, request(true));
+            assertThat(response.outcome()).isEqualTo("FAILED");
+            assertThat(response.modelCalls()).isEqualTo(1);
+            assertThat(response.suggestions()).allSatisfy(s -> assertThat(s.evidence())
+                    .noneSatisfy(e -> assertThat(e.field()).isEqualTo("text")));
+        }
+    }
+
+    private static String collidingRequirements() {
+        return """
+                requirement arch-service {
+                  title: "Colliding requirement service title";
+                  text: "Requirement-only service claim";
+                }
+                mapping arch-service -> arch-service {
+                  source: analysis;
+                }
+                requirement arch-app {
+                  title: "Colliding requirement application title";
+                  text: "Requirement-only application claim";
+                }
+                mapping arch-app -> arch-service {
+                  source: analysis;
+                }
+                """;
+    }
+
+    private static AiTargetDescriptor target(boolean available) {
+        return new AiTargetDescriptor("test-target", "Test provider", "TEST_PROVIDER", "test-model", AiTargetMode.REMOTE,
+                available ? AiTargetHealth.READY : AiTargetHealth.UNAVAILABLE, available, false, false,
+                new PromptBudget(120_000, 120_000, 30_000), "test-configuration", available ? null : "Missing credentials");
+    }
+
     private void generative(String reply) {
         when(llm.supportsGenerativeCompletion()).thenReturn(true);
         when(llm.getActiveProviderName()).thenReturn("test-provider");
         when(llm.getActiveProviderId()).thenReturn(new ProviderId("TEST_PROVIDER"));
+        when(budget.requireWithinBudget(anyString(), eq("TEST_PROVIDER"))).thenReturn(target(true));
         when(llm.callLlmRaw(anyString(), any())).thenReturn(reply);
     }
     private static String validReply(String quote) {

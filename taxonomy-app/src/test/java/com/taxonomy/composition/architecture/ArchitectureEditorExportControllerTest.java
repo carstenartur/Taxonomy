@@ -171,7 +171,7 @@ class ArchitectureEditorExportControllerTest {
     }
 
     @Test
-    void pinnedLayoutKeepsAcceptedRelationRefreshAndExactRevisionExportsInTheSamePositions() throws Exception {
+    void optimizedUrlPinsItsInitialRevisionForRelationRefreshAndExactRevisionExports() throws Exception {
         when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
         String elements = """
                 element arch-a type Capability {
@@ -207,10 +207,13 @@ class ArchitectureEditorExportControllerTest {
                 new ArchitectureEditorService.Document(Context.of(scope, null, revision), revision == 3 ? before : after,
                         "READY", List.of(), List.of(), 0, null, "WORKSPACE_REVISION"));
         var mvc = standaloneSetup(editor, exports).build();
-        String query = "?repositoryId=repo-a&workspaceScopeKey=workspace-a&branch=draft&layout=reduce-crossings&layoutRevision=3&revision=";
+        String scopeQuery = "?repositoryId=repo-a&workspaceScopeKey=workspace-a&branch=draft&layout=reduce-crossings";
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        var first = mapper.readTree(mvc.perform(get("/api/architecture/editor" + query + "3"))
+        var first = mapper.readTree(mvc.perform(get("/api/architecture/editor" + scopeQuery + "&revision=3"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(first.path("schema").path("layoutRevision").asLong(-1))
+                .as("opening an optimized workspace URL captures its initial ordering revision").isEqualTo(3L);
+        String query = scopeQuery + "&layoutRevision=" + first.path("schema").path("layoutRevision").asLong() + "&revision=";
         var next = mapper.readTree(mvc.perform(get("/api/architecture/editor" + query + "4"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(next.path("scene").path("nodes")).isEqualTo(first.path("scene").path("nodes"));
@@ -230,6 +233,10 @@ class ArchitectureEditorExportControllerTest {
                 .andExpect(status().isBadRequest());
         when(service.read(scope, HEAD, null)).thenReturn(new ArchitectureEditorService.Document(
                 Context.of(scope, HEAD), before, "HISTORICAL", List.of(), List.of(), 0, null, "GIT_CHECKPOINT"));
+        mvc.perform(get("/api/architecture/editor" + scopeQuery + "&commit=" + HEAD))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.schema.layoutRevision").isEmpty());
+        mvc.perform(get("/api/architecture/editor" + scopeQuery.replace("reduce-crossings", "stable") + "&revision=3"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.schema.layoutRevision").isEmpty());
         mvc.perform(get("/api/architecture/editor.svg").param("repositoryId", "repo-a").param("workspaceScopeKey", "workspace-a")
                         .param("branch", "draft").param("commit", HEAD).param("layout", "reduce-crossings").param("layoutRevision", "3"))
                 .andExpect(status().isBadRequest());

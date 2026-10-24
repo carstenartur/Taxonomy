@@ -60,6 +60,10 @@ public class ArchitectureEditorProjection {
     public View project(ArchitectureEditorService.Document document, boolean mayEdit, Strategy strategy,
                         ArchitectureEditorService.Document layoutReference) {
         Long layoutRevision = layoutReference == null ? null : layoutReference.context().revision();
+        if (layoutRevision == null && strategy == Strategy.REDUCE_CROSSINGS
+                && "WORKSPACE_REVISION".equals(document.source())) {
+            layoutRevision = document.context().revision();
+        }
         requireLayoutRevision(document, strategy, layoutRevision);
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());
         DiagramModel diagram = diagram(model, document.context().branch());
