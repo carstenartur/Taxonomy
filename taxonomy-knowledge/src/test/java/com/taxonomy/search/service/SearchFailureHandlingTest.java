@@ -4,8 +4,9 @@ import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.catalog.service.SearchService;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.relations.service.GraphSearchService;
+import com.taxonomy.relations.service.GraphSearchAuthorityService;
 import com.taxonomy.relations.service.HybridSearchService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import jakarta.persistence.EntityManager;
 import org.hibernate.search.mapper.orm.Search;
 import org.junit.jupiter.api.Test;
@@ -110,15 +111,16 @@ class SearchFailureHandlingTest {
         var embeddings = mock(LocalEmbeddingService.class);
         when(embeddings.isAvailable()).thenReturn(true);
         when(embeddings.embedQuery(QUERY)).thenThrow(new IllegalStateException(FAILURE));
-        var service = new GraphSearchService(embeddings);
-        assertThatThrownBy(() -> service.graphSearch(QUERY, 10, WorkspaceContext.SHARED))
+        var service = new GraphSearchService(embeddings, mock(GraphSearchAuthorityService.class));
+        assertThatThrownBy(() -> service.graphSearch(QUERY, 10, RepositoryContext.centralRead("fixture-repository", "draft", "system")))
                 .isInstanceOf(IllegalStateException.class).hasMessage(SAFE_MESSAGE).hasNoCause();
+        verify(embeddings).embedQuery(QUERY);
     }
 
     @Test
     void unavailableGraphModelIsNotACompletedEmptyGraph() {
-        var service = new GraphSearchService(mock(LocalEmbeddingService.class));
-        assertThatThrownBy(() -> service.graphSearch(QUERY, 10, WorkspaceContext.SHARED))
+        var service = new GraphSearchService(mock(LocalEmbeddingService.class), mock(GraphSearchAuthorityService.class));
+        assertThatThrownBy(() -> service.graphSearch(QUERY, 10, RepositoryContext.centralRead("fixture-repository", "draft", "system")))
                 .isInstanceOf(IllegalStateException.class).hasMessage(SAFE_MESSAGE).hasNoCause();
     }
 

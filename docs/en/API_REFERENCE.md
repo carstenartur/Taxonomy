@@ -139,6 +139,8 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/hyb
 
 ### Graph-semantic search
 
+Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. Nonempty branch projections and unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
+
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20"
 ```

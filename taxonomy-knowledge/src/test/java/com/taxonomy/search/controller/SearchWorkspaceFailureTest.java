@@ -2,7 +2,7 @@ package com.taxonomy.search.controller;
 
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.StaticMessageSource;
@@ -35,7 +35,7 @@ class SearchWorkspaceFailureTest {
         when(search.isInitialized()).thenReturn(true);
         when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
         var denied = new AccessDeniedException("private-workspace-details");
-        when(workspaces.resolveCurrentContext()).thenThrow(denied);
+        when(workspaces.resolveCurrentRepositoryContext()).thenThrow(denied);
         assertThatThrownBy(() -> controller.graphSearch("query", 10)).isSameAs(denied);
         verify(search, never()).graphSearch(anyString(), anyInt(), any());
     }
@@ -51,11 +51,23 @@ class SearchWorkspaceFailureTest {
     }
 
     @Test
-    void explicitlyResolvedSharedContextRemainsSupported() {
+    void explicitlyResolvedCanonicalCentralContextRemainsSupported() {
         when(search.isInitialized()).thenReturn(true);
         when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
-        when(workspaces.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(RepositoryContext.centralRead("fixture-repository", "draft", "system"));
         controller.graphSearch("query", 10);
-        verify(search).graphSearch("query", 10, WorkspaceContext.SHARED);
+        verify(search).graphSearch("query", 10, RepositoryContext.centralRead("fixture-repository", "draft", "system"));
     }
+    @Test
+    void canonicalForkScopeReachesFacadeWithoutBecomingCentral() {
+        when(search.isInitialized()).thenReturn(true);
+        when(workspaces.resolveCurrentUsername()).thenReturn("test-user");
+        var fork = new RepositoryContext("fixture-repository", null, "draft", "test-user",
+                com.taxonomy.workspace.service.RepositoryScope.FORK);
+        when(workspaces.resolveCurrentRepositoryContext()).thenReturn(fork);
+        controller.graphSearch("query", 10);
+        verify(search).graphSearch("query", 10, fork);
+        verify(workspaces, never()).resolveCurrentContext();
+    }
+
 }

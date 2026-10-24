@@ -12,7 +12,7 @@ import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.LocalOnnxIndexInitializer;
 import com.taxonomy.error.SearchUnavailableException;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -102,11 +102,11 @@ public class SearchFacade {
 
     public GraphSearchResult graphSearch(String query,
                                          int maxResults,
-                                         WorkspaceContext workspaceContext) {
+                                         RepositoryContext repositoryContext) {
         if (maxResults > 0 && !isGraphSearchReady()) {
             throw new SearchUnavailableException();
         }
-        var results = graphSearchService.graphSearch(query, maxResults, workspaceContext);
+        var results = graphSearchService.graphSearch(query, maxResults, repositoryContext);
         if (maxResults > 0 && !isGraphSearchReady()) {
             throw new SearchUnavailableException();
         }
@@ -117,6 +117,7 @@ public class SearchFacade {
         if (!isSemanticSearchReady()) throw new SearchUnavailableException();
     }
 
+    /** Global model/index prerequisites; the selected scope is checked by graph search itself. */
     public boolean isGraphSearchReady() {
         return isSemanticSearchReady()
                 && embeddingIndexInitializer.getState() == LocalOnnxIndexInitializer.State.READY;
@@ -140,6 +141,7 @@ public class SearchFacade {
         status.put("modelProfile", embeddingService.modelProfile());
         status.put("indexedNodes", embeddingService.indexedNodeCount());
         status.put("semanticReady", semanticReady);
+        // This global prerequisite does not promise selected-scope availability.
         status.put("graphReady", semanticReady
                 && embeddingIndexInitializer.getState() == LocalOnnxIndexInitializer.State.READY);
         status.put("indexState", embeddingIndexInitializer.getState().name());

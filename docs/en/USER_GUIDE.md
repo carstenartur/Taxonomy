@@ -942,11 +942,13 @@ Screenshots of each search mode in action:
 
 ![Graph search results](../images/32-search-graph.png)
 
+Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. Nonempty branch projections and unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
+
 ### Embedding Status
 
 The **🧠 Embeddings** badge in the navigation bar shows whether semantic embeddings are available:
 
-- **🧠 Embeddings: N nodes** (blue) — embeddings are loaded; Semantic, Hybrid, and Graph modes are enabled.
+- **🧠 Embeddings: N nodes** (blue) — embeddings are loaded; mode availability also depends on index readiness, and Graph checks the selected scope on each request.
 - **🧠 Embeddings: unavailable** (grey) — embeddings not loaded; only Full-text search is available.
 
 When embeddings are unavailable, the Semantic, Hybrid, and Graph options are greyed out in the mode selector.

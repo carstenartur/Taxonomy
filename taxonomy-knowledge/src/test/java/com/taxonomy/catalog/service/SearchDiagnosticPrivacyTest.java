@@ -22,8 +22,9 @@ import java.nio.file.Files;
 
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.relations.service.GraphSearchService;
+import com.taxonomy.relations.service.GraphSearchAuthorityService;
 import com.taxonomy.relations.service.HybridSearchService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -85,7 +86,7 @@ class SearchDiagnosticPrivacyTest {
                 new IllegalStateException(FAILURE, new IOException("private-nested-cause")));
         try (var capture = new LogCapture(GraphSearchService.class)) {
             org.assertj.core.api.Assertions.catchThrowable(() ->
-                    new GraphSearchService(embeddings).graphSearch(QUERY, 10, WorkspaceContext.SHARED));
+                    new GraphSearchService(embeddings, mock(GraphSearchAuthorityService.class)).graphSearch(QUERY, 10, RepositoryContext.centralRead("fixture-repository", "draft", "system")));
             capture.assertSafeError("GRAPH_SEARCH_FAILED");
         }
     }
