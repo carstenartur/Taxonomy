@@ -70,6 +70,7 @@ jobs:
       - name: Install pinned Node and Chromium
         run: |
           ./mvnw -B -pl taxonomy-build pre-integration-test \
+            -DskipTests \
             -Dtaxonomy.ui.skip=false \
             -Dtaxonomy.quality.skip=true \
             -Dtaxonomy.playwright.install.arguments="exec -- playwright install --with-deps chromium"

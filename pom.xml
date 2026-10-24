@@ -148,6 +148,7 @@
         <taxonomy.app.shard.coverage.enabled>false</taxonomy.app.shard.coverage.enabled>
         <taxonomy.coverage.policy.exclude>**/NeverCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
         <taxonomy.app.unit.tests.skip>false</taxonomy.app.unit.tests.skip>
+        <taxonomy.ci.companion.unit.tests.skip>false</taxonomy.ci.companion.unit.tests.skip>
         <taxonomy.observability.performance.enabled>false</taxonomy.observability.performance.enabled>
         <taxonomy.production.image.skip>true</taxonomy.production.image.skip>
         <taxonomy.interoperability.skip>true</taxonomy.interoperability.skip>
@@ -569,8 +570,16 @@
             <properties>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
                 <taxonomy.app.unit.tests.skip>true</taxonomy.app.unit.tests.skip>
+                <taxonomy.ci.companion.unit.tests.skip>true</taxonomy.ci.companion.unit.tests.skip>
                 <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
             </properties>
+            <!-- This property is bound only to Surefire in explicit CI companions.
+                 Standalone lifecycles retain Maven's native skip flags and Failsafe. -->
+            <build><pluginManagement><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration><skipTests>${taxonomy.ci.companion.unit.tests.skip}</skipTests></configuration>
+            </plugin></plugins></pluginManagement></build>
         </profile>
         <profile>
             <id>onnx</id>
@@ -610,9 +619,17 @@
             <properties>
                 <maven.build.cache.enabled>false</maven.build.cache.enabled>
                 <taxonomy.app.unit.tests.skip>true</taxonomy.app.unit.tests.skip>
+                <taxonomy.ci.companion.unit.tests.skip>true</taxonomy.ci.companion.unit.tests.skip>
                 <taxonomy.app.shard.coverageAggregateSkip>true</taxonomy.app.shard.coverageAggregateSkip>
                 <taxonomy.coverage.policy.exclude>**/ReactorCoveragePolicyIT.java</taxonomy.coverage.policy.exclude>
             </properties>
+            <!-- This property is bound only to Surefire in explicit CI companions.
+                 Standalone lifecycles retain Maven's native skip flags and Failsafe. -->
+            <build><pluginManagement><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration><skipTests>${taxonomy.ci.companion.unit.tests.skip}</skipTests></configuration>
+            </plugin></plugins></pluginManagement></build>
         </profile>
         <profile>
             <id>architecture-tests</id>

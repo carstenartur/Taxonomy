@@ -39,6 +39,43 @@ class FrontendPackagingLifecycleTest {
         assertEquals("0",suite.getAttribute("errors"));
         assertEquals("0",suite.getAttribute("skipped"));
     }
+    @Test void documentBrowserPreparationSkipsJUnitButStillInstallsItsRuntimeBeforeVerify() throws Exception {
+        Path root=JavascriptJUnitBridge.root();
+        String workflow=Files.readString(root.resolve(".github/workflows/document-template-report-e2e.yml"));
+        String preparation=workflow.substring(workflow.indexOf("- name: Install pinned Node and Chromium"),
+                workflow.indexOf("- name: Download the template-backed report in Playwright"));
+        assertTrue(preparation.contains("-DskipTests"),"Browser preparation must not repeat the final verify's JUnit tests");
+        String verification=workflow.substring(workflow.indexOf("- name: Download the template-backed report in Playwright"),
+                workflow.indexOf("- name: Upload browser, DOCX, and screenshot evidence"));
+        assertTrue(verification.contains("-Pdocument-template-report-e2e"));
+        assertFalse(verification.contains("-Dskip"),"The final document lifecycle must execute its tests");
+
+        prepare(true);
+        var fixturePom=XmlSupport.parse(fixture.resolve("pom.xml"));
+        Element executions=XmlSupport.descendants(fixturePom.getDocumentElement(),"executions").getFirst();
+        var build=XmlSupport.parse(root.resolve("taxonomy-build/pom.xml")).getDocumentElement();
+        XmlSupport.descendants(build,"execution").stream()
+                .filter(e -> Set.of("install-pinned-browser-test-dependencies","install-pinned-playwright-browsers")
+                        .contains(XmlSupport.childText(e,"id")))
+                .forEach(e -> executions.appendChild(fixturePom.importNode(e,true)));
+        Files.writeString(fixture.resolve("pom.xml"),xml(fixturePom.getDocumentElement()));
+        Path github=fixture.resolve(".github");
+        Files.writeString(github.resolve("package.json"),Files.readString(github.resolve("package.json"))
+                .replace("\"dependencies\":", "\"scripts\":{\"fixture:browser\":\"node install-browser.cjs\"},\"dependencies\":"));
+        Files.writeString(github.resolve("install-browser.cjs"),"require('node:fs').writeFileSync('browser-installed',process.version)");
+        String[] browserFlags={"-Dtaxonomy.ui.skip=false","-Dtaxonomy.playwright.install.arguments=run fixture:browser"};
+        Result prepared=maven("pre-integration-test","-DskipTests",browserFlags[0],browserFlags[1]);
+        assertEquals(0,prepared.code,prepared.output);
+        assertTrue(Files.isRegularFile(github.resolve("node_modules/fixture-package/package.json")),prepared.output);
+        assertTrue(Files.isRegularFile(github.resolve("browser-installed")),prepared.output);
+        Path report=fixture.resolve("child/target/surefire-reports/TEST-FixtureReadyTest.xml");
+        assertFalse(Files.exists(report),"Preparation must not execute child JUnit tests");
+        Result verified=maven("verify",browserFlags);
+        assertEquals(0,verified.code,verified.output);
+        Element suite=XmlSupport.parse(report).getDocumentElement();
+        assertEquals("1",suite.getAttribute("tests"));
+        for(String outcome:List.of("failures","errors","skipped")) assertEquals("0",suite.getAttribute(outcome));
+    }
     @Test void usesTheNativeWrapperOnBothSupportedOperatingSystems() {
         assertEquals(List.of("cmd.exe","/d","/c","mvnw.cmd"),wrapperCommand(fixture,"Windows 11"));
         assertEquals(List.of(fixture.resolve("mvnw").toString()),wrapperCommand(fixture,"Linux"));
@@ -66,6 +103,7 @@ class FrontendPackagingLifecycleTest {
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId><version>3.5.0</version></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.15.0</version></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.6</version></plugin>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.5.1</version></plugin>
             </plugins></pluginManagement><plugins>%s</plugins></build><profiles>%s</profiles></project>
             """.formatted(npmInputs ? "<modules><module>child</module></modules>" : "",plugin,profiles));
         Files.createDirectories(fixture.resolve(".mvn/wrapper"));

@@ -55,7 +55,7 @@ class ApplicationTestSkipContractTest {
     }
 
     @Test
-    void databaseCiCompanionSkipsOnlyAppSurefireAndPartialAggregateCoverage() throws Exception {
+    void databaseCiCompanionSkipsOwnedSurefireAndPartialAggregateCoverage() throws Exception {
         Document app = pom("taxonomy-app/pom.xml");
         Document root = pom("pom.xml");
         String profile = "/project/profiles/profile[id='ci-database-compatibility']";
@@ -70,7 +70,7 @@ class ApplicationTestSkipContractTest {
                     .isEqualTo("0");
             assertThat(value(document, "count(" + profile + "/build//" + FAILSAFE + ")")).isEqualTo("0");
         }
-        assertThat(value(root, "count(" + profile + "/build//" + SUREFIRE + ")")).isEqualTo("0");
+        assertThat(value(root, "count(" + profile + "/build//" + SUREFIRE + ")")).isEqualTo("1");
         Document coverage = pom("taxonomy-coverage/pom.xml");
         assertThat(value(coverage, "/project/build/plugins/plugin[artifactId='jacoco-maven-plugin']/executions/execution[id='reactor-report']/configuration/skip"))
                 .isEqualTo("${taxonomy.app.shard.coverageAggregateSkip}");
@@ -154,6 +154,51 @@ class ApplicationTestSkipContractTest {
             assertThat(value(root, "count(" + scope + "/properties/taxonomy.productDemo.testPhase)")).isEqualTo("0");
             assertThat(value(app, "count(" + scope + "/build/plugins/" + SUREFIRE + "/configuration/includes)")).isEqualTo("0");
             assertThat(value(app, "count(" + scope + "/build/plugins/" + SUREFIRE + "/executions/execution[id='default-test'])")).isEqualTo("0");
+        }
+    }
+
+    @Test
+    void splitCoreHasOneDedicatedOwnerForJavascriptAndPackagedPlugins() throws Exception {
+        Document tooling = pom("taxonomy-tooling/pom.xml");
+        Document build = pom("taxonomy-build/pom.xml");
+        String profile = "/project/profiles/profile[id='ci-app-test-shards-core']";
+        assertThat(value(tooling, profile + "/build/plugins/" + SUREFIRE + "/configuration/excludes/exclude"))
+                .isEqualTo("**/JavascriptContractTest.java");
+        assertThat(value(tooling, "count(/project/build/plugins/" + SUREFIRE + "/configuration/excludes)")).isEqualTo("0");
+        String excludes = profile + "/build/plugins/" + FAILSAFE
+                + "/executions/execution/configuration/excludes/exclude";
+        assertThat(value(build, excludes + "[1]")).isEqualTo("${taxonomy.coverage.policy.exclude}");
+        assertThat(value(build, excludes + "[2]")).isEqualTo("**/ExternalPluginPackagedIT.java");
+        assertThat(value(build, excludes + "[3]")).isEqualTo("**/OptionalFeaturePackagedIT.java");
+        assertThat(value(build, "count(" + excludes + ")")).isEqualTo("3");
+        assertThat(value(build, "count(/project/build/plugins/" + FAILSAFE
+                + "/executions/execution/configuration/excludes/exclude)")).isEqualTo("1");
+    }
+
+    @Test
+    void companionUnitSuppressionIsSurefireOnlyAndExplicitlyRetainsBuildGuards() throws Exception {
+        Document root = pom("pom.xml");
+        Document build = pom("taxonomy-build/pom.xml");
+        Document independentPlugin = pom("plugins/taxonomy-mermaid-plugin/pom.xml");
+        assertThat(value(independentPlugin, "count(/project/parent)")).isEqualTo("0");
+        assertThat(value(independentPlugin, "count(/project/build/plugins/" + SUREFIRE
+                + "/configuration/*[starts-with(name(), 'skip')])")).isEqualTo("0");
+        String setting = "taxonomy.ci.companion.unit.tests.skip";
+        assertThat(value(root, "/project/properties/" + setting)).isEqualTo("false");
+        assertThat(value(root, "count(/project/build/pluginManagement/plugins/" + SUREFIRE
+                + "/configuration/*[starts-with(name(), 'skip')])")).isEqualTo("0");
+        for (String id : new String[]{"ci-database-compatibility", "ci-plugin-packaging"}) {
+            String profile = "/project/profiles/profile[id='" + id + "']";
+            assertThat(value(root, profile + "/properties/" + setting)).isEqualTo("true");
+            assertThat(value(root, profile + "/build/pluginManagement/plugins/" + SUREFIRE
+                    + "/configuration/skipTests")).isEqualTo("${" + setting + "}");
+            assertThat(value(build, profile + "/build/plugins/" + SUREFIRE
+                    + "/configuration/skipTests")).isEqualTo("false");
+            assertThat(value(root, "count(" + profile + "/build//" + FAILSAFE + ")")).isEqualTo("0");
+            assertThat(value(independentPlugin, profile + "/properties/maven.build.cache.enabled")).isEqualTo("false");
+            assertThat(value(independentPlugin, profile + "/build/plugins/" + SUREFIRE
+                    + "/configuration/skipTests")).isEqualTo("true");
+            assertThat(value(independentPlugin, "count(" + profile + "/build//" + FAILSAFE + ")")).isEqualTo("0");
         }
     }
 
