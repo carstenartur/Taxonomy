@@ -11,7 +11,9 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,6 +25,7 @@ class ReactorApplicationStagingTest {
     void stagesAfterCleanAndPackagingBeforeProductVerification(boolean skip,
             @TempDir Path fixture) throws Exception {
         Path root = ReleaseOrchestrationChecks.repositoryRoot();
+        boolean windows = System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows");
         Element build = XmlSupport.child(XmlSupport.parse(root.resolve("taxonomy-build/pom.xml"))
                 .getDocumentElement(), "build");
         Element exec = XmlSupport.children(XmlSupport.child(build, "plugins"), "plugin").stream()
@@ -38,13 +41,13 @@ class ReactorApplicationStagingTest {
         transformer.transform(new DOMSource(staging), new StreamResult(executionXml));
         String execVersion = XmlSupport.childText(XmlSupport.child(XmlSupport.parse(root.resolve("pom.xml"))
                 .getDocumentElement(), "properties"), "exec-maven-plugin.version");
-        for (String relative : List.of("mvnw", ".mvn/wrapper/maven-wrapper.properties",
+        for (String relative : List.of("mvnw", "mvnw.cmd", ".mvn/wrapper/maven-wrapper.properties",
                 ".github/scripts/stage-ui-application.sh")) {
             Path target = fixture.resolve(relative);
             Files.createDirectories(target.getParent());
             Files.copy(root.resolve(relative), target);
         }
-        assertThat(fixture.resolve("mvnw").toFile().setExecutable(true)).isTrue();
+        if (!windows) assertThat(fixture.resolve("mvnw").toFile().setExecutable(true)).isTrue();
         Files.writeString(fixture.resolve("package-fixture.sh"), """
                 set -euo pipefail
                 mkdir -p taxonomy-app/target/{plugins,features}
@@ -92,8 +95,11 @@ class ReactorApplicationStagingTest {
         Files.createDirectories(fixture.resolve("target/ui-application"));
         Files.writeString(fixture.resolve("target/ui-application/manifest.json"), "stale before clean");
         Path log = fixture.resolve("maven.log");
-        ProcessBuilder builder = new ProcessBuilder("./mvnw", "-B", "-ntp", "clean", "verify",
-                "-Dtaxonomy.interoperability.skip=" + skip).directory(fixture.toFile())
+        List<String> command = new ArrayList<>(windows
+                ? List.of("cmd.exe", "/d", "/c", "mvnw.cmd")
+                : List.of(fixture.resolve("mvnw").toString()));
+        command.addAll(List.of("-B", "-ntp", "clean", "verify", "-Dtaxonomy.interoperability.skip=" + skip));
+        ProcessBuilder builder = new ProcessBuilder(command).directory(fixture.toFile())
                 .redirectErrorStream(true).redirectOutput(log.toFile());
         builder.environment().put("JAVA_HOME", System.getProperty("java.home"));
         builder.environment().put("GITHUB_SHA", commit);
