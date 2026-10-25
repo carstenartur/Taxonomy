@@ -205,8 +205,14 @@ if grep -Fq 'type: RollingUpdate' "${PACKAGED_OUTPUT}"; then
   exit 1
 fi
 
+helm package "${CHART_DIR}" \
+  --destination "${PACKAGE_DIR}" \
+  --version 1.2.3-snapshot \
+  --app-version 1.2.3-SNAPSHOT >/dev/null
+SNAPSHOT_ARCHIVE="${PACKAGE_DIR}/taxonomy-1.2.3-snapshot.tgz"
+test -f "${SNAPSHOT_ARCHIVE}"
 expect_failure 'missing immutable image reference in a source/SNAPSHOT chart' \
-  helm template taxonomy "${CHART_DIR}" --set existingSecret=taxonomy-secrets
+  helm template taxonomy "${SNAPSHOT_ARCHIVE}" --set existingSecret=taxonomy-secrets
 expect_failure 'mutable latest image tag' \
   helm template taxonomy "${CHART_DIR}" \
     --set image.tag=latest --set existingSecret=taxonomy-secrets

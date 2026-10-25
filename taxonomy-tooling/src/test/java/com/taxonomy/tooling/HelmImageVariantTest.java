@@ -21,18 +21,7 @@ class HelmImageVariantTest {
 
     @Test
     void packagedReleaseDerivesTheMatchingStandardOrOnnxTag() throws Exception {
-        Path chart = temporaryDirectory.resolve("chart");
-        Path source = chart();
-        try (var paths = Files.walk(source)) {
-            for (Path path : paths.toList()) {
-                Path destination = chart.resolve(source.relativize(path));
-                if (Files.isDirectory(path)) Files.createDirectories(destination);
-                else Files.copy(path, destination);
-            }
-        }
-        Path metadata = chart.resolve("Chart.yaml");
-        Files.writeString(metadata, Files.readString(metadata)
-                .replaceAll("(?m)^appVersion:.*$", "appVersion: \"9.8.7\""));
+        Path chart = chartWithAppVersion("9.8.7");
 
         assertThat(render(chart).successfulOutput())
                 .contains("image: \"" + REPOSITORY + ":v9.8.7\"");
@@ -60,11 +49,12 @@ class HelmImageVariantTest {
 
     @Test
     void sourceSnapshotsStillRequireAnExplicitImmutableReference() throws Exception {
-        Render absent = render(chart(), "-f", overlay().toString());
+        Path chart = chartWithAppVersion("9.8.7-SNAPSHOT");
+        Render absent = render(chart, "-f", overlay().toString());
         assertThat(absent.exitCode()).isNotZero();
         assertThat(absent.output()).contains("image.tag or image.digest is required");
 
-        Render mutable = render(chart(), "-f", overlay().toString(),
+        Render mutable = render(chart, "-f", overlay().toString(),
                 "--set-string", "image.tag=latest-onnx");
         assertThat(mutable.exitCode()).isNotZero();
         assertThat(mutable.output()).contains("image.tag must be an immutable release tag");
@@ -76,6 +66,22 @@ class HelmImageVariantTest {
                 "--set-string", "image.tag=v9.8.7");
         assertThat(result.exitCode()).isNotZero();
         assertThat(result.output()).contains("image.variant must be standard or onnx");
+    }
+
+    private Path chartWithAppVersion(String appVersion) throws IOException {
+        Path chart = temporaryDirectory.resolve("chart");
+        Path source = chart();
+        try (var paths = Files.walk(source)) {
+            for (Path path : paths.toList()) {
+                Path destination = chart.resolve(source.relativize(path));
+                if (Files.isDirectory(path)) Files.createDirectories(destination);
+                else Files.copy(path, destination);
+            }
+        }
+        Path metadata = chart.resolve("Chart.yaml");
+        Files.writeString(metadata, Files.readString(metadata)
+                .replaceAll("(?m)^appVersion:.*$", "appVersion: \"" + appVersion + "\""));
+        return chart;
     }
 
     private static void assertOfflineSettings(String output) {
