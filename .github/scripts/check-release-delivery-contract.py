@@ -196,7 +196,7 @@ def main() -> int:
         "- name: Build Java release tooling",
         "./mvnw -B -pl taxonomy-tooling -am package -DskipTests",
         'run: java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" resolve-release-parameters --root .',
-        "./mvnw -B -pl taxonomy-tooling test",
+        "./mvnw -B -pl taxonomy-tooling -am test",
         "TOOLING_JAR: ${{ runner.temp }}/taxonomy-tooling.jar",
         "group: release-main",
         "ref: ${{ github.event_name == 'push' && github.sha || 'main' }}",
