@@ -124,7 +124,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./mvnw -B -pl taxonomy-tooling test
+          # The parent lifecycle prepares the Node dependencies used by JUnit.
+          ./mvnw -B -pl taxonomy-tooling -am test
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/verify-exact-release-gates.sh
           bash -n .github/scripts/validate-reviewed-release-notes.sh
