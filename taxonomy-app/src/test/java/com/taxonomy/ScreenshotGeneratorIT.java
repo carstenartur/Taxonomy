@@ -658,14 +658,16 @@ class ScreenshotGeneratorIT {
 
         // ── 5. Another commit on draft (continuing main line) ──
 
+        // Keep the view insertion away from reviewV2's UA-1015 addition so the
+        // cherry-pick example combines independent changes without a text conflict.
         String draftV5 =
                 "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "view \"Communication Architecture\" {\n  include: CP-1023, CR-1047, CO-1011, BP-1327, IP-1659;\n  layout: hierarchical;\n}\n\n" +
                 "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
                 "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
                 "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
                 "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
                 "element IP-1659 type InformationProduct {\n  title: \"Situation Reports\";\n  description: \"Aggregated operational situation data\";\n}\n\n" +
-                "view \"Communication Architecture\" {\n  include: CP-1023, CR-1047, CO-1011, BP-1327, IP-1659;\n  layout: hierarchical;\n}\n\n" +
                 "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
                 "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
                 "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
