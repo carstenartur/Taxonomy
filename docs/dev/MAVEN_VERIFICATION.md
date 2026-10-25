@@ -50,6 +50,13 @@ runtime identity directly in JUnit. The standalone lane owners are
 `.github/ui-verification-pom.xml` profiles `contracts`, `shard`, `interoperability`
 and `image`; none adds a workflow or reduces a required status.
 
+In the unsharded reactor, `taxonomy-build` stages the packaged application's
+commit-bound manifest during `pre-integration-test`, after `clean` and application
+packaging. Split CI still downloads its independently packaged application.
+Release verification binds `GITHUB_SHA` to the release version commit, which can
+differ from the workflow's triggering snapshot commit. Staging rejects a source
+commit that does not match the checkout; local runs without `GITHUB_SHA` use `HEAD`.
+
 Published XML counters must match actual testcase occurrences and terminal
 outcomes, including nested suite aggregates and parameterized/skipped cases.
 Misplaced outcomes, ambiguous multiple outcomes, rerun/flaky evidence and nonzero
@@ -270,7 +277,7 @@ the standalone unsharded lifecycle retains its configured module cache behavior.
 | Container and database runtimes | Testcontainers needs an available container engine; Maven does not provision one. `ci` excludes SQL Server and Oracle, whose separate profiles still need it. |
 | Helm-dependent tests | `HelmArtemisContractTest`, `HelmConstrainedSmokeContractTest` and `SetupInfrastructureTest` depend on installed Helm. Some missing-tool decisions depend on `CI` or skip the test locally. |
 | Native product prerequisites | The JUnit-owned interoperability round trips need pipx, StrictDoc dependencies, Xvfb and the pinned Archi runtime. Docker image and browser checks need their real native runtimes. |
-| Native rendering prerequisites | Canonical `ci` enables observability and document E2E including real DOCX rendering. LibreOffice and Poppler must be installed; the existing sliced document workflow remains its CI owner. |
+| Native rendering prerequisites | Canonical `ci` enables observability and document E2E including real DOCX rendering. LibreOffice and Poppler must be installed; the document and release workflows provision them before verification. |
 | Remote acceptance endpoints | Root `verify` recounts original reactor and native-browser XML after Failsafe. Remote publication and deployment checks additionally require the corresponding external endpoint and commit-bound CI artifacts. |
 | Deployment and hosted security services | Live Kubernetes deployment/recovery and hosted CodeQL/Trivy publication still depend on the corresponding infrastructure and credentials. Production image build/identity assertions are included in canonical Maven. |
 

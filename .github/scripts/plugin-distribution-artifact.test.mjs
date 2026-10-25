@@ -25,9 +25,26 @@ function fixture(t) {
   function run(script) { return spawnSync('bash', [path.join(scripts, script)], { cwd: root, env, encoding: 'utf8' }); }
   const staged = run('stage-ui-application.sh');
   assert.equal(staged.status, 0, staged.stdout + staged.stderr);
-  return { root, run, manifest: path.join(root, 'target/ui-application/manifest.json'),
+  return { root, run, env, manifest: path.join(root, 'target/ui-application/manifest.json'),
     plugin: path.join(root, 'target/ui-application/plugins/taxonomy-mermaid-plugin-1.0.jar') };
 }
+test('local reactor staging binds the application to HEAD without GitHub variables', t => {
+  const f = fixture(t), expected = f.env.GITHUB_SHA;
+  rmSync(f.manifest);
+  delete f.env.GITHUB_SHA;
+  const result = f.run('stage-ui-application.sh');
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(JSON.parse(readFileSync(f.manifest)).sourceCommit, expected);
+});
+test('staging refuses the triggering commit after a release version commit', t => {
+  const f = fixture(t);
+  execFileSync('git', ['-c', 'user.name=Artifact Test', '-c', 'user.email=test@example.invalid',
+    'commit', '--allow-empty', '-qm', 'release version'], { cwd: f.root });
+  rmSync(f.manifest);
+  const result = f.run('stage-ui-application.sh');
+  assert.notEqual(result.status, 0, 'A release distribution must not be labeled with the previous commit');
+  assert.match(result.stdout + result.stderr, /checkout|HEAD|source commit/i);
+});
 test('commit-bound distribution verifies both host and external plugin', t => {
   const f = fixture(t); const manifest = JSON.parse(readFileSync(f.manifest));
   assert.equal(manifest.plugins.length, 1); assert.match(manifest.plugins[0].sha256, /^[a-f0-9]{64}$/);
