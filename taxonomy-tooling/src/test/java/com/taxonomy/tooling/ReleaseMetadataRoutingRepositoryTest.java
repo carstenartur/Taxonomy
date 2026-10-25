@@ -26,6 +26,8 @@ class ReleaseMetadataRoutingRepositoryTest {
                 .contains("case \"update-release-metadata\"")
                 .contains("ReleaseMetadataUpdater.update");
         assertThat(releaseScript)
+                .contains("bash \"$MAVEN_VERSION_SETTER\" \"$RELEASE_VERSION\"")
+                .contains("bash \"$MAVEN_VERSION_SETTER\" \"$NEXT_VERSION\"")
                 .contains("update_release_metadata()")
                 .contains("java -jar \"$TOOLING_JAR\" update-release-metadata")
                 .contains("update_release_metadata \"$RELEASE_VERSION\" --release")
@@ -34,9 +36,12 @@ class ReleaseMetadataRoutingRepositoryTest {
                 .doesNotContain("python3 \"$METADATA_HELPER\"");
         assertThat(releaseWorkflow)
                 .contains("TOOLING_JAR: ${{ runner.temp }}/taxonomy-tooling.jar")
+                .contains("cp .github/scripts/set-maven-versions.sh")
+                .contains("MAVEN_VERSION_SETTER: ${{ runner.temp }}/set-maven-versions.sh")
                 .doesNotContain("METADATA_HELPER")
                 .doesNotContain("update-release-metadata.py");
         assertThat(developmentWorkflow)
+                .contains("bash .github/scripts/set-maven-versions.sh \"$NEXT_VERSION\"")
                 .contains("java -jar \"$RUNNER_TEMP/taxonomy-tooling.jar\" update-release-metadata")
                 .contains("--root .")
                 .contains("--version \"$NEXT_VERSION\"")
@@ -55,18 +60,24 @@ class ReleaseMetadataRoutingRepositoryTest {
                 .contains("git add -- \"${tracked_poms[@]}\" CITATION.cff CITATION.md .zenodo.json codemeta.json")
                 .contains("git add -- deploy/helm/taxonomy/Chart.yaml");
 
+        int releaseVersions = script.indexOf(
+                "bash \"$MAVEN_VERSION_SETTER\" \"$RELEASE_VERSION\"");
         int releaseUpdate = script.indexOf(
                 "update_release_metadata \"$RELEASE_VERSION\" --release");
         int releaseStage = script.indexOf(
                 "stage_version_metadata", releaseUpdate);
+        int nextVersions = script.indexOf(
+                "bash \"$MAVEN_VERSION_SETTER\" \"$NEXT_VERSION\"");
         int nextUpdate = script.indexOf(
                 "update_release_metadata \"$NEXT_VERSION\"");
         int nextStage = script.indexOf(
                 "stage_version_metadata", nextUpdate);
 
-        assertThat(releaseUpdate).isGreaterThanOrEqualTo(0);
+        assertThat(releaseVersions).isGreaterThanOrEqualTo(0);
+        assertThat(releaseUpdate).isGreaterThan(releaseVersions);
         assertThat(releaseStage).isGreaterThan(releaseUpdate);
-        assertThat(nextUpdate).isGreaterThan(releaseStage);
+        assertThat(nextVersions).isGreaterThan(releaseStage);
+        assertThat(nextUpdate).isGreaterThan(nextVersions);
         assertThat(nextStage).isGreaterThan(nextUpdate);
     }
 

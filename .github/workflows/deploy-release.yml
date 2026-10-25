@@ -112,11 +112,13 @@ jobs:
       - name: Preserve release scripts
         run: |
           cp .github/scripts/release.sh "$RUNNER_TEMP/release.sh"
+          cp .github/scripts/set-maven-versions.sh "$RUNNER_TEMP/set-maven-versions.sh"
           cp .github/scripts/verify-exact-release-gates.sh \
             "$RUNNER_TEMP/verify-exact-release-gates.sh"
           cp .github/scripts/validate-reviewed-release-notes.sh \
             "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
           chmod +x "$RUNNER_TEMP/release.sh" \
+            "$RUNNER_TEMP/set-maven-versions.sh" \
             "$RUNNER_TEMP/verify-exact-release-gates.sh" \
             "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
 
@@ -127,6 +129,7 @@ jobs:
           # The parent lifecycle prepares the Node dependencies used by JUnit.
           ./mvnw -B -pl taxonomy-tooling -am test
           bash -n .github/scripts/release.sh
+          bash -n .github/scripts/set-maven-versions.sh
           bash -n .github/scripts/verify-exact-release-gates.sh
           bash -n .github/scripts/validate-reviewed-release-notes.sh
           bash -n .github/scripts/install-helm.sh
@@ -145,6 +148,7 @@ jobs:
           DEFER_RELEASE_PUBLICATION: 'true'
           SOURCE_BRANCH: ${{ github.ref_name }}
           TOOLING_JAR: ${{ runner.temp }}/taxonomy-tooling.jar
+          MAVEN_VERSION_SETTER: ${{ runner.temp }}/set-maven-versions.sh
           RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/multilingual-minilm
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
