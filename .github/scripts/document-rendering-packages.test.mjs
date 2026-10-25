@@ -28,8 +28,11 @@ echo "apt-get $*" >> "$COMMAND_LOG"
 cat "$TAXONOMY_APT_MIRROR_LIST" >> "$COMMAND_LOG"
 [[ "\${APT_FAILURE:-0}" == 0 ]] || exit "$APT_FAILURE"
 if [[ "$*" == *--download-only* && "\${PREINSTALLED:-false}" != true ]]; then
-  printf 'writer fixture' > "$TAXONOMY_DOCUMENT_PACKAGES_DIR/writer.deb"
-  printf 'transitive fixture' > "$TAXONOMY_DOCUMENT_PACKAGES_DIR/dependency.deb"
+  for option in "$@"; do
+    if [[ "$option" == Dir::Cache::archives=* ]]; then cache="\${option#Dir::Cache::archives=}"; fi
+  done
+  printf 'writer fixture' > "$cache/writer.deb"
+  printf 'transitive fixture' > "$cache/dependency.deb"
 fi`,
     soffice: 'echo "soffice $*" >> "$COMMAND_LOG"',
     pdftoppm: 'echo "pdftoppm $*" >> "$COMMAND_LOG"'
@@ -39,7 +42,7 @@ fi`,
     await chmod(file, 0o755);
   }
   return {
-    cache, mirrorFile,
+    directory, cache, mirrorFile,
     async run(mode, variant = 'writer', extraEnv = {}) {
       await writeFile(log, '');
       const result = spawnSync('bash', [installer, mode, variant], {
@@ -199,4 +202,34 @@ test('document package keys separate variants and runner revisions, rejecting un
     }
   }
   assert.equal(keys.size, 4);
+});
+
+test('the hosted document cache stays outside source inventories, including apt private partial directories', async () => {
+  const action = await readFile(actionFile, 'utf8');
+  const location = '${{ runner.temp }}/taxonomy-document-system-packages';
+  for (const name of ['Restore document system packages (exact runner image)',
+    'Save document system packages (exact runner image)']) {
+    const step = action.split(`- name: ${name}\n`)[1].split('\n    - ')[0];
+    assert.ok(step.includes(`${location}/*.deb`));
+    assert.ok(step.includes(`${location}/SHA256SUMS`));
+  }
+  for (const name of ['Download document packages', 'Install document packages offline']) {
+    const step = action.split(`- name: ${name}\n`)[1].split('\n    - ')[0];
+    assert.ok(step.includes(`TAXONOMY_DOCUMENT_PACKAGES_DIR: ${location}`));
+  }
+  assert.doesNotMatch(action, /\.cache\/document-system-packages/);
+});
+
+test('the standalone installer defaults to runner temp and never silently caches inside the checkout', async t => {
+  const f = await fixture(t);
+  const runnerTemp = path.join(f.directory, 'runner-temp');
+  const env = { TAXONOMY_DOCUMENT_PACKAGES_DIR: '', RUNNER_TEMP: runnerTemp };
+  assert.equal((await f.run('--only-download', 'writer', env)).status, 0);
+  const result = await f.run('--offline-mode', 'writer', env);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.commands.includes(`Dir::Cache::archives=${runnerTemp}/taxonomy-document-system-packages`));
+  assert.doesNotMatch(result.commands, / update|--download-only/);
+  const noLocation = await f.run('--only-download', 'writer', { TAXONOMY_DOCUMENT_PACKAGES_DIR: '', RUNNER_TEMP: '' });
+  assert.notEqual(noLocation.status, 0);
+  assert.equal(noLocation.commands, '');
 });

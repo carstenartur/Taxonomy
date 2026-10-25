@@ -16,7 +16,6 @@ __pycache__/
 .github/node_modules/
 .cache/ui-frontend/
 .cache/playwright-system-packages/
-.cache/document-system-packages/
 
 # Isolated implementation worktrees and local execution ledgers.
 .worktrees/

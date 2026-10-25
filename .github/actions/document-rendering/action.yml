@@ -22,8 +22,8 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: |
-          .cache/document-system-packages/*.deb
-          .cache/document-system-packages/SHA256SUMS
+          ${{ runner.temp }}/taxonomy-document-system-packages/*.deb
+          ${{ runner.temp }}/taxonomy-document-system-packages/SHA256SUMS
         key: ${{ steps.cache-key.outputs.key }}
     - name: Check package cache runner compatibility
       shell: bash
@@ -48,6 +48,7 @@ runs:
       shell: bash
       env:
         VARIANT: ${{ inputs.variant }}
+        TAXONOMY_DOCUMENT_PACKAGES_DIR: ${{ runner.temp }}/taxonomy-document-system-packages
       run: |
         timeout --foreground 470s bash .github/scripts/install-document-rendering.sh --only-download "$VARIANT" || {
           status=$?
@@ -58,6 +59,7 @@ runs:
       shell: bash
       env:
         VARIANT: ${{ inputs.variant }}
+        TAXONOMY_DOCUMENT_PACKAGES_DIR: ${{ runner.temp }}/taxonomy-document-system-packages
       run: |
         timeout --foreground 470s bash .github/scripts/install-document-rendering.sh --offline-mode "$VARIANT" || {
           status=$?
@@ -69,6 +71,6 @@ runs:
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: |
-          .cache/document-system-packages/*.deb
-          .cache/document-system-packages/SHA256SUMS
+          ${{ runner.temp }}/taxonomy-document-system-packages/*.deb
+          ${{ runner.temp }}/taxonomy-document-system-packages/SHA256SUMS
         key: ${{ steps.cache-key.outputs.key }}

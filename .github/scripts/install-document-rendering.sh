@@ -9,7 +9,8 @@ if [[ $# -gt 2 || ( "$mode" != --only-download && "$mode" != --offline-mode ) ||
     exit 2
 fi
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/apt-packages.sh"
-packages_dir="$(realpath -m "${TAXONOMY_DOCUMENT_PACKAGES_DIR:-.cache/document-system-packages}")"
+# APT owns a private partial/ directory. Keep it outside repository inventories.
+packages_dir="$(realpath -m "${TAXONOMY_DOCUMENT_PACKAGES_DIR:-${RUNNER_TEMP:?RUNNER_TEMP or TAXONOMY_DOCUMENT_PACKAGES_DIR must be set}/taxonomy-document-system-packages}")"
 packages=(libreoffice-writer poppler-utils)
 if [[ "$variant" == writer-draw ]]; then
     packages+=(libreoffice-draw)

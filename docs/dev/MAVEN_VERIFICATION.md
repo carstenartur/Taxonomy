@@ -141,7 +141,10 @@ the existing native-package safeguards.
 
 Document packages are cached separately from browser dependencies. The key binds
 the installer/action hashes, runner OS, image revision, architecture and package
-variant. Only scenario acceptance needs `writer-draw`; the other consumers use
+variant. Archives live in `runner.temp`, outside the checkout: APT's private
+`partial/` directory must not enter repository-source inventories. Standalone
+installer invocations must set `RUNNER_TEMP` or an explicit
+`TAXONOMY_DOCUMENT_PACKAGES_DIR`. Only scenario acceptance needs `writer-draw`; the other consumers use
 `writer` (LibreOffice Writer and Poppler). An exact hit skips both APT update and
 downloads. A miss downloads the complete missing dependency closure once, then
 installs it offline and saves the cache only after successful installation and
