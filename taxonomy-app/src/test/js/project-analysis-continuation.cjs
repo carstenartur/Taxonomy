@@ -180,6 +180,31 @@ function productionSection(text, start, end) {
     return text.slice(first, last);
 }
 
+for (const [name, selectedProject, disabled, expectedRefreshes] of [
+    ['no selected project', null, false, 0],
+    ['a different selected project', '42', false, 0],
+    ['the matching selected project', '41', false, 1],
+    ['a disabled refresh button', '41', true, 0]
+]) {
+    test(`terminal portfolio job refresh respects ${name}`, () => {
+        const d = dom(), refresh = d.element('button', 'refreshPortfolioBtn');
+        let refreshes = 0;
+        refresh.disabled = disabled;
+        refresh.addEventListener('click', () => {refreshes++;});
+        const window = {localStorage: {getItem(key) {
+            assert.equal(key, 'taxonomy.portfolio.projectId');
+            return selectedProject;
+        }}};
+        const context = vm.createContext({window, document: d.document});
+        vm.runInContext(productionSection(source('portfolio/taxonomy-portfolio-async.js'),
+            '    function refreshCurrentProject(', '    function installGuidedReviewHandlers('), context);
+
+        context.refreshCurrentProject(41);
+
+        assert.equal(refreshes, expectedRefreshes);
+    });
+}
+
 function portfolioContinuationFixture(postResponse, observedResponse) {
     const d = dom(), requests = [], scheduled = [], errors = [];
     const error = d.element('div', 'portfolioError');

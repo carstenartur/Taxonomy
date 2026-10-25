@@ -287,8 +287,10 @@ class CompleteCopilotSessionIT {
                     .toAbsolutePath()
                     .normalize();
             Path repository = module.getParent() == null ? module : module.getParent();
-            Path output = repository.resolve(
-                    "docs/images/72-complete-copilot-run-result.png");
+            String configured = System.getenv("TAXONOMY_DOCS_IMAGE_DIR");
+            Path outputDirectory = configured == null || configured.isBlank()
+                    ? repository.resolve("docs/images") : Path.of(configured);
+            Path output = outputDirectory.resolve("72-complete-copilot-run-result.png");
             Files.createDirectories(output.getParent());
             File screenshot = ((TakesScreenshot) driver)
                     .getScreenshotAs(OutputType.FILE);

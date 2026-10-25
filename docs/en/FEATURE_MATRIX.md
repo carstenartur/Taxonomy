@@ -1,7 +1,6 @@
 # Feature Completeness Matrix
 
-This matrix tracks the delivery status of all major product features.
-A feature is only complete when all required columns show ✅.
+This matrix records implemented feature surfaces and the documentation evidence linked for them. It is not a button-by-button functional acceptance report. A ✅ records the indicated surface or explanation; current behavioral acceptance requires the linked test owner and a result for the relevant revision.
 
 > See [Definition of Done](DEVELOPER_GUIDE.md#definition-of-done--user-facing-features)
 > for the product rules.
@@ -30,40 +29,43 @@ See the [clarification workflow](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-cl
 
 A missing screenshot reference means that this matrix does not provide that part
 of its completion evidence. It must not silently count as a checked screenshot.
-The existing surface inventory below is not a comparative quality benchmark.
+The [view and control inventory](../testing/ui-view-control-inventory.md) maps current templates and control groups to explanations, test owners, captures and remaining gaps. Source inspection and historical screenshots do not prove that every control works.
 
 ## End-User Features (GUI-first)
 
 | Feature | GUI | REST | User Guide | Screenshot | Help/Tooltip | DE/EN i18n | Status |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|---|
-| Requirement analysis | ✅ | ✅ | ✅ §4 | ✅ #15–17 | ✅ | ✅ | ✅ Complete |
-| Scored tree exploration | ✅ | ✅ | ✅ §5 | ✅ #15, 35 | ✅ | ✅ | ✅ Complete |
-| View modes (6 modes) | ✅ | ✅ | ✅ §5 | ✅ #5–9, 39, 69 | ✅ | ✅ | ✅ Complete |
-| Architecture view | ✅ | ✅ | ✅ §7 | ✅ #20, 38 | ✅ | ✅ | ✅ Complete |
-| Relation proposals (accept/reject) | ✅ | ✅ | ✅ §9 | ✅ #12, 13, 36 | ✅ | ✅ | ✅ Complete |
-| Snapshot-bound browser/SVG/vector PDF views | ✅ | ✅ | ✅ export boundary | ✅ #20, 23 | ✅ | ✅ | ✅ Supported human-readable views of the selected persisted snapshot |
-| Mermaid/JSON architecture projections | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Migration to the common snapshot-bound artifact envelope, authority headers, and loss manifest remains open in #966 |
-| ArchiMate 3.1 export subset | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; versioned mapping/loss profile implemented; independent-tool acceptance remains open in #967 |
-| Visio 2012 VSDX export subset | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; typed identities, authorized metadata and versioned loss manifests are implemented; Microsoft Visio desktop certification remains open in #965 |
-| Full-text search | ✅ | ✅ | ✅ §11 | ✅ #29 | ✅ | ✅ | ✅ Complete |
-| Semantic/Hybrid search | ✅ | ✅ | ✅ §11 | ✅ #30, 31 | ✅ | ✅ | ✅ Complete |
-| Graph exploration (upstream/downstream) | ✅ | ✅ | ✅ §8 | ✅ #11, 21, 37 | ✅ | ✅ | ✅ Complete |
-| Failure impact analysis | ✅ | ✅ | ✅ §8 | ✅ #22 | ✅ | ✅ | ✅ Complete |
-| Gap analysis | ✅ | ✅ | ✅ §11d | ✅ #26, 27 | ✅ | ✅ | ✅ Complete |
-| Pattern detection | ✅ | ✅ | ✅ §11f | ✅ | ✅ | ✅ | ✅ Complete |
-| Recommendations (Copilot) | ✅ | ✅ | ✅ §4 | ✅ | ✅ | ✅ | ✅ Complete |
-| Reports (MD/HTML/DOCX) | ✅ | ✅ | ✅ §10a | ✅ #23 | ✅ | ✅ | ✅ Complete |
-| Workspace management | ✅ | ✅ | ✅ §13 | ✅ #43–45 | ✅ | ✅ | ✅ Complete |
-| Branch compare | ✅ | ✅ | ✅ §12 | ✅ #48 | ✅ | ✅ | ✅ Complete |
-| Context transfer (copy back) | ✅ | ✅ | ✅ §12 | ✅ #49 | ✅ | ✅ | ✅ Complete |
-| Variant creation | ✅ | ✅ | ✅ §12 | ✅ #46, 47 | ✅ | ✅ | ✅ Complete |
-| Merge (with conflict resolution) | ✅ | ✅ | ✅ §12 | ✅ #52, 53, 58, 60, 61 | ✅ | ✅ | ✅ Complete |
-| Cherry-pick (with conflict resolution) | ✅ | ✅ | ✅ §12 | ✅ #54, 59, 62 | ✅ | ✅ | ✅ Complete |
-| Branch delete | ✅ | ✅ | ✅ §12 | ✅ #57 | ✅ | ✅ | ✅ Complete |
-| DSL editor (syntax highlighting, autocompletion) | ✅ | ✅ | ✅ §11g | ✅ #34, 40 | ✅ | ✅ | ✅ Complete |
-| Version history (commits) | ✅ | ✅ | ✅ §12 | ✅ #41, 66, 67, 68 | ✅ | ✅ | ✅ Complete |
-| Sync from shared / Publish | ✅ | ✅ | ✅ §12 | ✅ #55, 56, 63–65 | ✅ | ✅ | ✅ Complete |
-| Leaf justification | ✅ | ✅ | ✅ §6 | ✅ #18 | ✅ | ✅ | ✅ Complete |
+| Architecture editor | ✅ | ✅ | ✅ [Editor guide](ARCHITECTURE_EDITOR.md) | [Editor](../images/architecture-editor-current-en.png) | See guide | ✅ | Implemented; capture shows one example workspace |
+| Optional database setup assistant | ✅ | ✅ | ✅ [Database setup](DATABASE_SETUP.md) | [Connection step](../images/database-setup-current-en.png) | ✅ | ✅ | Implemented; configuration preparation does not switch or migrate the running database |
+| Requirement analysis | ✅ | ✅ | ✅ §4 | #15–17 | ✅ | ✅ | Implemented |
+| Scored tree exploration | ✅ | ✅ | ✅ §5 | #15, 35 | ✅ | ✅ | Implemented |
+| View modes (6 modes) | ✅ | ✅ | ✅ §5 | #5–9, 39, 69 | ✅ | ✅ | Implemented |
+| Architecture view | ✅ | ✅ | ✅ §7 | — | ✅ | ✅ | ⚠️ Implemented; #20/38 are retired seeded illustrations, not current evidence |
+| Relation proposals (accept/reject) | ✅ | ✅ | ✅ §9 | #12, 13, 36 | ✅ | ✅ | Implemented |
+| Snapshot-bound browser/SVG/vector PDF views | ✅ | ✅ | ✅ export boundary | [Workbench](../images/architecture-workbench-current-en.png) | ✅ | ✅ | ✅ Supported human-readable views of the selected persisted snapshot |
+| Mermaid/JSON architecture projections | ✅ | ✅ | ✅ export boundary | #23, 33 | ✅ | ✅ | ⚠️ Migration to the common snapshot-bound artifact envelope, authority headers, and loss manifest remains open in #966 |
+| ArchiMate 3.1 export subset | ✅ | ✅ | ✅ export boundary | #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; versioned mapping/loss profile implemented; independent-tool acceptance remains open in #967 |
+| Visio 2012 VSDX export subset | ✅ | ✅ | ✅ export boundary | #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; typed identities, authorized metadata and versioned loss manifests are implemented; Microsoft Visio desktop certification remains open in #965 |
+| Full-text search | ✅ | ✅ | ✅ §11 | #29 | ✅ | ✅ | Implemented |
+| Semantic/Hybrid search | ✅ | ✅ | ✅ §11 | #30, 31 | ✅ | ✅ | Implemented |
+| Graph exploration (upstream/downstream) | ✅ | ✅ | ✅ §8 | [Graph entry, DE](../images/graph-entry-current-de.png) | ✅ | ✅ | Implemented |
+| Failure impact analysis | ✅ | ✅ | ✅ §8 | #22 | ✅ | ✅ | Implemented |
+| Requirement coverage | ✅ | ✅ | ✅ §11c | #26, 27 | ✅ | ✅ | Implemented; historical coverage-dashboard captures |
+| Gap analysis | ✅ | ✅ | ✅ §11d | — | ✅ | ✅ | ⚠️ Implemented; #26/27 show coverage, not gap analysis |
+| Pattern detection | ✅ | ✅ | ✅ §11f | — | ✅ | ✅ | ⚠️ Implemented; screenshot not linked |
+| Recommendations (Copilot) | ✅ | ✅ | ✅ §11e | — | ✅ | ✅ | ⚠️ Implemented; screenshot not linked |
+| Reports (MD/HTML/DOCX) | ✅ | ✅ | ✅ §10a | #23 | ✅ | ✅ | Implemented |
+| Workspace management | ✅ | ✅ | ✅ §13 | #43–45 | ✅ | ✅ | Implemented |
+| Branch compare | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implemented; current screenshot missing |
+| Context transfer (copy back) | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implemented; current screenshot missing |
+| Variant creation | ✅ | ✅ | ✅ §12 | #46, 47 | ✅ | ✅ | Implemented |
+| Merge (with conflict resolution) | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implemented; current screenshot missing |
+| Cherry-pick (with conflict resolution) | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implemented; current screenshot missing |
+| Branch delete | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implemented; current screenshot missing |
+| DSL editor (syntax highlighting, autocompletion) | ✅ | ✅ | ✅ §11g | #34, 40 | ✅ | ✅ | Implemented |
+| Version history (commits) | ✅ | ✅ | ✅ §12 | #41, 66 | ✅ | ✅ | Implemented |
+| Sync from shared / Publish | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implemented; current screenshot missing |
+| Leaf justification | ✅ | ✅ | ✅ §6 | #18 | ✅ | ✅ | Implemented |
 | Document import (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implemented; screenshot evidence not linked here |
 | Source provenance tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implemented; screenshot evidence not linked here |
 | AI-assisted requirement extraction | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implemented; screenshot evidence not linked here |
@@ -112,22 +114,23 @@ reconciliation; #966 owns the common artifact-envelope and authority work.
 
 | Feature | REST | API Docs | Status |
 |---|:---:|:---:|---|
-| User management (CRUD) | ✅ | ✅ | ✅ Complete |
-| LLM diagnostics | ✅ | ✅ | ✅ Complete |
-| Embedding status | ✅ | ✅ | ✅ Complete |
-| Startup status | ✅ | ✅ | ✅ Complete |
-| Workspace eviction (admin) | ✅ | ✅ | ✅ Complete |
+| User management (CRUD) | ✅ | ✅ | Implemented |
+| LLM diagnostics | ✅ | ✅ | Implemented |
+| Embedding status | ✅ | ✅ | Implemented |
+| Startup status | ✅ | ✅ | Implemented |
+| Workspace eviction (admin) | ✅ | ✅ | Implemented |
 
 ## Legend
 
 | Symbol | Meaning |
 |---|---|
-| ✅ | Fully implemented and documented |
+| ✅ | Surface or explanation is present in this column; not a claim that every control or state was tested |
 | ⚠️ | Partially done — needs verification or completion |
 | 🔴 | Significant gap — GUI may exist but docs/help/screenshot missing, or REST-only |
 | ❓ | Unknown — needs audit |
 
 ## Screenshot Index
 
-Screenshots are auto-generated by `ScreenshotGeneratorIT` and stored in `docs/images/`.
+Numbered images in `docs/images/` are historical references unless a capture is explicitly bound to a run and source revision. They have several test owners; `ScreenshotGeneratorIT` does not own every image. Captures #20, #37 and #38 relied on unsupported catalogue-relation seeding and are retired; they do not prove that catalogue Graph queries include accepted workspace proposals. Capture #32 is also retired: its graph-semantic search fixture did not establish a supported workspace relation projection and can return `409 NOT_BUILT`. Retired presentation fixtures #48–65 and #67–68 are also not application acceptance evidence. See the [capture instructions and provenance](../../.github/copilot-ref-screenshots.md) and [view inventory](../testing/ui-view-control-inventory.md).
+
 Reference format: `#NN` = `docs/images/NN-*.png`. User Guide section references: `§N` = USER_GUIDE.md section N.

@@ -2,6 +2,10 @@
 
 Open **Architecture editor** from Projects or the snapshot workbench. The context line shows repository, workspace, branch, semantic workspace revision, last checkpoint and actor. Historical revisions/versions and central read contexts are read-only. Use **Create private workspace** when repository membership allows it; editing also requires the ARCHITECT or ADMIN role.
 
+![Architecture editor — selected workspace and element](../images/architecture-editor-current-en.png)
+
+*Application capture of a private example workspace after creating two System elements through **Preview change → Accept operation**. The selected element is “Arbeitszeiterfassung”; saved example names remain German in the English interface. [Source revision and capture record](../images/ui-documentation-2026-10-25.json); this single state does not establish acceptance of every editor action.*
+
 1. Search the element list or select an object in the graph. Selection also updates properties, relations, evidence and the read-only DSL view. Copy the page URL to retain the exact context and selection.
 2. Choose **New element**, or edit an existing element's properties. New identities are assigned by the server and remain stable when the display name changes. Taxonomy references and imported provenance remain read-only.
 3. Enter a reason and choose **Preview change**. Review the affected blocks and displayed revision, then **Accept operation**. Nothing is persisted by typing or previewing. **Discard draft** restores the accepted properties.

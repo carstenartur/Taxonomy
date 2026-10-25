@@ -34,14 +34,31 @@ Keep raw logs and complete capture evidence under `target/` or in CI artifacts.
 A successful command does not establish that every intended image was rewritten:
 check JUnit results, skipped tests and the actual output files.
 
+All three Java owners and the document-template browser/report owner honor
+`TAXONOMY_DOCS_IMAGE_DIR` when set. Use an absolute path to keep Maven module
+working directories from changing the destination. The default remains
+`docs/images/`; CI uses a fresh `target/generated-screenshots/` directory.
+
 ## Capture owners and evidence boundaries
+
+The named `*-current-{de,en}.png` captures added on 25 October 2026 have a
+[separate application capture record](../docs/images/ui-documentation-2026-10-25.json).
+They use the recorded packaged application with current checkout resource
+overlays, a real in-memory database and the deterministic example provider.
+The recorded journey opens Graph through the node action dialog, enters the
+database assistant's connection step, creates two editor elements through
+preview/accept, and opens a snapshot persisted through the analysis API.
+No page result or API response was substituted. The database image does not
+establish an external connection, and the example provider does not establish
+live-model quality. Image and overlaid-source hashes identify these captures;
+the numbered Java-owner outputs below are separate runs.
 
 All Java owners below are under `taxonomy-app/src/test/java/com/taxonomy/`.
 Use the complete filename to identify ownership: numeric prefixes are shared.
 
 | Owner | Output | Source boundary |
 |---|---|---|
-| `ScreenshotGeneratorIT` | `01`–`70`, plus `71-rich-version-timeline.png`, `72-rich-variants-browser.png`, `73-cherry-pick-before.png`, `74-cherry-pick-after.png`, `75-preferences-diagram-policy.png` | General UI illustrations using the real catalogue and mock model. Some search, Git, workspace and status states use injected example HTML or fallback data. These images do not prove live-provider quality, index readiness or successful persistence. |
+| `ScreenshotGeneratorIT` | `01`–`19`, `21`–`31`, `33`–`36`, `39`–`47`, `66-versions-timeline.png`, `69-decision-map-scored.png`, `70-swagger-ui.png`, `71-rich-version-timeline.png`, `72-rich-variants-browser.png`, `73-cherry-pick-before.png`, `74-cherry-pick-after.png`, `75-preferences-diagram-policy.png` | General UI illustrations using the real catalogue, deterministic mock model and authored fixtures persisted through the APIs. Search/graph/editor captures require actual rendered output; Git operations require successful API responses. Status badges retain the application's real state. These images do not establish live-provider quality. |
 | `ArchitectureWorkbenchUiIT` | `71-copilot-architecture-workbench.png` | Creates and opens a real immutable analysis snapshot with deterministic mock scores; checks browser controls and SVG/PDF model exports from that snapshot. |
 | `CompleteCopilotSessionIT` | `72-complete-copilot-run-result.png` | Packaged application, PostgreSQL and real persisted operations with deterministic mock model; checks cancellation, recovery, selected snapshot and result/export behavior. |
 | `ScenarioArchitectureAcceptanceTest` with `ScenarioBrowserWalkthrough` | `73-scenario-requirement.png` through `77-scenario-mobile.png`, plus native-package/publication captures `78`–`85` | Real Spring application, catalogue, provider pipeline, persistence and browser; only remote model HTTP responses are replaced by authored Spring playback. These are not recorded live-model outputs. |
@@ -54,8 +71,14 @@ image and connects the Selenium container to `http://taxonomy.test:8080/`.
 Credentials belong to disposable test setup, not to deployment instructions.
 The shared container helper waits for `/actuator/health/readiness`; the general
 generator additionally waits for authenticated `/api/status/startup` to report
-`ready`. Do not substitute AI availability or administrative diagnostics for
-catalogue readiness.
+`ready`. Its semantic and hybrid searches use the pinned local ONNX model
+bundle provisioned by the screenshot profile, mounted read-only with downloads
+disabled. Before opening the browser, it waits for `/api/embedding/status` to
+report node semantic search ready with indexed nodes. Do not substitute AI
+availability or administrative diagnostics for catalogue readiness.
+
+Workspace proposal acceptance and catalogue graph traversal use distinct relation
+scopes; a committed workspace relation does not establish catalogue graph output.
 
 The separate scenario profile enables browser capture with no provider secrets:
 
@@ -90,6 +113,33 @@ The general generator now writes `14-navbar-settings.png`; a retained
 A current test-owner path is a reproduction recipe, not proof of an older PNG's
 source revision. Without matching capture metadata, describe the image as an
 illustration and leave its exact source version unverified.
+
+The following general-generator captures were retired because they built the
+displayed workflow result directly in the DOM or relied on an unsupported relation
+scope. Their retained PNGs are historical illustrations and are **not outputs of
+the repaired generator**. Reintroduce a
+capture only through a real operation and its existing UI/test owner.
+
+| Retired filenames | Unsupported capture boundary |
+|---|---|
+| `20-architecture-view.png`, `38-architecture-view-detailed.png` | These captures depended on a retired catalogue relation-write route. The current Git-authoritative command writes a workspace projection that does not enrich catalogue propagation. Use the current persisted-workbench owner for new evidence. |
+| `32-search-graph.png` | The default workspace projection can remain `NOT_BUILT`, which graph-semantic search rejects. The page does not invoke the exported provisioning hook; this owner has no verified real preparation for a supported empty projection. The old capture substituted authored matches. |
+| `37-graph-with-accepted-relation.png` | Accepted workspace proposals do not establish catalogue Graph results. The old capture substituted an authored downstream result. The real proposal-acceptance capture `36` remains. |
+| `48-compare-modal-branches.png`, `49-copy-back-button.png`, `50-read-only-mode-badge.png`, `51-context-bar-with-origin.png` | Invented branch options, context markup and read-only badges. |
+| `52-merge-conflict-modal.png`, `53-merge-conflict-resolved.png`, `54-cherry-pick-conflict-modal.png` | Authored conflict outputs and fabricated successful resolution. |
+| `55-sync-diverged-state.png`, `56-sync-resolve-modal.png`, `63-sync-tab-up-to-date.png`, `64-sync-tab-ahead.png`, `65-sync-tab-behind.png` | Invented synchronization state; resolve dialog opened without an actual diverged workflow. |
+| `57-variant-delete-confirm.png`, `67-version-restore-confirm.png` | Hand-built variant list and restoration confirmation. |
+| `58-merge-success-toast.png`, `59-cherry-pick-success-toast.png`, `60-merge-preview-modal.png`, `61-merge-preview-fast-forward.png`, `62-cherry-pick-preview-modal.png` | Invented operation success and preview results. |
+| `68-diff-view.png` | Authored diff text, independent of a real comparison response. |
+
+The genuine seeded version-history, variants and cherry-pick captures remain.
+Their input DSL fixtures are unchanged. A rejected fixture API response, missing
+search result, unavailable mode or failed analysis now fails its capture instead
+of injecting an expected result or silently skipping it. Failure PNGs and page
+HTML are written to `target/screenshot-failures/`, outside the publishable output.
+Before creating its real proposal, capture `36` uses the relation panel's existing
+Rebuild projection action when needed, then verifies a readable projection at the
+current Git head.
 
 The five images listed in the [historical screenshot appendix](../docs/qa/scenario-screenshots-history.md)
 are not outputs of the current scenario owner. Their retained bytes do not match
@@ -159,11 +209,16 @@ renderers, runs `install -Pscreenshots`, then runs the separate
 `document-template-report-e2e` profile. A dependent publication job downloads the
 artifact and commits changed PNGs to `main` after generation succeeds.
 
-The artifact staging step copies every `docs/images/*.png`, including existing
-files. Artifact presence alone does not prove a particular image was regenerated;
-check the owning JUnit result and capture provenance.
+The workflow clears only the dedicated output directory before generation. All
+four owners write there through `TAXONOMY_DOCS_IMAGE_DIR`, and the artifact includes
+only its PNGs. Retained `docs/images/` assets stay available for documentation link
+checks and application packaging. Failed generation blocks publication and uploads
+the available failure captures and Failsafe reports separately. Check each owning
+JUnit result and capture provenance before claiming a particular view was verified.
 
 To trigger it manually from the GitHub UI: **Actions → Documentation Screenshots → Run workflow**.
+Select a repair branch to verify generation before merging. Branch runs upload
+capture artifacts only; the separate publication job still requires `main`.
 
 ## Current selectors (verify in the owning surface)
 

@@ -149,12 +149,12 @@ The **Taxonomy Architecture Analyzer** helps architects, analysts and requiremen
 | Drill into why a node scored highly | Click 📋 on any scored node |
 | Search for taxonomy nodes (full-text, semantic, hybrid, graph) | Right panel → 🔍 Search Taxonomy panel |
 | Find semantically similar nodes | Click 🔍 Similar on any taxonomy node |
-| Trace upstream/downstream dependencies | Right panel → Graph Explorer |
+| Trace upstream/downstream dependencies | **Graph** tab → Graph Explorer |
 | Run requirement impact analysis | Graph Explorer → 🎯 Req. Impact button |
 | Identify architecture gaps | API: `POST /api/gap/analyze` (§11d) |
 | Get architecture recommendations | API: `POST /api/recommend` (§11e) |
 | Detect architecture patterns | API: `GET /api/patterns/detect` (§11f) |
-| Enriched failure impact with requirement correlation | API: `GET /api/graph/node/{code}/enriched-failure-impact` (§8) |
+| Enriched failure impact with requirement correlation | **Graph → Enriched Impact** (§8) |
 | Review and accept or reject AI-generated relation proposals | Right panel → Relation Proposals panel |
 | View quality metrics for relation proposals | Right panel → 📊 Quality Dashboard panel |
 | Record and analyse requirement coverage | Right panel → 📋 Requirement Coverage panel |
@@ -234,7 +234,7 @@ The right panel (narrower column) contains all interactive tools:
 - **Status menu** — open operational and provider status details; warnings do not open the menu automatically.
 - **Analysis Log** (collapsible) — step-by-step log of the scoring process.
 - **Architecture View Panel** — appears after analysis when the Architecture View checkbox is enabled.
-- **Graph Explorer Panel** — enter a node code and run upstream, downstream, or failure-impact queries.
+- **Graph tab** — opens Graph Explorer; enter a node code and run upstream, downstream, or failure-impact queries.
 - **Relation Proposals Panel** — review, accept, or reject AI-generated relation proposals.
 - **LLM Communication Log** (admin only, collapsible) — raw prompt and response log.
 - **LLM Diagnostics Panel** (admin only, collapsible) — connection test and statistics.
@@ -578,7 +578,9 @@ The main visualization is a **stable impact graph arranged by architecture layer
 - **Click** an element card or connection to view its relevance, distance, inclusion reason, and connected elements in the detail area. From there you can open the element in Graph Explorer.
 - Toggle to **"🏗️ Layer View"** for the compact swimlane representation grouped by architecture layer.
 
-![Illustrative in-page impact view, separate from the saved-snapshot workbench](../images/20-architecture-view.png)
+![Historical in-page impact illustration](../images/20-architecture-view.png)
+
+*Historical illustration (#20): its generator depended on unsupported catalogue-relation seeding and is retired. It does not demonstrate how accepted workspace proposals appear in the current application. For a current persisted result, see the [architecture workbench](COPILOT_AUTOPILOT.md#persisted-architecture-workbench).*
 
 ---
 
@@ -591,16 +593,21 @@ The Graph Explorer traces stored relationships in the primary catalogue around a
 
 ### Selecting a Node
 
-In the **Graph Explorer Panel** (right panel, below the Architecture View Panel):
+Open **Graph** in the main navigation to display the Graph Explorer.
 
-1. Type a node code in the **Node Code** field, or click the **🔎 Graph** button on any taxonomy node in the left panel to pre-fill the field.
-2. Set the **Max Hops** value to control how many relationship steps to traverse (default: 2).
+1. From a taxonomy node, open its actions and choose **Graph**, or select **Open in Graph Explorer** in the Architecture View's element details. The application switches to **Graph**, fills and focuses **Node Code**, and immediately runs an **Upstream** query for that node. The result or its loading, empty, or error message appears in the visible panel.
+2. You can also enter a code directly in **Node Code**, then choose **Upstream**, **Downstream**, **Failure Impact**, or **Enriched Impact**. An empty code shows a prompt; enter a valid catalogue code and retry if the server rejects it.
+3. Set **Max Hops** to limit traversal depth (1–5; default: 2), then run the desired query again. Changing the value alone does not refresh the result.
 
-![Graph Explorer panel](../images/11-graph-explorer-panel.png)
+A new query replaces the previous result. A response arriving late from an older query cannot replace the current selection. An empty result means no matching stored relationships were returned within the selected scope; an error is displayed separately and does not establish that no dependencies exist.
+
+![Graph entry — visible upstream result for BP-1000 in the German interface](../images/graph-entry-current-de.png)
+
+*German interface: choosing **Graph** at node `BP-1000` opens its upstream result. This example returned no connected elements. [Source revision and capture record](../images/ui-documentation-2026-10-25.json).*
 
 ### Upstream Query — "What feeds into this?"
 
-Click **⬆️ Upstream** to find all nodes that feed into the selected node: the nodes it depends on or that realise it. The results appear as a table listing each related node, its relation type, and a relevance indicator.
+Click **⬆️ Upstream** to find all nodes that feed into the selected node: the nodes it depends on or that realise it. The result offers graph and table views with the returned nodes, relationships, and traversal information.
 
 ### Downstream Query — "What depends on this?"
 
@@ -618,7 +625,7 @@ The **enriched failure impact** extends the standard failure impact analysis by 
 - **How many requirements** are affected
 - An aggregated **risk score** that combines the number of affected requirements with the relevance of each element
 
-This is available via the REST API at `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3`. See the [API Reference](API_REFERENCE.md#failure-impact-analysis) for full details.
+Enter a node code and choose **📈 Enriched Impact** in the Graph toolbar to display this result. The same operation is available via the REST API at `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3`. See the [API Reference](API_REFERENCE.md#failure-impact-analysis) for full details.
 
 > **Tip:** Use enriched failure impact together with the Requirement Coverage panel (§11c) to prioritise which failures carry the highest business risk.
 
@@ -626,8 +633,8 @@ This is available via the REST API at `GET /api/graph/node/{code}/enriched-failu
 
 The results are presented with a **Graph/Table toggle**:
 
-- **🔗 Graph view** (default) — an interactive force-directed node-link diagram built with D3.js. Nodes are coloured by taxonomy category, and the origin node is highlighted with a thick border. You can drag nodes to rearrange the layout, hover for details, and click a node to select it for further queries.
-- **📊 Table view** — the traditional tabular display with sortable columns.
+- **🔗 Graph view** (default) — an interactive force-directed node-link diagram built with D3.js. Nodes are coloured by taxonomy category, and the origin node is highlighted with a thick border. You can drag nodes to rearrange the layout and hover for details. Clicking a graph node fills **Node Code**; then choose the desired query button in the toolbar.
+- **📊 Table view** — lists the returned elements and relationships. A node-code link fills **Node Code** for your next toolbar query.
 
 The table/graph shows:
 
@@ -645,9 +652,11 @@ The table/graph shows:
 
 ![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
 
-Accepted proposals also appear as graph edges. After accepting a proposal (see [Section 9](#9-working-with-relation-proposals)), the new relation is immediately visible in the Graph Explorer:
+Accepted proposals belong to the selected workspace's relation projection. The Graph Explorer queries the primary catalogue; accepting a workspace proposal does not automatically add an edge to this catalogue query. Review the decision in the selected workspace's relation view (see [Section 9](#9-working-with-relation-proposals)).
 
-![Graph Explorer with accepted relation](../images/37-graph-with-accepted-relation.png)
+![Historical Graph illustration with seeded relations](../images/37-graph-with-accepted-relation.png)
+
+*Historical illustration (#37): its generator used unsupported catalogue-relation seeding. It is not evidence that the current Graph Explorer exposes accepted workspace proposals; see [screenshot provenance](../../.github/copilot-ref-screenshots.md).*
 
 ---
 
@@ -698,10 +707,10 @@ The Proposal Review Queue shows all proposals with filtering by status. Use the 
 
 For each row in the proposals table:
 
-- Click **Accept** to approve the relation. A confirmed `TaxonomyRelation` is created in the knowledge base and the proposal status changes to ACCEPTED.
+- Click **Accept** to approve the relation in the selected workspace. The decision is saved in that workspace scope and the proposal status changes to ACCEPTED.
 - Click **Reject** to decline the relation. The proposal status changes to REJECTED.
 
-Once accepted, the proposal displays a green **Accepted** badge. The accepted relation is immediately visible in the Graph Explorer:
+Once accepted, the proposal displays a green **Accepted** badge in the review view. Catalogue Graph queries have a separate scope and do not automatically include this workspace decision:
 
 ![Accepted proposal](../images/36-proposal-accepted.png)
 
@@ -932,7 +941,7 @@ The **Search Taxonomy** panel (right column, collapsible) provides four search m
 4. Click **🔍 Search** or press Enter.
 5. Results appear as a clickable list. Click any result to highlight the node in the taxonomy tree.
 
-Screenshots of each search mode in action:
+Search-mode illustrations (the Graph capture is historical):
 
 ![Full-text search results](../images/29-search-fulltext.png)
 
@@ -940,9 +949,11 @@ Screenshots of each search mode in action:
 
 ![Hybrid search results](../images/31-search-hybrid.png)
 
-![Graph search results](../images/32-search-graph.png)
+![Historical graph-semantic search illustration](../images/32-search-graph.png)
 
-Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. Nonempty branch projections and unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
+*Historical illustration (#32): its generator did not establish the selected workspace's required relation projection. A fresh workspace can return **409 NOT_BUILT**; this image is not current acceptance evidence for graph-semantic search. Graph Explorer node queries are a separate operation.*
+
+Graph mode checks the selected repository, scope and exact branch head on each request. Relation similarity is available only for the migration-compatible central default branch while the canonical relation reader permits its legacy fallback. A proven empty branch projection returns global node matches with empty relation statistics. A missing workspace relation projection can return **409 NOT_BUILT**. Nonempty branch projections and other unready selected scopes return HTTP 503; they do not return partial graph results. The `graphReady` status reports global model/index prerequisites, so a visible Graph option does not guarantee that the selected scope can be searched. Branch semantic indexing remains follow-up work (#741).
 
 ### Embedding Status
 
@@ -1495,7 +1506,7 @@ For details on how to use these features step by step, see [§12 Versions Tab](#
 
 **Scope:** Materialization updates the selected authorized repository/workspace projection, not every relation in an installation. Review the target and preview before applying changes; see [Architecture editor](ARCHITECTURE_EDITOR.md) for the semantic editor contract.
 
-When you edit the DSL and commit changes, the architecture model in your DSL text needs to be **materialized** (applied) to the application database so that other parts of the application — the Graph Explorer, Relations Browser, and Architecture View — reflect those changes.
+When you edit the DSL and commit changes, **materialization** builds the selected workspace view used by the Relations Browser. It does not populate the primary catalogue used by the Graph Explorer or change an existing immutable analysis snapshot.
 
 - **Full materialization** replaces the relations of the selected authorized projection with the DSL content.
 - **Incremental materialization** applies only the differences (delta) between the current database state and the DSL, which is faster for large models.
@@ -1508,7 +1519,7 @@ When the AI analyses a business requirement, it generates **hypotheses** — pro
 
 1. The AI proposes a relation (e.g., "CP-1023 REALIZES BP-1327").
 2. You review it in the **Relations** tab using the Accept / Reject buttons.
-3. **Accepted** hypotheses become real architecture relations and appear in the Graph Explorer and DSL.
+3. **Accepted** hypotheses are saved as architecture relations in the selected workspace. Inspect that workspace context; the primary-catalogue Graph Explorer is a separate scope.
 4. **Rejected** hypotheses are marked as rejected and excluded from future exports.
 
 ### Commit History Search
@@ -1608,7 +1619,9 @@ Non-protected variant branches can be deleted using the **🗑 Delete** button. 
 
 When viewing a variant in **READ-ONLY** mode, a **📤 Copy Back** button appears in the Context Bar. This allows you to selectively transfer elements and relations from the read-only variant back to your editable workspace — useful for cherry-picking ideas from experimental branches.
 
-![Copy Back Button](../images/49-copy-back-button.png)
+> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
+
+![Historical fixture — Copy Back Button](../images/49-copy-back-button.png)
 
 ### Merge Preview
 
@@ -1636,19 +1649,27 @@ When a merge or cherry-pick cannot be completed automatically (both sides modifi
 - **Manual editing**: A textarea where you compose the final resolved content
 - **Resolve & Commit**: Commits the resolved content to the target branch
 
-![Merge conflict resolution modal](../images/52-merge-conflict-modal.png)
+> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
+
+![Historical fixture — Merge conflict resolution modal](../images/52-merge-conflict-modal.png)
 
 Cherry-pick conflicts use the same modal with a cherry-pick-specific title:
 
-![Cherry-pick conflict resolution](../images/54-cherry-pick-conflict-modal.png)
+> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
+
+![Historical fixture — Cherry-pick conflict resolution](../images/54-cherry-pick-conflict-modal.png)
 
 The cherry-pick preview shows the operation that will be performed:
 
-![Cherry-pick preview modal](../images/62-cherry-pick-preview-modal.png)
+> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
+
+![Historical fixture — Cherry-pick preview modal](../images/62-cherry-pick-preview-modal.png)
 
 After resolution, a success toast notification confirms the operation:
 
-![Cherry-pick success toast](../images/59-cherry-pick-success-toast.png)
+> Historical presentation fixture: this image used injected UI state and does not demonstrate a completed application operation. See [screenshot provenance](../../.github/copilot-ref-screenshots.md).
+
+![Historical fixture — Cherry-pick success toast](../images/59-cherry-pick-success-toast.png)
 
 ### Sync with Shared Repository
 
@@ -1709,7 +1730,7 @@ The **Git Status Bar** is inside the **Status** menu. It displays:
 | **N versions** | Total number of commits on the current branch |
 | **Sync: status** | Synchronisation state with the shared repository (synced / behind / ahead / diverged) |
 
-When the projection shows **STALE**, it means the DSL has been changed but not yet materialized into the database. Go to the DSL Editor and click **Materialize** to bring the database up to date.
+When the projection shows **STALE**, it means the DSL has been changed but not yet materialized into the database. Go to the DSL Editor and click **Materialize** to update the selected workspace projection.
 
 ### Context Navigation Bar
 
@@ -1937,7 +1958,7 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 - Run proposals soon after analysis while the context is fresh.
 - Review the AI rationale before accepting; high confidence does not always mean correct.
 - Reject proposals where the rationale does not make architectural sense, even if the confidence score is high.
-- Accepted proposals become confirmed relations in the knowledge base and affect future Graph Explorer results.
+- Accepted proposals are saved in the selected workspace. Review that workspace context; catalogue Graph queries do not automatically include its accepted proposals.
 
 ### Exporting
 
@@ -1967,14 +1988,14 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 | **Confidence score** | A 0–100 % value indicating how strongly the AI believes a proposed relation is correct |
 | **Coverage gap** | A node that has requirement coverage but lacks expected architectural neighbours |
 | **Enriched failure impact** | Failure impact analysis that includes requirement coverage data and risk scoring |
-| **Graph Explorer** | The right-panel tool for running upstream, downstream, and failure-impact queries on the relation graph |
+| **Graph Explorer** | The tool in the Graph tab for upstream, downstream, and failure-impact queries on stored relationships |
 | **Hybrid search** | A retrieval strategy combining full-text and semantic search rankings (available via API) |
 | **Hypothesis** | A provisional relation generated during LLM analysis, awaiting human review before becoming permanent |
 | **Information Product** | A specific, structured output of a business process (TOGAF Data Architecture) |
 | **Interactive Mode** | An analysis mode that scores one tree level at a time instead of the whole tree at once |
 | **Leaf node** | A taxonomy node with no children; the most specific level of the taxonomy |
 | **LLM** | Large Language Model — the AI component used for scoring, justification, and proposal generation |
-| **Materialization** | The process of converting DSL text into database entities (TaxonomyRelation, etc.) |
+| **Materialization** | Building the selected workspace read projection from its saved DSL model |
 | **Match Legend** | The colour scale on the right panel showing what each shade of green corresponds to in terms of score |
 | **NAF** | NATO Architecture Framework — the standard for describing NATO architectures |
 | **Pattern detection** | Checking whether predefined architecture patterns are complete or partially present in the relation graph |

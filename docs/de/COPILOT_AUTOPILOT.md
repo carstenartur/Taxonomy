@@ -32,6 +32,10 @@ Jede erfolgreiche Copilot-Vollanalyse speichert einen unveränderlichen Architek
 
 Die Werkzeugleiste bietet den Architektureditor, eine Druckansicht und ein aufklappbares Exportmenü. SVG/PDF und verfügbare Berichts-/Modellexporte sind dort zusammengefasst.
 
+![Persistierte Architektur-Workbench — ausgewählter Beispiel-Snapshot](../images/architecture-workbench-current-de.png)
+
+*Anwendungsaufnahme eines persistierten Beispiel-Snapshots mit dem Anbieter `MOCK`. Suche, Fokus und Zoom untersuchen diesen ausgewählten Stand; die Bearbeitung beginnt über **Architektureditor**. [Quellstand, Snapshot und Bildnachweis](../images/ui-documentation-2026-10-25.json). Das Bild ist keine Qualitätsprüfung eines realen KI-Anbieters und keine Abnahme aller Exportformate.*
+
 Browseransicht, SVG-Download und PDF-Download verwenden dieselbe deterministische serverseitige Szene mit denselben Koordinaten. Die interaktiven Browserwerkzeuge verändern nur Sichtbarkeit, Auswahl und Bildausschnitt; sie berechnen oder verändern die persistierte Architektur nicht stillschweigend neu.
 
 ## Ergebnisoberfläche eines vollständigen Laufs
