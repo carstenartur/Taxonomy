@@ -117,10 +117,7 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git checkout -b "$BRANCH"
 
-          ./mvnw -B versions:set \
-            -DprocessAllModules=true \
-            -DnewVersion="$NEXT_VERSION" \
-            -DgenerateBackupPoms=false
+          bash .github/scripts/set-maven-versions.sh "$NEXT_VERSION"
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" update-release-metadata \
             --root . \
             --version "$NEXT_VERSION"

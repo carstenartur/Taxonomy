@@ -12,6 +12,7 @@ DRY_RUN=${DRY_RUN:-false}
 SOURCE_BRANCH=${SOURCE_BRANCH:-main}
 RENDER_DEPLOY_HOOK_URL=${RENDER_DEPLOY_HOOK_URL:-}
 DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}
+MAVEN_VERSION_SETTER=${MAVEN_VERSION_SETTER:-.github/scripts/set-maven-versions.sh}
 
 TAG_NAME="v${RELEASE_VERSION}"
 MAJOR_MINOR=$(echo "${RELEASE_VERSION}" | sed 's/\.[^.]*$//')
@@ -357,7 +358,7 @@ echo "Dry run: $DRY_RUN"
 run_release_plan_check "$RELEASE_CHECK_STATE" true
 
 if [[ "$STATE" == "new" ]]; then
-  ./mvnw -B versions:set -DprocessAllModules=true -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
+  bash "$MAVEN_VERSION_SETTER" "$RELEASE_VERSION"
   update_release_metadata "$RELEASE_VERSION" --release
   check_version_state --mode release --expected-version "$RELEASE_VERSION"
   # Validate the actual release-state reactor before committing it. The clean-check
@@ -403,7 +404,7 @@ if [[ "$MAIN_ALREADY_ADVANCED" == "true" ]]; then
   check_version_state --mode development --expected-version "$NEXT_VERSION"
 else
   git checkout --detach "$RELEASE_COMMIT"
-  ./mvnw -B versions:set -DprocessAllModules=true -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
+  bash "$MAVEN_VERSION_SETTER" "$NEXT_VERSION"
   update_release_metadata "$NEXT_VERSION"
   check_version_state --mode development --expected-version "$NEXT_VERSION"
   stage_version_metadata
