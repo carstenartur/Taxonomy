@@ -7,6 +7,9 @@ on:
       - 'pom.xml'
       - '.mvn/verification-suites.json'
       - '.github/workflows/scenario-acceptance.yml'
+      - '.github/actions/document-rendering/**'
+      - '.github/scripts/apt-packages.sh'
+      - '.github/scripts/install-document-rendering.sh'
   workflow_dispatch:
 
 permissions:
@@ -29,13 +32,15 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
+      - name: Install document rendering tools
+        uses: ./.github/actions/document-rendering
+        with:
+          variant: writer-draw
       - name: Run sourced example scenario with real browser and remote LLM playback
         run: >-
           ./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance
       - name: Independently render and check Word and Visio exports
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-draw poppler-utils
           ./mvnw -B -ntp -pl taxonomy-tooling -am compile -DskipTests
           java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest.xml 1 \

@@ -228,6 +228,17 @@
                 <version>${exec-maven-plugin.version}</version>
                 <executions>
                     <execution>
+                        <id>stage-reactor-interoperability-application</id>
+                        <phase>pre-integration-test</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <skip>${taxonomy.interoperability.skip}</skip>
+                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                            <executable>bash</executable>
+                            <arguments><argument>.github/scripts/stage-ui-application.sh</argument></arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>validate-original-reactor-junit-outcomes</id><phase>verify</phase><goals><goal>exec</goal></goals>
                         <configuration><skip>${taxonomy.quality.skip}</skip>
                             <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory><executable>${java.home}/bin/java</executable>

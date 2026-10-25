@@ -41,13 +41,7 @@ jobs:
         run: bash .github/scripts/configure-docker-mirror.sh
 
       - name: Install document rendering tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libreoffice-writer \
-            poppler-utils
+        uses: ./.github/actions/document-rendering
 
       - name: Download and verify pinned embedding model
         env:
@@ -65,7 +59,7 @@ jobs:
           ./mvnw -B -pl taxonomy-build pre-integration-test \
             -Dtaxonomy.ui.skip=false \
             -Dtaxonomy.quality.skip=true \
-            -Dtaxonomy.playwright.install.arguments="exec -- playwright install --with-deps chromium"
+            -Dtaxonomy.playwright.install.arguments="run install:playwright:github -- --chromium-only"
 
       - name: Generate document-template browser and report screenshots
         env:

@@ -29,7 +29,9 @@ run_maven_release_check() {
   local state=$1
   local profiles=$2
   shift 2
-  ./mvnw -B "-P${profiles}" "$@" \
+  # The version transition creates a new commit after the workflow was triggered.
+  # All application manifests and driver evidence must identify that release source.
+  GITHUB_SHA="$RELEASE_COMMIT" ./mvnw -B "-P${profiles}" "$@" \
     -DreleaseVersion="$RELEASE_VERSION" \
     -DnextDevelopmentVersion="$NEXT_VERSION" \
     -DreleaseCheckCurrentState="$state"

@@ -50,6 +50,13 @@ runtime identity directly in JUnit. The standalone lane owners are
 `.github/ui-verification-pom.xml` profiles `contracts`, `shard`, `interoperability`
 and `image`; none adds a workflow or reduces a required status.
 
+In the unsharded reactor, `taxonomy-build` stages the packaged application's
+commit-bound manifest during `pre-integration-test`, after `clean` and application
+packaging. Split CI still downloads its independently packaged application.
+Release verification binds `GITHUB_SHA` to the release version commit, which can
+differ from the workflow's triggering snapshot commit. Staging rejects a source
+commit that does not match the checkout; local runs without `GITHUB_SHA` use `HEAD`.
+
 Published XML counters must match actual testcase occurrences and terminal
 outcomes, including nested suite aggregates and parameterized/skipped cases.
 Misplaced outcomes, ambiguous multiple outcomes, rerun/flaky evidence and nonzero
@@ -97,7 +104,7 @@ The single `requiresWebKit: true` shard restores or prepares its WebKit system
 packages on its own runner, then installs them offline on that same runner.
 Independent GitHub-hosted jobs may receive different image revisions during a
 rollout; there is no cross-job package producer whose image must match by chance.
-The exact cache key still includes the installer/lockfile hash and that runner's
+The exact cache key still includes the installer/shared APT helper/lockfile hash and that runner's
 `ImageOS` and `ImageVersion` (there is no `runner.image` Actions context field).
 An exact cache hit skips downloads; a cold miss resolves the missing dependency
 closure with the pinned Playwright CLI and downloads the `.deb` files without
@@ -122,6 +129,33 @@ leaves system packages to the preceding step. `TAXONOMY_PLAYWRIGHT_PACKAGES_DIR`
 can override the default `.cache/playwright-system-packages` directory at the
 repository root. The offline guarantee covers apt packages, not the separately
 cached Playwright browser downloads.
+
+### Document rendering package cache
+
+Scenario acceptance, document E2E, documentation screenshots and release
+verification use `.github/actions/document-rendering` before their long-running
+verification steps. The action reuses `apt-packages.sh`, the same hosted mirror
+preference, bounded APT retries and checksum-verified offline installation as
+Playwright. This prevents direct `apt-get` calls in those workflows from bypassing
+the existing native-package safeguards.
+
+Document packages are cached separately from browser dependencies. The key binds
+the installer/action hashes, runner OS, image revision, architecture and package
+variant. Archives live in `runner.temp`, outside the checkout: APT's private
+`partial/` directory must not enter repository-source inventories. Standalone
+installer invocations must set `RUNNER_TEMP` or an explicit
+`TAXONOMY_DOCUMENT_PACKAGES_DIR`. Only scenario acceptance needs `writer-draw`; the other consumers use
+`writer` (LibreOffice Writer and Poppler). An exact hit skips both APT update and
+downloads. A miss downloads the complete missing dependency closure once, then
+installs it offline and saves the cache only after successful installation and
+tool checks. Download and offline installation each have a 470-second command
+budget. An offline failure never retries online. No cross-image or prefix cache
+restores are accepted.
+
+The two document-only browser preparations use the pinned installer's
+`--chromium-only` mode. They retain Maven's prerequisite/test lifecycle, use the
+hosted runner's Chromium system libraries and do not invoke `--with-deps` or
+download Firefox/WebKit binaries for a Chromium-only check.
 
 Validate a cold-cache and a cache-hit workflow run on hosted runners before
 claiming download or installation timing improvements; local contract tests do
@@ -270,7 +304,7 @@ the standalone unsharded lifecycle retains its configured module cache behavior.
 | Container and database runtimes | Testcontainers needs an available container engine; Maven does not provision one. `ci` excludes SQL Server and Oracle, whose separate profiles still need it. |
 | Helm-dependent tests | `HelmArtemisContractTest`, `HelmConstrainedSmokeContractTest` and `SetupInfrastructureTest` depend on installed Helm. Some missing-tool decisions depend on `CI` or skip the test locally. |
 | Native product prerequisites | The JUnit-owned interoperability round trips need pipx, StrictDoc dependencies, Xvfb and the pinned Archi runtime. Docker image and browser checks need their real native runtimes. |
-| Native rendering prerequisites | Canonical `ci` enables observability and document E2E including real DOCX rendering. LibreOffice and Poppler must be installed; the existing sliced document workflow remains its CI owner. |
+| Native rendering prerequisites | Canonical `ci` enables observability and document E2E including real DOCX rendering. LibreOffice and Poppler must be installed; the document and release workflows provision them before verification. |
 | Remote acceptance endpoints | Root `verify` recounts original reactor and native-browser XML after Failsafe. Remote publication and deployment checks additionally require the corresponding external endpoint and commit-bound CI artifacts. |
 | Deployment and hosted security services | Live Kubernetes deployment/recovery and hosted CodeQL/Trivy publication still depend on the corresponding infrastructure and credentials. Production image build/identity assertions are included in canonical Maven. |
 

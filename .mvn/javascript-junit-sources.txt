@@ -32,6 +32,7 @@
 .github/scripts/document-template-layout.test.mjs
 .github/scripts/document-template-local-edit-fixtures.test.mjs
 .github/scripts/document-template-local-edit.test.mjs
+.github/scripts/document-rendering-packages.test.mjs
 .github/scripts/dsl-command-feedback.test.mjs
 .github/scripts/integration-startup.test.mjs
 .github/scripts/integrations-review.test.mjs

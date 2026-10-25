@@ -518,7 +518,7 @@ jobs:
         if: matrix.requiresWebKit == true
         id: cache-key
         env:
-          PACKAGE_KEY_PREFIX: ${{ runner.os }}-taxonomy-ui-playwright-packages-v1-${{ hashFiles('.github/scripts/install-playwright-github.sh', '.github/package-lock.json') }}
+          PACKAGE_KEY_PREFIX: ${{ runner.os }}-taxonomy-ui-playwright-packages-v1-${{ hashFiles('.github/scripts/install-playwright-github.sh', '.github/scripts/apt-packages.sh', '.github/package-lock.json') }}
         run: |
           : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}"
           echo "key=${PACKAGE_KEY_PREFIX}-${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"

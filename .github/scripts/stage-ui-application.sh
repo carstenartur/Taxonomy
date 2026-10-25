@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source_commit=${GITHUB_SHA:-$(git rev-parse HEAD)}
+[[ "$source_commit" == "$(git rev-parse HEAD)" ]] || {
+  echo '::error::Application source commit does not match the current checkout HEAD'
+  exit 1
+}
+
 mapfile -t jars < <(find taxonomy-app/target -maxdepth 1 -type f \
   -name 'taxonomy-app-*.jar' ! -name 'original-*' \
   ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
@@ -13,8 +19,8 @@ mkdir -p target/ui-application
 jar_name=$(basename "${jars[0]}")
 cp "${jars[0]}" "target/ui-application/${jar_name}"
 jar_sha=$(sha256sum "target/ui-application/${jar_name}" | awk '{print $1}')
-source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
-jq -n --arg sourceCommit "$GITHUB_SHA" --arg sourceTree "$source_tree" \
+source_tree=$(git rev-parse "${source_commit}^{tree}")
+jq -n --arg sourceCommit "$source_commit" --arg sourceTree "$source_tree" \
   --arg jarName "$jar_name" --arg sha256 "$jar_sha" \
   '{schemaVersion:1,sourceCommit:$sourceCommit,sourceTree:$sourceTree,jarName:$jarName,sha256:$sha256}' \
   > target/ui-application/manifest.json
