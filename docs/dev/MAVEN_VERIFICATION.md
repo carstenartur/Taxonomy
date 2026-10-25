@@ -104,7 +104,7 @@ The single `requiresWebKit: true` shard restores or prepares its WebKit system
 packages on its own runner, then installs them offline on that same runner.
 Independent GitHub-hosted jobs may receive different image revisions during a
 rollout; there is no cross-job package producer whose image must match by chance.
-The exact cache key still includes the installer/lockfile hash and that runner's
+The exact cache key still includes the installer/shared APT helper/lockfile hash and that runner's
 `ImageOS` and `ImageVersion` (there is no `runner.image` Actions context field).
 An exact cache hit skips downloads; a cold miss resolves the missing dependency
 closure with the pinned Playwright CLI and downloads the `.deb` files without
@@ -129,6 +129,30 @@ leaves system packages to the preceding step. `TAXONOMY_PLAYWRIGHT_PACKAGES_DIR`
 can override the default `.cache/playwright-system-packages` directory at the
 repository root. The offline guarantee covers apt packages, not the separately
 cached Playwright browser downloads.
+
+### Document rendering package cache
+
+Scenario acceptance, document E2E, documentation screenshots and release
+verification use `.github/actions/document-rendering` before their long-running
+verification steps. The action reuses `apt-packages.sh`, the same hosted mirror
+preference, bounded APT retries and checksum-verified offline installation as
+Playwright. This prevents direct `apt-get` calls in those workflows from bypassing
+the existing native-package safeguards.
+
+Document packages are cached separately from browser dependencies. The key binds
+the installer/action hashes, runner OS, image revision, architecture and package
+variant. Only scenario acceptance needs `writer-draw`; the other consumers use
+`writer` (LibreOffice Writer and Poppler). An exact hit skips both APT update and
+downloads. A miss downloads the complete missing dependency closure once, then
+installs it offline and saves the cache only after successful installation and
+tool checks. Download and offline installation each have a 470-second command
+budget. An offline failure never retries online. No cross-image or prefix cache
+restores are accepted.
+
+The two document-only browser preparations use the pinned installer's
+`--chromium-only` mode. They retain Maven's prerequisite/test lifecycle, use the
+hosted runner's Chromium system libraries and do not invoke `--with-deps` or
+download Firefox/WebKit binaries for a Chromium-only check.
 
 Validate a cold-cache and a cache-hit workflow run on hosted runners before
 claiming download or installation timing improvements; local contract tests do

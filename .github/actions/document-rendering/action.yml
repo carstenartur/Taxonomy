@@ -1,0 +1,74 @@
+name: Prepare document rendering tools
+description: Cache signed native packages for this exact runner image and install them offline
+inputs:
+  variant:
+    description: writer for DOCX/PDF, or writer-draw for DOCX/Visio/PDF
+    default: writer
+runs:
+  using: composite
+  steps:
+    - name: Identify document package cache
+      id: cache-key
+      shell: bash
+      env:
+        VARIANT: ${{ inputs.variant }}
+        PACKAGE_KEY_PREFIX: ${{ runner.os }}-taxonomy-document-packages-v1-${{ hashFiles('.github/scripts/apt-packages.sh', '.github/scripts/install-document-rendering.sh', '.github/actions/document-rendering/action.yml') }}
+      run: |
+        : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}" "${RUNNER_ARCH:?Missing runner architecture}"
+        [[ "$VARIANT" == writer || "$VARIANT" == writer-draw ]] || { echo 'Unknown document package variant' >&2; exit 2; }
+        echo "key=${PACKAGE_KEY_PREFIX}-${VARIANT}-${ImageOS}-${ImageVersion}-${RUNNER_ARCH}" >> "$GITHUB_OUTPUT"
+    - name: Restore document system packages (exact runner image)
+      id: packages
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          .cache/document-system-packages/*.deb
+          .cache/document-system-packages/SHA256SUMS
+        key: ${{ steps.cache-key.outputs.key }}
+    - name: Check package cache runner compatibility
+      shell: bash
+      env:
+        PACKAGE_KEY: ${{ steps.cache-key.outputs.key }}
+        PACKAGE_CACHE_HIT: ${{ steps.packages.outputs.cache-hit }}
+        PACKAGE_CACHE_MATCHED_KEY: ${{ steps.packages.outputs.cache-matched-key }}
+      run: |
+        : "${ImageOS:?Missing hosted runner ImageOS}" "${ImageVersion:?Missing hosted runner ImageVersion}" "${RUNNER_ARCH:?Missing runner architecture}"
+        [[ "$PACKAGE_KEY" == *"-${ImageOS}-${ImageVersion}-${RUNNER_ARCH}" ]] || {
+          echo '::error title=Document rendering packages::Package cache does not match this runner image.'
+          exit 1
+        }
+        if [[ -n "$PACKAGE_CACHE_MATCHED_KEY" || "$PACKAGE_CACHE_HIT" == true ]]; then
+          [[ "$PACKAGE_CACHE_HIT" == true && "$PACKAGE_CACHE_MATCHED_KEY" == "$PACKAGE_KEY" ]] || {
+            echo '::error title=Document rendering packages::Only an exact package cache hit may be consumed.'
+            exit 1
+          }
+        fi
+    - name: Download document packages
+      if: steps.packages.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VARIANT: ${{ inputs.variant }}
+      run: |
+        timeout --foreground 470s bash .github/scripts/install-document-rendering.sh --only-download "$VARIANT" || {
+          status=$?
+          echo "::error title=Document rendering packages::Download failed (exit $status; 124 means timeout). Document tests have not started."
+          exit "$status"
+        }
+    - name: Install document packages offline
+      shell: bash
+      env:
+        VARIANT: ${{ inputs.variant }}
+      run: |
+        timeout --foreground 470s bash .github/scripts/install-document-rendering.sh --offline-mode "$VARIANT" || {
+          status=$?
+          echo "::error title=Document rendering packages::Offline installation failed (exit $status). No mirror fallback was attempted."
+          exit "$status"
+        }
+    - name: Save document system packages (exact runner image)
+      if: steps.packages.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          .cache/document-system-packages/*.deb
+          .cache/document-system-packages/SHA256SUMS
+        key: ${{ steps.cache-key.outputs.key }}

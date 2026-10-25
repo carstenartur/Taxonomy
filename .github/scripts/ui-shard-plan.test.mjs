@@ -159,7 +159,7 @@ test('CI prepares packages once, restores an exact image cache and bounds offlin
       'The other five shards must not restore, prepare or install system packages');
     assert.doesNotMatch(phase, /continue-on-error:/);
   }
-  assert.match(identify, /hashFiles\('\.github\/scripts\/install-playwright-github\.sh', '\.github\/package-lock\.json'\)/);
+  assert.match(identify, /hashFiles\('\.github\/scripts\/install-playwright-github\.sh', '\.github\/scripts\/apt-packages\.sh', '\.github\/package-lock\.json'\)/);
   assert.match(identify, /\$\{ImageOS\}-\$\{ImageVersion\}/);
   assert.match(cache, /actions\/cache\/restore@/);
   assert.match(save, /actions\/cache\/save@/);
@@ -376,10 +376,27 @@ test('non-WebKit shards skip apt and WebKit while Maven still installs pinned Ch
 test('unknown and incompatible installer flags fail before invoking apt or browsers', async t => {
   const fixture = await installerFixture(t);
   for (const flags of [['--unknown'], ['--only-download', '--offline-mode'],
-    ['--only-download', '--skip-webkit'], ['--offline-mode', '--browsers-only']]) {
+    ['--only-download', '--skip-webkit'], ['--offline-mode', '--browsers-only'],
+    ['--chromium-only', '--only-download'], ['--chromium-only', '--system-packages-only'],
+    ['--chromium-only', '--offline-mode']]) {
     const result = await fixture.run(flags);
     assert.equal(result.status, 2);
     assert.equal(result.commands, '');
+  }
+});
+
+test('Chromium-only document preparation uses the pinned browser without apt or unrelated browsers', async t => {
+  const fixture = await installerFixture(t);
+  const result = await fixture.run(['--chromium-only']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.commands, 'playwright install chromium\n');
+  for (const name of ['document-template-report-e2e.yml', 'documentation-screenshots.yml']) {
+    const workflow = await readFile(path.join(repoRoot, '.github/workflows', name), 'utf8');
+    assert.match(workflow, /-Dtaxonomy\.playwright\.install\.arguments="run install:playwright:github -- --chromium-only"/);
+    assert.doesNotMatch(workflow, /install --with-deps/);
+    if (workflow.includes('pull_request:')) {
+      assert.ok(workflow.includes("'.github/scripts/install-playwright-github.sh'"));
+    }
   }
 });
 

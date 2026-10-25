@@ -9,6 +9,10 @@ on:
       - '.github/package-lock.json'
       - '.github/scripts/document-template-report-download.mjs'
       - '.github/workflows/document-template-report-e2e.yml'
+      - '.github/actions/document-rendering/**'
+      - '.github/scripts/apt-packages.sh'
+      - '.github/scripts/install-document-rendering.sh'
+      - '.github/scripts/install-playwright-github.sh'
       - 'taxonomy-app/src/main/**'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
@@ -52,13 +56,7 @@ jobs:
         run: bash .github/scripts/configure-docker-mirror.sh
 
       - name: Install document rendering tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libreoffice-writer \
-            poppler-utils
+        uses: ./.github/actions/document-rendering
 
       - name: Build and install the packaged application reactor
         run: |
@@ -73,7 +71,7 @@ jobs:
             -DskipTests \
             -Dtaxonomy.ui.skip=false \
             -Dtaxonomy.quality.skip=true \
-            -Dtaxonomy.playwright.install.arguments="exec -- playwright install --with-deps chromium"
+            -Dtaxonomy.playwright.install.arguments="run install:playwright:github -- --chromium-only"
 
       - name: Download the template-backed report in Playwright
         env:
