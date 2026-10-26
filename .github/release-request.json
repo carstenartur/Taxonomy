@@ -1,9 +1,9 @@
 {
-  "release_version": "1.5.1",
-  "next_development_version": "1.5.2-SNAPSHOT",
+  "release_version": "1.5.2",
+  "next_development_version": "1.5.3-SNAPSHOT",
   "skip_tests": false,
   "dry_run": false,
   "resume_staged_release": false,
-  "request_revision": 22,
-  "requested_after_commit": "62d63babb6ab7a958e69c12d400d02cf4e058429"
+  "request_revision": 23,
+  "requested_after_commit": "0496c75b3585990a6bccde006b50bb21fa5ff214"
 }
