@@ -20,6 +20,7 @@ final class ReleaseOrchestrationChecks {
     static final String REPO = "example/project";
     static final String PASS = checks("Maven verification", "pass", "SUCCESS");
     static final String PENDING = checks("Maven verification", "pending", "IN_PROGRESS");
+    static final String NO_CHECKS = "no required checks reported on the 'release-temp-1.4.1' branch\n";
     @FunctionalInterface interface Body { void run() throws Exception; }
     record Case(String name, Body body) { }
     record Result(int exit, String output, String calls, String summary, String outputs) { }
@@ -126,6 +127,61 @@ final class ReleaseOrchestrationChecks {
         add(cases, "missing required checks are not successful", () -> {
             try (Fixture f = new Fixture(root)) {
                 f.checks("[]", 0, ""); bad(f.gate("preflight"), "have not registered");
+            }
+        });
+        add(cases, "empty CLI registration response waits for real checks", () -> {
+            try (Fixture f = new Fixture(root)) {
+                f.put("runs-first", pages(""));
+                f.firstChecks("", 1, NO_CHECKS);
+                Result r = f.gate("preflight"); good(r);
+                require(count(r.calls(), "pr checks") == 2, r.calls());
+                require(count(r.calls(), "sleep") == 1, r.calls());
+                noDispatch(r);
+            }
+        });
+        add(cases, "unregistered CLI checks exhaust the bounded wait without success", () -> {
+            try (Fixture f = new Fixture(root)) {
+                f.checks("", 1, NO_CHECKS);
+                Result r = f.gate("preflight"); bad(r, "have not registered");
+                require(count(r.calls(), "pr checks") == 12, r.calls());
+                require(count(r.calls(), "sleep") == 11, r.calls());
+                noDispatch(r);
+            }
+        });
+        add(cases, "empty rollup before any check registration waits for real checks", () -> {
+            try (Fixture f = new Fixture(root)) {
+                f.put("runs-first", pages(""));
+                f.firstChecks("", 1, "no checks reported on the 'release-temp-1.4.1' branch\n");
+                Result r = f.gate("preflight"); good(r);
+                require(count(r.calls(), "pr checks") == 2, r.calls());
+                require(count(r.calls(), "sleep") == 1, r.calls());
+                noDispatch(r);
+            }
+        });
+        add(cases, "approval appearing during registration stops before querying checks again", () -> {
+            try (Fixture f = new Fixture(root)) {
+                f.put("runs-first", pages(""));
+                f.put("runs", pages(run(1, 1, "action_required")));
+                f.firstChecks("", 1, NO_CHECKS);
+                Result r = f.gate("preflight"); bad(r, "Approve workflows to run");
+                require(count(r.calls(), "pr checks") == 1, r.calls());
+                require(count(r.calls(), "sleep") == 1, r.calls());
+                noDispatch(r);
+            }
+        });
+        add(cases, "empty permission error with exit 1 is not a registration delay", () -> {
+            try (Fixture f = new Fixture(root)) {
+                f.checks("", 1, "HTTP 403: Resource not accessible by integration\n");
+                Result r = f.gate("preflight"); bad(r, "HTTP 403");
+                require(count(r.calls(), "pr checks") == 1, r.calls());
+                require(!r.calls().contains("sleep"), r.calls());
+            }
+        });
+        add(cases, "registration diagnostic does not excuse malformed check data", () -> {
+            try (Fixture f = new Fixture(root)) {
+                f.checks("not-json", 1, NO_CHECKS);
+                Result r = f.gate("preflight"); bad(r, "no usable JSON");
+                require(!r.calls().contains("sleep"), r.calls());
             }
         });
         add(cases, "malformed workflow-run response fails closed", () -> {
@@ -364,11 +420,21 @@ final class ReleaseOrchestrationChecks {
                       n=$(step pr)
                       if [[ "$n" == 1 ]]; then cat "$FIXTURE/pr"; else cat "$FIXTURE/pr-after"; fi
                     elif [[ "$1 $2" == 'pr checks' ]]; then
+                      n=$(step checks)
+                      if [[ "$n" == 1 && -f "$FIXTURE/checks-first" ]]; then
+                        cat "$FIXTURE/checks-first"; cat "$FIXTURE/check-error-first" >&2
+                        exit "$(cat "$FIXTURE/check-status-first")"
+                      fi
                       cat "$FIXTURE/checks"; cat "$FIXTURE/check-error" >&2; exit "$CHECK_EXIT"
                     elif [[ "$1" == api && "$*" == *'actions/runs?'* ]]; then
                       cat "$FIXTURE/api-error" >&2
                       [[ "${API_EXIT:-0}" == 0 ]] || exit "$API_EXIT"
-                      cat "$FIXTURE/runs"
+                      n=$(step runs)
+                      if [[ "$n" == 1 && -f "$FIXTURE/runs-first" ]]; then
+                        cat "$FIXTURE/runs-first"
+                      else
+                        cat "$FIXTURE/runs"
+                      fi
                     elif [[ "$1" == api && "$*" == *'actions/runs/'* ]]; then
                       if [[ "$*" == *'actions/runs/99'* ]]; then
                         cat "$FIXTURE/canonical-other"
@@ -405,6 +471,10 @@ final class ReleaseOrchestrationChecks {
         void put(String name, String content) throws IOException { Files.writeString(dir.resolve(name), content, StandardCharsets.UTF_8); }
         void checks(String data, int status, String error) throws IOException {
             put("checks", data); put("check-error", error); env.put("CHECK_EXIT", Integer.toString(status));
+        }
+        void firstChecks(String data, int status, String error) throws IOException {
+            put("checks-first", data); put("check-error-first", error);
+            put("check-status-first", Integer.toString(status));
         }
         Result gate(String mode) throws Exception {
             return execute(List.of("bash", root.resolve(".github/scripts/check-release-pr-gates.sh").toString(), mode));

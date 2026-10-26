@@ -28,6 +28,10 @@ check_head() {
     <<< "$pr" >/dev/null || fail "PR #$PR_NUMBER is closed, has a different base or no longer has head $EXPECTED_SHA."
 }
 
+checks_error_file=$(mktemp)
+trap 'rm -f "$checks_error_file"' EXIT
+no_checks_message="^no (required )?checks reported on the '[^']+' branch$"
+
 for attempt in $(seq 1 12); do
   check_head
   # Include all pages, but only the newest run of each workflow for this PR/head.
@@ -60,9 +64,19 @@ for attempt in $(seq 1 12); do
   # classify valid JSON instead of hiding the reason behind a registration timeout.
   status=0
   checks=$(gh pr checks "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
-    --required --json name,bucket,state,link) || status=$?
+    --required --json name,bucket,state,link 2>"$checks_error_file") || status=$?
+  checks_error=$(cat "$checks_error_file")
+  if [[ -n "$checks_error" ]]; then printf '%s\n' "$checks_error" >&2; fi
   [[ "$status" == 0 || "$status" == 1 || "$status" == 8 ]] \
     || fail "Cannot query required checks for PR #$PR_NUMBER (gh exit $status); see GitHub error above."
+  # Before GitHub registers any checks (or any required checks), gh exits 1
+  # without JSON. Treat only those diagnostics like an empty registration result;
+  # the bounded loop must recheck admission and the PR head before proceeding.
+  unregistered=false
+  if [[ "$status" == 1 && -z "$checks" && "$checks_error" =~ $no_checks_message ]]; then
+    unregistered=true
+    checks='[]'
+  fi
   jq -e 'type == "array" and all(.[];
     (.name | type) == "string" and (.name | length) > 0 and
     (.bucket == "pass" or .bucket == "pending" or .bucket == "fail" or
@@ -75,7 +89,8 @@ for attempt in $(seq 1 12); do
     fail "Required checks are failed, cancelled or skipped for PR #$PR_NUMBER; none count as success."
   fi
   # Never interpret an error exit accompanied by otherwise successful data as success.
-  [[ "$status" != 1 ]] || fail 'GitHub returned an error despite no failed checks in its response.'
+  [[ "$status" != 1 || "$unregistered" == true ]] \
+    || fail 'GitHub returned an error despite no failed checks in its response.'
   if [[ "$(jq 'length' <<< "$latest")" -gt 0 && "$(jq 'length' <<< "$checks")" -gt 0 ]]; then
     if [[ "$mode" == verify ]]; then
       [[ "$status" == 0 ]] || fail "Required check query still reports a pending exit for PR #$PR_NUMBER; required checks are still pending."
@@ -91,7 +106,8 @@ for attempt in $(seq 1 12); do
     fi
     exit 0
   fi
-  [[ "$status" == 0 || "$status" == 8 ]] || fail 'Required checks are unavailable.'
+  [[ "$status" == 0 || "$status" == 8 || "$unregistered" == true ]] \
+    || fail 'Required checks are unavailable.'
   if [[ "$attempt" != 12 ]]; then sleep 5; fi
 done
 fail "Workflow runs or required checks have not registered for PR #$PR_NUMBER. No replacement CI was dispatched."

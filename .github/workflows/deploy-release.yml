@@ -357,6 +357,7 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: false
           format: sarif
+          limit-severities-for-sarif: true
           output: release-image-trivy.sarif
           exit-code: '1'
 
@@ -392,6 +393,7 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: false
           format: sarif
+          limit-severities-for-sarif: true
           output: release-onnx-image-trivy.sarif
           exit-code: '1'
 
