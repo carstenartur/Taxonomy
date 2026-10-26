@@ -34,6 +34,10 @@ Every successful Copilot full analysis stores an immutable architecture snapshot
 
 The toolbar contains **Architecture editor**, **Print view** and an expandable **Export** menu. SVG/PDF and the available report/model exports are grouped in that menu.
 
+![Persisted architecture workbench — selected example snapshot](../images/architecture-workbench-current-en.png)
+
+*Application capture of a persisted example snapshot generated with the `MOCK` provider. Search, focus and zoom explore this selected result; editing starts through **Architecture editor**. [Source revision, snapshot and capture record](../images/ui-documentation-2026-10-25.json). This image is not a live-provider quality assessment or an acceptance of every export format.*
+
 The browser, SVG download and PDF download use the same deterministic server-side scene and coordinates. The interactive browser controls change only visibility, selection and viewport; they do not silently recalculate or mutate the persisted architecture.
 
 ## Complete-run result surface

@@ -1,5 +1,36 @@
 import { navigateToPage } from './ui-role-fixtures.mjs';
 
+export async function verifyGraphEntry({ page, evidence }) {
+  await navigateToPage(page, 'analyze');
+  const actions = page.locator('#taxonomyTree .tax-node-actions-toggle:visible').first();
+  if (!await actions.isVisible()) {
+    await page.locator('#taxonomyTree .tax-container-toggle:visible').first().click();
+  }
+  await actions.click();
+  const button = page.locator('#taxonomyActionsDialog .graph-explore-btn');
+  const code = await button.getAttribute('data-code');
+  const response = page.waitForResponse(r => new URL(r.url()).pathname
+    .endsWith(`/api/graph/node/${encodeURIComponent(code)}/upstream`));
+  await button.click();
+  const result = await response;
+  evidence.assert(result.ok(), `Graph entry failed: HTTP ${result.status()}`);
+  const graph = await result.json();
+  evidence.assert(graph.originNodeCode === code, 'Graph entry queried a different node');
+  await page.locator('#tab-graph').waitFor({ state: 'visible' });
+  await page.locator('#graphResultsContent .spinner-border').waitFor({ state: 'hidden' });
+  evidence.assert(await page.locator('#graphNodeInput').inputValue() === code, 'Selected code was lost');
+  evidence.assert(await page.locator('#graphNodeInput').evaluate(el => el === document.activeElement),
+    'Graph entry must move keyboard focus out of the closed action dialog');
+  if (graph.neighbors.length) {
+    await page.locator('#graphViewGraph svg').waitFor({ state: 'visible' });
+  } else {
+    await page.locator('#graphResultsContent [role="status"]').waitFor({ state: 'visible' });
+  }
+  await evidence.saveState('graph-node-action', '#graphExplorerPanel');
+  evidence.passed('taxonomy node action opens a visible graph with a real upstream response and keyboard focus');
+  await navigateToPage(page, 'analyze');
+}
+
 export async function runBasicWorkflows({ page, role, evidence }) {
   const { assert, passed, saveState, axeState, waitForText } = evidence;
 
@@ -11,6 +42,7 @@ export async function runBasicWorkflows({ page, role, evidence }) {
   await axeState('analysis-empty-error');
   await saveState('analysis-empty-error');
   passed('empty analysis actionable status and live announcement');
+  await verifyGraphEntry({ page, evidence });
 
   const roleContext = await page.evaluate(() => window.TaxonomyRoleSurface.getContext());
   assert(roleContext.roles.includes(role),

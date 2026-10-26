@@ -1,0 +1,128 @@
+{
+  "capturedAt": "2026-10-25T19:27:17.240Z",
+  "baseCommit": "5d4a0aaa39caf0f18aaf907e172c14cb2869f307",
+  "applicationArtifact": {
+    "runId": 40193715311,
+    "artifactId": 12599576041,
+    "sha256": "324ad48ff2aa4efa987ff594f0168283c1e7fa90aa2d479ab92a510f6c2a168d"
+  },
+  "kind": "running-application-with-source-resources-and-local-example-data",
+  "syntheticDom": false,
+  "interceptedApiResponses": false,
+  "externalProviderCalls": false,
+  "mockProvider": "LLM_MOCK=true, deterministic application provider; workbench analysis is persisted via the public API",
+  "sources": {
+    "taxonomy-app/src/main/resources/templates/index.html": "d91a81a4a78999347409a8dd1aec549abfbeaf69fd1bef6628d06186859f1264",
+    "taxonomy-app/src/main/resources/templates/architecture-editor.html": "1ba145812afc4fa2f6d1c2b654efb1eed9fc362dd3b5a46f78a3dc0a359ff312",
+    "taxonomy-app/src/main/resources/templates/architecture-workbench.html": "c50efed2b172acf1e1d4b9326bc017a3dd9cc816b6968e2471741aad9d919c21",
+    "taxonomy-app/src/main/resources/static/js/shared/taxonomy-graph.js": "9d9b7f8473bcabe0829c7f5189b07419030d2e33b06f084cabc067df2c8ff8b1",
+    "taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js": "8678075efb4910d17ae979f9ce31562888bd3cfe303dc0396f1fbcd0ba9a3806",
+    "taxonomy-app/src/main/resources/static/js/architecture-editor.js": "fdf488e746eb8065a211404bd5c2185276960250b66f11adba711c6b0345c34f",
+    "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio-async.js": "3eadcb31fff8a19cdb711e7d035ba9032ef0894e218c605651424df14735d1fb",
+    "taxonomy-app/src/main/resources/i18n/messages.properties": "a593f50728b78de6cc97323efab9e538ed244a53547953c19f824a9440865515",
+    "taxonomy-app/src/main/resources/i18n/messages_de.properties": "69e34c26105fb34a08646031453a4c64191f823281e39cdec28ad6df40653011",
+    "taxonomy-app/src/main/resources/templates/fragments/database-setup.html": "9509b3ff392a75c0a2a1d69fc226e672a71d654eae40a16f0c5610f341b124a6",
+    "taxonomy-app/src/main/resources/static/js/shared/taxonomy-database-setup.js": "58ac59697430898c2a7186658c126650b52324c5936028c46936fb93a877e43d",
+    "taxonomy-app/src/main/resources/static/js/architecture-workbench.js": "da2582e6bbf726581f5466c3370fa35e541405953329d30a10d9287a39c261e1"
+  },
+  "checks": [
+    "taxonomy node action opens a visible graph with a real upstream response and keyboard focus",
+    "Editor: two example elements created through the real preview and accept controls",
+    "No page JavaScript errors across graph, wizard, editor and persisted workbench",
+    "An analysis completes without refreshing a project when no project is selected; no uncaught page error"
+  ],
+  "captures": [
+    {
+      "file": "graph-entry-current-de.png",
+      "language": "de",
+      "description": "Real node action and upstream endpoint; current catalogue may have no accepted relations",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "url": "/",
+      "sha256": "b505db685080f9e09eaa85a95b1d26ab426fcbe7cbe253688f71663c40cb63d0"
+    },
+    {
+      "file": "database-setup-current-de.png",
+      "language": "de",
+      "description": "PostgreSQL preparation; no connection test or migration was performed",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "url": "/",
+      "sha256": "d0d2f5d19679bfe96a285216cccf3604e38f4993500181f9bda0455722dd38fa"
+    },
+    {
+      "file": "architecture-editor-current-de.png",
+      "language": "de",
+      "description": "Current editor with a selected example element created through the real preview and accept controls, and enabled focus lens; AI disabled",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "url": "/architecture/editor",
+      "sha256": "5edf51cbed2d1429223279fe8d4233939922f32ee492c47f430f3219172285d5"
+    },
+    {
+      "file": "database-setup-current-en.png",
+      "language": "en",
+      "description": "PostgreSQL preparation; no connection test or migration was performed",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "url": "/",
+      "sha256": "fb4e41a81f3ff225abb62ee687478b67e8f45186194794f8b32fe0b66c6bcd48"
+    },
+    {
+      "file": "architecture-editor-current-en.png",
+      "language": "en",
+      "description": "Current editor with a selected example element created through the real preview and accept controls, and enabled focus lens; AI disabled",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "url": "/architecture/editor",
+      "sha256": "774324f147539e5f219f9f4f6f63638eacdcdfa2e864cdb90ef6fc3a81b446f4"
+    },
+    {
+      "file": "architecture-workbench-current-de.png",
+      "language": "de",
+      "description": "Real persisted architecture from the deterministic example provider; toolbar, selection and provenance",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "url": "/architecture/workbench",
+      "sha256": "78c6a3475427638baec29940ce1a75bab118eef8e2c0502e9757e21b12b269b6"
+    },
+    {
+      "file": "architecture-workbench-current-en.png",
+      "language": "en",
+      "description": "Real persisted architecture from the deterministic example provider; toolbar, selection and provenance",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "url": "/architecture/workbench",
+      "sha256": "5876778a987c01ccaf203c11b87825117a12d451c72a6d76a4022adc46471ff6"
+    }
+  ],
+  "browser": "153.0.8010.0",
+  "analysis": {
+    "status": "SUCCESS",
+    "snapshotId": "149c611a-2255-442c-9030-fb2fc300a2ef"
+  },
+  "runtime": {
+    "java": "21.0.13",
+    "database": "HSQLDB in-memory, real application persistence for this run",
+    "embeddingEnabled": false,
+    "currentResources": "Current checkout resources overlay the recorded application artifact through loader.path, static-locations and thymeleaf.prefix",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    }
+  }
+}

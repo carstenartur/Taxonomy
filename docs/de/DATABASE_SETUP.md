@@ -74,6 +74,10 @@ Assistenten unter **Einstellungen > Datenbank einrichten** erneut öffnen.
    ergänzt. Die Helm-Ausgabe enthält zusätzlich `kubernetes`. Prüfen Sie die
    Profilliste für den vorgesehenen Betrieb und Anmeldemodus.
 
+![Datenbankassistent — Verbindungseinstellungen für PostgreSQL](../images/database-setup-current-de.png)
+
+*Anwendungsaufnahme des Verbindungsschritts mit Beispieldaten. Das Bild zeigt die Vorbereitung, keinen erfolgreichen Verbindungstest oder Datenumzug. [Quellstand und Bildnachweis](../images/ui-documentation-2026-10-25.json).*
+
 Meldet der Konfigurationsexport einen **Konflikt bei den Schema-Einstellungen**,
 prüfen Sie vorhandene Werte für `spring.jpa.properties.hibernate.hbm2ddl.auto`,
 `spring.jpa.properties.jakarta.persistence.schema-generation.database.action`

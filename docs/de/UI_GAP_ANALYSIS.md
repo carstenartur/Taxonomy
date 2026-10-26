@@ -1,6 +1,6 @@
 # UI-Lückenanalyse
 
-Status der GUI-Dialoge und deren Implementierung.
+Implementierungsnotizen zu den aufgeführten GUI-Dialogen. Die Phasenangaben beschreiben frühere Lieferarbeit, keine aktuelle Abnahme jeder Ansicht oder jedes Bedienelements. Das [Ansichts- und Bedienelementinventar](../testing/ui-view-control-inventory.md) enthält aktuelle Templates, Dokumentation, Testverantwortliche und fehlende Nachweise.
 
 ## Implementierte Dialoge
 
@@ -43,28 +43,32 @@ Status der GUI-Dialoge und deren Implementierung.
 
 ---
 
-## Behobene Lücken (März 2026)
+## Nachweisprüfung (25. Oktober 2026)
 
-Alle zuvor identifizierten Lücken wurden geschlossen. Siehe [FEATURE_MATRIX.md](../en/FEATURE_MATRIX.md) für den aktuellen Status.
+Die frühere Aussage, alle Lücken seien geschlossen, ging zu weit. Implementierte Dialoge, eine Screenshot-Datei und ein erfolgreicher Test eines anderen Einstiegswegs sind unterschiedliche Nachweise. Die [Funktionsmatrix](FEATURE_MATRIX.md) benennt diese Grenzen; das [Ansichts- und Bedienelementinventar](../testing/ui-view-control-inventory.md) hält offene Nacharbeiten fest.
 
-### Ehemals REST-Only Features — Jetzt mit GUI komplett
+### Funktionen mit GUI-Einstieg
 
-| Feature | GUI-Element | Benutzerhandbuch | Screenshot |
+| Funktion | GUI-Element | Benutzerhandbuch | Screenshot-Nachweis |
 |---|---|---|---|
-| Blatt-Begründung | `leafJustificationModal` | §6 | #18 |
-| Lückenanalyse | `gapAnalysisPanel` + `gapAnalyzeBtn` | §11e | #26, 27 |
-| Empfehlungen | `recommendationPanel` + `recommendBtn` | §4 | ✅ |
-| Mustererkennung | `patternDetectionPanel` + `patternDetectBtn` | §11f | ✅ |
-| Berichte (MD/HTML/DOCX) | `exportReportMd/Html/Docx` Buttons | §10a | #23 |
-| Anforderungs-Auswirkungsanalyse | `requirementImpactBtn` | §8 | ✅ |
+| Blatt-Begründung | `leafJustificationModal` | §6 | Historisches Bild #18 |
+| Anforderungsabdeckung | `coverageDashboard` + `coverageRecordBtn` | §11c | Historische Bilder #26, 27 zeigen dieses Dashboard |
+| Lückenanalyse | `gapAnalysisPanel` + `gapAnalyzeBtn` | §11d | Keine eigene aktuelle Aufnahme verknüpft; #26/27 zeigen keine Lückenanalyse |
+| Empfehlungen | `recommendationPanel` + `recommendBtn` | §11e | Keine eigene aktuelle Aufnahme verknüpft |
+| Mustererkennung | `patternDetectionPanel` + `patternDetectBtn` | §11f | Keine eigene aktuelle Aufnahme verknüpft |
+| Berichte (MD/HTML/DOCX) | Schaltflächen `exportReportMd/Html/Docx` | §10a | Historisches Bild #23 zeigt Exportaktionen, keine erfolgreichen Downloads |
+| Anforderungs-Auswirkungsanalyse | `requirementImpactBtn` im Register Graph | §11b | Keine eigene aktuelle Aufnahme verknüpft; Verhaltenstest in `ux-state-recovery.cjs` |
+| Graph-Einstieg aus Baum/Auswirkungsansicht | Knotenaktion oder Elementdetails → Graph | §8 | [Aktuelle DE-Aufnahme](../images/graph-entry-current-de.png); Serverprüfung: `verifyGraphEntry` in `ui-primary-basic-workflows.mjs`; Komponentenregressionen: `ux-state-recovery.cjs` / `analysis-ux.browser.test.mjs` |
 
-### Ehemals Dokumentationslücken — Jetzt komplett
+### Dokumentation und Bildnachweise
 
-| Bereich | Benutzerhandbuch | Screenshot | Hilfetext |
-|---|---|---|---|
-| Workspace Sync/Publish | ✅ §12 | ✅ #55, 56, 63–65 | ✅ |
-| Versionshistorie | ✅ §12 | ✅ #41, 66–68 | ✅ |
-| Branch-Vergleich | ✅ §12 | ✅ #48 | ✅ |
-| Varianten-Erstellung | ✅ §12 | ✅ #46, 47 | ✅ |
-| DSL-Editor | ✅ §11g | ✅ #34, 40 | ✅ |
-| Merge-Konfliktlösung | ✅ §12 | ✅ #52, 53, 58, 60, 61 | ✅ |
+Workspace, Historie, Branch-Vergleich, Transfer, Varianten, DSL und Merge sind im [Benutzerhandbuch](USER_GUIDE.md#12-versions-tab) erklärt. Damit ist nicht jede visuelle oder funktionale Lücke geschlossen:
+
+- #20, #37 und #38 verwendeten einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen und sind zurückgezogen. Angenommene Workspace-Vorschläge gehören zur Workspace-Relationsprojektion; Katalog-Graphabfragen lesen einen anderen Umfang. Die aktuellen Workbench-Aufnahmen bleiben Nachweise ihrer ausgewählten persistierten Beispiel-Snapshots.
+- #32 ist eine historische Darstellung der graph-semantischen Suche. Der Test stellte die erforderliche Workspace-Relationsprojektion nicht sicher; ein neuer Workspace kann `409 NOT_BUILT` liefern. Die aktuelle Graph-Einstiegsaufnahme prüft eine andere Operation und schließt diese Such-Nachweislücke nicht.
+- #48–65 und #67–68 verwendeten eingesetzten Darstellungszustand. Ihre Generatoren sind zurückgezogen; erhaltene Bilder sind historische Beispiele und kein Beleg für erfolgreiche Merge-, Transfer-, Sync-, Lösch- oder Restore-Aktionen.
+- #41–47 und #66 bleiben historische Darstellungen von Historie und Workspace. Eine vorhandene Datei bindet sich nicht automatisch an den aktuellen Quellstand.
+- Datenbankassistent, Architektureditor und persistierte Workbench haben eigene Anleitungen und Testverantwortliche. Herkunft und Umfang ihrer Aufnahmen stehen im [Inventar](../testing/ui-view-control-inventory.md).
+- Leer-/Fehlerzustände, Berechtigungen, Tastaturbedienung und gleichzeitige Änderungen benötigen Verhaltensprüfungen. Das statische Zählen von Schaltflächen oder Screenshots ersetzt sie nicht.
+
+Beachten Sie beim Erneuern von Bildern die [Regeln zur Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md). Fehlende Nachweise bleiben ausdrücklich offen, bis die betreffende Anwendungsaktion beobachtet und aufgezeichnet wurde.

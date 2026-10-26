@@ -529,9 +529,62 @@ function impactFixture() {
         vm.runInContext(source(name), context);
     }
     ready.forEach(listener => listener());
-    return {...f, window, requests, area: f.document.getElementById('requirementImpactResults'),
+    return {...f, window, context, requests, area: f.document.getElementById('requirementImpactResults'),
         graph: f.document.getElementById('graphResultsContent')};
 }
+
+function graphEntryFixture() {
+    const f = impactFixture();
+    for (const id of ['leftPanel', 'rightPanel', 'tab-analyze', 'tab-architecture', 'tab-graph', 'graphExplorerPanel']) f.element('div', id);
+    f.document.getElementById('tab-graph').classList.add('d-none');
+    f.window.location = {hash: '#analyze'};
+    f.window.addEventListener = () => {};
+    f.context.history = {replaceState: (state, title, hash) => {f.window.location.hash = hash;}};
+    f.context.CustomEvent = class {constructor(type, init) {this.type = type; this.detail = init.detail;}};
+    const template = readFileSync(path.join(resources, 'templates/index.html'), 'utf8');
+    vm.runInContext(template.match(/<!-- Page Navigation Script -->\s*<script>([\s\S]*?)<\/script>/)[1], f.context);
+    return f;
+}
+
+test('opening a graph reveals its page, focuses the selected code and starts an upstream query', () => {
+    const f = graphEntryFixture();
+    f.window.TaxonomyGraph.openGraphExplorer(' BP-1040 ');
+    assert.equal(f.window.location.hash, '#graph');
+    assert.equal(f.document.getElementById('tab-graph').classList.contains('d-none'), false);
+    assert.equal(f.document.getElementById('tab-analyze').classList.contains('d-none'), true);
+    assert.equal(f.document.activeElement, f.document.getElementById('graphNodeInput'));
+    assert.equal(f.document.getElementById('graphNodeInput').value, 'BP-1040');
+    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests[0].kind, 'upstream');
+    assert.notEqual(f.document.getElementById('graphResultsArea').style.display, 'none');
+});
+
+test('graph entry exposes invalid input and backend failures instead of an empty hidden result', async () => {
+    const f = graphEntryFixture();
+    f.window.TaxonomyGraph.openGraphExplorer('  ');
+    assert.equal(f.requests.length, 0);
+    assert.match(f.graph.innerHTML, /role="alert".*graph.enter.code/);
+    f.window.TaxonomyGraph.openGraphExplorer('CP.1');
+    f.requests[0].reject(new Error('Graph service unavailable')); await tick();
+    assert.match(f.graph.innerHTML, /role="alert"/);
+    assert.match(f.graph.innerHTML, /Graph service unavailable/);
+    assert.notEqual(f.document.getElementById('graphResultsArea').style.display, 'none');
+});
+
+test('graph entry keeps a later empty result visible when an older query finishes', async () => {
+    const f = graphEntryFixture();
+    f.window.TaxonomyGraph.openGraphExplorer('CP.1');
+    f.window.TaxonomyGraph.openGraphExplorer('BP-1040');
+    assert.equal(f.requests.length, 2);
+    f.requests[1].resolve({originNodeCode: 'BP-1040', direction: 'UPSTREAM', maxHops: 2,
+        neighbors: [], traversedRelationships: [], notes: []}); await tick();
+    assert.match(f.graph.innerHTML, /role="status".*graph.empty/);
+    assert.match(f.document.getElementById('graphResultContext').innerHTML, /BP-1040/);
+    const result = f.graph.innerHTML;
+    f.requests[0].resolve({originNodeCode: 'CP.1', direction: 'UPSTREAM', maxHops: 2,
+        neighbors: [], traversedRelationships: [], notes: []}); await tick();
+    assert.equal(f.graph.innerHTML, result);
+});
 
 const impactDto = () => ({businessText: 'Current requirement', maxHops: 2,
     impactedElements: Array.from({length: 16}, (_, index) => ({nodeCode: 'CP.' + index,

@@ -1,7 +1,6 @@
 # Funktionsvollständigkeits-Matrix
 
-Diese Matrix verfolgt den Lieferstatus aller wesentlichen Produktfunktionen.
-Eine Funktion gilt nur als abgeschlossen, wenn alle erforderlichen Spalten ✅ zeigen.
+Diese Matrix erfasst implementierte Funktionsoberflächen und die dafür verknüpften Dokumentationsnachweise. Sie ist keine Funktionsabnahme jeder einzelnen Schaltfläche. Ein ✅ kennzeichnet die genannte Oberfläche oder Erklärung; eine aktuelle Verhaltensabnahme benötigt den zugehörigen Test und ein Ergebnis für die betreffende Revision.
 
 > Siehe [Definition of Done](DEVELOPER_GUIDE.md#definition-of-done--benutzer-sichtbare-funktionen)
 > für die Produktregeln.
@@ -31,40 +30,43 @@ Siehe [Anforderungsklärung](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-clarif
 
 Ein fehlender Screenshot-Verweis bedeutet, dass diese Matrix diesen Teil ihres
 Vollständigkeitsnachweises nicht bereitstellt. Er darf nicht als abgehakt gelten.
-Das folgende Oberflächeninventar ist kein vergleichender Qualitätsbenchmark.
+Das [Ansichts- und Bedienelementinventar](../testing/ui-view-control-inventory.md) ordnet aktuelle Templates und Bediengruppen ihren Erklärungen, Tests, Aufnahmen und offenen Lücken zu. Quelltextprüfung und historische Screenshots belegen nicht die Funktion jedes Bedienelements.
 
 ## Endbenutzer-Funktionen (GUI-first)
 
 | Funktion | GUI | REST | Benutzerhandbuch | Screenshot | Hilfe/Tooltip | DE/EN i18n | Status |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|---|
-| Anforderungsanalyse | ✅ | ✅ | ✅ §4 | ✅ #15–17 | ✅ | ✅ | ✅ Vollständig |
-| Bewerteter Baum-Exploration | ✅ | ✅ | ✅ §5 | ✅ #15, 35 | ✅ | ✅ | ✅ Vollständig |
-| Ansichtsmodi (6 Modi) | ✅ | ✅ | ✅ §5 | ✅ #5–9, 39, 69 | ✅ | ✅ | ✅ Vollständig |
-| Architekturansicht | ✅ | ✅ | ✅ §7 | ✅ #20, 38 | ✅ | ✅ | ✅ Vollständig |
-| Relationsvorschläge (annehmen/ablehnen) | ✅ | ✅ | ✅ §9 | ✅ #12, 13, 36 | ✅ | ✅ | ✅ Vollständig |
-| Snapshot-gebundene Browser-/SVG-/Vektor-PDF-Ansichten | ✅ | ✅ | ✅ Exportgrenze | ✅ #20, 23 | ✅ | ✅ | ✅ Unterstützte menschenlesbare Ansichten des ausgewählten persistierten Snapshots |
-| Mermaid-/JSON-Architekturprojektionen | ✅ | ✅ | ✅ Exportgrenze | ✅ #23, 33 | ✅ | ✅ | ⚠️ Migration in die gemeinsame Snapshot-gebundene Artefakthülle, Autoritäts-Header und Verlustmanifest bleibt in #966 offen |
-| ArchiMate-3.1-Exportteilmenge | ✅ | ✅ | ✅ Exportgrenze | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimentelle begrenzte Teilmenge; versioniertes Mapping-/Verlustprofil umgesetzt; Abnahme durch unabhängige Werkzeuge bleibt in #967 offen |
-| Visio-2012-VSDX-Exportteilmenge | ✅ | ✅ | ✅ Exportgrenze | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimentelle begrenzte Teilmenge; typisierte Identitäten, freigegebene Metadaten und versionierte Verlustmanifeste sind umgesetzt; Microsoft-Visio-Desktop-Zertifizierung bleibt in #965 offen |
-| Volltextsuche | ✅ | ✅ | ✅ §11 | ✅ #29 | ✅ | ✅ | ✅ Vollständig |
-| Semantische/Hybridsuche | ✅ | ✅ | ✅ §11 | ✅ #30, 31 | ✅ | ✅ | ✅ Vollständig |
-| Graphexploration (Upstream/Downstream) | ✅ | ✅ | ✅ §8 | ✅ #11, 21, 37 | ✅ | ✅ | ✅ Vollständig |
-| Ausfallauswirkungsanalyse | ✅ | ✅ | ✅ §8 | ✅ #22 | ✅ | ✅ | ✅ Vollständig |
-| Lückenanalyse | ✅ | ✅ | ✅ §11d | ✅ #26, 27 | ✅ | ✅ | ✅ Vollständig |
-| Mustererkennung | ✅ | ✅ | ✅ §11f | ✅ | ✅ | ✅ | ✅ Vollständig |
-| Empfehlungen (Copilot) | ✅ | ✅ | ✅ §4 | ✅ | ✅ | ✅ | ✅ Vollständig |
-| Berichte (MD/HTML/DOCX) | ✅ | ✅ | ✅ §10a | ✅ #23 | ✅ | ✅ | ✅ Vollständig |
-| Workspace-Verwaltung | ✅ | ✅ | ✅ §13 | ✅ #43–45 | ✅ | ✅ | ✅ Vollständig |
-| Branch-Vergleich | ✅ | ✅ | ✅ §12 | ✅ #48 | ✅ | ✅ | ✅ Vollständig |
-| Kontexttransfer (zurückkopieren) | ✅ | ✅ | ✅ §12 | ✅ #49 | ✅ | ✅ | ✅ Vollständig |
-| Varianten-Erstellung | ✅ | ✅ | ✅ §12 | ✅ #46, 47 | ✅ | ✅ | ✅ Vollständig |
-| Merge (mit Konfliktlösung) | ✅ | ✅ | ✅ §12 | ✅ #52, 53, 58, 60, 61 | ✅ | ✅ | ✅ Vollständig |
-| Cherry-Pick (mit Konfliktlösung) | ✅ | ✅ | ✅ §12 | ✅ #54, 59, 62 | ✅ | ✅ | ✅ Vollständig |
-| Branch löschen | ✅ | ✅ | ✅ §12 | ✅ #57 | ✅ | ✅ | ✅ Vollständig |
-| DSL-Editor (Syntax-Highlighting, Autovervollständigung) | ✅ | ✅ | ✅ §11g | ✅ #34, 40 | ✅ | ✅ | ✅ Vollständig |
-| Versionsverlauf (Commits) | ✅ | ✅ | ✅ §12 | ✅ #41, 66, 67, 68 | ✅ | ✅ | ✅ Vollständig |
-| Sync vom Shared / Veröffentlichen | ✅ | ✅ | ✅ §12 | ✅ #55, 56, 63–65 | ✅ | ✅ | ✅ Vollständig |
-| Blattknoten-Begründung | ✅ | ✅ | ✅ §6 | ✅ #18 | ✅ | ✅ | ✅ Vollständig |
+| Architektureditor | ✅ | ✅ | ✅ [Editor-Anleitung](ARCHITECTURE_EDITOR.md) | [Editor](../images/architecture-editor-current-de.png) | Siehe Anleitung | ✅ | Implementiert; Aufnahme zeigt einen Beispiel-Workspace |
+| Optionaler Datenbankassistent | ✅ | ✅ | ✅ [Datenbankeinrichtung](DATABASE_SETUP.md) | [Verbindungsschritt](../images/database-setup-current-de.png) | ✅ | ✅ | Implementiert; Konfigurationsvorbereitung wechselt oder migriert die laufende Datenbank nicht |
+| Anforderungsanalyse | ✅ | ✅ | ✅ §4 | #15–17 | ✅ | ✅ | Implementiert |
+| Bewerteter Baum-Exploration | ✅ | ✅ | ✅ §5 | #15, 35 | ✅ | ✅ | Implementiert |
+| Ansichtsmodi (6 Modi) | ✅ | ✅ | ✅ §5 | #5–9, 39, 69 | ✅ | ✅ | Implementiert |
+| Architekturansicht | ✅ | ✅ | ✅ §7 | — | ✅ | ✅ | ⚠️ Implementiert; #20/38 sind zurückgezogene vorbereitete Beispiele, keine aktuellen Nachweise |
+| Relationsvorschläge (annehmen/ablehnen) | ✅ | ✅ | ✅ §9 | #12, 13, 36 | ✅ | ✅ | Implementiert |
+| Snapshot-gebundene Browser-/SVG-/Vektor-PDF-Ansichten | ✅ | ✅ | ✅ Exportgrenze | [Workbench](../images/architecture-workbench-current-de.png) | ✅ | ✅ | ✅ Unterstützte menschenlesbare Ansichten des ausgewählten persistierten Snapshots |
+| Mermaid-/JSON-Architekturprojektionen | ✅ | ✅ | ✅ Exportgrenze | #23, 33 | ✅ | ✅ | ⚠️ Migration in die gemeinsame Snapshot-gebundene Artefakthülle, Autoritäts-Header und Verlustmanifest bleibt in #966 offen |
+| ArchiMate-3.1-Exportteilmenge | ✅ | ✅ | ✅ Exportgrenze | #23, 33 | ✅ | ✅ | ⚠️ Experimentelle begrenzte Teilmenge; versioniertes Mapping-/Verlustprofil umgesetzt; Abnahme durch unabhängige Werkzeuge bleibt in #967 offen |
+| Visio-2012-VSDX-Exportteilmenge | ✅ | ✅ | ✅ Exportgrenze | #23, 33 | ✅ | ✅ | ⚠️ Experimentelle begrenzte Teilmenge; typisierte Identitäten, freigegebene Metadaten und versionierte Verlustmanifeste sind umgesetzt; Microsoft-Visio-Desktop-Zertifizierung bleibt in #965 offen |
+| Volltextsuche | ✅ | ✅ | ✅ §11 | #29 | ✅ | ✅ | Implementiert |
+| Semantische/Hybridsuche | ✅ | ✅ | ✅ §11 | #30, 31 | ✅ | ✅ | Implementiert |
+| Graphexploration (Upstream/Downstream) | ✅ | ✅ | ✅ §8 | [Graph-Einstieg](../images/graph-entry-current-de.png) | ✅ | ✅ | Implementiert |
+| Ausfallauswirkungsanalyse | ✅ | ✅ | ✅ §8 | #22 | ✅ | ✅ | Implementiert |
+| Anforderungsabdeckung | ✅ | ✅ | ✅ §11c | #26, 27 | ✅ | ✅ | Implementiert; historische Aufnahmen des Abdeckungs-Dashboards |
+| Lückenanalyse | ✅ | ✅ | ✅ §11d | — | ✅ | ✅ | ⚠️ Implementiert; #26/27 zeigen Abdeckung, nicht Lückenanalyse |
+| Mustererkennung | ✅ | ✅ | ✅ §11f | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot nicht verknüpft |
+| Empfehlungen (Copilot) | ✅ | ✅ | ✅ §11e | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot nicht verknüpft |
+| Berichte (MD/HTML/DOCX) | ✅ | ✅ | ✅ §10a | #23 | ✅ | ✅ | Implementiert |
+| Workspace-Verwaltung | ✅ | ✅ | ✅ §13 | #43–45 | ✅ | ✅ | Implementiert |
+| Branch-Vergleich | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implementiert; aktueller Screenshot fehlt |
+| Kontexttransfer (zurückkopieren) | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implementiert; aktueller Screenshot fehlt |
+| Varianten-Erstellung | ✅ | ✅ | ✅ §12 | #46, 47 | ✅ | ✅ | Implementiert |
+| Merge (mit Konfliktlösung) | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implementiert; aktueller Screenshot fehlt |
+| Cherry-Pick (mit Konfliktlösung) | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implementiert; aktueller Screenshot fehlt |
+| Branch löschen | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implementiert; aktueller Screenshot fehlt |
+| DSL-Editor (Syntax-Highlighting, Autovervollständigung) | ✅ | ✅ | ✅ §11g | #34, 40 | ✅ | ✅ | Implementiert |
+| Versionsverlauf (Commits) | ✅ | ✅ | ✅ §12 | #41, 66 | ✅ | ✅ | Implementiert |
+| Sync vom Shared / Veröffentlichen | ✅ | ✅ | ✅ §12 | — | ✅ | ✅ | ⚠️ Implementiert; aktueller Screenshot fehlt |
+| Blattknoten-Begründung | ✅ | ✅ | ✅ §6 | #18 | ✅ | ✅ | Implementiert |
 | Dokumentimport (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot-Nachweis hier nicht verknüpft |
 | Quell-Provenienz-Tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot-Nachweis hier nicht verknüpft |
 | KI-gestützte Anforderungsextraktion | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ⚠️ Implementiert; Screenshot-Nachweis hier nicht verknüpft |
@@ -116,22 +118,23 @@ verantwortet die gemeinsame Artefakthülle und Autoritätsnachweise.
 
 | Funktion | REST | API-Doku | Status |
 |---|:---:|:---:|---|
-| Benutzerverwaltung (CRUD) | ✅ | ✅ | ✅ Vollständig |
-| LLM-Diagnose | ✅ | ✅ | ✅ Vollständig |
-| Embedding-Status | ✅ | ✅ | ✅ Vollständig |
-| Start-Status | ✅ | ✅ | ✅ Vollständig |
-| Workspace-Eviction (Admin) | ✅ | ✅ | ✅ Vollständig |
+| Benutzerverwaltung (CRUD) | ✅ | ✅ | Implementiert |
+| LLM-Diagnose | ✅ | ✅ | Implementiert |
+| Embedding-Status | ✅ | ✅ | Implementiert |
+| Start-Status | ✅ | ✅ | Implementiert |
+| Workspace-Eviction (Admin) | ✅ | ✅ | Implementiert |
 
 ## Legende
 
 | Symbol | Bedeutung |
 |---|---|
-| ✅ | Vollständig implementiert und dokumentiert |
+| ✅ | Oberfläche oder Erklärung ist in dieser Spalte vorhanden; keine Aussage, dass alle Bedienelemente und Zustände getestet wurden |
 | ⚠️ | Teilweise — Verifizierung oder Vervollständigung erforderlich |
 | 🔴 | Signifikante Lücke — GUI existiert möglicherweise, aber Doku/Hilfe/Screenshot fehlt, oder nur REST |
 | ❓ | Unbekannt — Audit erforderlich |
 
 ## Screenshot-Index
 
-Screenshots werden automatisch von `ScreenshotGeneratorIT` generiert und in `docs/images/` gespeichert.
+Nummerierte Bilder in `docs/images/` sind historische Verweise, sofern eine Aufnahme nicht ausdrücklich an einen Lauf und Quellstand gebunden ist. Sie haben mehrere Testverantwortliche; `ScreenshotGeneratorIT` erzeugt nicht jedes Bild. Die Aufnahmen #20, #37 und #38 verwendeten einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen und sind zurückgezogen; sie belegen nicht, dass Katalog-Graphabfragen angenommene Workspace-Vorschläge enthalten. Auch #32 ist zurückgezogen: Die Fixture für die graph-semantische Suche stellte keine unterstützte Workspace-Relationsprojektion sicher und kann `409 NOT_BUILT` liefern. Die zurückgezogenen Darstellungsbeispiele #48–65 und #67–68 sind ebenfalls keine Anwendungsabnahme. Siehe [Aufnahme-Anleitung und Herkunft](../../.github/copilot-ref-screenshots.md) sowie [Ansichtsinventar](../testing/ui-view-control-inventory.md).
+
 Referenzformat: `#NN` = `docs/images/NN-*.png`. Benutzerhandbuch-Abschnittsreferenzen: `§N` = USER_GUIDE.md Abschnitt N.

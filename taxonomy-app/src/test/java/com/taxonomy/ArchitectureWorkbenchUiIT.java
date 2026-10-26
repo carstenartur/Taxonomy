@@ -310,6 +310,10 @@ class ArchitectureWorkbenchUiIT {
     }
 
     private static java.nio.file.Path documentationScreenshotPath() {
+        String configured = System.getenv("TAXONOMY_DOCS_IMAGE_DIR");
+        if (configured != null && !configured.isBlank()) {
+            return java.nio.file.Path.of(configured).resolve("71-copilot-architecture-workbench.png");
+        }
         java.nio.file.Path module = java.nio.file.Path.of(
                 System.getProperty("project.basedir", "."))
                 .toAbsolutePath()

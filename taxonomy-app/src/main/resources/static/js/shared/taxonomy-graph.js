@@ -77,7 +77,7 @@
     function showGraphError(msg) {
         var content = document.getElementById('graphResultsContent');
         if (content) {
-            content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' +
+            content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0" role="alert">' +
                 escapeHtml(msg) + '</div>';
         }
     }
@@ -701,7 +701,10 @@
             '<button class="btn btn-sm btn-outline-secondary graph-toggle-btn" data-mode="table">📊 Table</button>' +
             '</div>';
 
-        content.innerHTML = toggleHtml +
+        var emptyHtml = !nodes || nodes.length === 0
+            ? '<div class="alert alert-info py-1 px-2 small" role="status">'
+                + escapeHtml(t('graph.empty')) + '</div>' : '';
+        content.innerHTML = emptyHtml + toggleHtml +
             '<div id="graphViewGraph"></div>' +
             '<div id="graphViewTable" style="display:none;">' + tableHtml + '</div>';
 
@@ -865,15 +868,15 @@
     // ── Open Graph Explorer for a specific node (called from taxonomy tree) ──
 
     function openGraphExplorer(nodeCode) {
+        if (typeof window.navigateToPage === 'function') window.navigateToPage('graph');
         var input = document.getElementById('graphNodeInput');
-        if (input) input.value = nodeCode;
+        if (input) input.value = typeof nodeCode === 'string' ? nodeCode.trim() : '';
 
-        // Scroll the Graph Explorer panel into view
+        // Reveal the page before scrolling or measuring the graph's layout.
         var panel = document.getElementById('graphExplorerPanel');
         if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        // Clear any previous results
-        clearResults();
+        if (input) input.focus({ preventScroll: true });
+        onUpstreamClick();
     }
 
     // ── Full-detail modal ─────────────────────────────────────────────────────

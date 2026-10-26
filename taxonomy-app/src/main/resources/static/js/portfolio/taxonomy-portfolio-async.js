@@ -816,7 +816,7 @@
 
     function refreshCurrentProject(projectId) {
         const storedProject = Number(window.localStorage.getItem('taxonomy.portfolio.projectId')) || null;
-        if (projectId && storedProject && projectId !== storedProject) return;
+        if (!storedProject || (projectId && projectId !== storedProject)) return;
         const refresh = document.getElementById('refreshPortfolioBtn');
         if (refresh && !refresh.disabled) refresh.click();
     }

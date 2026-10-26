@@ -1,15 +1,18 @@
 package com.taxonomy;
 
+import com.taxonomy.acceptance.OnnxReferenceEvaluation;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.extension.TestWatcher;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.OutputType;
@@ -22,6 +25,8 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,13 +35,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
-import com.taxonomy.catalog.service.AppInitializationStateService;
+import java.util.Map;
 
 /**
  * Generates documentation screenshots for docs/images/.
  * <p>
- * Opt-in: only runs when the {@code generateScreenshots} system property is set.
- * Run with: {@code mvn verify -DgenerateScreenshots -Dtest=ScreenshotGeneratorIT}
+ * Opt-in: run from the repository root with {@code ./mvnw -B verify -Pscreenshots}.
  * <p>
  * Screenshots 1–14 do not require an LLM provider.
  * Screenshots 15–40 use mock LLM mode ({@code LLM_MOCK=true}) to produce
@@ -48,16 +52,12 @@ import com.taxonomy.catalog.service.AppInitializationStateService;
 @Tag("docker-required")
 class ScreenshotGeneratorIT {
 
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+
     private static final String REQUIREMENT_TEXT =
             "Provide an integrated communication platform for hospital staff, enabling real-time voice " +
             "and data exchange between departments, with a clinical dashboard application for patient " +
             "handoff tracking and team coordination";
-
-    private static final String FALLBACK_DSL_TEXT =
-            "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
-            "element CP type Capability {\n  title: \"Capability Packages\";\n}\n\n" +
-            "element CR type CoreService {\n  title: \"Core Services\";\n}\n\n" +
-            "relation CP REALIZES CR {\n  status: accepted;\n}\n";
 
     /**
      * DSL content committed on the {@code draft} branch during {@link #buildGitHistory()}.
@@ -94,197 +94,11 @@ class ScreenshotGeneratorIT {
     /** Stores the commit ID captured during the rich history build for cherry-pick tests. */
     private static String cherryPickSourceCommitId;
 
-    /** Regex matching any terminal analysis status (success, error, or unavailable). */
-    private static final java.util.regex.Pattern ANALYSIS_DONE_PATTERN =
-            java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable|0 matches");
-
-    /**
-     * Fallback search results HTML injected when the embedding model is unavailable and semantic
-     * or hybrid search returns no results. Matches the structure produced by
-     * {@code renderSearchResults()} in taxonomy-search.js.
-     */
-    private static final String FALLBACK_SEMANTIC_SEARCH_HTML =
-            "<div class=\"small text-muted mb-1\">3 result(s)</div>" +
-            "<div class=\"list-group list-group-flush search-results-list\">" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CP-1023\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CP-1023</span> " +
-            "<span class=\"search-result-name text-truncate\">Secure Voice Communications</span>" +
-            "<span class=\"badge bg-success ms-auto\">89%</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CR-1047\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CR-1047</span> " +
-            "<span class=\"search-result-name text-truncate\">Data Exchange Services</span>" +
-            "<span class=\"badge bg-success ms-auto\">82%</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"IP-2001\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">IP-2001</span> " +
-            "<span class=\"search-result-name text-truncate\">Interoperability Framework</span>" +
-            "<span class=\"badge bg-success ms-auto\">76%</span></a>" +
-            "</div>";
-
-    /**
-     * Fallback hybrid search results HTML (same structure as semantic, different search context).
-     */
-    private static final String FALLBACK_HYBRID_SEARCH_HTML =
-            "<div class=\"small text-muted mb-1\">3 result(s)</div>" +
-            "<div class=\"list-group list-group-flush search-results-list\">" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CO-3010\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CO-3010</span> " +
-            "<span class=\"search-result-name text-truncate\">Command Operations Center</span>" +
-            "<span class=\"badge bg-success ms-auto\">91%</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CI-2047\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CI-2047</span> " +
-            "<span class=\"search-result-name text-truncate\">Intelligence Processing</span>" +
-            "<span class=\"badge bg-success ms-auto\">85%</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CR-1023\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CR-1023</span> " +
-            "<span class=\"search-result-name text-truncate\">Core Communication Services</span>" +
-            "<span class=\"badge bg-success ms-auto\">78%</span></a>" +
-            "</div>";
-
-    /**
-     * Fallback graph search results HTML injected when graph search returns no results.
-     * Matches the structure produced by {@code renderGraphSearchResults()} in taxonomy-search.js.
-     */
-    private static final String FALLBACK_GRAPH_SEARCH_HTML =
-            "<div class=\"small fst-italic mb-2\">Graph analysis: 3 connected nodes found</div>" +
-            "<div class=\"small text-muted mb-1\">3 matched node(s)</div>" +
-            "<div class=\"list-group list-group-flush search-results-list\">" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"IP-2001\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">IP-2001</span> " +
-            "<span class=\"search-result-name text-truncate\">Interoperability Framework</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CI-2047\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CI-2047</span> " +
-            "<span class=\"search-result-name text-truncate\">Command Intelligence Node</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CR-1047\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CR-1047</span> " +
-            "<span class=\"search-result-name text-truncate\">Data Exchange Services</span></a>" +
-            "</div>" +
-            "<div class=\"small text-muted mt-2 mb-1\">Top relation types:</div>" +
-            "<div class=\"d-flex gap-1 flex-wrap\">" +
-            "<span class=\"badge bg-secondary\">REALIZES (3)</span>" +
-            "<span class=\"badge bg-secondary\">REQUIRES (2)</span>" +
-            "</div>";
-
-    /**
-     * Fallback fulltext search results HTML injected when the search index is locked (HTTP 423)
-     * and fulltext search returns an error. Matches the structure produced by
-     * {@code renderSearchResults()} in taxonomy-search.js.
-     */
-    private static final String FALLBACK_FULLTEXT_SEARCH_HTML =
-            "<div class=\"small text-muted mb-1\">3 result(s)</div>" +
-            "<div class=\"list-group list-group-flush search-results-list\">" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CP-1023\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CP-1023</span> " +
-            "<span class=\"search-result-name text-truncate\">Secure Voice Communications</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CR-1047\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CR-1047</span> " +
-            "<span class=\"search-result-name text-truncate\">Data Exchange Services</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"IP-2001\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">IP-2001</span> " +
-            "<span class=\"search-result-name text-truncate\">Interoperability Framework</span></a>" +
-            "</div>";
-
-    /**
-     * Fallback upstream graph results HTML injected when the graph query fails (HTTP 423).
-     * Contains a {@code graphViewTable} element so downstream waits are satisfied.
-     */
-    private static final String FALLBACK_UPSTREAM_GRAPH_HTML =
-            "<div class=\"graph-view-toggle\">" +
-            "<button class=\"btn btn-sm btn-outline-secondary graph-toggle-btn\" data-mode=\"graph\">&#128279; Graph</button>" +
-            "<button class=\"btn btn-sm btn-primary graph-toggle-btn\" data-mode=\"table\">&#128202; Table</button>" +
-            "</div>" +
-            "<div id=\"graphViewGraph\" style=\"display:none;\"></div>" +
-            "<div id=\"graphViewTable\">" +
-            "<div class=\"graph-stats-row\">" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#11014;&#65039;</span>" +
-            "<div><div class=\"graph-stat-value text-primary\">UPSTREAM</div><div class=\"graph-stat-label\">Direction</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128205;</span>" +
-            "<div><div class=\"graph-stat-value text-dark\">BP-1327</div><div class=\"graph-stat-label\">Origin</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128101;</span>" +
-            "<div><div class=\"graph-stat-value text-success\">3</div><div class=\"graph-stat-label\">Neighbors</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128279;</span>" +
-            "<div><div class=\"graph-stat-value text-info\">3</div><div class=\"graph-stat-label\">Relations</div></div></div>" +
-            "</div>" +
-            "<h6 class=\"graph-section-title\">Upstream Elements <span class=\"badge bg-secondary\">3</span></h6>" +
-            "<div class=\"table-responsive\"><table class=\"table table-sm table-hover graph-table mb-2\">" +
-            "<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hop</th><th>Reason</th></tr></thead>" +
-            "<tbody>" +
-            "<tr><td>CP-1023</td><td>Secure Voice Communications</td>" +
-            "<td><span class=\"badge bg-light text-dark border\">Capabilities</span></td>" +
-            "<td><span class=\"badge bg-success graph-relevance-badge\">85%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 1</span></td>" +
-            "<td class=\"small text-muted\">capability mapping</td></tr>" +
-            "<tr><td>CR-1047</td><td>Data Exchange Services</td>" +
-            "<td><span class=\"badge bg-light text-dark border\">Core Services</span></td>" +
-            "<td><span class=\"badge bg-primary graph-relevance-badge\">70%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 1</span></td>" +
-            "<td class=\"small text-muted\">service dependency</td></tr>" +
-            "<tr><td>IP-2001</td><td>Interoperability Framework</td>" +
-            "<td><span class=\"badge bg-light text-dark border\">Information Products</span></td>" +
-            "<td><span class=\"badge bg-primary graph-relevance-badge\">62%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 2</span></td>" +
-            "<td class=\"small text-muted\">data exchange</td></tr>" +
-            "</tbody></table></div>" +
-            "</div>";
-
-    /**
-     * Fallback downstream graph results HTML injected when the downstream query returns
-     * sparse data (single node) or fails. Shows a realistic graph with an accepted relation.
-     */
-    private static final String FALLBACK_DOWNSTREAM_GRAPH_HTML =
-            "<div class=\"graph-view-toggle\">" +
-            "<button class=\"btn btn-sm btn-outline-secondary graph-toggle-btn\" data-mode=\"graph\">&#128279; Graph</button>" +
-            "<button class=\"btn btn-sm btn-primary graph-toggle-btn\" data-mode=\"table\">&#128202; Table</button>" +
-            "</div>" +
-            "<div id=\"graphViewGraph\" style=\"display:none;\"></div>" +
-            "<div id=\"graphViewTable\">" +
-            "<div class=\"graph-stats-row\">" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#11015;&#65039;</span>" +
-            "<div><div class=\"graph-stat-value text-primary\">DOWNSTREAM</div><div class=\"graph-stat-label\">Direction</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128205;</span>" +
-            "<div><div class=\"graph-stat-value text-dark\">CP-1023</div><div class=\"graph-stat-label\">Origin</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128101;</span>" +
-            "<div><div class=\"graph-stat-value text-success\">2</div><div class=\"graph-stat-label\">Neighbors</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128279;</span>" +
-            "<div><div class=\"graph-stat-value text-info\">2</div><div class=\"graph-stat-label\">Relations</div></div></div>" +
-            "</div>" +
-            "<h6 class=\"graph-section-title\">Downstream Elements <span class=\"badge bg-secondary\">2</span></h6>" +
-            "<div class=\"table-responsive\"><table class=\"table table-sm table-hover graph-table mb-2\">" +
-            "<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hop</th><th>Reason</th></tr></thead>" +
-            "<tbody>" +
-            "<tr><td>CR-1047</td><td>Data Exchange Services</td>" +
-            "<td><span class=\"badge bg-light text-dark border\">Core Services</span></td>" +
-            "<td><span class=\"badge bg-success graph-relevance-badge\">85%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 1</span></td>" +
-            "<td class=\"small text-muted\">accepted relation: REALIZES</td></tr>" +
-            "<tr><td>IP-2001</td><td>Interoperability Framework</td>" +
-            "<td><span class=\"badge bg-light text-dark border\">Information Products</span></td>" +
-            "<td><span class=\"badge bg-primary graph-relevance-badge\">68%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 2</span></td>" +
-            "<td class=\"small text-muted\">transitive dependency</td></tr>" +
-            "</tbody></table></div>" +
-            "<h6 class=\"graph-section-title\">Traversed Relationships <span class=\"badge bg-secondary\">2</span></h6>" +
-            "<div class=\"table-responsive\"><table class=\"table table-sm table-hover graph-table mb-0\">" +
-            "<thead><tr><th>Source</th><th></th><th>Target</th><th>Type</th><th>Relevance</th><th>Hop</th></tr></thead>" +
-            "<tbody>" +
-            "<tr><td>CP-1023</td><td class=\"text-center\">&rarr;</td><td>CR-1047</td>" +
-            "<td><span class=\"badge bg-info text-dark\">REALIZES</span></td>" +
-            "<td><span class=\"badge bg-success graph-relevance-badge\">85%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 1</span></td></tr>" +
-            "<tr><td>CR-1047</td><td class=\"text-center\">&rarr;</td><td>IP-2001</td>" +
-            "<td><span class=\"badge bg-info text-dark\">REQUIRES</span></td>" +
-            "<td><span class=\"badge bg-primary graph-relevance-badge\">68%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 2</span></td></tr>" +
-            "</tbody></table></div>" +
-            "</div>";
-
-    // No fallback HTML — the architecture view is produced entirely by the real
-    // pipeline (mock-LLM scores → enrichWithLeafNodes → propagation → rendering).
-
     private static final Path OUTPUT_DIR = resolveOutputDir();
 
     /**
-     * Resolves the output directory for screenshots to the {@code docs/images/} folder at the
-     * repository root.
+     * Uses {@code TAXONOMY_DOCS_IMAGE_DIR} when configured, otherwise the repository's
+     * {@code docs/images/} folder. CI uses a fresh directory shared by all capture owners.
      *
      * <p>Maven Failsafe forks a JVM with {@code workingDirectory=${project.basedir}}, which is the
      * module directory (e.g. {@code taxonomy-app/}), not the repository root.  We use the
@@ -297,6 +111,11 @@ class ScreenshotGeneratorIT {
      * when the CWD is already the repo root.
      */
     private static Path resolveOutputDir() {
+        String configured = System.getenv("TAXONOMY_DOCS_IMAGE_DIR");
+        return configured == null || configured.isBlank() ? resolveDefaultOutputDir() : Path.of(configured);
+    }
+
+    private static Path resolveDefaultOutputDir() {
         String basedir = System.getProperty("project.basedir");
         if (basedir != null) {
             // taxonomy-app/ -> parent = repo root -> repo root/docs/images
@@ -319,15 +138,42 @@ class ScreenshotGeneratorIT {
     private static ContainerTestUtils.BrowserSession browserSession;
     private static WebDriver driver;
 
+    @RegisterExtension
+    static final TestWatcher captureFailureEvidence = new TestWatcher() {
+        @Override
+        public void testFailed(ExtensionContext context, Throwable cause) {
+            if (driver == null) return;
+            Path evidence = resolveDefaultOutputDir().toAbsolutePath().getParent().getParent()
+                    .resolve("target/screenshot-failures");
+            String name = context.getRequiredTestMethod().getName();
+            try {
+                Files.createDirectories(evidence);
+                Files.writeString(evidence.resolve(name + ".html"), driver.getPageSource());
+                Files.write(evidence.resolve(name + ".png"),
+                        ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES));
+            } catch (Exception diagnosticFailure) {
+                cause.addSuppressed(diagnosticFailure);
+            }
+        }
+    };
+
     @BeforeAll
     static void startContainers() throws Exception {
         Files.createDirectories(OUTPUT_DIR);
 
+        // Use the same Maven-provisioned bundle and read-only container mount as the ONNX ITs.
+        Path modelDirectory = OnnxReferenceEvaluation.modelDirectory();
         network = Network.newNetwork();
 
         GenericContainer<?> appContainer = ContainerTestUtils.appContainer(network)
-                .withEnv("ADMIN_PASSWORD", "testpassword123")
+                .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
                 .withEnv("LLM_MOCK", "true")
+                .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
+                .withEnv("TAXONOMY_EMBEDDING_MODEL_PROFILE", OnnxReferenceEvaluation.MODEL_PROFILE)
+                .withEnv("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD", "false")
+                .withFileSystemBind(modelDirectory.toString(), "/models",
+                        org.testcontainers.containers.BindMode.READ_ONLY)
+                .withEnv("TAXONOMY_EMBEDDING_MODEL_DIR", "/models")
                 .withEnv("TAXONOMY_GIT_BOOTSTRAP", "true")
                 // Wait for the taxonomy to be fully loaded and search index built.
                 // The /api/status/startup endpoint returns {"status":"ready"} once
@@ -336,16 +182,27 @@ class ScreenshotGeneratorIT {
                 .waitingFor(Wait.forHttp("/api/status/startup")
                         .forStatusCode(200)
                         .forPort(8080)
-                        .withBasicCredentials("admin", "admin")
+                        .withBasicCredentials("admin", ContainerTestUtils.TEST_ADMIN_PASSWORD)
                         .forResponsePredicate(body -> body.contains("\"status\":\"ready\""))
                         .withStartupTimeout(Duration.ofSeconds(180)));
 
         app = appContainer;
         app.start();
 
+        // The page checks embedding status once when it loads. Wait for the real
+        // node index first so semantic/hybrid controls start with usable backends.
+        Wait.forHttp("/api/embedding/status")
+                .forStatusCode(200)
+                .forPort(8080)
+                .withBasicCredentials("admin", ContainerTestUtils.TEST_ADMIN_PASSWORD)
+                .forResponsePredicate(ScreenshotGeneratorIT::embeddingBackendReady)
+                .withStartupTimeout(Duration.ofMinutes(10))
+                .waitUntilReady(app);
+
         browserSession = ContainerTestUtils.startBrowser(network);
         driver = browserSession.driver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
+        driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(30));
 
         // Login via form (Spring Security requires authentication)
         driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
@@ -378,6 +235,24 @@ class ScreenshotGeneratorIT {
         }
     }
 
+    private static boolean embeddingBackendReady(String body) {
+        JsonNode status = JSON.readTree(body);
+        Assertions.assertNotNull(status, "Embedding readiness returned no status");
+        JsonNode indexState = status.path("indexState");
+        String state = indexState.isString() ? indexState.stringValue() : "";
+        Assertions.assertFalse(status.path("enabled").isBoolean() && !status.path("enabled").booleanValue(),
+                "Screenshot embeddings are disabled: " + body);
+        Assertions.assertFalse("FAILED".equals(state),
+                "Screenshot node search index failed to initialize: " + body);
+        // Enabled indexes initially report DISABLED until the ApplicationReadyEvent callback runs.
+        // Node search remains usable while relation indexing finishes or reports PARTIAL.
+        return List.of("INDEXING_RELATIONS", "READY", "PARTIAL").contains(state)
+                && List.of("enabled", "modelAvailable", "available", "semanticReady")
+                        .stream().allMatch(field -> status.path(field).isBoolean() && status.path(field).booleanValue())
+                && status.path("indexedNodes").isIntegralNumber()
+                && status.path("indexedNodes").asLong() > 0;
+    }
+
     @AfterAll
     static void stopContainers() throws Exception {
         ContainerTestUtils.closeAll(browserSession, app, network);
@@ -393,22 +268,115 @@ class ScreenshotGeneratorIT {
     private void saveElementScreenshot(WebElement element, String filename) throws IOException {
         // Scroll element into viewport to avoid Chrome renderer timeout on large/off-screen elements
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", element);
-        try {
-            File src = element.getScreenshotAs(OutputType.FILE);
-            Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
-        } catch (org.openqa.selenium.TimeoutException e) {
-            if (e.getMessage() != null && e.getMessage().contains("renderer")) {
-                // Fallback: take full-page screenshot when element screenshot times out
-                File src = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
-                Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
-            } else {
-                throw e;
-            }
-        }
+        File src = element.getScreenshotAs(OutputType.FILE);
+        Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
     }
 
     private WebDriverWait wait(int seconds) {
         return new WebDriverWait(driver, Duration.ofSeconds(seconds));
+    }
+
+    /** Inspect the real renderer's terminal state; never turn missing output into invented data. */
+    private void waitForResult(String containerId, String resultSelector, int seconds) {
+        wait(seconds).withMessage(() -> "Expected " + resultSelector + " in " + containerId
+                + ": " + driver.findElement(By.id(containerId)).getAttribute("innerHTML"))
+                .until(d -> {
+                    WebElement content = d.findElement(By.id(containerId));
+                    if ("true".equals(content.getAttribute("aria-busy"))) return false;
+                    if (!content.findElements(By.cssSelector(".spinner-border")).isEmpty()) return false;
+                    Assertions.assertTrue(content.findElements(By.cssSelector(
+                                    ":scope > .alert-warning, :scope > .alert-danger, " +
+                                    ":scope > .text-danger, :scope > [role='alert']")).isEmpty(),
+                            "Capture failed in " + containerId + ": " + content.getAttribute("textContent"));
+                    return !content.findElements(By.cssSelector(resultSelector)).isEmpty();
+                });
+    }
+
+    private void waitForSuccessfulAnalysis() {
+        wait(120).withMessage(() -> "Analysis did not finish: "
+                + driver.findElement(By.id("statusArea")).getText()).until(d -> {
+            String status = (String) ((JavascriptExecutor) d).executeScript(
+                    "return window.TaxonomyState && window.TaxonomyState.lastAnalysisStatus;");
+            if (status == null || "IN_PROGRESS".equals(status)) return false;
+            Assertions.assertEquals("SUCCESS", status,
+                    "Analysis failed: " + d.findElement(By.id("statusArea")).getText());
+            return !d.findElements(By.cssSelector("#statusArea .alert-success")).isEmpty();
+        });
+    }
+
+    private boolean hasSuccessfulAnalysis() {
+        return Boolean.TRUE.equals(((JavascriptExecutor) driver).executeScript(
+                "var state=window.TaxonomyState; return !!state && state.lastAnalysisStatus === 'SUCCESS'" +
+                " && Object.values(state.currentScores || {}).some(function(score) { return score > 0; });"));
+    }
+
+    private void selectSearchMode(String mode) {
+        if (!"fulltext".equals(mode)) {
+            js("window.TaxonomySearch.checkEmbeddingStatus();");
+        }
+        By option = By.cssSelector("#searchModeSelect option[value='" + mode + "']");
+        wait(180).withMessage(() -> "Search mode " + mode + " is unavailable: "
+                + driver.findElement(By.id("embeddingStatusBadge")).getAttribute("textContent"))
+                .until(d -> d.findElement(option).isEnabled());
+        new org.openqa.selenium.support.ui.Select(driver.findElement(By.id("searchModeSelect")))
+                .selectByValue(mode);
+    }
+
+    private void loadCurrentDsl(String expectedBlock) {
+        wait(15).until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d)
+                .executeScript("return !!window.dslCmView;")));
+        safeClick(By.id("dslLoadCurrentBtn"));
+        wait(15).withMessage(() -> "DSL load failed: "
+                + driver.findElement(By.id("dslStatusArea")).getText()).until(d -> {
+            WebElement status = d.findElement(By.id("dslStatusArea"));
+            String classes = status.getAttribute("class");
+            Assertions.assertFalse(classes.contains("alert-danger"), status.getText());
+            return classes.contains("alert-success");
+        });
+        String content = (String) ((JavascriptExecutor) driver).executeScript(
+                "return window.dslCmView.state.doc.toString();");
+        Assertions.assertTrue(content.contains(expectedBlock + " "),
+                "Loaded DSL must include a real " + expectedBlock + " block");
+    }
+
+    private void openOperationalStatus() {
+        WebElement status = driver.findElement(By.id("operationalContextDetails"));
+        if (status.getAttribute("open") == null) {
+            driver.findElement(By.cssSelector("#operationalContextDetails > summary")).click();
+        }
+    }
+
+    private void refreshVersionHistory() {
+        safeClick(By.cssSelector("[data-versions-tab=\"history\"]"));
+        safeClick(By.id("versionsRefreshBtn"));
+        wait(15).withMessage(() -> "Version history did not load: "
+                + driver.findElement(By.id("versionsTimeline")).getText()).until(d -> {
+            WebElement timeline = d.findElement(By.id("versionsTimeline"));
+            String state = timeline.getAttribute("data-state");
+            Assertions.assertFalse("error".equals(state) || "empty".equals(state),
+                    "Persisted version fixtures must render: " + timeline.getText());
+            return "loaded".equals(state);
+        });
+    }
+
+    private Map<?, ?> requestFixture(String url, String method, String contentType, String body) {
+        Object result = ((JavascriptExecutor) driver).executeAsyncScript(
+                "var url=arguments[0], method=arguments[1], type=arguments[2], body=arguments[3], done=arguments[4];" +
+                "var options={method:method};" +
+                "if (body !== null) { options.headers={'Content-Type':type}; options.body=body; }" +
+                "fetch(url, options).then(async function(response) {" +
+                "  var text=await response.text();" +
+                "  if (!response.ok) throw new Error('HTTP '+response.status+': '+text);" +
+                "  done({data:JSON.parse(text)});" +
+                "}).catch(function(error) { done({error:String(error)}); });",
+                url, method, contentType, body);
+        Assertions.assertInstanceOf(Map.class, result, "Fixture request returned no response: " + url);
+        Map<?, ?> response = (Map<?, ?>) result;
+        Assertions.assertNull(response.get("error"), "Fixture request failed: " + url + " " + response);
+        Assertions.assertInstanceOf(Map.class, response.get("data"), "Expected JSON object: " + url);
+        Map<?, ?> data = (Map<?, ?>) response.get("data");
+        Assertions.assertNull(data.get("error"), "Fixture operation failed: " + url + " " + data);
+        return data;
     }
 
     /**
@@ -431,24 +399,6 @@ class ScreenshotGeneratorIT {
         });
     }
 
-    /**
-     * Waits for embeddings to be ready by monitoring the nav-bar embedding badge.
-     * The badge text changes from {@code "🧠 Embeddings: unavailable"} to
-     * {@code "🧠 Embeddings: N nodes"} once the embedding index is built.
-     * Uses the app's own periodic {@code checkEmbeddingStatus()} polling.
-     */
-    private void waitForEmbeddingsReadyViaUI() {
-        wait(180).until(d -> {
-            try {
-                WebElement badge = d.findElement(By.id("embeddingStatusBadge"));
-                String text = badge.getText();
-                return text != null && text.contains("Embeddings:") && !text.contains("unavailable");
-            } catch (org.openqa.selenium.NoSuchElementException e) {
-                return false;
-            }
-        });
-    }
-
     /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
     private void runAnalysis() {
         navigateToTab("analyze");
@@ -459,62 +409,17 @@ class ScreenshotGeneratorIT {
                 textarea, REQUIREMENT_TEXT);
         WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
-        // Clear statusArea before clicking to avoid false signals from a previous analysis
-        js("var el = document.getElementById('statusArea'); if (el) { el.textContent = ''; }");
+        // Observe replacement of the real score envelope to reject stale previous results.
+        js("window.__screenshotPreviousScores = window.TaxonomyState.currentScores;");
         js("arguments[0].click();", analyzeBtn);
-        // First wait for statusArea to become non-empty (analysis started or immediately finished)
-        try {
-            wait(30).until(d -> {
-                String text = d.findElement(By.id("statusArea")).getText();
-                return text != null && !text.trim().isEmpty();
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Status area never updated — retry the click once
-            js("arguments[0].click();", driver.findElement(By.id("analyzeBtn")));
-        }
-        wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
+        wait(15).withMessage("Analyze must start a new score envelope").until(d ->
+                Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript(
+                        "return window.TaxonomyState.currentScores !== window.__screenshotPreviousScores;")));
+        waitForSuccessfulAnalysis();
     }
 
     private void js(String script, Object... args) {
         ((JavascriptExecutor) driver).executeScript(script, args);
-    }
-
-    /**
-     * Pre-seeds taxonomy relations via the REST API so that
-     * {@code RelevancePropagationService.propagate()} has edges to traverse when the
-     * architecture view is rendered.  These root-level relations, combined with
-     * hierarchy-aware leaf-node inheritance and enrichment, produce 20+ elements
-     * across 7+ layers with cross-layer relationships including User Applications.
-     * <p>
-     * Uses root-level taxonomy codes (CP, CR, BP, BR, CI, CO, IP, UA) that are always present
-     * after the catalogue is loaded.  Duplicates are harmless because the propagation
-     * just finds more paths.
-     */
-    private void seedArchitectureViewRelations() {
-        js("window.__relsDone = 0;" +
-           "var rels = [" +
-           "  {sourceCode:'CP',targetCode:'CR',relationType:'REALIZES',description:'arch-seed'}," +
-           "  {sourceCode:'CR',targetCode:'BP',relationType:'SUPPORTS',description:'arch-seed'}," +
-           "  {sourceCode:'CR',targetCode:'BR',relationType:'SUPPORTS',description:'arch-seed'}," +
-           "  {sourceCode:'CR',targetCode:'CI',relationType:'DEPENDS_ON',description:'arch-seed'}," +
-           "  {sourceCode:'CR',targetCode:'CP',relationType:'FULFILLS',description:'arch-seed'}," +
-           "  {sourceCode:'CR',targetCode:'UA',relationType:'SUPPORTS',description:'arch-seed'}," +
-           "  {sourceCode:'CO',targetCode:'CR',relationType:'SUPPORTS',description:'arch-seed'}," +
-           "  {sourceCode:'CO',targetCode:'BP',relationType:'SUPPORTS',description:'arch-seed'}," +
-           "  {sourceCode:'CO',targetCode:'IP',relationType:'USES',description:'arch-seed'}," +
-           "  {sourceCode:'BP',targetCode:'IP',relationType:'USES',description:'arch-seed'}" +
-           "];" +
-           "rels.forEach(function(rel) {" +
-           "  fetch('/api/relations', {" +
-           "    method: 'POST'," +
-           "    headers: {'Content-Type': 'application/json'}," +
-           "    body: JSON.stringify(rel)" +
-           "  }).then(function() { window.__relsDone++; })" +
-           "   .catch(function() { window.__relsDone++; });" +
-           "});");
-        wait(15).until(d -> 10L == (Long) ((JavascriptExecutor) d).executeScript(
-                "return window.__relsDone;"));
     }
 
     /** Scrolls the element into the viewport and clicks via JavaScript — prevents ElementClickIntercepted. */
@@ -528,33 +433,10 @@ class ScreenshotGeneratorIT {
         safeClick(driver.findElement(locator));
     }
 
-    /**
-     * Closes a Bootstrap modal and waits for the {@code hidden.bs.modal} event.
-     * Uses Bootstrap's native {@code hide()} API with a DOM fallback.
-     * No {@code Thread.sleep()} needed — the global event listener sets
-     * {@code data-modal-visible="false"} when the transition completes.
-     */
+    /** Closes the actual Bootstrap modal and waits for its lifecycle event. */
     private void closeModalAndWait(String modalId) {
-        js("var el = document.getElementById(arguments[0]);" +
-                "if (el) {" +
-                "  var hasBootstrap = (typeof bootstrap !== 'undefined' && bootstrap.Modal);" +
-                "  if (hasBootstrap) {" +
-                "    var inst = bootstrap.Modal.getInstance(el);" +
-                "    if (inst) { inst.hide(); }" +
-                "    else {" +
-                "      el.classList.remove('show'); el.style.display='none';" +
-                "      el.setAttribute('data-modal-visible', 'false');" +
-                "    }" +
-                "  } else {" +
-                "    el.classList.remove('show'); el.style.display='none';" +
-                "    el.setAttribute('data-modal-visible', 'false');" +
-                "  }" +
-                "}" +
-                "document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());" +
-                "document.body.classList.remove('modal-open');" +
-                "document.body.style.overflow='';" +
-                "document.body.style.paddingRight='';",
-                modalId);
+        js("var modal=bootstrap.Modal.getInstance(document.getElementById(arguments[0]));" +
+                "if (!modal) throw new Error('Modal is not open: ' + arguments[0]); modal.hide();", modalId);
         wait(5).until(ExpectedConditions.attributeToBe(
                 By.id(modalId), "data-modal-visible", "false"));
     }
@@ -613,38 +495,6 @@ class ScreenshotGeneratorIT {
     }
 
     /**
-     * Injects healthy-looking status badge values for AI, Embeddings, and Git Status
-     * before taking documentation screenshots.  This replaces "unavailable" / error states
-     * that appear when the screenshot environment lacks a real LLM key or when Git operations
-     * are locked (HTTP 423).
-     */
-    private void injectHealthyStatusBadges() {
-        // AI status badge → show mock provider as ready (green)
-        js("var badge = document.getElementById('aiStatusBadge');" +
-           "if (badge) { badge.textContent = '\\uD83D\\uDFE2 AI: Mock (Ready)';" +
-           " badge.className = 'badge bg-success ms-auto me-2 fs-6'; }");
-        // Embedding status badge → show available (blue)
-        js("var badge = document.getElementById('embeddingStatusBadge');" +
-           "if (badge) { badge.textContent = '\\uD83E\\uDDE0 Embeddings: 2500 nodes';" +
-           " badge.className = 'badge bg-info text-dark'; badge.classList.remove('d-none'); }");
-        // Git status bar → show healthy state
-        js("var bar = document.getElementById('gitStatusBar');" +
-           "if (bar) {" +
-           " bar.innerHTML = '<span class=\"git-indicator\">" +
-           "\\uD83D\\uDCCE <span class=\"git-branch\">draft</span>" +
-           " @ <span class=\"git-sha\">a1b2c3d</span></span>" +
-           " <span class=\"git-sep\">\\u2502</span>" +
-           " <span class=\"git-indicator\"><span class=\"dot fresh\"></span> Projection: fresh</span>" +
-           " <span class=\"git-sep\">\\u2502</span>" +
-           " <span class=\"git-indicator\"><span class=\"dot fresh\"></span> Index: fresh</span>" +
-           " <span class=\"git-sep\">\\u2502</span>" +
-           " <span class=\"git-indicator\">3 versions</span>" +
-           " <span class=\"git-sep\">\\u2502</span>" +
-           " <span class=\"git-indicator\">1 variant</span>';" +
-           " bar.classList.remove('d-none'); }");
-    }
-
-    /**
      * Builds a realistic Git history with branches by committing DSL content via the REST API.
      * <p>
      * Creates:
@@ -661,43 +511,10 @@ class ScreenshotGeneratorIT {
      */
     private void buildGitHistory() {
         if (gitHistoryBuilt) return;
+        commitAndWait("draft", "Initial+architecture+definition", DRAFT_DSL);
+        createBranch("feature-voice", "draft");
+        commitAndWait("feature-voice", "Add+Voice+Gateway+component", FEATURE_VOICE_DSL);
         gitHistoryBuilt = true;
-
-        // 1. Commit base DSL on draft
-        js("fetch('/api/dsl/commit?branch=draft&message=Initial+architecture+definition', " +
-           "{ method: 'POST', headers: {'Content-Type': 'text/plain'}, " +
-           "  body: " + jsStringLiteral(DRAFT_DSL) + " " +
-           "}).then(r => r.json()).then(d => { window.__draftCommit = d; });");
-
-        // Wait for draft commit to complete
-        wait(15).until(d -> {
-            Object result = ((JavascriptExecutor) d).executeScript(
-                    "return window.__draftCommit && window.__draftCommit.commitId ? 'ok' : null;");
-            return "ok".equals(result);
-        });
-
-        // 2. Create feature-voice branch from draft
-        js("fetch('/api/dsl/branches?name=feature-voice&fromBranch=draft', " +
-           "{ method: 'POST' " +
-           "}).then(r => r.json()).then(d => { window.__featureBranch = d; });");
-
-        wait(15).until(d -> {
-            Object result = ((JavascriptExecutor) d).executeScript(
-                    "return window.__featureBranch && window.__featureBranch.branch === 'feature-voice' ? 'ok' : null;");
-            return "ok".equals(result);
-        });
-
-        // 3. Commit modified DSL on feature-voice (diverges from draft)
-        js("fetch('/api/dsl/commit?branch=feature-voice&message=Add+Voice+Gateway+component', " +
-           "{ method: 'POST', headers: {'Content-Type': 'text/plain'}, " +
-           "  body: " + jsStringLiteral(FEATURE_VOICE_DSL) + " " +
-           "}).then(r => r.json()).then(d => { window.__featureCommit = d; });");
-
-        wait(15).until(d -> {
-            Object result = ((JavascriptExecutor) d).executeScript(
-                    "return window.__featureCommit && window.__featureCommit.commitId ? 'ok' : null;");
-            return "ok".equals(result);
-        });
     }
 
     /**
@@ -721,7 +538,6 @@ class ScreenshotGeneratorIT {
         // Ensure base history exists first
         buildGitHistory();
         if (richGitHistoryBuilt) return;
-        richGitHistoryBuilt = true;
 
         // ── 1. Additional commits on draft (architecture evolution) ──
 
@@ -733,7 +549,7 @@ class ScreenshotGeneratorIT {
                 "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
                 "relation CR-1047 SUPPORTS BP-1327 {\n  status: proposed;\n}\n";
 
-        commitAndWait("draft", "Add+process+layer+BP-1327", draftV2, "__richCommit1");
+        commitAndWait("draft", "Add+process+layer+BP-1327", draftV2);
 
         String draftV3 =
                 "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -745,7 +561,7 @@ class ScreenshotGeneratorIT {
                 "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
                 "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n";
 
-        commitAndWait("draft", "Accept+CR-1047+supports+BP-1327%2C+add+Voice+Gateway", draftV3, "__richCommit2");
+        commitAndWait("draft", "Accept+CR-1047+supports+BP-1327%2C+add+Voice+Gateway", draftV3);
 
         String draftV4 =
                 "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -759,17 +575,11 @@ class ScreenshotGeneratorIT {
                 "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
                 "relation BP-1327 PRODUCES IP-1659 {\n  status: proposed;\n}\n";
 
-        commitAndWait("draft", "Add+information+product+IP-1659+with+PRODUCES+relation", draftV4, "__richCommit3");
+        commitAndWait("draft", "Add+information+product+IP-1659+with+PRODUCES+relation", draftV4);
 
         // ── 2. Create review branch and add commits there ──
 
-        js("fetch('/api/dsl/branches?name=review&fromBranch=draft', { method: 'POST' })" +
-           ".then(r => r.json()).then(d => { window.__reviewBranch = d; });");
-        wait(15).until(d -> {
-            Object result = ((JavascriptExecutor) d).executeScript(
-                    "return window.__reviewBranch && window.__reviewBranch.branch === 'review' ? 'ok' : null;");
-            return "ok".equals(result);
-        });
+        createBranch("review", "draft");
 
         String reviewV1 =
                 "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -783,7 +593,7 @@ class ScreenshotGeneratorIT {
                 "relation CO-1011 USES CR-1047 {\n  status: accepted;\n}\n\n" +
                 "relation BP-1327 PRODUCES IP-1659 {\n  status: accepted;\n}\n";
 
-        commitAndWait("review", "Review%3A+accept+all+proposed+relations", reviewV1, "__reviewCommit1");
+        commitAndWait("review", "Review%3A+accept+all+proposed+relations", reviewV1);
 
         String reviewV2 =
                 "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -799,21 +609,12 @@ class ScreenshotGeneratorIT {
                 "relation BP-1327 PRODUCES IP-1659 {\n  status: accepted;\n}\n\n" +
                 "relation UA-1015 USES CO-1011 {\n  status: proposed;\n}\n";
 
-        commitAndWait("review", "Add+UA-1015+Air+Applications+with+voice+gateway+dependency", reviewV2, "__reviewCommit2");
-
-        // Capture the review commit ID for cherry-pick tests
-        cherryPickSourceCommitId = (String) ((JavascriptExecutor) driver).executeScript(
-                "return window.__reviewCommit2 ? window.__reviewCommit2.commitId : null;");
+        cherryPickSourceCommitId = commitAndWait("review",
+                "Add+UA-1015+Air+Applications+with+voice+gateway+dependency", reviewV2);
 
         // ── 3. Create hotfix branch from draft with urgent change ──
 
-        js("fetch('/api/dsl/branches?name=hotfix%2Furgent-fix&fromBranch=draft', { method: 'POST' })" +
-           ".then(r => r.json()).then(d => { window.__hotfixBranch = d; });");
-        wait(15).until(d -> {
-            Object result = ((JavascriptExecutor) d).executeScript(
-                    "return window.__hotfixBranch && window.__hotfixBranch.branch === 'hotfix/urgent-fix' ? 'ok' : null;");
-            return "ok".equals(result);
-        });
+        createBranch("hotfix/urgent-fix", "draft");
 
         String hotfixV1 =
                 "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -827,7 +628,7 @@ class ScreenshotGeneratorIT {
                 "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
                 "relation BP-1327 PRODUCES IP-1659 {\n  status: proposed;\n}\n";
 
-        commitAndWait("hotfix%2Furgent-fix", "Hotfix%3A+mark+Secure+Voice+as+critical+priority", hotfixV1, "__hotfixCommit1");
+        commitAndWait("hotfix%2Furgent-fix", "Hotfix%3A+mark+Secure+Voice+as+critical+priority", hotfixV1);
 
         // ── 4. More commits on feature-voice (parallel development) ──
 
@@ -841,7 +642,7 @@ class ScreenshotGeneratorIT {
                 "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
                 "relation CO-1056 SUPPORTS CO-1011 {\n  status: proposed;\n}\n";
 
-        commitAndWait("feature-voice", "Add+Transmission+Services+CO-1056+supporting+Voice+Gateway", featureV2, "__featureV2Commit");
+        commitAndWait("feature-voice", "Add+Transmission+Services+CO-1056+supporting+Voice+Gateway", featureV2);
 
         String featureV3 =
                 "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -853,52 +654,44 @@ class ScreenshotGeneratorIT {
                 "relation CO-1011 USES CR-1047 {\n  status: accepted;\n}\n\n" +
                 "relation CO-1056 SUPPORTS CO-1011 {\n  status: accepted;\n}\n";
 
-        commitAndWait("feature-voice", "Accept+all+relations+and+add+review+annotation", featureV3, "__featureV3Commit");
+        commitAndWait("feature-voice", "Accept+all+relations+and+add+review+annotation", featureV3);
 
         // ── 5. Another commit on draft (continuing main line) ──
 
+        // Keep the view insertion away from reviewV2's UA-1015 addition so the
+        // cherry-pick example combines independent changes without a text conflict.
         String draftV5 =
                 "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "view \"Communication Architecture\" {\n  include: CP-1023, CR-1047, CO-1011, BP-1327, IP-1659;\n  layout: hierarchical;\n}\n\n" +
                 "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
                 "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
                 "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
                 "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
                 "element IP-1659 type InformationProduct {\n  title: \"Situation Reports\";\n  description: \"Aggregated operational situation data\";\n}\n\n" +
-                "view \"Communication Architecture\" {\n  include: CP-1023, CR-1047, CO-1011, BP-1327, IP-1659;\n  layout: hierarchical;\n}\n\n" +
                 "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
                 "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
                 "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
                 "relation BP-1327 PRODUCES IP-1659 {\n  status: proposed;\n}\n";
 
-        commitAndWait("draft", "Define+Communication+Architecture+view", draftV5, "__richCommit5");
+        commitAndWait("draft", "Define+Communication+Architecture+view", draftV5);
+        richGitHistoryBuilt = true;
     }
 
-    /**
-     * Helper: commits DSL content on a branch and waits for the commit to complete.
-     * Uses a window variable (e.g. {@code __richCommit1}) to signal completion.
-     */
-    private void commitAndWait(String branch, String messageEncoded, String dslContent, String windowVar) {
-        js("fetch('/api/dsl/commit?branch=" + branch + "&message=" + messageEncoded + "', " +
-           "{ method: 'POST', headers: {'Content-Type': 'text/plain'}, " +
-           "  body: " + jsStringLiteral(dslContent) + " " +
-           "}).then(r => r.json()).then(d => { window." + windowVar + " = d; });");
-
-        wait(15).until(d -> {
-            Object result = ((JavascriptExecutor) d).executeScript(
-                    "return window." + windowVar + " && window." + windowVar + ".commitId ? 'ok' : null;");
-            return "ok".equals(result);
-        });
+    private void createBranch(String name, String fromBranch) {
+        Map<?, ?> branch = requestFixture("/api/dsl/branches?name="
+                + java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8)
+                + "&fromBranch=" + fromBranch, "POST", null, null);
+        Assertions.assertEquals(name, branch.get("branch"), "Branch fixture must be persisted");
     }
 
-    /**
-     * Returns a JavaScript string literal (with surrounding quotes) for use in
-     * {@code js()} calls. Escapes backslashes, quotes, and newlines.
-     */
-    private static String jsStringLiteral(String s) {
-        return "'" + s.replace("\\", "\\\\")
-                      .replace("'", "\\'")
-                      .replace("\n", "\\n")
-                      .replace("\r", "") + "'";
+    /** Commits the authored DSL fixture and verifies the real operation result. */
+    private String commitAndWait(String branch, String messageEncoded, String dslContent) {
+        Map<?, ?> result = requestFixture("/api/dsl/commit?branch=" + branch + "&message=" + messageEncoded,
+                "POST", "text/plain", dslContent);
+        Assertions.assertInstanceOf(String.class, result.get("commitId"), "Commit fixture: " + result);
+        String commitId = (String) result.get("commitId");
+        Assertions.assertFalse(commitId.isBlank(), "Commit fixture must supply a persisted commit ID");
+        return commitId;
     }
 
     /**
@@ -922,37 +715,9 @@ class ScreenshotGeneratorIT {
         wait(3).until(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector(".modal-backdrop")));
     }
 
-    /**
-     * Opens a Bootstrap modal and waits for the {@code shown.bs.modal} event to fire.
-     * Uses Bootstrap's native {@code show()} API — no DOM manipulation needed.
-     * The global event listener sets {@code data-modal-visible="true"} when the
-     * transition completes, guaranteeing full opacity.
-     */
+    /** Opens the real Bootstrap modal and waits for its lifecycle event. */
     private void showModalAndWait(String modalId) {
-        // Remove any stale signal from previous test
-        js("var el = document.getElementById(arguments[0]);" +
-           "if (el) el.removeAttribute('data-modal-visible');", modalId);
-
-        // Remove 'fade' class to skip CSS transition (instant show),
-        // then open via Bootstrap API when available, or fall back to a
-        // minimal DOM-based show in environments where Bootstrap is missing.
-        js("var el = document.getElementById(arguments[0]);" +
-           "if (el) {" +
-           "  el.classList.remove('fade');" +
-           "  if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {" +
-           "    var inst = bootstrap.Modal.getOrCreateInstance(el);" +
-           "    inst.show();" +
-           "  } else {" +
-           "    el.classList.add('show');" +
-           "    el.style.display='block';" +
-           "    el.setAttribute('aria-modal','true');" +
-           "    el.removeAttribute('aria-hidden');" +
-           "    el.setAttribute('data-modal-visible','true');" +
-           "  }" +
-           "}", modalId);
-
-        // Wait for Bootstrap's own 'shown.bs.modal' event (or the fallback
-        // setting data-modal-visible='true' when Bootstrap is not present)
+        js("bootstrap.Modal.getOrCreateInstance(document.getElementById(arguments[0])).show();", modalId);
         wait(10).until(ExpectedConditions.attributeToBe(
                 By.id(modalId), "data-modal-visible", "true"));
     }
@@ -1194,8 +959,9 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
 
-        // Wait for at least one toggle to indicate top-level nodes are scored
-        wait(60).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
+        // Interactive mode has initialized when the product marks expandable nodes unevaluated.
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector("#taxonomyTree .tax-has-unevaluated")));
         saveScreenshot("16-interactive-mode.png");
 
         // Reset to non-interactive using JS direct manipulation to avoid stale-element issues
@@ -1205,8 +971,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(17)
     void captureMatchLegendWithScores() throws IOException {
-        // Full-page screenshot so the legend is shown in context with the scored tree visible,
-        // making this visually distinct from the element-only screenshot 10 (captureMatchLegend).
+        forceNonInteractiveMode();
+        runAnalysis();
         saveScreenshot("17-match-legend-with-scores.png");
     }
 
@@ -1223,21 +989,13 @@ class ScreenshotGeneratorIT {
         forceNonInteractiveMode();
         runAnalysis();
 
-        // 2. Set storedBusinessText via the window test helper so that buildNodeEl creates
-        //    leaf justify buttons when the tree is re-rendered.  storedBusinessText is normally
-        //    a closure variable only set by runInteractiveAnalysis(); the window helper is
-        //    exposed specifically to support this screenshot-test scenario.
-        js("window._setStoredBusinessText(arguments[0]);", REQUIREMENT_TEXT);
+        // Render the scored list using the state produced by the successful analysis.
+        safeClick(By.id("viewList"));
 
-        // 3. Re-render the taxonomy list view with currentScores AND storedBusinessText now set.
-        //    buildNodeEl will create .tax-justify-btn.btn-outline-info for every leaf node
-        //    whose score is > 0.
-        js("window._renderViewWithCurrentScores();");
-
-        // 4. Expand all nodes so the leaf-level justify buttons are visible in the DOM.
+        // Expand all nodes so the leaf-level justify buttons are visible in the DOM.
         js("document.getElementById('expandAll').click();");
 
-        // 5. Wait for at least one leaf justify button to appear.
+        // Wait for at least one leaf justify button to appear.
         wait(10).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector(".tax-justify-btn.btn-outline-info")));
         List<WebElement> justifyBtns = driver.findElements(
@@ -1267,8 +1025,7 @@ class ScreenshotGeneratorIT {
     @Order(19)
     void captureStaleResultsWarning() throws IOException {
         // Ensure a completed non-interactive analysis exists
-        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
-        if (!statusText.contains("complete")) {
+        if (!hasSuccessfulAnalysis()) {
             // Force off interactive mode via JS to avoid stale-element or JS-variable race
             forceNonInteractiveMode();
             runAnalysis();
@@ -1285,142 +1042,6 @@ class ScreenshotGeneratorIT {
     }
 
     @Test
-    @Order(20)
-    void captureArchitectureView() throws IOException {
-        // Reload page for a clean state — test 18/19 leave the page with a streaming analysis
-        // that does NOT include architectureView. A fresh load avoids stale SSE connections.
-        resetPageState();
-
-        // Disable interactive mode so a full analysis runs
-        forceNonInteractiveMode();
-
-        // Pre-seed taxonomy relations so that RelevancePropagationService.propagate() has edges
-        // to traverse. Without them only the 3 anchor nodes appear (one swimlane each).
-        seedArchitectureViewRelations();
-
-        // Enable architecture view
-        WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
-        if (!archCb.isSelected()) {
-            js("arguments[0].click();", archCb);
-            wait(3).until(ExpectedConditions.elementSelectionStateToBe(archCb, true));
-        }
-
-        // Switch to a non-list/tabs view (sunburst) so that clicking Analyze calls runAnalysis()
-        // instead of runStreamingAnalysis(). Only runAnalysis() (POST /api/analyze) sends
-        // includeArchitectureView:true and renders the architectureViewPanel on completion.
-        safeClick(By.id("viewSunburst"));
-        wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
-
-        WebElement textarea = driver.findElement(By.id("businessText"));
-        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
-        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
-                textarea, REQUIREMENT_TEXT);
-        WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
-        js("arguments[0].click();", analyzeBtn);
-
-        wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
-
-        // Check that analysis actually succeeded — if it ended with error/unavailable,
-        // the architectureViewPanel is never rendered and waiting for it would just time out.
-        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
-        Assumptions.assumeTrue(statusText.contains("complete"),
-                "Skipping: analysis did not complete successfully (status: " + statusText + ")");
-
-        // Navigate to Architecture tab to see the panel
-        navigateToTab("architecture");
-        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
-
-        // The force-directed graph was replaced by a deterministic architecture-layer
-        // workbench. Wait for its orientation KPIs and readable element cards instead of
-        // switching back to the legacy swimlane alternative.
-        wait(30).until(ExpectedConditions.visibilityOfElementLocated(
-                By.cssSelector(".impact-map-workbench")));
-        wait(30).until(d -> {
-            List<WebElement> impactNodes = d.findElements(
-                    By.cssSelector(".impact-map-workbench .impact-map-node"));
-            List<WebElement> impactKpis = d.findElements(
-                    By.cssSelector(".impact-map-workbench .impact-map-kpi"));
-            return impactNodes.stream().anyMatch(WebElement::isDisplayed)
-                    && impactKpis.size() >= 4;
-        });
-
-        // The product intentionally opens large results at a readable focal point. For the
-        // documentation image, temporarily use a wider viewport and activate Fit so every
-        // architecture layer is visible while the cards remain legible.
-        WebElement impactMap = driver.findElement(By.cssSelector(".impact-map-workbench"));
-        Boolean impactMapHadStyle = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "return arguments[0].hasAttribute('style');", impactMap);
-        String previousImpactMapStyle = (String) ((JavascriptExecutor) driver).executeScript(
-                "return arguments[0].getAttribute('style');", impactMap);
-        String previousBodyOverflow = (String) ((JavascriptExecutor) driver).executeScript(
-                "return document.body.style.overflow;" );
-        org.openqa.selenium.Dimension previousWindowSize = driver.manage().window().getSize();
-
-        try {
-            driver.manage().window().setSize(new org.openqa.selenium.Dimension(1800, 1100));
-            js("arguments[0].style.position='fixed';" +
-               "arguments[0].style.inset='0';" +
-               "arguments[0].style.zIndex='2000';" +
-               "arguments[0].style.width='100vw';" +
-               "arguments[0].style.height='100vh';" +
-               "arguments[0].style.borderRadius='0';" +
-               "arguments[0].style.setProperty('--impact-map-canvas-height','650px');" +
-               "document.body.style.overflow='hidden';" +
-               "window.dispatchEvent(new Event('resize'));", impactMap);
-            wait(5).until(d -> impactMap.getSize().getWidth() >= 1700
-                    && impactMap.getSize().getHeight() >= 900);
-
-            js("var root=arguments[0];" +
-               "var label=(window.TaxonomyI18n && window.TaxonomyI18n.t)" +
-               "  ? window.TaxonomyI18n.t('impactmap.fit') : 'Fit';" +
-               "var btn=Array.from(root.querySelectorAll('.impact-map-button')).find(function(candidate) {" +
-               "  return candidate.getAttribute('aria-label')===label || candidate.title===label;" +
-               "});" +
-               "if (!btn) throw new Error('Impact-map Fit button not found');" +
-               "window.__impactMapFitReady=false;" +
-               "btn.click();" +
-               "window.setTimeout(function(){window.__impactMapFitReady=true;},450);", impactMap);
-            wait(5).until(d -> Boolean.TRUE.equals(
-                    ((JavascriptExecutor) d).executeScript(
-                            "return window.__impactMapFitReady === true;")));
-            wait(5).until(d -> Boolean.TRUE.equals(
-                    ((JavascriptExecutor) d).executeScript(
-                            "var root=arguments[0], canvas=root.querySelector('.impact-map-canvas');" +
-                            "var headers=Array.from(root.querySelectorAll('.impact-map-layer-header'));" +
-                            "if (!canvas || headers.length < 8) return false;" +
-                            "var c=canvas.getBoundingClientRect();" +
-                            "return headers.every(function(header) {" +
-                            "  var r=header.getBoundingClientRect();" +
-                            "  return r.left >= c.left - 2 && r.right <= c.right + 2 &&" +
-                            "         r.top >= c.top - 2 && r.bottom <= c.bottom + 2;" +
-                            "});", impactMap)));
-
-            saveElementScreenshot(impactMap, "20-architecture-view.png");
-        } finally {
-            js("if (arguments[1]) {" +
-               "  arguments[0].setAttribute('style', arguments[2] === null ? '' : arguments[2]);" +
-               "} else {" +
-               "  arguments[0].removeAttribute('style');" +
-               "}" +
-               "document.body.style.overflow=arguments[3] || '';" +
-               "window.dispatchEvent(new Event('resize'));",
-                    impactMap, impactMapHadStyle, previousImpactMapStyle, previousBodyOverflow);
-            driver.manage().window().setSize(previousWindowSize);
-        }
-
-        // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
-        navigateToTab("analyze");
-        safeClick(By.id("viewList"));
-        archCb = driver.findElement(By.id("includeArchitectureView"));
-        if (archCb.isSelected()) {
-            js("arguments[0].click();", archCb);
-        }
-    }
-
-    @Test
     @Order(21)
     void captureGraphExplorerUpstream() throws IOException {
         navigateToTab("graph");
@@ -1432,16 +1053,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", upstreamBtn);
         js("arguments[0].click();", upstreamBtn);
 
-        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphResultsArea")));
-        // Check if the graph results show an error (e.g., HTTP 423 from locked repository)
-        // and inject fallback upstream graph content if needed
-        Boolean hasError = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "var el = document.getElementById('graphResultsContent');" +
-                "return el && el.innerHTML.indexOf('alert-warning') >= 0;");
-        if (Boolean.TRUE.equals(hasError)) {
-            js("document.getElementById('graphResultsContent').innerHTML = arguments[0];",
-                    FALLBACK_UPSTREAM_GRAPH_HTML);
-        }
+        waitForResult("graphResultsContent", "#graphViewTable", 30);
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "21-graph-explorer-upstream.png");
     }
 
@@ -1458,18 +1070,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
         js("arguments[0].click();", failureBtn);
 
-        // Wait for the failure impact results to load.
-        // Phase 1: wait for graphResultsContent to exist and have content (spinner or results)
-        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("graphResultsContent")));
-        // Phase 2: wait for the spinner to be replaced by graph/table results
-        wait(30).until(d -> {
-            String html = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('graphResultsContent');" +
-                    "return el ? el.innerHTML : '';");
-            return html != null
-                    && !html.contains("spinner-border")
-                    && html.contains("graphViewTable");
-        });
+        waitForResult("graphResultsContent", "#graphViewTable", 30);
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
     }
 
@@ -1478,8 +1079,7 @@ class ScreenshotGeneratorIT {
     void captureExportButtons() throws IOException {
         // Ensure a completed analysis exists so export buttons are visible
         navigateToTab("analyze");
-        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
-        if (!statusText.contains("complete")) {
+        if (!hasSuccessfulAnalysis()) {
             forceNonInteractiveMode();
             runAnalysis();
         }
@@ -1505,12 +1105,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", diagPanel);
         openDetails(diagPanel);
         wait(5).until(ExpectedConditions.visibilityOf(diagPanel));
-        // Wait for diagnostics content to load (no longer shows "Loading…" placeholder)
-        wait(10).until(d -> {
-            WebElement content = d.findElement(By.id("diagnosticsContent"));
-            String text = content.getText();
-            return text != null && !text.isEmpty() && !text.contains("Loading");
-        });
+        waitForResult("diagnosticsContent", "table", 10);
         saveElementScreenshot(diagPanel, "24-llm-diagnostics.png");
     }
 
@@ -1534,11 +1129,7 @@ class ScreenshotGeneratorIT {
         WebElement panel = driver.findElement(By.id("coverageDashboard"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         openDetails(panel);
-        // Wait for the content area to finish its initial load (spinner disappears)
-        wait(10).until(d -> {
-            String text = d.findElement(By.id("coverageDashboardContent")).getText();
-            return text != null && !text.contains("Loading");
-        });
+        waitForResult("coverageDashboardContent", ".badge", 10);
         saveElementScreenshot(panel, "26-coverage-dashboard-empty.png");
     }
 
@@ -1580,8 +1171,7 @@ class ScreenshotGeneratorIT {
 
         // Reload the dashboard so it picks up the newly recorded data
         js("if (window.TaxonomyCoverage) window.TaxonomyCoverage.loadCoverageDashboard();");
-        wait(10).until(d -> !d.findElements(
-                By.cssSelector("#coverageDashboardContent .coverage-node-link")).isEmpty());
+        waitForResult("coverageDashboardContent", ".coverage-node-link", 10);
 
         saveElementScreenshot(panel, "27-coverage-dashboard-data.png");
     }
@@ -1597,12 +1187,8 @@ class ScreenshotGeneratorIT {
         // Click the "All" filter to show all proposals (pending, accepted, rejected)
         WebElement allFilter = driver.findElement(By.id("filterAll"));
         js("arguments[0].click();", allFilter);
-        wait(10).until(d -> {
-            WebElement container = d.findElement(By.id("proposalsTableContainer"));
-            String text = container.getText();
-            // Positive condition: either proposals are shown (table rows) or a "no proposals" message
-            return text != null && !text.isEmpty() && !text.contains("Loading");
-        });
+        waitForResult("proposalsTableContainer",
+                ".proposal-table, :scope > .text-muted:not([role='status'])", 10);
         saveElementScreenshot(panel, "28-proposal-review-queue.png");
     }
 
@@ -1614,8 +1200,7 @@ class ScreenshotGeneratorIT {
         // Open the search panel
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
         openDetails(searchPanel);
-        // Set search mode to full-text
-        js("document.getElementById('searchModeSelect').value = 'fulltext';");
+        selectSearchMode("fulltext");
         // Enter search query
         WebElement searchInput = driver.findElement(By.id("searchInput"));
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", searchInput);
@@ -1623,23 +1208,7 @@ class ScreenshotGeneratorIT {
                 searchInput);
         // Click search button
         js("document.getElementById('searchBtn').click();");
-        try {
-            wait(10).until(d -> {
-                WebElement results = d.findElement(By.id("searchResultsArea"));
-                return results.isDisplayed() && !results.getText().isEmpty();
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Search index may be locked — fall through to fallback injection below
-        }
-        // Inject fallback results if the search failed (HTTP 423) or returned an error
-        Boolean hasResults = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "var area = document.getElementById('searchResultsArea');" +
-                "return area != null && area.querySelector('.search-result-item') != null;");
-        if (!Boolean.TRUE.equals(hasResults)) {
-            js("var area = document.getElementById('searchResultsArea');" +
-               "area.style.display = 'block';" +
-               "area.innerHTML = arguments[0];", FALLBACK_FULLTEXT_SEARCH_HTML);
-        }
+        waitForResult("searchResultsArea", ".search-result-item", 30);
         saveElementScreenshot(searchPanel, "29-search-fulltext.png");
     }
 
@@ -1647,35 +1216,16 @@ class ScreenshotGeneratorIT {
     @Order(30)
     void captureSearchSemantic() throws IOException {
         waitForTaxonomyReadyViaUI();
-        // Embedding badge check — if embeddings load, we get real results; if not, fallback below
-        try { waitForEmbeddingsReadyViaUI(); } catch (org.openqa.selenium.TimeoutException ignored) { }
         navigateToTab("analyze");
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
         openDetails(searchPanel);
-        // Set search mode to semantic
-        js("document.getElementById('searchModeSelect').value = 'semantic';");
+        selectSearchMode("semantic");
         WebElement searchInput = driver.findElement(By.id("searchInput"));
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", searchInput);
         js("arguments[0].value = 'secure data exchange'; arguments[0].dispatchEvent(new Event('input'));",
                 searchInput);
         js("document.getElementById('searchBtn').click();");
-        try {
-            wait(10).until(d -> {
-                WebElement results = d.findElement(By.id("searchResultsArea"));
-                return results.isDisplayed() && !results.getText().isEmpty();
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Embedding model unavailable — fall through to fallback injection below
-        }
-        // Inject fallback results if embedding model was unavailable and produced no items
-        Boolean hasResults = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "var area = document.getElementById('searchResultsArea');" +
-                "return area != null && area.querySelector('.search-result-item') != null;");
-        if (!Boolean.TRUE.equals(hasResults)) {
-            js("var area = document.getElementById('searchResultsArea');" +
-               "area.style.display = 'block';" +
-               "area.innerHTML = '" + FALLBACK_SEMANTIC_SEARCH_HTML + "';");
-        }
+        waitForResult("searchResultsArea", ".search-result-item", 30);
         saveElementScreenshot(searchPanel, "30-search-semantic.png");
     }
 
@@ -1683,70 +1233,17 @@ class ScreenshotGeneratorIT {
     @Order(31)
     void captureSearchHybrid() throws IOException {
         waitForTaxonomyReadyViaUI();
-        try { waitForEmbeddingsReadyViaUI(); } catch (org.openqa.selenium.TimeoutException ignored) { }
         navigateToTab("analyze");
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
         openDetails(searchPanel);
-        // Set search mode to hybrid
-        js("document.getElementById('searchModeSelect').value = 'hybrid';");
+        selectSearchMode("hybrid");
         WebElement searchInput = driver.findElement(By.id("searchInput"));
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", searchInput);
         js("arguments[0].value = 'command and control'; arguments[0].dispatchEvent(new Event('input'));",
                 searchInput);
         js("document.getElementById('searchBtn').click();");
-        try {
-            wait(10).until(d -> {
-                WebElement results = d.findElement(By.id("searchResultsArea"));
-                return results.isDisplayed() && !results.getText().isEmpty();
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Embedding model unavailable — fall through to fallback injection below
-        }
-        // Inject fallback results if embedding model was unavailable and produced no items
-        Boolean hasResults = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "var area = document.getElementById('searchResultsArea');" +
-                "return area != null && area.querySelector('.search-result-item') != null;");
-        if (!Boolean.TRUE.equals(hasResults)) {
-            js("var area = document.getElementById('searchResultsArea');" +
-               "area.style.display = 'block';" +
-               "area.innerHTML = '" + FALLBACK_HYBRID_SEARCH_HTML + "';");
-        }
+        waitForResult("searchResultsArea", ".search-result-item", 30);
         saveElementScreenshot(searchPanel, "31-search-hybrid.png");
-    }
-
-    @Test
-    @Order(32)
-    void captureSearchGraph() throws IOException {
-        waitForTaxonomyReadyViaUI();
-        try { waitForEmbeddingsReadyViaUI(); } catch (org.openqa.selenium.TimeoutException ignored) { }
-        navigateToTab("analyze");
-        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
-        openDetails(searchPanel);
-        // Set search mode to graph
-        js("document.getElementById('searchModeSelect').value = 'graph';");
-        WebElement searchInput = driver.findElement(By.id("searchInput"));
-        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", searchInput);
-        js("arguments[0].value = 'intelligence processing'; arguments[0].dispatchEvent(new Event('input'));",
-                searchInput);
-        js("document.getElementById('searchBtn').click();");
-        try {
-            wait(10).until(d -> {
-                WebElement results = d.findElement(By.id("searchResultsArea"));
-                return results.isDisplayed() && !results.getText().isEmpty();
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Embedding model unavailable — fall through to fallback injection below
-        }
-        // Inject fallback results if embedding model was unavailable and produced no items
-        Boolean hasResults = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "var area = document.getElementById('searchResultsArea');" +
-                "return area != null && area.querySelector('.search-result-item') != null;");
-        if (!Boolean.TRUE.equals(hasResults)) {
-            js("var area = document.getElementById('searchResultsArea');" +
-               "area.style.display = 'block';" +
-               "area.innerHTML = '" + FALLBACK_GRAPH_SEARCH_HTML + "';");
-        }
-        saveElementScreenshot(searchPanel, "32-search-graph.png");
     }
 
     @Test
@@ -1754,8 +1251,7 @@ class ScreenshotGeneratorIT {
     void captureExportTab() throws IOException {
         // Ensure a completed analysis exists so export buttons are visible
         navigateToTab("analyze");
-        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
-        if (!statusText.contains("complete")) {
+        if (!hasSuccessfulAnalysis()) {
             forceNonInteractiveMode();
             runAnalysis();
         }
@@ -1773,24 +1269,7 @@ class ScreenshotGeneratorIT {
         // Ensure Git history with branches exists for realistic DSL content
         buildGitHistory();
         navigateToTab("dsl-editor");
-        // Fetch DSL export and populate CodeMirror 6 editor (dslEditorContainer + window.dslCmView)
-        js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
-           "  var view = window.dslCmView;" +
-           "  if (view && t && t.trim().length > 0) {" +
-           "    view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: t}});" +
-           "  }" +
-           "});");
-        try {
-            wait(15).until(d -> {
-                String content = (String) ((JavascriptExecutor) d).executeScript(
-                        "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
-                return content != null && !content.isBlank() && content.length() > 50;
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Fallback: inject representative DSL into CodeMirror editor
-            js("var view = window.dslCmView;" +
-               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: " + jsStringLiteral(FALLBACK_DSL_TEXT) + "}});");
-        }
+        loadCurrentDsl("element");
         saveScreenshot("34-dsl-editor-panel.png");
     }
 
@@ -1801,8 +1280,7 @@ class ScreenshotGeneratorIT {
     void captureFullScoredBPTreeExpanded() throws IOException {
         // Ensure analysis is complete (reuse scores from test 15)
         navigateToTab("analyze");
-        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
-        if (!statusText.contains("complete")) {
+        if (!hasSuccessfulAnalysis()) {
             forceNonInteractiveMode();
             runAnalysis();
         }
@@ -1845,6 +1323,36 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(36)
     void captureProposalAccepted() throws IOException {
+        // DSL history can leave the selected workspace projection stale. Use the
+        // relation panel's real recovery action before creating a review proposal.
+        navigateToTab("relations");
+        openDetails(driver.findElement(By.id("relationsBrowser")));
+        js("window.TaxonomyRelations.loadRelations();");
+        WebElement projectionAction = wait(30).withMessage(() ->
+                "Relation projection did not become readable or offer recovery: "
+                        + driver.findElement(By.id("relationsTableContainer")).getText()).until(d -> {
+            WebElement content = d.findElement(By.id("relationsTableContainer"));
+            if ("true".equals(content.getAttribute("aria-busy"))) return null;
+            Assertions.assertTrue(content.findElements(By.cssSelector(".alert-danger")).isEmpty(),
+                    "Relation projection failed: " + content.getText());
+            List<WebElement> rebuild = content.findElements(By.cssSelector(".alert .btn-outline-primary"));
+            if (!rebuild.isEmpty() && rebuild.get(0).isDisplayed() && rebuild.get(0).isEnabled()) {
+                return rebuild.get(0);
+            }
+            return content.findElements(By.cssSelector(".relations-table, :scope > .text-muted.small.p-2"))
+                    .isEmpty() ? null : content;
+        });
+        if (!"relationsTableContainer".equals(projectionAction.getAttribute("id"))) {
+            safeClick(projectionAction);
+        }
+        waitForResult("relationsTableContainer", ".relations-table, :scope > .text-muted.small.p-2", 30);
+        Map<?, ?> projection = requestFixture("/api/architecture/relations/projection/readiness", "GET", null, null);
+        Assertions.assertEquals("READY", projection.get("readinessState"),
+                "Proposal creation needs the selected workspace projection: " + projection);
+        Assertions.assertNotNull(projection.get("currentHeadCommit"), "Projection must identify its Git head");
+        Assertions.assertEquals(projection.get("currentHeadCommit"), projection.get("projectedCommit"),
+                "The readable projection must match the selected branch head");
+
         // Discover real taxonomy codes at runtime — never hardcode codes that may not exist.
         // Fetch /api/taxonomy, walk the tree to find the first child under the CP root and
         // the first child under the CR root.  Store them in window globals for later tests.
@@ -1894,128 +1402,14 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         // Click the "Accepted" filter button to show accepted proposals
         js("var btn = document.getElementById('filterAccepted'); if (btn) btn.click();");
-        wait(10).until(d -> {
-            WebElement container = d.findElement(By.id("proposalsTableContainer"));
-            String text = container.getText();
-            return text != null && !text.isEmpty() && !text.contains("Loading");
-        });
+        waitForResult("proposalsTableContainer", ".proposal-table tbody tr", 10);
+        Assertions.assertTrue((Boolean) ((JavascriptExecutor) driver).executeScript(
+                "return Array.from(document.querySelectorAll('#proposalsTableContainer tbody tr')).some(function(row) {" +
+                "  return row.textContent.includes(window._acceptedSourceCode)" +
+                "    && row.textContent.includes(window._acceptedTargetCode)" +
+                "    && row.textContent.includes('ACCEPTED'); });"),
+                "The accepted proposal must be visible in the review queue");
         saveElementScreenshot(panel, "36-proposal-accepted.png");
-    }
-
-    @Test
-    @Order(37)
-    void captureGraphWithAcceptedRelation() throws IOException {
-        // Read the source code stored by test 36 (discovered from live taxonomy data).
-        String sourceCode = (String) ((JavascriptExecutor) driver).executeScript(
-                "return window._acceptedSourceCode || 'CP';");
-        navigateToTab("graph");
-        WebElement input = driver.findElement(By.id("graphNodeInput"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
-        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
-                input, sourceCode);
-
-        // Click Downstream to show the accepted relation
-        WebElement downstreamBtn = driver.findElement(By.id("graphDownstreamBtn"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", downstreamBtn);
-        js("arguments[0].click();", downstreamBtn);
-
-        try {
-            wait(30).until(d -> {
-                String html = (String) ((JavascriptExecutor) d).executeScript(
-                        "var el = document.getElementById('graphResultsContent');" +
-                        "return el ? el.innerHTML : '';");
-                return html != null
-                        && !html.contains("spinner-border")
-                        && html.contains("graphViewTable");
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Graph query failed (HTTP 423) or returned no data — fall through to fallback below
-        }
-        // Check if the graph results show an error or only a single isolated node;
-        // inject richer fallback content showing the accepted relation network
-        Boolean hasRichResults = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "var el = document.getElementById('graphResultsContent');" +
-                "if (!el) return false;" +
-                "var rows = el.querySelectorAll('.graph-element-row, tbody tr');" +
-                "return rows.length >= 2;");
-        if (!Boolean.TRUE.equals(hasRichResults)) {
-            js("var el = document.getElementById('graphResultsContent');" +
-               "if (el) el.innerHTML = arguments[0];", FALLBACK_DOWNSTREAM_GRAPH_HTML);
-        }
-        saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")),
-                "37-graph-with-accepted-relation.png");
-    }
-
-    @Test
-    @Order(38)
-    void captureDetailedArchitectureView() throws IOException {
-        // Reload page for clean state
-        resetPageState();
-        forceNonInteractiveMode();
-
-        // Re-seed relations in case the container was restarted between test 20 and test 38,
-        // or in case prior tests didn't run. Duplicates are harmless.
-        seedArchitectureViewRelations();
-
-        // Enable architecture view
-        WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
-        if (!archCb.isSelected()) {
-            js("arguments[0].click();", archCb);
-            wait(3).until(ExpectedConditions.elementSelectionStateToBe(archCb, true));
-        }
-
-        // Switch to sunburst view so Analyze calls POST /api/analyze (not streaming)
-        safeClick(By.id("viewSunburst"));
-        wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
-
-        WebElement textarea = driver.findElement(By.id("businessText"));
-        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
-        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
-                textarea, REQUIREMENT_TEXT);
-        WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
-        js("arguments[0].click();", analyzeBtn);
-
-        wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
-
-        // Check that analysis actually succeeded — if it ended with error/unavailable,
-        // the architectureViewPanel is never rendered and waiting for it would just time out.
-        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
-        Assumptions.assumeTrue(statusText.contains("complete"),
-                "Skipping: analysis did not complete successfully (status: " + statusText + ")");
-
-        navigateToTab("architecture");
-        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
-
-        // Switch to swimlane view for readable static screenshot
-        js("var btn = document.querySelector('.impact-view-btn[data-mode=\"swimlane\"]');" +
-           "if (btn) btn.click();");
-
-        // Expand the <details> section so the element/relationship tables are visible
-        // — this differentiates the "detailed" screenshot from the overview (screenshot 20).
-        js("var d = document.querySelector('#architectureViewContent .impact-details');" +
-           "if (d) d.setAttribute('open', '');");
-
-        // Wait for the <details> element to be expanded and its content visible.
-        wait(5).until(ExpectedConditions.attributeContains(
-                By.cssSelector("#architectureViewContent .impact-details"), "open", ""));
-
-        // Scroll to the expanded detail tables (not the panel top) so the screenshot
-        // shows the element/relationship tables — visually distinct from screenshot 20.
-        js("var d = document.querySelector('#architectureViewContent .impact-details');" +
-           "if (d) d.scrollIntoView({behavior:'instant', block:'start'});");
-        saveScreenshot("38-architecture-view-detailed.png");
-
-        // Reset: switch back to list view and uncheck architecture view
-        navigateToTab("analyze");
-        safeClick(By.id("viewList"));
-        archCb = driver.findElement(By.id("includeArchitectureView"));
-        if (archCb.isSelected()) {
-            js("arguments[0].click();", archCb);
-        }
     }
 
     @Test
@@ -2023,8 +1417,7 @@ class ScreenshotGeneratorIT {
     void captureScoredSunburst() throws IOException {
         // Ensure analysis is complete
         navigateToTab("analyze");
-        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
-        if (!statusText.contains("complete")) {
+        if (!hasSuccessfulAnalysis()) {
             forceNonInteractiveMode();
             runAnalysis();
         }
@@ -2044,27 +1437,7 @@ class ScreenshotGeneratorIT {
     @Order(40)
     void captureDslWithRelations() throws IOException {
         navigateToTab("dsl-editor");
-        // Fetch the DSL export which should now include relation blocks from accepted proposals
-        js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
-           "  var view = window.dslCmView;" +
-           "  if (view && t && t.trim().length > 0) {" +
-           "    view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: t}});" +
-           "  }" +
-           "});");
-        try {
-            wait(15).until(d -> {
-                String content = (String) ((JavascriptExecutor) d).executeScript(
-                        "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
-                return content != null && !content.isBlank() && content.contains("relation");
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Fallback: inject DSL with relation blocks into CodeMirror editor
-            js("var view = window.dslCmView;" +
-               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: " + jsStringLiteral(FALLBACK_DSL_TEXT) + "}});");
-        }
-        // Inject healthy status badges to avoid capturing "unavailable" / error states
-        // (AI badge, Embeddings badge, Git status bar) in the documentation screenshot
-        injectHealthyStatusBadges();
+        loadCurrentDsl("relation");
         saveScreenshot("40-dsl-editor-with-relations.png");
     }
 
@@ -2077,22 +1450,9 @@ class ScreenshotGeneratorIT {
         buildGitHistory();
         navigateToTab("versions");
         // Wait for successful load via language-independent data-state attribute
-        wait(15).until(d -> {
-            String state = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('versionsTimeline');" +
-                    "return el ? el.getAttribute('data-state') : '';");
-            return "loaded".equals(state) || "empty".equals(state);
-        });
+        refreshVersionHistory();
         // Ensure the History sub-tab is active
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        // Inject healthy status badges to avoid capturing "unavailable" / error states
-        injectHealthyStatusBadges();
+        safeClick(By.cssSelector("[data-versions-tab=\"history\"]"));
         saveScreenshot("41-versions-tab-history.png");
     }
 
@@ -2101,13 +1461,7 @@ class ScreenshotGeneratorIT {
     void captureVersionsTabSaveVersion() throws IOException {
         navigateToTab("versions");
         // Switch to the Save Version sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'save');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-save') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
+        safeClick(By.cssSelector("[data-versions-tab=\"save\"]"));
         // Fill in example data for the screenshot
         js("var t = document.getElementById('versionTitle');" +
            "if (t) { t.value = 'Baseline after review round 2'; t.dispatchEvent(new Event('input')); }" +
@@ -2115,13 +1469,7 @@ class ScreenshotGeneratorIT {
            "if (d) { d.value = 'Incorporates feedback from architecture board meeting'; d.dispatchEvent(new Event('input')); }");
         saveScreenshot("42-versions-tab-save.png");
         // Reset to History sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
+        safeClick(By.cssSelector("[data-versions-tab=\"history\"]"));
     }
 
     @Test
@@ -2129,10 +1477,13 @@ class ScreenshotGeneratorIT {
     void captureGitStatusBar() throws IOException {
         // Navigate to the Analyze tab (default) so the full layout is visible
         navigateToTab("analyze");
+        openOperationalStatus();
         // Wait for the Git status bar to become visible (it polls /api/git/state)
         wait(15).until(d -> {
             WebElement bar = d.findElement(By.id("gitStatusBar"));
-            return bar.isDisplayed() && !bar.getText().isEmpty();
+            Assertions.assertTrue(bar.findElements(By.cssSelector(".dot.error")).isEmpty(),
+                    "Git status failed: " + bar.getText());
+            return bar.isDisplayed() && !bar.findElements(By.cssSelector(".git-branch")).isEmpty();
         });
         saveElementScreenshot(driver.findElement(By.id("gitStatusBar")),
                 "43-git-status-bar.png");
@@ -2141,6 +1492,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(44)
     void captureContextBar() throws IOException {
+        openOperationalStatus();
         // The context bar polls /api/context/current. Wait for the render signal attribute.
         wait(30).until(ExpectedConditions.attributeToBe(
                 By.id("contextBar"), "data-context-rendered", "true"));
@@ -2148,25 +1500,20 @@ class ScreenshotGeneratorIT {
                 "44-context-bar.png");
     }
 
-    // ── Screenshots 45–51: Workspace UI Elements ──────────────────────────────
+    // ── Screenshots 45–47: Workspace UI Elements ──────────────────────────────
 
     @Test
     @Order(45)
     void captureWorkspaceUserBadge() throws IOException {
         navigateToTab("analyze");
-        // The workspace badge is populated by taxonomy-workspace-sync.js
-        // and taxonomy-browse.js; force it visible with sample content
-        js("var badge = document.getElementById('workspaceUserBadge');" +
-           "if (badge) {" +
-           "  badge.textContent = 'admin @ draft';" +
-           "  badge.classList.remove('d-none');" +
-           "}");
+        openOperationalStatus();
         wait(5).until(d -> {
             WebElement badge = d.findElement(By.id("workspaceUserBadge"));
             return badge.isDisplayed() && !badge.getText().isEmpty();
         });
-        saveElementScreenshot(driver.findElement(By.cssSelector(".navbar")),
+        saveElementScreenshot(driver.findElement(By.id("operationalContextDetails")),
                 "45-workspace-user-badge.png");
+        driver.findElement(By.cssSelector("#operationalContextDetails > summary")).click();
     }
 
     @Test
@@ -2189,498 +1536,26 @@ class ScreenshotGeneratorIT {
         buildGitHistory();
         navigateToTab("versions");
         // Switch to the Variants sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        // Explicitly trigger variant loading — the pane was hidden (d-none) so auto-load may not fire
-        js("if (window.TaxonomyVariants) { window.TaxonomyVariants.refresh(); }");
+        safeClick(By.cssSelector("[data-versions-tab=\"variants\"]"));
         // Wait for the variants browser to load
-        wait(30).until(d -> {
-            String html = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('variantsBrowser');" +
-                    "return el ? el.innerHTML : '';");
-            return html != null && html.length() > 0
-                    && !html.contains("Loading variants");
-        });
+        waitForResult("variantsBrowser", ".variant-card", 30);
         saveScreenshot("47-variants-browser-tab.png");
         // Reset to History sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
+        safeClick(By.cssSelector("[data-versions-tab=\"history\"]"));
     }
 
-    @Test
-    @Order(48)
-    void captureCompareModalBranches() throws IOException {
-        // Open the compare modal
-        showModalAndWait("contextCompareModal");
-        // Populate the branch dropdowns with sample data if they are empty
-        js("var leftSel = document.getElementById('compareLeftBranch');" +
-           "var rightSel = document.getElementById('compareRightBranch');" +
-           "if (leftSel && leftSel.options.length <= 1) {" +
-           "  leftSel.innerHTML = '<option value=\"draft\">draft</option>" +
-           "<option value=\"feature-voice\">feature-voice</option>';" +
-           "  leftSel.value = 'draft';" +
-           "}" +
-           "if (rightSel && rightSel.options.length <= 1) {" +
-           "  rightSel.innerHTML = '<option value=\"draft\">draft</option>" +
-           "<option value=\"feature-voice\">feature-voice</option>';" +
-           "  rightSel.value = 'feature-voice';" +
-           "}");
-        saveScreenshot("48-compare-modal-branches.png");
-        closeModalAndWait("contextCompareModal");
-    }
-
-    @Test
-    @Order(49)
-    void captureCopyBackButton() throws IOException {
-        navigateToTab("analyze");
-        // Simulate a read-only context in the context bar with a Copy Back button
-        js("var bar = document.getElementById('contextBar');" +
-           "if (bar) {" +
-           "  bar.innerHTML = '<div class=\"context-bar d-flex align-items-center gap-2 px-3 py-1 border-bottom bg-light\">" +
-           "<span class=\"badge bg-warning text-dark\">READ-ONLY</span>" +
-           "<strong>feature-voice</strong>" +
-           "<code class=\"text-muted small\">a3f8c2d</code>" +
-           "<span class=\"text-muted small\">from draft</span>" +
-           "<span class=\"ms-auto d-flex align-items-center gap-1\">" +
-           "<button class=\"btn btn-sm btn-outline-secondary\">&#8592; Back</button>" +
-           "<button class=\"btn btn-sm btn-outline-primary\">&#8634; Origin</button>" +
-           "<button class=\"btn btn-sm btn-outline-warning\">&#128228; Copy Back</button>" +
-           "<button class=\"btn btn-sm btn-outline-success\">&#43; Variant</button>" +
-           "<button class=\"btn btn-sm btn-outline-info\">&#8596; Compare</button>" +
-           "</span></div>';" +
-           "  bar.classList.remove('d-none');" +
-           "}");
-        saveElementScreenshot(driver.findElement(By.id("contextBar")),
-                "49-copy-back-button.png");
-    }
-
-    @Test
-    @Order(50)
-    void captureReadOnlyModeBadge() throws IOException {
-        navigateToTab("analyze");
-        // Inject a READ-ONLY badge into the git status bar
-        js("var bar = document.getElementById('gitStatusBar');" +
-           "if (bar) {" +
-           "  var span = document.createElement('span');" +
-           "  span.id = 'readOnlyBadgeScreenshot';" +
-           "  span.innerHTML = '<span class=\"git-sep\">│</span>" +
-           "<span class=\"git-indicator\"><span class=\"badge bg-warning text-dark\" style=\"font-size:0.7rem;\">READ-ONLY</span></span>';" +
-           "  bar.appendChild(span);" +
-           "}");
-        wait(5).until(d -> {
-            WebElement bar = d.findElement(By.id("gitStatusBar"));
-            return bar.isDisplayed() && bar.getText().contains("READ-ONLY");
-        });
-        saveElementScreenshot(driver.findElement(By.id("gitStatusBar")),
-                "50-read-only-mode-badge.png");
-        // Clean up injected badge
-        js("var el = document.getElementById('readOnlyBadgeScreenshot'); if (el) el.remove();");
-    }
-
-    @Test
-    @Order(51)
-    void captureContextBarWithOrigin() throws IOException {
-        navigateToTab("analyze");
-        // Render a context bar showing origin info and return button
-        js("var bar = document.getElementById('contextBar');" +
-           "if (bar) {" +
-           "  bar.innerHTML = '<div class=\"context-bar d-flex align-items-center gap-2 px-3 py-1 border-bottom bg-light\">" +
-           "<span class=\"badge bg-success\">EDITABLE</span>" +
-           "<strong>draft</strong>" +
-           "<code class=\"text-muted small\">b7e4f1a</code>" +
-           "<span class=\"text-muted small\">from feature-voice</span>" +
-           "<span class=\"ms-auto d-flex align-items-center gap-1\">" +
-           "<button class=\"btn btn-sm btn-outline-secondary\">&#8592; Back</button>" +
-           "<button class=\"btn btn-sm btn-outline-primary\">&#8634; Origin</button>" +
-           "<button class=\"btn btn-sm btn-outline-success\">&#43; Variant</button>" +
-           "<button class=\"btn btn-sm btn-outline-info\">&#8596; Compare</button>" +
-           "</span></div>';" +
-           "  bar.classList.remove('d-none');" +
-           "}");
-        saveElementScreenshot(driver.findElement(By.id("contextBar")),
-                "51-context-bar-with-origin.png");
-    }
-
-    // ── Screenshots 52–68: New GUI Dialogs ────────────────────────────────────
-
-    @Test
-    @Order(52)
-    void captureMergeConflictModal() throws IOException {
-        navigateToTab("analyze");
-        showModalAndWait("mergeConflictModal");
-        // Populate conflict modal with sample content — realistic architecture overlay
-        // conflict (relation status change), not canonical title rename
-        js("document.getElementById('conflictOursLabel').textContent = 'Ours (draft)';" +
-           "document.getElementById('conflictTheirsLabel').textContent = 'Theirs (feature-voice)';" +
-           "document.getElementById('conflictOursContent').textContent = " +
-           "'relation CO-1011 USES CR-1047 {\\n  status: proposed;\\n}';" +
-           "document.getElementById('conflictTheirsContent').textContent = " +
-           "'relation CO-1011 USES CR-1047 {\\n  status: accepted;\\n}';" +
-           "document.getElementById('conflictResolvedContent').value = " +
-           "'relation CO-1011 USES CR-1047 {\\n  status: accepted;\\n}';");
-        saveScreenshot("52-merge-conflict-modal.png");
-        closeModalAndWait("mergeConflictModal");
-    }
-
-    @Test
-    @Order(53)
-    void captureMergeConflictResolved() throws IOException {
-        navigateToTab("analyze");
-        // Simulate a toast notification for resolved conflict
-        js("var toastEl = document.getElementById('operationToast');" +
-           "var titleEl = document.getElementById('operationToastTitle');" +
-           "var bodyEl = document.getElementById('operationToastBody');" +
-           "if (toastEl && titleEl && bodyEl) {" +
-           "  titleEl.textContent = '\\u2705 Merge Conflict Resolved';" +
-           "  bodyEl.textContent = 'Content committed successfully: a3f8c2d';" +
-           "  var header = toastEl.querySelector('.toast-header');" +
-           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
-           "  toastEl.classList.add('show');" +
-           "}");
-        // Wait for the show class to be applied (synchronous DOM change)
-        wait(5).until(ExpectedConditions.attributeContains(
-                By.id("operationToast"), "class", "show"));
-        saveScreenshot("53-merge-conflict-resolved.png");
-        js("var toastEl = document.getElementById('operationToast');" +
-           "if (toastEl) toastEl.classList.remove('show');");
-    }
-
-    @Test
-    @Order(54)
-    void captureCherryPickConflictModal() throws IOException {
-        navigateToTab("analyze");
-        showModalAndWait("mergeConflictModal");
-        // Populate as cherry-pick conflict — realistic relation change, not title rename
-        js("document.getElementById('mergeConflictModalLabel').textContent = " +
-           "'\\u26A0\\uFE0F Cherry-Pick Conflict — Manual Resolution Required';" +
-           "document.getElementById('conflictOursLabel').textContent = 'Ours (review)';" +
-           "document.getElementById('conflictTheirsLabel').textContent = 'Theirs (commit a3f8c2d)';" +
-           "document.getElementById('conflictOursContent').textContent = " +
-           "'relation CP-1023 REALIZES CR-1047 {\\n  status: proposed;\\n}';" +
-           "document.getElementById('conflictTheirsContent').textContent = " +
-           "'relation CP-1023 REALIZES CR-1047 {\\n  status: accepted;\\n}';" +
-           "document.getElementById('conflictResolvedContent').value = '';");
-        saveScreenshot("54-cherry-pick-conflict-modal.png");
-        closeModalAndWait("mergeConflictModal");
-        // Reset title
-        js("document.getElementById('mergeConflictModalLabel').textContent = " +
-           "'\\u26A0\\uFE0F Merge Conflict — Manual Resolution Required';");
-    }
-
-    @Test
-    @Order(55)
-    void captureSyncDivergedState() throws IOException {
-        navigateToTab("versions");
-        // Switch to Sync sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        // Inject diverged state
-        js("var panel = document.getElementById('syncStatePanel');" +
-           "if (panel) {" +
-           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
-           "<span class=\"badge bg-danger\">Diverged — both sides have changes</span>" +
-           "<button class=\"btn btn-sm btn-outline-danger ms-2\">Resolve…</button>" +
-           "</div>" +
-           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
-           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/15/2026, 2:30:00 PM</td></tr>" +
-           "<tr><td class=\"text-muted small\">Unpublished</td><td class=\"small\">3 commits</td></tr>" +
-           "</table>';" +
-           "}");
-        saveScreenshot("55-sync-diverged-state.png");
-    }
-
-    @Test
-    @Order(56)
-    void captureSyncResolveModal() throws IOException {
-        showModalAndWait("syncDivergedModal");
-        saveScreenshot("56-sync-resolve-modal.png");
-        closeModalAndWait("syncDivergedModal");
-    }
-
-    @Test
-    @Order(57)
-    void captureVariantDeleteConfirm() throws IOException {
-        navigateToTab("versions");
-        // Switch to Variants sub-tab and inject a variant with delete button
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        // Inject sample variant list with delete button
-        js("var browser = document.getElementById('variantsBrowser');" +
-           "if (browser) {" +
-           "  browser.innerHTML = '<div class=\"list-group\">" +
-           "<div class=\"list-group-item list-group-item-primary\">" +
-           "<div class=\"d-flex justify-content-between align-items-center\">" +
-           "<div><strong>draft</strong> <span class=\"badge bg-primary ms-1\">active</span> <span class=\"badge bg-secondary ms-1\">main</span></div>" +
-           "<div class=\"d-flex gap-1\"><button class=\"btn btn-outline-info btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8596; Compare</button></div>" +
-           "</div></div>" +
-           "<div class=\"list-group-item\">" +
-           "<div class=\"d-flex justify-content-between align-items-center\">" +
-           "<div><strong>feature-voice</strong></div>" +
-           "<div class=\"d-flex gap-1\">" +
-           "<button class=\"btn btn-outline-primary btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8594; Switch</button>" +
-           "<button class=\"btn btn-outline-info btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8596; Compare</button>" +
-           "<button class=\"btn btn-outline-warning btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#128256; Merge</button>" +
-           "<button class=\"btn btn-outline-danger btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#128465; Delete</button>" +
-           "</div></div></div></div>';" +
-           "}");
-        saveScreenshot("57-variant-delete-confirm.png");
-    }
-
-    @Test
-    @Order(58)
-    void captureMergeSuccessToast() throws IOException {
-        navigateToTab("analyze");
-        // Show a success toast for merge
-        js("var toastEl = document.getElementById('operationToast');" +
-           "var titleEl = document.getElementById('operationToastTitle');" +
-           "var bodyEl = document.getElementById('operationToastBody');" +
-           "if (toastEl && titleEl && bodyEl) {" +
-           "  titleEl.textContent = '\\u2705 Merge Successful';" +
-           "  bodyEl.textContent = 'Merged \"feature-voice\" into \"draft\" → a3f8c2d';" +
-           "  var header = toastEl.querySelector('.toast-header');" +
-           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
-           "  toastEl.classList.add('show');" +
-           "}");
-        // Wait for the show class to be applied (synchronous DOM change)
-        wait(5).until(ExpectedConditions.attributeContains(
-                By.id("operationToast"), "class", "show"));
-        saveScreenshot("58-merge-success-toast.png");
-        js("var toastEl = document.getElementById('operationToast');" +
-           "if (toastEl) toastEl.classList.remove('show');");
-    }
-
-    @Test
-    @Order(59)
-    void captureCherryPickSuccessToast() throws IOException {
-        navigateToTab("analyze");
-        // Show a success toast for cherry-pick
-        js("var toastEl = document.getElementById('operationToast');" +
-           "var titleEl = document.getElementById('operationToastTitle');" +
-           "var bodyEl = document.getElementById('operationToastBody');" +
-           "if (toastEl && titleEl && bodyEl) {" +
-           "  titleEl.textContent = '\\u2705 Cherry-Pick Successful';" +
-           "  bodyEl.textContent = 'Applied onto \"review\" → b7e4f1a';" +
-           "  var header = toastEl.querySelector('.toast-header');" +
-           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
-           "  toastEl.classList.add('show');" +
-           "}");
-        // Wait for the show class to be applied (synchronous DOM change)
-        wait(5).until(ExpectedConditions.attributeContains(
-                By.id("operationToast"), "class", "show"));
-        saveScreenshot("59-cherry-pick-success-toast.png");
-        js("var toastEl = document.getElementById('operationToast');" +
-           "if (toastEl) toastEl.classList.remove('show');");
-    }
-
-    @Test
-    @Order(60)
-    void captureMergePreviewModal() throws IOException {
-        navigateToTab("analyze");
-        showModalAndWait("mergePreviewModal");
-        // Inject preview content
-        js("var content = document.getElementById('mergePreviewContent');" +
-           "if (content) {" +
-           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
-           "<strong>From:</strong> feature-voice <strong>→ Into:</strong> draft" +
-           "<hr class=\"my-2\">Merge preview: commits to merge from \"feature-voice\" into \"draft\". No conflicts detected.</div>';" +
-           "}" +
-           "var btn = document.getElementById('mergePreviewProceedBtn');" +
-           "if (btn) btn.classList.remove('d-none');");
-        saveScreenshot("60-merge-preview-modal.png");
-        closeModalAndWait("mergePreviewModal");
-    }
-
-    @Test
-    @Order(61)
-    void captureMergePreviewFastForward() throws IOException {
-        navigateToTab("analyze");
-        showModalAndWait("mergePreviewModal");
-        // Inject fast-forward preview
-        js("var content = document.getElementById('mergePreviewContent');" +
-           "if (content) {" +
-           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
-           "<strong>From:</strong> feature-voice <strong>→ Into:</strong> draft" +
-           "<hr class=\"my-2\">\\u2705 Fast-forward merge possible. No conflicts detected.</div>';" +
-           "}" +
-           "var btn = document.getElementById('mergePreviewProceedBtn');" +
-           "if (btn) btn.classList.remove('d-none');");
-        saveScreenshot("61-merge-preview-fast-forward.png");
-        closeModalAndWait("mergePreviewModal");
-    }
-
-    @Test
-    @Order(62)
-    void captureCherryPickPreviewModal() throws IOException {
-        navigateToTab("analyze");
-        showModalAndWait("cherryPickPreviewModal");
-        // Inject cherry-pick preview content
-        js("var content = document.getElementById('cherryPickPreviewContent');" +
-           "if (content) {" +
-           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
-           "<strong>Commit:</strong> a3f8c2d <strong>→ Branch:</strong> review" +
-           "<hr class=\"my-2\">\\u2705 Cherry-pick looks clean. Apply commit a3f8c2d onto \"review\"?</div>';" +
-           "}" +
-           "var btn = document.getElementById('cherryPickPreviewProceedBtn');" +
-           "if (btn) btn.classList.remove('d-none');");
-        saveScreenshot("62-cherry-pick-preview-modal.png");
-        closeModalAndWait("cherryPickPreviewModal");
-    }
-
-    @Test
-    @Order(63)
-    void captureSyncTabUpToDate() throws IOException {
-        navigateToTab("versions");
-        // Switch to Sync sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        js("var panel = document.getElementById('syncStatePanel');" +
-           "if (panel) {" +
-           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
-           "<span class=\"badge bg-success\">Up to date</span></div>" +
-           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
-           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/15/2026, 2:30:00 PM</td></tr>" +
-           "<tr><td class=\"text-muted small\">Synced commit</td><td class=\"small\"><code>a3f8c2d</code></td></tr>" +
-           "</table>';" +
-           "}");
-        saveScreenshot("63-sync-tab-up-to-date.png");
-    }
-
-    @Test
-    @Order(64)
-    void captureSyncTabAhead() throws IOException {
-        navigateToTab("versions");
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        js("var panel = document.getElementById('syncStatePanel');" +
-           "if (panel) {" +
-           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
-           "<span class=\"badge bg-info text-dark\">3 unpublished commits</span></div>" +
-           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
-           "<tr><td class=\"text-muted small\">Unpublished</td><td class=\"small\">3 commits</td></tr>" +
-           "</table>';" +
-           "}");
-        saveScreenshot("64-sync-tab-ahead.png");
-    }
-
-    @Test
-    @Order(65)
-    void captureSyncTabBehind() throws IOException {
-        navigateToTab("versions");
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        js("var panel = document.getElementById('syncStatePanel');" +
-           "if (panel) {" +
-           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
-           "<span class=\"badge bg-warning text-dark\">Behind shared repository</span></div>" +
-           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
-           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/14/2026, 10:00:00 AM</td></tr>" +
-           "</table>';" +
-           "}");
-        saveScreenshot("65-sync-tab-behind.png");
-    }
+    // Captures 48–65 and 67–68 were retired: they constructed output DOM instead of running workflows.
+    // Their retained PNGs are historical illustrations; see .github/copilot-ref-screenshots.md.
 
     @Test
     @Order(66)
     void captureVersionsTimeline() throws IOException {
         navigateToTab("versions");
         // Switch to History sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
+        safeClick(By.cssSelector("[data-versions-tab=\"history\"]"));
         // Wait for the timeline to be populated via language-independent data-state attribute
-        wait(10).until(d -> {
-            String state = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('versionsTimeline');" +
-                    "return el ? el.getAttribute('data-state') : '';");
-            return "loaded".equals(state) || "empty".equals(state);
-        });
+        refreshVersionHistory();
         saveScreenshot("66-versions-timeline.png");
-    }
-
-    @Test
-    @Order(67)
-    void captureVersionRestoreConfirm() throws IOException {
-        navigateToTab("versions");
-        // Inject a simulated restore confirmation dialog
-        js("var timeline = document.getElementById('versionsTimeline');" +
-           "if (timeline) {" +
-           "  var card = document.createElement('div');" +
-           "  card.className = 'alert alert-warning mt-2';" +
-           "  card.innerHTML = '<strong>Restore Version?</strong><br>" +
-           "This will create a new commit restoring the DSL content from commit <code>a3f8c2d</code>.<br>" +
-           "<div class=\"mt-2\"><button class=\"btn btn-sm btn-warning me-1\">\\u21A9 Restore</button>" +
-           "<button class=\"btn btn-sm btn-secondary\">Cancel</button></div>';" +
-           "  timeline.prepend(card);" +
-           "}");
-        saveScreenshot("67-version-restore-confirm.png");
-    }
-
-    @Test
-    @Order(68)
-    void captureDiffView() throws IOException {
-        navigateToTab("dsl-editor");
-        // Inject a diff view — shows realistic architecture changes (local extension,
-        // new element, new relation) rather than canonical title modification
-        js("var area = document.getElementById('dslDiffOutput');" +
-           "if (area) {" +
-           "  area.textContent = '--- a/architecture.taxdsl\\n" +
-           "+++ b/architecture.taxdsl\\n" +
-           "@@ -3,4 +3,13 @@\\n" +
-           " element CP-1023 type Capability {\\n" +
-           "   title: \"Secure Voice\";\\n" +
-           "+  x-alias: \"SecVoice\";\\n" +
-           " }\\n" +
-           "+\\n" +
-           "+element CO-1011 type Component {\\n" +
-           "+  title: \"Voice Gateway\";\\n" +
-           "+  description: \"SIP/RTP gateway for voice traffic\";\\n" +
-           "+}\\n" +
-           "+\\n" +
-           "+relation CO-1011 USES CR-1047 {\\n" +
-           "+  status: proposed;\\n" +
-           "+}\\n';" +
-           "  area.style.display = 'block';" +
-           "}");
-        saveScreenshot("68-diff-view.png");
     }
 
     // ── Screenshot 69: Scored Decision Map (complements the empty-state 08) ───
@@ -2690,8 +1565,7 @@ class ScreenshotGeneratorIT {
     void captureDecisionMapScored() throws IOException {
         // Ensure analysis is complete so the decision map has scored nodes to display
         navigateToTab("analyze");
-        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
-        if (!statusText.contains("complete")) {
+        if (!hasSuccessfulAnalysis()) {
             forceNonInteractiveMode();
             runAnalysis();
         }
@@ -2713,15 +1587,8 @@ class ScreenshotGeneratorIT {
         // Navigate to Swagger UI
         driver.get(ContainerTestUtils.APP_ORIGIN + "/swagger-ui.html");
 
-        // Wait for Swagger UI framework to load (info section with API title)
-        try {
-            wait(30).until(ExpectedConditions.presenceOfElementLocated(
-                    By.cssSelector(".swagger-ui .info")));
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // springdoc may be disabled — skip gracefully
-            Assumptions.assumeTrue(false,
-                    "Skipping: Swagger UI did not load (TAXONOMY_SPRINGDOC_ENABLED may be false)");
-        }
+        wait(30).withMessage("Swagger UI must load before its documentation capture")
+                .until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".swagger-ui .info")));
 
         // Wait for at least one operation block (endpoint) to render
         wait(15).until(ExpectedConditions.presenceOfElementLocated(
@@ -2758,21 +1625,9 @@ class ScreenshotGeneratorIT {
         buildRichGitHistory();
         navigateToTab("versions");
         // Switch to History sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
+        safeClick(By.cssSelector("[data-versions-tab=\"history\"]"));
         // Wait for the timeline to load with real data
-        wait(15).until(d -> {
-            String state = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('versionsTimeline');" +
-                    "return el ? el.getAttribute('data-state') : '';");
-            return "loaded".equals(state);
-        });
-        injectHealthyStatusBadges();
+        refreshVersionHistory();
         saveScreenshot("71-rich-version-timeline.png");
     }
 
@@ -2783,24 +1638,9 @@ class ScreenshotGeneratorIT {
         buildRichGitHistory();
         navigateToTab("versions");
         // Switch to the Variants sub-tab
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        // Explicitly trigger variant loading — the pane was hidden (d-none) so auto-load may not fire
-        js("if (window.TaxonomyVariants) { window.TaxonomyVariants.refresh(); }");
+        safeClick(By.cssSelector("[data-versions-tab=\"variants\"]"));
         // Wait for the variants browser to load (matches working Test 47 pattern)
-        wait(30).until(d -> {
-            String html = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('variantsBrowser');" +
-                    "return el ? el.innerHTML : '';");
-            return html != null && html.contains("variant-card")
-                    && !html.contains("Loading");
-        });
-        injectHealthyStatusBadges();
+        waitForResult("variantsBrowser", ".variant-card", 30);
         saveScreenshot("72-rich-variants-browser.png");
     }
 
@@ -2809,23 +1649,11 @@ class ScreenshotGeneratorIT {
     void captureCherryPickWorkflowBefore() throws IOException {
         // Show the version timeline on draft BEFORE cherry-picking a commit from review
         buildRichGitHistory();
-        Assumptions.assumeTrue(cherryPickSourceCommitId != null,
-                "Skipping: cherry-pick source commit ID not captured during buildRichGitHistory()");
+        Assertions.assertNotNull(cherryPickSourceCommitId,
+                "Cherry-pick source commit ID not captured during buildRichGitHistory()");
         navigateToTab("versions");
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        wait(15).until(d -> {
-            String state = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('versionsTimeline');" +
-                    "return el ? el.getAttribute('data-state') : '';");
-            return "loaded".equals(state);
-        });
-        injectHealthyStatusBadges();
+        safeClick(By.cssSelector("[data-versions-tab=\"history\"]"));
+        refreshVersionHistory();
         saveScreenshot("73-cherry-pick-before.png");
     }
 
@@ -2834,36 +1662,20 @@ class ScreenshotGeneratorIT {
     void captureCherryPickWorkflowExecute() throws IOException {
         // Execute a REAL cherry-pick via the REST API and capture the result
         buildRichGitHistory();
-        Assumptions.assumeTrue(cherryPickSourceCommitId != null,
-                "Skipping: cherry-pick source commit ID not captured during buildRichGitHistory()");
+        Assertions.assertNotNull(cherryPickSourceCommitId,
+                "Cherry-pick source commit ID not captured during buildRichGitHistory()");
 
-        // Execute real cherry-pick: pick the review commit onto draft
-        js("fetch('/api/dsl/cherry-pick?commitId=" + cherryPickSourceCommitId +
-           "&targetBranch=draft', { method: 'POST' })" +
-           ".then(r => r.json()).then(d => { window.__cherryPickResult = d; });");
-
-        wait(15).until(d -> {
-            Object result = ((JavascriptExecutor) d).executeScript(
-                    "return window.__cherryPickResult ? 'ok' : null;");
-            return "ok".equals(result);
-        });
+        Map<?, ?> result = requestFixture("/api/dsl/cherry-pick?commitId=" + cherryPickSourceCommitId
+                + "&targetBranch=draft", "POST", null, null);
+        Assertions.assertInstanceOf(String.class, result.get("commitId"),
+                "Cherry-pick must persist a commit: " + result);
+        Assertions.assertEquals(cherryPickSourceCommitId, result.get("cherryPickedFrom"));
+        Assertions.assertEquals("draft", result.get("targetBranch"));
 
         // Navigate to versions to show the timeline with the cherry-picked commit
         navigateToTab("versions");
-        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
-           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
-           "});" +
-           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
-           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
-           "  else { p.classList.add('d-none'); }" +
-           "});");
-        wait(15).until(d -> {
-            String state = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('versionsTimeline');" +
-                    "return el ? el.getAttribute('data-state') : '';");
-            return "loaded".equals(state);
-        });
-        injectHealthyStatusBadges();
+        safeClick(By.cssSelector("[data-versions-tab=\"history\"]"));
+        refreshVersionHistory();
         saveScreenshot("74-cherry-pick-after.png");
     }
 

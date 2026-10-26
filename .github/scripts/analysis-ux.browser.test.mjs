@@ -116,6 +116,37 @@ async function renderNode(page) {
         TaxonomyBrowse.renderView(nodes, TaxonomyState.currentScores);
     });
 }
+test('node Graph action reveals the Graph page and an initial result through the real action dialog', async () => {
+    const page = await fixture();
+    try {
+        await renderNode(page);
+        const template = await readFile(path.join(resources, 'templates/index.html'), 'utf8');
+        const graph = template.slice(template.indexOf('<div id="tab-graph"'),
+            template.indexOf('</div><!-- /tab-graph -->') + '</div>'.length);
+        await page.evaluate(graph => {
+            const right = document.createElement('div'); right.id = 'rightPanel'; right.innerHTML = graph;
+            const left = document.createElement('div'); left.id = 'leftPanel';
+            document.body.append(left, right);
+            window.graphQueries = [];
+            window.AnalysisApi = { graphUpstream: async (code, hops) => {
+                window.graphQueries.push({code, hops});
+                return {originNodeCode: code, direction: 'UPSTREAM', maxHops: hops,
+                    neighbors: [], traversedRelationships: [], notes: []};
+            }};
+        }, graph);
+        await page.addStyleTag({content: '.d-none { display:none !important; }'});
+        await page.addScriptTag({content: template.match(/<!-- Page Navigation Script -->\s*<script>([\s\S]*?)<\/script>/)[1]});
+        await page.addScriptTag({path: path.join(resources, 'static/js/shared/taxonomy-graph.js')});
+        await page.locator('.tax-node-actions-toggle').click();
+        await page.locator('dialog button').filter({hasText: 'browse.btn.graph'}).click();
+        assert.equal(await page.locator('#tab-graph').isVisible(), true);
+        assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1000');
+        assert.deepEqual(await page.evaluate(() => window.graphQueries), [{code: 'BP-1000', hops: 2}]);
+        assert.equal(await page.locator('#graphNodeInput').evaluate(el => el === document.activeElement), true);
+        assert.equal(await page.locator('#graphResultsContent [role=status]').isVisible(), true);
+        assert.equal(await page.locator('dialog[open]').count(), 0);
+    } finally { await finish(page); }
+});
 for (const width of [1100, 680, 390]) {
     test(`reason mouse target is stationary at ${width}px`, async () => {
         const page=await fixture('de',width);

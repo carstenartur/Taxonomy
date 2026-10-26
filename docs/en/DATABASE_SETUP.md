@@ -69,6 +69,10 @@ can reopen the assistant under **Settings > Database setup**.
    present and is not added automatically; the Helm output also includes
    `kubernetes`. Review the profile list for the intended deployment and login mode.
 
+![Database assistant — PostgreSQL connection settings](../images/database-setup-current-en.png)
+
+*Application capture of the connection step with example data. It shows preparation, not a successful connection test or data migration. [Source revision and capture record](../images/ui-documentation-2026-10-25.json).*
+
 If configuration export reports a **schema-setting conflict**, review existing
 `spring.jpa.properties.hibernate.hbm2ddl.auto`,
 `spring.jpa.properties.jakarta.persistence.schema-generation.database.action`,

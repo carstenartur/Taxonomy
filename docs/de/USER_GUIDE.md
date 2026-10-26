@@ -149,12 +149,12 @@ Der **Taxonomy Architecture Analyzer** unterstützt Architektur- und Anforderung
 | Herausfinden, warum ein Knoten hoch bewertet wurde | Klicken Sie auf 📋 bei einem beliebigen bewerteten Knoten |
 | Nach Taxonomieknoten suchen (Volltext, semantisch, hybrid, Graph) | Rechtes Panel → 🔍 Search Taxonomy Panel |
 | Semantisch ähnliche Knoten finden | Klicken Sie auf 🔍 Similar bei einem beliebigen Taxonomieknoten |
-| Vor- und nachgelagerte Abhängigkeiten verfolgen | Rechtes Panel → Graph Explorer |
+| Vor- und nachgelagerte Abhängigkeiten verfolgen | Register **Graph** → Graph Explorer |
 | Anforderungs-Auswirkungsanalyse durchführen | Graph Explorer → 🎯 Req. Impact Schaltfläche |
 | Architekturlücken identifizieren | API: `POST /api/gap/analyze` (§11d) |
 | Architekturempfehlungen erhalten | API: `POST /api/recommend` (§11e) |
 | Architekturmuster erkennen | API: `GET /api/patterns/detect` (§11f) |
-| Erweiterte Ausfallauswirkung mit Anforderungskorrelation | API: `GET /api/graph/node/{code}/enriched-failure-impact` (§8) |
+| Erweiterte Ausfallauswirkung mit Anforderungskorrelation | **Graph → Erweiterte Auswirkung** (§8) |
 | KI-generierte Beziehungsvorschläge überprüfen, akzeptieren oder ablehnen | Rechtes Panel → Relation Proposals Panel |
 | Qualitätsmetriken für Beziehungsvorschläge anzeigen | Rechtes Panel → 📊 Quality Dashboard Panel |
 | Anforderungsabdeckung erfassen und analysieren | Rechtes Panel → 📋 Requirement Coverage Panel |
@@ -236,7 +236,7 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 - **Statusmenü** — Betriebs- und Anbieterstatusdetails öffnen; Warnungen öffnen das Menü nicht selbsttätig.
 - **Analyseprotokoll** (einklappbar) — Schritt-für-Schritt-Protokoll des Bewertungsprozesses.
 - **Architekturansicht-Panel** — erscheint nach der Analyse, wenn das Architecture View-Kontrollkästchen aktiviert ist.
-- **Graph Explorer Panel** — geben Sie einen Knotencode ein und führen Sie Upstream-, Downstream- oder Ausfallauswirkungs-Abfragen durch.
+- **Register Graph** — öffnet den Graph Explorer; geben Sie einen Knotencode ein und führen Sie Upstream-, Downstream- oder Ausfallauswirkungs-Abfragen durch.
 - **Relation Proposals Panel** — überprüfen, akzeptieren oder ablehnen Sie KI-generierte Beziehungsvorschläge.
 - **LLM-Kommunikationsprotokoll** (nur Admin, einklappbar) — Roh-Prompt- und Antwortprotokoll.
 - **LLM-Diagnose-Panel** (nur Admin, einklappbar) — Verbindungstest und Statistiken.
@@ -583,7 +583,9 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 - **Klicken** Sie auf eine Elementkarte oder Verbindung, um im Detailbereich Relevanz, Entfernung, Begründung und verbundene Elemente anzuzeigen. Von dort können Sie das Element im Graph Explorer öffnen.
 - Wechseln Sie zu **„🏗️ Layer View"** für die kompakte Swimlane-Darstellung nach Architekturebene.
 
-![Architekturansicht](../images/20-architecture-view.png)
+![Historische Darstellung der Architekturansicht](../images/20-architecture-view.png)
+
+*Historisches Beispiel (#20): Sein Generator verwendete einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen und ist zurückgezogen. Das Bild belegt nicht, wie angenommene Workspace-Vorschläge in der aktuellen Anwendung erscheinen. Einen aktuellen persistierten Stand zeigt die [Architektur-Workbench](COPILOT_AUTOPILOT.md#persistierte-architektur-workbench).*
 
 ---
 
@@ -591,28 +593,35 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 <a id="guide-section-8"></a>
 ## 8. Den Graph Explorer verwenden
 
+Graph-Ergebnisse sind durch gespeicherte Beziehungen, ausgewählte Typen, Berechtigungen und Suchgrenzen begrenzt. Sie zeigen mögliche Auswirkungen zur Prüfung, nicht jede reale Abhängigkeit.
+
 Der Graph Explorer verfolgt gespeicherte Beziehungen im primären Katalog um einen ausgewählten Knoten. Seine Abhängigkeitsabfragen berücksichtigen `SUPPORTS`, `REALIZES` und `USES`. Die Ergebnisüberschrift kennzeichnet die Knotenabfrage beziehungsweise die Auswirkungsabfrage anhand der aktuellen Anforderungsbewertungen und nennt die Katalogquelle. Eine neue Abfrage ersetzt das vorherige Ergebnis. Den Architekturentwurf der aktuellen Analyse prüfen Sie in der Architekturansicht; das ist ein gesondertes Ergebnis.
 
 ### Einen Knoten auswählen
 
-Im **Graph Explorer Panel** (rechtes Panel, unterhalb des Architekturansicht-Panels):
+Öffnen Sie **Graph** in der Hauptnavigation, um den Graph Explorer anzuzeigen.
 
-1. Geben Sie einen Knotencode in das Feld **Node Code** ein, oder klicken Sie auf die **🔎 Graph**-Schaltfläche bei einem beliebigen Taxonomieknoten im linken Panel, um das Feld vorauszufüllen.
-2. Stellen Sie den **Max Hops**-Wert ein, um zu steuern, wie viele Beziehungsschritte durchlaufen werden sollen (Standard: 2).
+1. Öffnen Sie an einem Taxonomieknoten die Knotenaktionen und wählen Sie **Graph**, oder wählen Sie **Im Graph Explorer öffnen** in den Elementdetails der Architekturansicht. Die Anwendung wechselt zum Register **Graph**, füllt und fokussiert **Knoten-Code** und startet sofort eine **Vorgelagerte Elemente (Upstream)**-Abfrage für diesen Knoten. Das Ergebnis beziehungsweise die Lade-, Leer- oder Fehlermeldung erscheint im sichtbaren Panel.
+2. Alternativ geben Sie einen Code direkt in **Knoten-Code** ein und wählen **Vorgelagerte Elemente (Upstream)**, **Nachgelagerte Elemente (Downstream)**, **Ausfallauswirkung** oder **Erweiterte Auswirkung**. Bei leerem Code erscheint ein Hinweis. Lehnt der Server den Code ab, geben Sie einen gültigen Katalogcode ein und wiederholen Sie die Abfrage.
+3. Begrenzen Sie mit **Max. Sprünge** die Suchtiefe (1–5; Standard: 2) und starten Sie die gewünschte Abfrage erneut. Das Ändern des Werts allein aktualisiert das Ergebnis nicht.
 
-![Graph Explorer Panel](../images/11-graph-explorer-panel.png)
+Eine neue Abfrage ersetzt das vorherige Ergebnis. Eine verspätete Antwort auf eine ältere Abfrage überschreibt die aktuelle Auswahl nicht. Ein leeres Ergebnis bedeutet, dass innerhalb des gewählten Umfangs keine passenden gespeicherten Beziehungen zurückgegeben wurden. Ein Fehler wird getrennt angezeigt und belegt nicht, dass keine Abhängigkeiten bestehen.
+
+![Graph-Einstieg — sichtbares Upstream-Ergebnis für BP-1000](../images/graph-entry-current-de.png)
+
+*Nach **Graph** am Knoten `BP-1000` ist dessen Upstream-Ergebnis sichtbar. In diesem Beispiel wurden keine verbundenen Elemente zurückgegeben. [Quellstand und Bildnachweis](../images/ui-documentation-2026-10-25.json).*
 
 ### Upstream-Abfrage — „Was speist diesen Knoten?"
 
-Klicken Sie auf **⬆️ Upstream**, um alle Knoten zu finden, die in den ausgewählten Knoten einfließen: die Knoten, von denen er abhängt oder die ihn realisieren. Die Ergebnisse erscheinen als Tabelle, die jeden verknüpften Knoten, seinen Beziehungstyp und einen Relevanzindikator auflistet.
+Klicken Sie auf **⬆️ Vorgelagerte Elemente**, um alle Knoten zu finden, die in den ausgewählten Knoten einfließen: die Knoten, von denen er abhängt oder die ihn realisieren. Das Ergebnis bietet Graph- und Tabellenansichten mit den zurückgegebenen Knoten, Beziehungen und Informationen zur Traversierung.
 
 ### Downstream-Abfrage — „Was hängt davon ab?"
 
-Klicken Sie auf **⬇️ Downstream**, um alle Knoten zu finden, die vom ausgewählten Knoten abhängen.
+Klicken Sie auf **⬇️ Nachgelagerte Elemente**, um alle Knoten zu finden, die vom ausgewählten Knoten abhängen.
 
 ### Ausfallauswirkungs-Abfrage — „Was fällt aus, wenn dies ausfällt?"
 
-Klicken Sie auf **⚠️ Failure Impact**, um alle Knoten zu finden, die gestört würden, wenn der ausgewählte Knoten ausfällt oder entfernt wird. Dies ist nützlich für Änderungsauswirkungs-Analysen und Risikobewertungen.
+Klicken Sie auf **⚠️ Ausfallauswirkung**, um alle Knoten zu finden, die gestört würden, wenn der ausgewählte Knoten ausfällt oder entfernt wird. Dies ist nützlich für Änderungsauswirkungs-Analysen und Risikobewertungen.
 
 ### Erweiterte Ausfallauswirkung — „Welche Anforderungen sind betroffen?"
 
@@ -622,7 +631,7 @@ Die **erweiterte Ausfallauswirkung** ergänzt die Standard-Ausfallauswirkungsana
 - **Wie viele Anforderungen** betroffen sind
 - Einen aggregierten **Risiko-Score**, der die Anzahl der betroffenen Anforderungen mit der Relevanz jedes Elements kombiniert
 
-Dies ist über die REST-API unter `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3` verfügbar. Siehe die [API-Referenz](API_REFERENCE.md#ausfallwirkungsanalyse) für vollständige Details.
+Geben Sie einen Knotencode ein und wählen Sie **📈 Erweiterte Auswirkung** in der Graph-Werkzeugleiste, um dieses Ergebnis anzuzeigen. Dieselbe Operation ist über die REST-API unter `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3` verfügbar. Siehe die [API-Referenz](API_REFERENCE.md#ausfallwirkungsanalyse) für vollständige Details.
 
 > **Tipp:** Verwenden Sie die erweiterte Ausfallauswirkung zusammen mit dem Anforderungsabdeckungs-Panel (§11c), um zu priorisieren, welche Ausfälle das höchste Geschäftsrisiko tragen.
 
@@ -630,8 +639,8 @@ Dies ist über die REST-API unter `GET /api/graph/node/{code}/enriched-failure-i
 
 Die Ergebnisse werden mit einem **Graph/Tabellen-Umschalter** dargestellt:
 
-- **🔗 Graph-Ansicht** (Standard) — ein interaktives kräftebasiertes Knoten-Verbindungs-Diagramm, erstellt mit D3.js. Knoten sind nach Taxonomiekategorie eingefärbt, und der Ausgangsknoten ist mit einem dicken Rahmen hervorgehoben. Sie können Knoten ziehen, um das Layout neu anzuordnen, mit der Maus darüberfahren für Details und auf einen Knoten klicken, um ihn für weitere Abfragen auszuwählen.
-- **📊 Tabellenansicht** — die traditionelle tabellarische Darstellung mit sortierbaren Spalten.
+- **🔗 Graph-Ansicht** (Standard) — ein interaktives kräftebasiertes Knoten-Verbindungs-Diagramm, erstellt mit D3.js. Knoten sind nach Taxonomiekategorie eingefärbt, und der Ausgangsknoten ist mit einem dicken Rahmen hervorgehoben. Sie können Knoten ziehen, um das Layout neu anzuordnen, und mit der Maus darüberfahren, um Details zu sehen. Ein Klick auf einen Graphknoten füllt **Knoten-Code**; wählen Sie anschließend die gewünschte Abfrage in der Werkzeugleiste.
+- **📊 Tabellenansicht** — listet die zurückgegebenen Elemente und Beziehungen auf. Ein Knotencode-Link füllt **Knoten-Code** für die nächste Abfrage über die Werkzeugleiste.
 
 Die Tabelle/der Graph zeigt:
 
@@ -649,9 +658,11 @@ Die Tabelle/der Graph zeigt:
 
 ![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
 
-Akzeptierte Vorschläge erscheinen ebenfalls als Graph-Kanten. Nach dem Akzeptieren eines Vorschlags (siehe [Abschnitt 9](#9-working-with-relation-proposals)) ist die neue Beziehung sofort im Graph Explorer sichtbar:
+Angenommene Vorschläge gehören zur Relationsprojektion des ausgewählten Workspaces. Der Graph Explorer fragt den primären Katalog ab; das Annehmen eines Workspace-Vorschlags fügt dieser Katalogabfrage nicht automatisch eine Kante hinzu. Prüfen Sie die Entscheidung in der Relationsansicht des ausgewählten Workspaces (siehe [Abschnitt 9](#9-working-with-relation-proposals)).
 
-![Graph Explorer mit akzeptierter Beziehung](../images/37-graph-with-accepted-relation.png)
+![Historische Graph-Darstellung mit vorbereiteten Katalogbeziehungen](../images/37-graph-with-accepted-relation.png)
+
+*Historisches Beispiel (#37): Sein Generator verwendete einen nicht mehr unterstützten Schreibweg für Katalog-Testbeziehungen. Das Bild belegt nicht, dass der aktuelle Graph Explorer angenommene Workspace-Vorschläge anzeigt; siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).*
 
 ---
 
@@ -703,10 +714,10 @@ Die Vorschlags-Überprüfungswarteschlange zeigt alle Vorschläge mit Filterung 
 
 Für jede Zeile in der Vorschlagstabelle:
 
-- Klicken Sie auf **Accept**, um die Relation zu genehmigen. Eine bestätigte `TaxonomyRelation` wird in der Wissensbasis erstellt und der Vorschlagsstatus ändert sich auf ACCEPTED.
+- Klicken Sie auf **Accept**, um die Relation im ausgewählten Workspace zu genehmigen. Die Entscheidung wird in diesem Workspace-Kontext gespeichert und der Vorschlagsstatus ändert sich auf ACCEPTED.
 - Klicken Sie auf **Reject**, um die Relation abzulehnen. Der Vorschlagsstatus ändert sich auf REJECTED.
 
-Nach der Annahme zeigt der Vorschlag ein grünes **Accepted**-Badge an. Die akzeptierte Relation ist sofort im Graph-Explorer sichtbar:
+Nach der Annahme zeigt der Vorschlag in der Prüfungsansicht ein grünes **Accepted**-Badge an. Katalog-Graphabfragen haben einen getrennten Umfang und enthalten diese Workspace-Entscheidung nicht automatisch:
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
@@ -940,7 +951,7 @@ Das Panel **Search Taxonomy** (rechte Spalte, einklappbar) bietet vier Suchmodi 
 4. Klicken Sie auf **🔍 Search** oder drücken Sie die Eingabetaste.
 5. Die Ergebnisse erscheinen als anklickbare Liste. Klicken Sie auf ein Ergebnis, um den Knoten im Taxonomie-Baum hervorzuheben.
 
-Screenshots der einzelnen Suchmodi in Aktion:
+Darstellungen der Suchmodi (die Graph-Aufnahme ist historisch):
 
 ![Volltextsuche-Ergebnisse](../images/29-search-fulltext.png)
 
@@ -948,9 +959,11 @@ Screenshots der einzelnen Suchmodi in Aktion:
 
 ![Hybridsuche-Ergebnisse](../images/31-search-hybrid.png)
 
-![Graph-Suche-Ergebnisse](../images/32-search-graph.png)
+![Historische Darstellung der graph-semantischen Suche](../images/32-search-graph.png)
 
-Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltungsbereich und den exakten Branch-Head. Beziehungsähnlichkeit ist nur für den zentralen Standardbranch im Migrationsbetrieb verfügbar, solange der kanonische Beziehungsleser seinen Legacy-Fallback erlaubt. Eine nachweislich leere Branch-Projektion liefert globale Knotentreffer mit leeren Beziehungsstatistiken. Nichtleere Branch-Projektionen und nicht bereite Geltungsbereiche liefern HTTP 503 statt unvollständiger Graph-Ergebnisse. Der Status `graphReady` beschreibt die globalen Modell-/Indexvoraussetzungen; eine sichtbare Graph-Option garantiert daher keine Suche im ausgewählten Geltungsbereich. Semantische Branch-Indizierung bleibt Folgearbeit (#741).
+*Historisches Beispiel (#32): Sein Generator stellte die erforderliche Relationsprojektion des ausgewählten Workspaces nicht sicher. Ein neuer Workspace kann **409 NOT_BUILT** liefern; dieses Bild ist kein aktueller Abnahmenachweis der graph-semantischen Suche. Knotenabfragen im Graph Explorer sind eine getrennte Operation.*
+
+Der Graph-Modus prüft bei jeder Anfrage das ausgewählte Repository, den Geltungsbereich und den exakten Branch-Head. Beziehungsähnlichkeit ist nur für den zentralen Standardbranch im Migrationsbetrieb verfügbar, solange der kanonische Beziehungsleser seinen Legacy-Fallback erlaubt. Eine nachweislich leere Branch-Projektion liefert globale Knotentreffer mit leeren Beziehungsstatistiken. Eine fehlende Workspace-Relationsprojektion kann **409 NOT_BUILT** liefern. Nichtleere Branch-Projektionen und andere nicht bereite Geltungsbereiche liefern HTTP 503 statt unvollständiger Graph-Ergebnisse. Der Status `graphReady` beschreibt die globalen Modell-/Indexvoraussetzungen; eine sichtbare Graph-Option garantiert daher keine Suche im ausgewählten Geltungsbereich. Semantische Branch-Indizierung bleibt Folgearbeit (#741).
 
 ### Embedding-Status
 
@@ -1497,7 +1510,7 @@ Für Details zur schrittweisen Verwendung dieser Funktionen siehe [§12 Versione
 
 **Geltungsbereich:** Materialisierung aktualisiert die ausgewählte berechtigte Repository-/Workspace-Projektion, nicht sämtliche Beziehungen der Installation. Prüfen Sie Ziel und Vorschau vor der Übernahme; den semantischen Editorvertrag erläutert der [Architektureditor](ARCHITECTURE_EDITOR.md).
 
-Wenn Sie die DSL bearbeiten und Änderungen committen, muss das Architekturmodell in Ihrem DSL-Text **materialisiert** (angewendet) werden, damit andere Teile der Anwendung — der Graph Explorer, der Relations Browser und die Architecture View — diese Änderungen widerspiegeln.
+Wenn Sie die DSL bearbeiten und Änderungen committen, baut die **Materialisierung** die Datenansicht dieses Workspaces auf, die unter anderem der Relations Browser verwendet. Sie befüllt nicht den primären Katalog des Graph Explorers und verändert keinen bestehenden unveränderlichen Analysesnapshot.
 
 - **Vollständige Materialisierung** ersetzt die Beziehungen der ausgewählten berechtigten Projektion durch den Inhalt der DSL.
 - **Inkrementelle Materialisierung** wendet nur die Unterschiede (Delta) zwischen dem aktuellen Datenbankzustand und der DSL an, was bei großen Modellen schneller ist.
@@ -1510,7 +1523,7 @@ Wenn die KI eine Geschäftsanforderung analysiert, generiert sie **Hypothesen** 
 
 1. Die KI schlägt eine Beziehung vor (z. B. „CP-1023 REALIZES BP-1327").
 2. Sie überprüfen diese im **Relations**-Tab mit den Schaltflächen Accept / Reject.
-3. **Akzeptierte** Hypothesen werden zu echten Architekturbeziehungen und erscheinen im Graph Explorer und der DSL.
+3. **Akzeptierte** Hypothesen werden als Architekturbeziehungen im ausgewählten Workspace gespeichert. Prüfen Sie diesen Workspace-Kontext; der Graph Explorer des primären Katalogs hat einen getrennten Umfang.
 4. **Abgelehnte** Hypothesen werden als abgelehnt markiert und von zukünftigen Exporten ausgeschlossen.
 
 ### Commit-Verlauf durchsuchen
@@ -1611,7 +1624,9 @@ Nicht-geschützte Varianten-Branches können mit der Schaltfläche **🗑 Delete
 
 Wenn Sie eine Variante im **READ-ONLY**-Modus anzeigen, erscheint eine Schaltfläche **📤 Copy Back** in der Kontextleiste. Dies ermöglicht es Ihnen, Elemente und Beziehungen selektiv aus der schreibgeschützten Variante in Ihren bearbeitbaren Arbeitsbereich zu übertragen — nützlich zum gezielten Übernehmen von Ideen aus experimentellen Branches.
 
-![Schaltfläche Zurückkopieren](../images/49-copy-back-button.png)
+> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
+
+![Historisches Beispiel — Schaltfläche Zurückkopieren](../images/49-copy-back-button.png)
 
 ### Merge-Vorschau
 
@@ -1639,19 +1654,27 @@ Wenn ein Merge oder Cherry-Pick nicht automatisch abgeschlossen werden kann (bei
 - **Manuelle Bearbeitung**: Ein Textfeld, in dem Sie den endgültigen aufgelösten Inhalt erstellen
 - **Resolve & Commit**: Committet den aufgelösten Inhalt in den Ziel-Branch
 
-![Merge-Konfliktlösungs-Modal](../images/52-merge-conflict-modal.png)
+> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
+
+![Historisches Beispiel — Merge-Konfliktlösungs-Modal](../images/52-merge-conflict-modal.png)
 
 Cherry-Pick-Konflikte verwenden dasselbe Modal mit einem Cherry-Pick-spezifischen Titel:
 
-![Cherry-Pick-Konfliktlösung](../images/54-cherry-pick-conflict-modal.png)
+> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
+
+![Historisches Beispiel — Cherry-Pick-Konfliktlösung](../images/54-cherry-pick-conflict-modal.png)
 
 Die Cherry-Pick-Vorschau zeigt die geplante Operation:
 
-![Cherry-Pick-Vorschau-Dialog](../images/62-cherry-pick-preview-modal.png)
+> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
+
+![Historisches Beispiel — Cherry-Pick-Vorschau-Dialog](../images/62-cherry-pick-preview-modal.png)
 
 Nach der Auflösung bestätigt eine Erfolgs-Toast-Benachrichtigung die Operation:
 
-![Erfolgreicher Cherry-Pick](../images/59-cherry-pick-success-toast.png)
+> Historisches Darstellungsbeispiel: Dieses Bild verwendet eingesetzten UI-Zustand und belegt keinen abgeschlossenen Anwendungsvorgang. Siehe [Screenshot-Herkunft](../../.github/copilot-ref-screenshots.md).
+
+![Historisches Beispiel — Erfolgreicher Cherry-Pick](../images/59-cherry-pick-success-toast.png)
 
 ### Synchronisation mit dem gemeinsamen Repository
 
@@ -1713,7 +1736,7 @@ Die **Git-Statusleiste** befindet sich im Menü **Status**. Sie zeigt:
 | **N versions** | Gesamtanzahl der Commits auf dem aktuellen Branch |
 | **Sync: Status** | Synchronisationszustand mit dem gemeinsamen Repository (synchron / hinterher / voraus / divergiert) |
 
-Wenn die Projektion **STALE** anzeigt, bedeutet dies, dass die DSL geändert, aber noch nicht in die Datenbank materialisiert wurde. Gehen Sie zum DSL-Editor und klicken Sie auf **Materialize**, um die Datenbank zu aktualisieren.
+Wenn die Projektion **STALE** anzeigt, bedeutet dies, dass die DSL geändert, aber noch nicht in die Datenbank materialisiert wurde. Gehen Sie zum DSL-Editor und klicken Sie auf **Materialize**, um die ausgewählte Workspace-Projektion zu aktualisieren.
 
 ### Kontext-Navigationsleiste
 
@@ -1941,7 +1964,7 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 - Führen Sie Vorschläge bald nach der Analyse durch, solange der Kontext noch frisch ist.
 - Überprüfen Sie die KI-Begründung vor dem Akzeptieren; hohe Konfidenz bedeutet nicht immer korrekt.
 - Lehnen Sie Vorschläge ab, bei denen die Begründung architektonisch keinen Sinn ergibt, selbst wenn der Konfidenzwert hoch ist.
-- Akzeptierte Vorschläge werden zu bestätigten Beziehungen in der Wissensbasis und beeinflussen zukünftige Graph-Explorer-Ergebnisse.
+- Angenommene Vorschläge werden im ausgewählten Workspace gespeichert. Prüfen Sie diesen Workspace-Kontext; Katalog-Graphabfragen enthalten dessen angenommene Vorschläge nicht automatisch.
 
 ### Exportieren
 
@@ -1972,14 +1995,14 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 | **Confidence score** | Ein Wert von 0–100 %, der angibt, wie stark die KI davon überzeugt ist, dass eine vorgeschlagene Beziehung korrekt ist |
 | **Coverage gap** | Ein Knoten, der Anforderungsabdeckung hat, aber erwartete architektonische Nachbarn vermissen lässt |
 | **Enriched failure impact** | Ausfallwirkungsanalyse, die Anforderungsabdeckungsdaten und Risikobewertung einschließt |
-| **Graph Explorer** | Das Werkzeug im rechten Panel zur Ausführung von Upstream-, Downstream- und Ausfallwirkungsabfragen auf dem Beziehungsgraphen |
+| **Graph Explorer** | Das Werkzeug im Register Graph für Upstream-, Downstream- und Ausfallauswirkungs-Abfragen auf gespeicherten Beziehungen |
 | **Hybrid search** | Eine Abrufstrategie, die Volltextsuche und semantische Suche kombiniert (über API verfügbar) |
 | **Hypothesis** | Eine vorläufige Beziehung, die während der LLM-Analyse generiert wird und auf menschliche Überprüfung wartet, bevor sie dauerhaft wird |
 | **Information Product** | Ein spezifisches, strukturiertes Ergebnis eines Geschäftsprozesses (TOGAF Data Architecture) |
 | **Interactive Mode** | Ein Analysemodus, der jeweils eine Baumebene bewertet, anstatt den gesamten Baum auf einmal |
 | **Leaf node** | Ein Taxonomieknoten ohne Kinder; die spezifischste Ebene der Taxonomie |
 | **LLM** | Large Language Model — die KI-Komponente, die für Bewertung, Begründung und Vorschlagserstellung verwendet wird |
-| **Materialization** | Der Prozess der Umwandlung von DSL-Text in Datenbankentitäten (TaxonomyRelation usw.) |
+| **Materialization** | Aufbau der ausgewählten Workspace-Leseprojektion aus ihrem gespeicherten DSL-Modell |
 | **Match Legend** | Die Farbskala im rechten Panel, die zeigt, welchem Bewertungswert jede Grünschattierung entspricht |
 | **NAF** | NATO Architecture Framework — der Standard zur Beschreibung von NATO-Architekturen |
 | **Pattern detection** | Prüfung, ob vordefinierte Architekturmuster im Beziehungsgraphen vollständig oder teilweise vorhanden sind |

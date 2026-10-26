@@ -2,6 +2,10 @@
 
 Den **Architektureditor** über Projekte oder die Snapshot-Workbench öffnen. Die Kontextzeile zeigt Repository, Workspace, Branch, semantische Workspace-Revision, letzten Checkpoint und Benutzer. Historische Revisionen/Versionen und zentrale Lesekontexte sind schreibgeschützt. **Privaten Workspace anlegen** erstellt bei passender Repository-Mitgliedschaft eine Arbeitskopie. Zum Bearbeiten ist außerdem die Rolle ARCHITECT oder ADMIN nötig.
 
+![Architektureditor — ausgewählter Workspace und Element](../images/architecture-editor-current-de.png)
+
+*Anwendungsaufnahme eines privaten Beispiel-Workspaces nach dem Anlegen zweier Systemelemente über **Änderung vorschauen → Operation annehmen**. Ausgewählt ist „Arbeitszeiterfassung“. [Quellstand und Bildnachweis](../images/ui-documentation-2026-10-25.json); dieser einzelne Zustand ist keine Abnahme aller Editoraktionen.*
+
 1. Die Elementliste durchsuchen oder ein Objekt im Graph auswählen. Eigenschaften, Relationen, Belege und DSL-Leseansicht folgen derselben Auswahl. Die Seitenadresse enthält den exakten Kontext und das ausgewählte Element.
 2. **Neues Element** wählen oder bestehende Eigenschaften bearbeiten. Der Server vergibt neue Identitäten; eine Umbenennung ändert diese nicht. Taxonomiereferenzen und importierte Herkunftsangaben bleiben schreibgeschützt.
 3. Eine Begründung eintragen und **Änderung vorschauen** wählen. Die betroffenen Blöcke und die Revision prüfen, dann **Operation annehmen**. Eingabe und Vorschau speichern nichts. **Entwurf verwerfen** stellt die angenommenen Eigenschaften wieder her.

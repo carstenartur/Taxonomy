@@ -30,6 +30,52 @@ class WorkflowTestAuthorityPolicyTest {
     }
 
     @Test
+    void documentationArtifactContainsOnlyImagesFromThisRun(@TempDir Path root) throws Exception {
+        String workflow = Files.readString(findRepositoryRoot()
+                .resolve(".github/workflows/documentation-screenshots.yml"));
+        Path images = Files.createDirectories(root.resolve("docs/images"));
+        Files.writeString(images.resolve("old-retained.png"), "previous documentation capture");
+        Files.writeString(images.resolve("provenance.json"), "retained metadata");
+        Path artifact = Files.createDirectories(root.resolve("target/generated-screenshots"));
+        Files.writeString(artifact.resolve("old-artifact.png"), "previous staging attempt");
+
+        runScreenshotStep(root, workflow, "Prepare fresh screenshot output");
+        // All producers use the dedicated TAXONOMY_DOCS_IMAGE_DIR in this workflow.
+        for (String filename : List.of("01-full-page-layout.png",
+                "71-copilot-architecture-workbench.png", "72-complete-copilot-run-result.png",
+                "document-template-report.png")) {
+            Files.writeString(artifact.resolve(filename), "captured in this run");
+        }
+        runScreenshotStep(root, workflow, "Stage screenshot artifact");
+
+        assertThat(Files.readString(images.resolve("old-retained.png")))
+                .as("retained documentation must remain available to link checks and app packaging")
+                .isEqualTo("previous documentation capture");
+        try (var generated = Files.list(artifact)) {
+            assertThat(generated.map(path -> path.getFileName().toString()).toList())
+                    .containsExactlyInAnyOrder("01-full-page-layout.png",
+                            "71-copilot-architecture-workbench.png", "72-complete-copilot-run-result.png",
+                            "document-template-report.png");
+        }
+        assertThat(Files.readString(images.resolve("provenance.json")))
+                .isEqualTo("retained metadata");
+    }
+
+    private static void runScreenshotStep(Path root, String workflow, String name) throws Exception {
+        String marker = "      - name: " + name;
+        int start = workflow.indexOf(marker);
+        assertThat(start).as("required screenshot step: %s", name).isGreaterThanOrEqualTo(0);
+        int end = workflow.indexOf("\n      - ", start + marker.length());
+        String commands = WorkflowTestAuthorityPolicy.runBlocks(
+                workflow.substring(start, end < 0 ? workflow.length() : end));
+        Process process = new ProcessBuilder("bash", "-euc", commands)
+                .directory(root.toFile()).redirectErrorStream(true).start();
+        String output = new String(process.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(process.waitFor()).as("%s: %s", name, output).isZero();
+    }
+
+    @Test
     void reportsDirectWorkflowOwnedTestsAndMissingDatabaseProfiles(
             @TempDir Path root) throws Exception {
         writeCatalog(root, Map.of(
