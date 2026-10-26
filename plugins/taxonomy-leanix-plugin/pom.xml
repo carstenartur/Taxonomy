@@ -5,7 +5,7 @@
     <!-- Independent operator-installed artifact; the host is not a compile or runtime dependency. -->
     <groupId>com.taxonomy</groupId>
     <artifactId>taxonomy-leanix-plugin</artifactId>
-    <version>1.5.2</version>
+    <version>1.5.3-SNAPSHOT</version>
     <name>Taxonomy LeanIX Read Plugin</name>
     <licenses><license><name>MIT License</name><url>https://opensource.org/licenses/MIT</url></license></licenses>
     <properties>
