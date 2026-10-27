@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-27T11:38:33.290Z",
+  "sourceCommit": "9a5818910e2ca1416002408b83d8ad6c37c9317e",
+  "sourceTree": "2a93e3509ba874f834d4af4b277d49558974a3f3",
+  "applicationArtifact": {
+    "runId": 40466878717,
+    "artifactId": 12716244891,
+    "name": "taxonomy-app-1.5.3-SNAPSHOT.jar",
+    "sha256": "63a158369a4795178f137f64d85991d6b782c116690be695b493a94b9e391520"
+  },
+  "kind": "running-application-with-local-example-data",
+  "syntheticDom": false,
+  "interceptedApiResponses": false,
+  "resourceOverlays": false,
+  "runtime": {
+    "java": "Temurin 25.0.5+8",
+    "browser": "149.0.7827.55",
+    "database": "HSQLDB in-memory; real application persistence",
+    "mockProviderConfigured": true,
+    "embeddingEnabled": false,
+    "externalProviderCalls": 0
+  },
+  "page": "/architecture/editor",
+  "setup": "Two System elements created through the real preview and accept controls in a private workspace; Arbeitszeiterfassung selected.",
+  "scope": "Focused control illustrations. They show the complete focus panel before investigation, not all editor actions or live-model quality.",
+  "checks": [
+    "Private editable workspace",
+    "Space toggles the real checkbox off and on in both languages",
+    "Checkbox and complete translated label are inside the captured panel",
+    "Selected-element investigation succeeds through the real endpoint with zero model calls",
+    "No browser JavaScript errors, HTTP errors or external page requests"
+  ],
+  "investigations": [
+    {
+      "language": "de",
+      "httpStatus": 200,
+      "modelCalls": 0,
+      "outcome": "LOCAL_CANDIDATES",
+      "suggestions": 8
+    },
+    {
+      "language": "en",
+      "httpStatus": 200,
+      "modelCalls": 0,
+      "outcome": "LOCAL_CANDIDATES",
+      "suggestions": 8
+    }
+  ],
+  "captures": [
+    {
+      "file": "architecture-editor-focus-de.png",
+      "language": "de",
+      "state": "focus lens enabled; AI option disabled; element selected",
+      "visibleControl": "Brennglas einschalten",
+      "viewport": {
+        "width": 1680,
+        "height": 1100
+      },
+      "image": {
+        "width": 883,
+        "height": 473
+      },
+      "selector": ".editor-lens-panel",
+      "sha256": "b36e417cb1b8eb31956ff101bf294882c41115b8322e7dc81db77db6cd30b0f8"
+    },
+    {
+      "file": "architecture-editor-focus-en.png",
+      "language": "en",
+      "state": "focus lens enabled; AI option disabled; element selected",
+      "visibleControl": "Enable focus lens",
+      "viewport": {
+        "width": 1680,
+        "height": 1100
+      },
+      "image": {
+        "width": 883,
+        "height": 435
+      },
+      "selector": ".editor-lens-panel",
+      "sha256": "a5db06550bcfbe53d8889e4459c7e98b1007810f417175077570d67bfd71e2b6"
+    }
+  ]
+}

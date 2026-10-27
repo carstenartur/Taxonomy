@@ -53,6 +53,16 @@ establish an external connection, and the example provider does not establish
 live-model quality. Image and overlaid-source hashes identify these captures;
 the numbered Java-owner outputs below are separate runs.
 
+The dedicated `architecture-editor-focus-{de,en}.png` images show the focus-lens
+panel below the editor graph and arrangement controls, with **Enable focus lens**
+checked and the AI option unchecked in a current editable example workspace.
+Their [separate capture record](../docs/images/architecture-editor-focus-capture.json)
+identifies the running source, environment and unmodified image hashes. Keep the
+original overview images and their provenance; their viewport does not show this
+switch. The existing [editor browser owner](scripts/architecture-editor-acceptance.mjs)
+owns the real editor interaction. These focused illustrations do not establish
+coverage of every editor control or live-provider quality.
+
 All Java owners below are under `taxonomy-app/src/test/java/com/taxonomy/`.
 Use the complete filename to identify ownership: numeric prefixes are shared.
 

@@ -27,7 +27,18 @@ Technische Entscheidung: [ADR 0005](../adr/0005-private-architecture-editor.md).
 
 ### Brennglas und Anordnung
 
-Das **Architektur-Brennglas** im aktuellen bearbeitbaren Arbeitsbereich einschalten.
+Über **Projekte → Architektureditor** öffnen und unter dem Graphen sowie den
+Anordnungsreglern zum Bereich **Architektur-Brennglas** scrollen. Dort das
+Kontrollkästchen **Brennglas einschalten** aktivieren. Es ist nur im aktuellen
+bearbeitbaren Arbeitsbereich verfügbar; historische Revisionen und zentrale
+Lesekontexte erlauben keine Untersuchung.
+
+![Architektur-Brennglas mit aktiviertem Schalter „Brennglas einschalten“ und ausgeschalteter KI-Option](../images/architecture-editor-focus-de.png)
+
+*Aufnahme des Brennglas-Bedienfelds in einem bearbeitbaren Beispiel-Workspace:
+**Brennglas einschalten** ist aktiviert, die KI-Option ist ausgeschaltet.
+[Quellstand und Bildnachweis](../images/architecture-editor-focus-capture.json).*
+
 Langsam über Elemente fahren oder ein Element auswählen und **Auswahl untersuchen**
 wählen. Bei Touch den Finger kurz über einem Element halten. Der Fokus bestimmt
 die Ausgangselemente; mögliche Endpunkte können im gesamten aktuellen Modell

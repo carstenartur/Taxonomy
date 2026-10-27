@@ -53,13 +53,14 @@ All groups below are in [`index.html`](../../taxonomy-app/src/main/resources/tem
 
 ## Application captures for the guides
 
-The named captures below use the running application and example data. Their [capture record](../images/ui-documentation-2026-10-25.json) records the source revision, runtime/resource details and unmodified image digests. They illustrate the recorded state and are separate from behavioral test results and from the historical numbered images.
+The named captures below use the running application and example data. The `*-current-*` images have their original [capture record](../images/ui-documentation-2026-10-25.json); the dedicated focus-lens images have a [separate capture record](../images/architecture-editor-focus-capture.json). These records identify the source revision, runtime details and unmodified image digests. The images illustrate the recorded state and are separate from behavioral test results and from the historical numbered images.
 
 | View | German | English | Evidence boundary |
 |---|---|---|---|
 | Graph entry | [Empty upstream result](../images/graph-entry-current-de.png) | German capture used with an explicit language caption | Actual primary-catalogue response after the node action; this example has no connected elements and does not display accepted workspace proposals |
 | Database assistant | [Connection step](../images/database-setup-current-de.png) | [Connection step](../images/database-setup-current-en.png) | Configuration entry; no successful external connection or migration claimed |
 | Architecture editor | [Workspace](../images/architecture-editor-current-de.png) | [Workspace](../images/architecture-editor-current-en.png) | Displayed example workspace; does not certify every editing, history or recovery action |
+| Architecture editor focus lens | [Brennglas einschalten](../images/architecture-editor-focus-de.png) | [Enable focus lens](../images/architecture-editor-focus-en.png) | Visible checked enable control in a current editable workspace, with the AI option unchecked; this focused capture does not cover every editor control or establish model quality |
 | Architecture workbench | [Snapshot](../images/architecture-workbench-current-de.png) | [Snapshot](../images/architecture-workbench-current-en.png) | Persisted example snapshot with `MOCK` provider; no live-provider quality or cross-format export acceptance claimed |
 
 ## Follow-up boundaries

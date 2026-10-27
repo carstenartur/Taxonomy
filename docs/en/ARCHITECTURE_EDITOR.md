@@ -27,8 +27,18 @@ Implementation decision: [ADR 0005](../adr/0005-private-architecture-editor.md).
 
 ### Focus lens and arrangement
 
-Enable **Architecture focus lens** in a current editable workspace. Slowly sweep
-over elements, or select an element and choose **Investigate selection**. A touch
+Open **Projects → Architecture editor** and scroll below the graph and arrangement
+controls to **Architecture focus lens**. Select the **Enable focus lens** checkbox.
+It is available only in the current editable workspace; historical revisions and
+central read contexts do not allow investigations.
+
+![Architecture focus lens with Enable focus lens checked and the AI option unchecked](../images/architecture-editor-focus-en.png)
+
+*Application capture of the focus-lens panel in an editable example workspace:
+**Enable focus lens** is checked and the AI option is unchecked.
+[Source revision and capture record](../images/architecture-editor-focus-capture.json).*
+
+Slowly sweep over elements, or select an element and choose **Investigate selection**. A touch
 hold works as well. The lens chooses starting elements; possible endpoints can be
 anywhere in the current model, including newly created elements. Arrow keys and
 zoom controls remain available while the lens owns pointer movement.
