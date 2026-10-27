@@ -15,17 +15,22 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import javax.imageio.ImageIO;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathFactory;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.*;
 import java.util.zip.ZipInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /** Assertions consume real downloaded bytes and the persisted scene, never fabricated outputs. */
 public final class ScenarioExportQa {
@@ -64,42 +69,7 @@ public final class ScenarioExportQa {
 
         verifySparx(expected, artifacts);
 
-        var visioBundle = unzip(artifacts.get("architecture.visio.zip"));
-        assertThat(visioBundle.get("diagram.vsdx")).isEqualTo(artifacts.get("architecture.vsdx"));
-        var visio = unzip(artifacts.get("architecture.vsdx"));
-        var visioManifest = JSON.readTree(visio.get("taxonomy/manifest.json"));
-        assertThat(visioManifest.at("/authority/taxonomy.snapshotId/value").asText()).isEqualTo(snapshot);
-        Set<String> shapeIds = new TreeSet<>();
-        Set<String> relationIds = new TreeSet<>();
-        for (JsonNode page : visioManifest.path("pages")) {
-            Set<String> localIds = new HashSet<>();
-            for (JsonNode shape : page.path("shapes")) {
-                JsonNode properties = shape.path("properties");
-                if ("true".equals(properties.path("taxonomy.presentationOnly").path("value").asText())) {
-                    // Evidence text is visible content, not a graph node or a connector endpoint.
-                    assertThat(properties.path("taxonomy.presentationOnly").path("kind").asText()).isEqualTo("BOOLEAN");
-                    assertThat(properties.has("taxonomy.id")).isFalse();
-                    assertThat(shape.path("label").asText()).isNotBlank();
-                    continue;
-                }
-                assertThat(properties.path("taxonomy.id").path("value").asText()).isNotBlank();
-                localIds.add(shape.path("shapeId").asText());
-                shapeIds.add(shape.path("properties").path("taxonomy.id").path("value").asText());
-            }
-            for (JsonNode relation : page.path("relationships")) {
-                assertThat(localIds).contains(relation.path("sourceShapeId").asText(), relation.path("targetShapeId").asText());
-                relationIds.add(relation.path("properties").path("taxonomy.id").path("value").asText());
-            }
-        }
-        Set<String> semanticIds = new TreeSet<>();
-        expected.nodes().stream().filter(node -> !node.container()).forEach(node -> semanticIds.add(node.id()));
-        assertThat(shapeIds).containsExactlyInAnyOrderElementsOf(semanticIds);
-        assertThat(relationIds).containsExactlyInAnyOrderElementsOf(expected.edges().stream()
-                .filter(edge -> semanticIds.contains(edge.sourceId()) && semanticIds.contains(edge.targetId()))
-                .map(edge -> edge.id()).toList());
-        for (var file : visio.entrySet()) {
-            if (file.getKey().endsWith(".xml") || file.getKey().endsWith(".rels")) xml(file.getValue());
-        }
+        Set<String> semanticIds = verifyVisio(expected, snapshot, artifacts);
 
         var svg = xml(artifacts.get("architecture.svg"));
         assertThat(svg.getDocumentElement().getLocalName()).isEqualTo("svg");
@@ -225,6 +195,165 @@ public final class ScenarioExportQa {
         artifacts.forEach((name, bytes) -> hashes.put(name, sha256(bytes)));
         report.put("artifactSha256", hashes);
         return report;
+    }
+
+    static Set<String> verifyVisio(DiagramModel expected, String snapshot, Map<String, byte[]> artifacts) throws Exception {
+        var visioBundle = unzip(artifacts.get("architecture.visio.zip"));
+        assertThat(visioBundle.keySet()).containsExactlyInAnyOrder("diagram.vsdx", "manifest.json", "mapping-profile.json");
+        var bundleManifest = JSON.readTree(visioBundle.get("manifest.json"));
+        assertThat(bundleManifest.at("/artifact/file").asText()).isEqualTo("diagram.vsdx");
+        assertThat(bundleManifest.at("/artifact/sha256").asText()).isEqualTo(sha256(visioBundle.get("diagram.vsdx")));
+        assertThat(bundleManifest.at("/mappingProfile/file").asText()).isEqualTo("mapping-profile.json");
+        assertThat(bundleManifest.at("/mappingProfile/sha256").asText()).isEqualTo(sha256(visioBundle.get("mapping-profile.json")));
+        var bundledParts = unzip(visioBundle.get("diagram.vsdx"));
+        assertThat(visioBundle.get("mapping-profile.json")).isEqualTo(bundledParts.get("taxonomy/mapping-profile.json"));
+        var standalone = verifyVisioPackage(expected, snapshot, unzip(artifacts.get("architecture.vsdx")));
+        var bundled = verifyVisioPackage(expected, snapshot, bundledParts);
+        assertThat(bundleManifest.path("handoff")).isEqualTo(bundled);
+        for (String field : List.of("schemaVersion", "exportProfile", "profileSha256", "certification", "losses")) {
+            assertThat(standalone.hasNonNull(field)).as("Standalone Visio %s", field).isTrue();
+            assertThat(bundled.hasNonNull(field)).as("Bundled Visio %s", field).isTrue();
+            assertThat(standalone.get(field)).as("Stable Visio %s", field).isEqualTo(bundled.get(field));
+        }
+        // Each HTTP download has its own truthful export time. Frozen authority and graph records remain exact.
+        assertThat(stableVisioAuthority(standalone)).isEqualTo(stableVisioAuthority(bundled));
+        assertThat(visioSemanticRecords(standalone)).isEqualTo(visioSemanticRecords(bundled));
+        Set<String> semanticIds = new TreeSet<>();
+        expected.nodes().stream().filter(node -> !node.container()).forEach(node -> semanticIds.add(node.id()));
+        return semanticIds;
+    }
+
+    private static JsonNode verifyVisioPackage(DiagramModel expected, String snapshot, Map<String, byte[]> visio) throws Exception {
+        var visioManifest = JSON.readTree(visio.get("taxonomy/manifest.json"));
+        assertThat(visioManifest.at("/authority/taxonomy.snapshotId/value").asText()).isEqualTo(snapshot);
+        assertThat(visioManifest.path("exportProfile").asText()).isEqualTo(com.taxonomy.export.VisioHandoffProfile.ID);
+        assertThat(visio.get("taxonomy/mapping-profile.json")).isEqualTo(
+                com.taxonomy.export.VisioHandoffProfile.profileJson().getBytes(StandardCharsets.UTF_8));
+        assertThat(visioManifest.path("profileSha256").asText()).isEqualTo(sha256(visio.get("taxonomy/mapping-profile.json")));
+        verifyVisioExportContext(visioManifest, visio);
+        Set<String> shapeIds = new TreeSet<>();
+        Set<String> relationIds = new TreeSet<>();
+        for (JsonNode page : visioManifest.path("pages")) {
+            Set<String> localIds = new HashSet<>();
+            for (JsonNode shape : page.path("shapes")) {
+                JsonNode properties = shape.path("properties");
+                if ("true".equals(properties.path("taxonomy.presentationOnly").path("value").asText())) {
+                    // Evidence text is visible content, not a graph node or a connector endpoint.
+                    assertThat(properties.path("taxonomy.presentationOnly").path("kind").asText()).isEqualTo("BOOLEAN");
+                    assertThat(properties.has("taxonomy.id")).isFalse();
+                    assertThat(shape.path("label").asText()).isNotBlank();
+                    continue;
+                }
+                assertThat(properties.path("taxonomy.id").path("value").asText()).isNotBlank();
+                localIds.add(shape.path("shapeId").asText());
+                shapeIds.add(shape.path("properties").path("taxonomy.id").path("value").asText());
+            }
+            for (JsonNode relation : page.path("relationships")) {
+                assertThat(localIds).contains(relation.path("sourceShapeId").asText(), relation.path("targetShapeId").asText());
+                relationIds.add(relation.path("properties").path("taxonomy.id").path("value").asText());
+            }
+        }
+        Set<String> semanticIds = new TreeSet<>();
+        expected.nodes().stream().filter(node -> !node.container()).forEach(node -> semanticIds.add(node.id()));
+        assertThat(shapeIds).containsExactlyInAnyOrderElementsOf(semanticIds);
+        assertThat(relationIds).containsExactlyInAnyOrderElementsOf(expected.edges().stream()
+                .filter(edge -> semanticIds.contains(edge.sourceId()) && semanticIds.contains(edge.targetId()))
+                .map(edge -> edge.id()).toList());
+        for (var file : visio.entrySet()) {
+            if (file.getKey().endsWith(".xml") || file.getKey().endsWith(".rels")) xml(file.getValue());
+        }
+
+        return visioManifest;
+    }
+
+    private static ObjectNode stableVisioAuthority(JsonNode manifest) {
+        ObjectNode authority = (ObjectNode) manifest.path("authority").deepCopy();
+        authority.remove("taxonomy.exportedAt"); // Validated independently against this package's native and visible data.
+        // Timestamp length can change source pagination; each count is checked against that package's actual pages.
+        authority.remove("taxonomy.requirementContextPages");
+        return authority;
+    }
+
+    private static Map<String, List<JsonNode>> visioSemanticRecords(JsonNode manifest) {
+        List<JsonNode> shapes = new ArrayList<>(), relationships = new ArrayList<>();
+        for (JsonNode page : manifest.path("pages")) {
+            for (JsonNode shape : page.path("shapes")) {
+                if (shape.path("properties").has("taxonomy.id")) shapes.add(shape);
+            }
+            page.path("relationships").forEach(relationships::add);
+        }
+        return Map.of("shapes", shapes, "relationships", relationships);
+    }
+
+    private static void verifyVisioExportContext(JsonNode manifest, Map<String, byte[]> parts) throws Exception {
+        JsonNode time = manifest.at("/authority/taxonomy.exportedAt");
+        assertThat(time.path("kind").asText()).isEqualTo("STRING");
+        String exportedAt = time.path("value").asText();
+        assertThatCode(() -> Instant.parse(exportedAt)).doesNotThrowAnyException();
+        var xpath = XPathFactory.newInstance().newXPath();
+        var nativeDocument = xml(parts.get("docProps/custom.xml"));
+        var nativeTime = (org.w3c.dom.NodeList) xpath.evaluate(
+                "//*[local-name()='property' and @name='taxonomy.exportedAt']/*",
+                nativeDocument, XPathConstants.NODESET);
+        assertThat(nativeTime.getLength()).isEqualTo(1);
+        assertThat(nativeTime.item(0).getLocalName()).isEqualTo("lpwstr");
+        assertThat(nativeTime.item(0).getTextContent()).isEqualTo(exportedAt);
+        int pageNumber = 0, contextCount = 0, requirementPages = 0;
+        for (JsonNode page : manifest.path("pages")) {
+            Map<String, JsonNode> contexts = new HashMap<>();
+            Set<String> sourceBodies = new HashSet<>();
+            for (JsonNode shape : page.path("shapes")) {
+                var properties = shape.path("properties");
+                if (properties.has("taxonomy.requirementContent")) {
+                    assertThat(properties.at("/taxonomy.requirementContent/kind").asText()).isEqualTo("BOOLEAN");
+                    assertThat(properties.at("/taxonomy.requirementContent/value").asText()).isEqualTo("true");
+                    sourceBodies.add(shape.path("shapeId").asText());
+                }
+                if (properties.has("taxonomy.generatorName") || properties.has("taxonomy.exportedAt")) {
+                    assertThat(properties.path("taxonomy.exportedAt")).isEqualTo(time);
+                    assertThat(shape.path("label").asText().replaceAll("\\s+", " ")).contains("Export created: " + exportedAt);
+                    contexts.put(shape.path("shapeId").asText(), shape);
+                }
+            }
+            var nativePage = xml(parts.get("visio/pages/page" + (++pageNumber) + ".xml"));
+            var nativeTimes = (org.w3c.dom.NodeList) xpath.evaluate(
+                    "//*[local-name()='Shape']/*[local-name()='Section' and @N='Property']"
+                            + "/*[local-name()='Row'][*[local-name()='Cell' and @N='Label' and @V='taxonomy.exportedAt']]"
+                            + "/*[local-name()='Cell' and @N='Value']", nativePage, XPathConstants.NODESET);
+            assertThat(nativeTimes.getLength()).isEqualTo(contexts.size());
+            for (int i = 0; i < nativeTimes.getLength(); i++) {
+                var cell = (org.w3c.dom.Element) nativeTimes.item(i);
+                assertThat(cell.getAttribute("V")).isEqualTo(exportedAt);
+                assertThat(cell.getAttribute("U")).isEqualTo("STR");
+                assertThat(xpath.evaluate("../*[local-name()='Cell' and @N='Type']/@V", cell)).isEqualTo("0");
+                var shape = (org.w3c.dom.Element) cell.getParentNode().getParentNode().getParentNode();
+                assertThat(contexts).containsKey(shape.getAttribute("ID"));
+                assertThat(xpath.evaluate("*[local-name()='Text']", shape))
+                        .isEqualTo(contexts.get(shape.getAttribute("ID")).path("label").asText());
+            }
+            var nativeBodies = (org.w3c.dom.NodeList) xpath.evaluate(
+                    "//*[local-name()='Shape']/*[local-name()='Section' and @N='Property']"
+                            + "/*[local-name()='Row'][*[local-name()='Cell' and @N='Label' and @V='taxonomy.requirementContent']]"
+                            + "/*[local-name()='Cell' and @N='Value']", nativePage, XPathConstants.NODESET);
+            assertThat(nativeBodies.getLength()).isEqualTo(sourceBodies.size());
+            for (int i = 0; i < nativeBodies.getLength(); i++) {
+                var cell = (org.w3c.dom.Element) nativeBodies.item(i);
+                assertThat(cell.getAttribute("V")).isEqualTo("1");
+                assertThat(xpath.evaluate("../*[local-name()='Cell' and @N='Type']/@V", cell)).isEqualTo("3");
+                var shape = (org.w3c.dom.Element) cell.getParentNode().getParentNode().getParentNode();
+                assertThat(sourceBodies).contains(shape.getAttribute("ID"));
+            }
+            if (!sourceBodies.isEmpty()) {
+                assertThat(sourceBodies).hasSize(1);
+                requirementPages++;
+            }
+            contextCount += contexts.size();
+        }
+        assertThat(contextCount).isPositive();
+        assertThat(manifest.at("/authority/taxonomy.requirementContextPages/kind").asText()).isEqualTo("NUMBER");
+        assertThat(manifest.at("/authority/taxonomy.requirementContextPages/value").asText()).isEqualTo(Integer.toString(requirementPages));
+        assertThat(xpath.evaluate("//*[local-name()='property' and @name='taxonomy.requirementContextPages']/*[local-name()='r8']",
+                nativeDocument)).isEqualTo(Integer.toString(requirementPages));
     }
 
     static void verifyReadyContents(XWPFDocument document, int depth) throws Exception {
