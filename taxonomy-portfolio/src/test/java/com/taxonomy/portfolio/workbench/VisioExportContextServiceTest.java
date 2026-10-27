@@ -1,11 +1,17 @@
 package com.taxonomy.portfolio.workbench;
 
-import com.taxonomy.architecture.decision.DecisionReportBuildMetadataService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.boot.info.BuildProperties;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Properties;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -25,10 +31,41 @@ class VisioExportContextServiceTest {
         assertThat(context.documentProperties().get("taxonomy.exportedAt").value()).isEqualTo(EXPORTED.toString());
         assertThat(service.create(42L, 90L, "reviewer")).isEqualTo(context);
         assertThat(service.create(42L, 90L, "another-user")).isNotEqualTo(context);
-        var later = new VisioExportContextService(new DecisionReportBuildMetadataService("1.5.3-test", "commit"),
+        var later = new VisioExportContextService(null, "1.5.3-test",
                 "https://taxonomy.example", Clock.offset(CLOCK, java.time.Duration.ofSeconds(1)))
                 .create(42L, 90L, "reviewer");
         assertThat(later.exportedAt()).isEqualTo(EXPORTED.plusSeconds(1));
+    }
+
+    @ParameterizedTest
+    @MethodSource("buildVersions")
+    void resolvesExportVersionWithoutDecisionReportServices(boolean packagedBuild, String packagedVersion,
+            String fallbackVersion, String expectedVersion) {
+        var runner = new ApplicationContextRunner().withUserConfiguration(VisioExportContextService.class);
+        if (fallbackVersion != null) runner = runner.withPropertyValues("app.display-version=" + fallbackVersion);
+        if (packagedBuild) {
+            var properties = new Properties();
+            if (packagedVersion != null) properties.setProperty("version", packagedVersion);
+            runner = runner.withBean(BuildProperties.class, () -> new BuildProperties(properties));
+        }
+        runner.run(context -> {
+            assertThat(context).hasNotFailed().hasSingleBean(VisioExportContextService.class);
+            var exported = context.getBean(VisioExportContextService.class).create(42L, 90L, "reviewer");
+            assertThat(exported.generatorVersion()).isEqualTo(expectedVersion);
+            assertThat(exported.documentProperties().get("taxonomy.generatorVersion").value()).isEqualTo(expectedVersion);
+        });
+    }
+
+    private static Stream<Arguments> buildVersions() {
+        return Stream.of(
+                Arguments.of(false, null, "fallback-version", "fallback-version"),
+                Arguments.of(false, null, null, "unknown"),
+                Arguments.of(false, null, "", "unknown"),
+                Arguments.of(true, "  packaged-version  ", "fallback-version", "packaged-version"),
+                Arguments.of(true, "packaged-version", null, "packaged-version"),
+                Arguments.of(true, null, "fallback-version", "fallback-version"),
+                Arguments.of(true, "", "fallback-version", "fallback-version"),
+                Arguments.of(true, " \t ", "fallback-version", "fallback-version"));
     }
 
     @Test void neverInventsALinkForMissingConfigurationOrUnsavedViews() {
@@ -59,6 +96,6 @@ class VisioExportContextServiceTest {
     }
 
     private static VisioExportContextService service(String base) {
-        return new VisioExportContextService(new DecisionReportBuildMetadataService("1.5.3-test", "commit"), base, CLOCK);
+        return new VisioExportContextService(null, "1.5.3-test", base, CLOCK);
     }
 }

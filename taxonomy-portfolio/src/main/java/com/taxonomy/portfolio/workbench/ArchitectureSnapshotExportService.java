@@ -8,7 +8,6 @@ import com.taxonomy.export.VisioHandoffProfile;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.architecture.export.CanonicalDiagramExportService;
-import com.taxonomy.architecture.decision.DecisionReportBuildMetadataService;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
@@ -20,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
@@ -45,7 +45,7 @@ public class ArchitectureSnapshotExportService {
             ArchitectureWorkbenchService workbenchService,
             CanonicalDiagramExportService diagramExportService) {
         this(workbenchService, diagramExportService,
-                new VisioExportContextService(new DecisionReportBuildMetadataService("unknown", "unknown"), ""));
+                new VisioExportContextService(null, "unknown", "", Clock.systemUTC()));
     }
 
     @Autowired

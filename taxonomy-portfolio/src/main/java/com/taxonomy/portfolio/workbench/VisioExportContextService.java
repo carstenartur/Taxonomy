@@ -1,9 +1,10 @@
 package com.taxonomy.portfolio.workbench;
 
-import com.taxonomy.architecture.decision.DecisionReportBuildMetadataService;
 import com.taxonomy.visio.VisioProperty;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -18,19 +19,22 @@ import java.util.Objects;
 @Service
 public class VisioExportContextService {
     private static final String INVALID_BASE = "taxonomy.export.public-base-url must be an absolute HTTP(S) URL with an unambiguous deployment path and no credentials, query or fragment";
-    private final DecisionReportBuildMetadataService build;
+    private final BuildProperties buildProperties;
+    private final String fallbackVersion;
     private final String publicBaseUrl;
     private final Clock clock;
 
     @Autowired
-    public VisioExportContextService(DecisionReportBuildMetadataService build,
+    public VisioExportContextService(ObjectProvider<BuildProperties> buildProperties,
+            @Value("${app.display-version:${info.app.version:unknown}}") String fallbackVersion,
             @Value("${taxonomy.export.public-base-url:}") String publicBaseUrl) {
-        this(build, publicBaseUrl, Clock.systemUTC());
+        this(buildProperties.getIfAvailable(), fallbackVersion, publicBaseUrl, Clock.systemUTC());
     }
 
     /** Explicit clock supports reproducible serialization of the same export context. */
-    public VisioExportContextService(DecisionReportBuildMetadataService build, String publicBaseUrl, Clock clock) {
-        this.build = Objects.requireNonNull(build, "build metadata");
+    public VisioExportContextService(BuildProperties buildProperties, String fallbackVersion, String publicBaseUrl, Clock clock) {
+        this.buildProperties = buildProperties;
+        this.fallbackVersion = normalized(fallbackVersion, "unknown");
         this.publicBaseUrl = validateBase(publicBaseUrl);
         this.clock = Objects.requireNonNull(clock, "export clock");
     }
@@ -53,8 +57,14 @@ public class VisioExportContextService {
 
     private ExportContext context(String username, String requirementUrl, String status) {
         String actor = username == null || username.isBlank() ? null : username.strip();
-        return new ExportContext("Taxonomy Architecture Analyzer", build.current().version(), actor,
+        String version = buildProperties == null ? fallbackVersion
+                : normalized(buildProperties.getVersion(), fallbackVersion);
+        return new ExportContext("Taxonomy Architecture Analyzer", version, actor,
                 clock.instant(), requirementUrl, status);
+    }
+
+    private static String normalized(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.strip();
     }
 
     private static String validateBase(String value) {

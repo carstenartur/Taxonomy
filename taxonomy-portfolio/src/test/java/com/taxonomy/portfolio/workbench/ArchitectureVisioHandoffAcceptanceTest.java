@@ -174,7 +174,7 @@ class ArchitectureVisioHandoffAcceptanceTest {
     private static ArchitectureSnapshotExportService service(FrozenWorkbench source) {
         return new ArchitectureSnapshotExportService(source, new CanonicalDiagramExportService(
                 new VisioDiagramService(), new VisioPackageBuilder(), new ArchiMateDiagramService(), new ArchiMateXmlExporter()),
-                new VisioExportContextService(new com.taxonomy.architecture.decision.DecisionReportBuildMetadataService("1.5.3-test", "commit"),
+                new VisioExportContextService(null, "1.5.3-test",
                         "https://taxonomy.example/app", java.time.Clock.fixed(Instant.parse("2026-10-27T12:34:56Z"), java.time.ZoneOffset.UTC)));
     }
 

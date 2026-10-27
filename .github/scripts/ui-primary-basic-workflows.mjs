@@ -121,8 +121,12 @@ export async function runBasicWorkflows({ page, role, evidence }) {
     assert(outcome.exported === false, 'Failed backend export must not report success');
     assert(outcome.preserved, 'Failed export changed the existing architecture');
     assert(exportRequests.length === 1, `Expected one current-view export, got ${exportRequests.length}`);
-    assert(JSON.stringify(exportRequests[0]) === JSON.stringify(fixture),
-      'Export did not send the frozen existing architecture');
+    const expectedRequest = {
+      ...fixture,
+      originalRequirementText: 'QA export failure requirement'
+    };
+    assert(JSON.stringify(exportRequests[0]) === JSON.stringify(expectedRequest),
+      'Export did not send the frozen existing architecture with its captured requirement text');
     await waitForText('#operationToastBody', text => text.includes('EXPORT_SERVICE_UNAVAILABLE'));
   } finally {
     await page.unroute(exportRoute, failExport);
