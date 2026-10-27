@@ -35,21 +35,67 @@ must not replace the process-wide `SpringContextHolder` while background indexer
 are active. Its exact invocation check is retained, and the negative inference
 check targets the actual `embedDocument` method.
 
+The application tests rebuild a shared in-memory HSQLDB schema when loading a
+new Spring context. Surefire already restricted the context cache to one entry,
+but Failsafe did not inherit that plugin-specific system property. A context
+switch in Failsafe therefore only paused the previous context; its JDBC pool,
+JPA factory and unfinished indexing could remain alive during schema recreation.
+
+The test-only `spring.properties` now supplies the same one-context policy to
+Surefire, Failsafe and IDE test runs. Spring's context cache closes the evicted
+context **before** calling the replacement context's loader. The setting is not
+part of the production application, does not disable embeddings or context
+pausing, and does not change any test selection or deadline.
+
+`SpringContextCacheIsolationIT` uses the integration-test JVM's unmodified
+`DefaultContextCache`, two real Spring contexts and a real Hikari/HSQLDB database.
+Its replacement loader requires the old context and pool to be closed before
+recreating the schema. No explicit cache-size constructor or mocked lifecycle can
+hide missing Failsafe configuration. See Spring's
+[context caching](https://docs.spring.io/spring-framework/reference/testing/testcontext-framework/ctx-management/caching.html)
+and [context pausing](https://docs.spring.io/spring-framework/reference/testing/testcontext-framework/ctx-management/context-pausing.html)
+documentation for the distinction between eviction and pausing.
+
 ## Verification boundaries
 
-The resource scenario was executed directly using Java 21 and the dependency
-jars from the original PR's commit-bound application artifact. Both profiles
-failed with the original four-connection defaults (pool exhaustion); both passed
-with eight connections, including complete document counts and retained writes.
-This is a focused resource regression, **not** a full Java 25 reactor/JUnit pass.
-The JUnit wrapper makes the same scenario part of ordinary Maven verification.
+The initial connection-budget scenario was executed directly using Java 21 and
+the dependency jars from the original PR's commit-bound application artifact.
+Both profiles failed with the original four-connection defaults and passed with
+eight connections, including complete document counts and retained writes.
 
-Focused repository command (requires the repository's Java 25 toolchain):
+The subsequent Java 25 [CI run 40564106590](https://github.com/carstenartur/Taxonomy/actions/runs/40564106590)
+on head `1911c782e9220de4f8bc38dd1b32aed5b66da512` confirms:
+
+- All five previously failing test classes completed without failures:
+  `ArchitectureReportTests`, `ReformulationEvidenceRoundTripTest`,
+  `AdoptedLineageRealReanalysisTest`, `EmbeddingLifecycleSafetyTest` and
+  `ScenarioArchiMateImportTest`.
+- The measured ArchiMate apply operation took **29,016 ms**, passing its unchanged
+  30-second assertion. This single result is not a performance guarantee.
+- Both `EmbeddingConnectionBudgetTest` cases passed, and all nine
+  `LocalOnnxPipelineIT` cases passed, including the real local ONNX reference path.
+- The core job later timed out while starting `WorkspaceAccessSecurityIT` after
+  `WorkspaceProvisioningBoundaryIT`. Its log shows the previous executor failing
+  to stop within the lifecycle phase while indexing continued into the next
+  context's schema bootstrap. Completed reports contain no failing assertions;
+  they do not establish success for the unfinished integration suite.
+
+For the test-classpath policy follow-up, a fresh process using the artifact's
+actual Spring 7.0.9 libraries reproduced the missing configuration before the
+change and resolved the one-context policy after the change. A separate real
+Spring/Hikari/HSQLDB probe confirmed that pausing retains the pool/schema, while
+closing releases it before recreation. These Java 21 probes are **not** a run of
+the new JUnit integration test or the full Java 25 reactor. Those require fresh CI.
+
+Focused repository reproduction, deliberately selecting the Failsafe test:
 
 ```bash
-./mvnw -B -pl taxonomy-app -am \
-  -Dtest=EmbeddingConnectionBudgetTest,EmbeddingLifecycleSafetyTest,LocalOnnxIndexInitializerTest,SearchIndexCoverageTest \
-  -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -B -pl taxonomy-app -am verify \
+  -DskipITs=false \
+  -Dtest=LocalOnnxIndexInitializerTest,EmbeddingConnectionBudgetTest,EmbeddingLifecycleSafetyTest \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dit.test=SpringContextCacheIsolationIT \
+  -Dfailsafe.failIfNoSpecifiedTests=false
 ```
 
 The authoritative command remains:
@@ -58,8 +104,6 @@ The authoritative command remains:
 ./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
 
-The previous `ScenarioArchiMateImportTest` exceeded its unchanged 30-second
-import deadline. Its result must be checked in the new full CI run; the focused
-connection test does not prove that this separate performance assertion passes.
 No test selections, existing deadlines, native-ONNX checks or readiness
-assertions are relaxed by this follow-up.
+assertions are relaxed by this follow-up. The context-isolation change must pass
+the full workflow on its own exact head before this PR is described as green.
