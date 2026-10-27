@@ -80,6 +80,7 @@ final class CurrentDiagramExportRegression {
 
     static void visioKeepsWorkingNodeReasonsVisibleWithoutAnalysis() throws Exception {
         var view = view(2);
+        view.setOriginalRequirementText("Captured original working requirement. ".repeat(80) + "WORKING-SOURCE-END-4817");
         view.getIncludedElements().getFirst().setIncludedBecause("An unchanged node reason. ".repeat(80) + "CURRENT-NODE-REASON-END-7319");
         var response = controller().exportCurrentDiagram("visio", view);
         check(response.getStatusCode().value() == 200, "Visio reason export status");
@@ -95,6 +96,9 @@ final class CurrentDiagramExportRegression {
             }
         }
         check(visible.toString().contains("CURRENT-NODE-REASON-END-7319"), "Original node reason is missing from visible Visio content");
+        check(visible.toString().contains("WORKING-SOURCE-END-4817"), "Captured original working source is missing from visible Visio content");
+        check(visible.toString().contains("Client-provided working source"), "Working source lacks its honest provenance notice");
+        check(visible.toString().contains("no saved requirement editing target"), "Unsaved working view lacks the editing-link notice");
     }
 
     static void exportsSparxWorkingViewWithoutScoringOrSyncMutation() throws Exception {

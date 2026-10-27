@@ -444,6 +444,8 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
             result.setArchitectureView(com.taxonomy.analysis.usecase.PartialArchitectureProjection.complete(
                     result, null, command.maxArchitectureNodes()));
         }
+        if (result.getArchitectureView() != null && command.businessText() != null)
+            result.getArchitectureView().setOriginalRequirementText(command.businessText());
         var binding = command.continuationBinding();
         if (binding == null) return result;
         var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);

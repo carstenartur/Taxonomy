@@ -100,11 +100,15 @@ final class VisioEvidencePages {
         document.getProperties().put("taxonomy.evidencePages", VisioProperty.number(pages.size()));
         String notice = "Full recorded reasons and labels: Evidence pages, matched by N/R keys.";
         var legend = overview.getLegend();
+        double top = overview.getShapes().stream().mapToDouble(shape -> shape.getY() + shape.getHeight() / 2).max().orElse(0);
+        top = Math.max(top, overview.getConnects().stream()
+                .filter(connect -> connect.getTextBox() != null && !connect.getTextBox().text().isBlank())
+                .mapToDouble(connect -> connect.getTextBox().y() + connect.getTextBox().height() / 2).max().orElse(0));
         if (legend == null) {
-            double top = overview.getShapes().stream().mapToDouble(shape -> shape.getY() + shape.getHeight() / 2).max().orElse(0);
             overview.setLegend(new VisioTextBox(notice, 5.5, top + .7, 10, .6));
         } else {
-            overview.setLegend(new VisioTextBox(legend.text() + "\n" + notice, legend.x(), legend.y(), legend.width(), legend.height()));
+            double y = Math.max(legend.y(), top + .4 + legend.height() / 2);
+            overview.setLegend(new VisioTextBox(legend.text() + "\n" + notice, legend.x(), y, legend.width(), legend.height()));
         }
         document.getLosses().add(new VisioLoss("document", "", "visibleEvidence", "MAPPED",
                 "Full recorded reasons and long labels are readable on Evidence pages, identified by the overview N/R keys. Text continues onto following pages without shortening."));

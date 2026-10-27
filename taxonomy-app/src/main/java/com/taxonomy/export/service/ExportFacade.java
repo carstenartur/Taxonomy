@@ -16,6 +16,7 @@ import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.export.spi.ExportFormatExtension;
 import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioExportMetadata;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -37,6 +38,8 @@ public class ExportFacade {
     private final StructurizrExportService structurizrExportService;
     private final SavedAnalysisService savedAnalysisService;
 
+    private final VisioWorkingViewMetadata workingViewMetadata;
+
     public ExportFacade(LlmService llmService,
                         RequirementArchitectureViewService architectureViewService,
                         DiagramProjectionService diagramProjectionService,
@@ -46,6 +49,22 @@ public class ExportFacade {
                         ArchiMateXmlExporter archiMateXmlExporter,
                         StructurizrExportService structurizrExportService,
                         SavedAnalysisService savedAnalysisService) {
+        this(llmService, architectureViewService, diagramProjectionService, visioDiagramService,
+                visioPackageBuilder, archiMateDiagramService, archiMateXmlExporter,
+                structurizrExportService, savedAnalysisService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ExportFacade(LlmService llmService,
+                        RequirementArchitectureViewService architectureViewService,
+                        DiagramProjectionService diagramProjectionService,
+                        VisioDiagramService visioDiagramService,
+                        VisioPackageBuilder visioPackageBuilder,
+                        ArchiMateDiagramService archiMateDiagramService,
+                        ArchiMateXmlExporter archiMateXmlExporter,
+                        StructurizrExportService structurizrExportService,
+                        SavedAnalysisService savedAnalysisService,
+                        VisioWorkingViewMetadata workingViewMetadata) {
         this.llmService = llmService;
         this.architectureViewService = architectureViewService;
         this.diagramProjectionService = diagramProjectionService;
@@ -55,11 +74,14 @@ public class ExportFacade {
         this.archiMateXmlExporter = archiMateXmlExporter;
         this.structurizrExportService = structurizrExportService;
         this.savedAnalysisService = savedAnalysisService;
+        this.workingViewMetadata = workingViewMetadata;
     }
 
     public byte[] exportAsVisio(String businessText) throws IOException {
         DiagramModel diagram = analyzeAndProject(businessText);
-        VisioDocument visioDocument = visioDiagramService.convert(diagram);
+        VisioDocument visioDocument = visioDiagramService.convert(diagram,
+                new VisioExportMetadata(VisioWorkingViewMetadata.document(businessText, workingViewMetadata),
+                        Map.of(), Map.of(), VisioExportMetadata.unbound().losses()));
         return visioPackageBuilder.build(visioDocument);
     }
 

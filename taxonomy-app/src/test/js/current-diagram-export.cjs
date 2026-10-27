@@ -99,7 +99,7 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
 test('exports a frozen copy of the current architecture with visible busy state',async()=>{
     const f=fixture();const original=JSON.stringify(f.state);const pending=f.run();await Promise.resolve();
     assert.equal(f.requests[0].url,'/api/diagram/current/visio');
-    assert.deepEqual(JSON.parse(f.requests[0].options.body),f.state.currentArchView);
+    assert.deepEqual(JSON.parse(f.requests[0].options.body), {...f.state.currentArchView, originalRequirementText: f.state.lastAnalyzedText});
     assert.equal(f.elements.get('exportVisio').disabled,true);
     assert.equal(f.elements.get('diagramExportStatus').attributes['aria-busy'],'true');
     assert.match(f.elements.get('diagramExportStatusText').textContent,/Creating/);
@@ -441,4 +441,19 @@ for (const attachment of [true, false]) test(`contributed HTML requires an expli
     const work=group.children[1].listeners.click();await Promise.resolve();
     f.resolve(binaryResponse({headers:{get:name=>name.toLowerCase()==='content-type'?'text/html':attachment?'attachment; filename="architecture.html"':null},blob:async()=>new Blob(['<!doctype html><html><body>Architecture</body></html>'])}));
     await work;assert.equal(f.downloads.length,attachment?1:0);
+});
+
+for (const source of [undefined, 'Original view source']) test(`Visio freezes captured original requirement source (${source || 'legacy view'})`, async () => {
+    const f = fixture();
+    if (source) f.state.currentArchView.originalRequirementText = source;
+    // Export receives the analysis baseline, and must never read this edited textarea.
+    f.elements.get('businessText').value = 'Later edited draft';
+    const before = JSON.stringify(f.state.currentArchView);
+    const work = f.run(); await Promise.resolve();
+    const body = JSON.parse(f.requests[0].options.body);
+    assert.equal(body.originalRequirementText, source || 'original');
+    assert.equal(JSON.stringify(f.state.currentArchView), before);
+    f.state.lastAnalyzedText = 'A later analysis';
+    assert.equal(JSON.parse(f.requests[0].options.body).originalRequirementText, source || 'original');
+    f.resolve(binaryResponse()); await work;
 });

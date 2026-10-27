@@ -331,6 +331,7 @@ public class AnalyzeRequirementUseCase {
             // Keep a successfully projected evidence view if only presentation metadata failed.
             archView = PartialArchitectureProjection.complete(result, archView, command.maxArchitectureNodes());
         }
+        if (command.businessText() != null) archView.setOriginalRequirementText(command.businessText());
         archView.setAnalysisStatus(result.getStatus());
         result.setArchitectureView(archView);
     }

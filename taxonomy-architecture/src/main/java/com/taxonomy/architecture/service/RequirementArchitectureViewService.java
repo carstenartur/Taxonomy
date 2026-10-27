@@ -44,7 +44,7 @@ public class RequirementArchitectureViewService {
      * Builds the architecture view from analysis scores (without provisional relations).
      *
      * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
-     * @param businessText         the original business requirement text (for notes)
+     * @param businessText         the original business requirement text, retained for working-view handoff
      * @param maxArchitectureNodes maximum number of elements to include (0 = no limit)
      * @return the architecture view, or an empty view with a note if no anchors are found
      */
@@ -60,7 +60,7 @@ public class RequirementArchitectureViewService {
      * when no confirmed relations exist.
      *
      * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
-     * @param businessText         the original business requirement text (for notes)
+     * @param businessText         the original business requirement text, retained for working-view handoff
      * @param maxArchitectureNodes maximum number of elements to include (0 = no limit)
      * @param provisionalRelations optional list of AI-suggested relation hypotheses
      * @return the architecture view, or an empty view with a note if no anchors are found
@@ -71,12 +71,15 @@ public class RequirementArchitectureViewService {
                                              List<RelationHypothesisDto> provisionalRelations) {
         if (scores == null || scores.isEmpty()) {
             RequirementArchitectureView view = new RequirementArchitectureView();
+            view.setOriginalRequirementText(businessText);
             view.getNotes().add("No scores available; architecture view cannot be built.");
             return view;
         }
 
         ArchitectureViewContext ctx = new ArchitectureViewContext(
                 scores, businessText, maxArchitectureNodes, provisionalRelations);
-        return pipeline.execute(ctx);
+        RequirementArchitectureView view = pipeline.execute(ctx);
+        view.setOriginalRequirementText(businessText);
+        return view;
     }
 }

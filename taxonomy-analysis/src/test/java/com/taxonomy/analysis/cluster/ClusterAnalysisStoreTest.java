@@ -73,6 +73,36 @@ class ClusterAnalysisStoreTest {
         }
     }
 
+    @Test void stoppedOrCancelledWorkingViewsKeepTheirExactAdmittedSourceWithoutAContinuation() {
+        String source = "  Frozen cooperative-stop input\nÜnicode: Österreich.  ";
+        for (boolean cancel : List.of(false, true)) try (var db = new Database()) {
+            var base = context(cancel ? "source-cancel" : "source-stop");
+            var context = new AnalysisOperationContext(base.operationId(), base.authority(), RequirementReference.adHoc(source), base.correlationId());
+            var original = command(source);
+            var command = new AnalyzeRequirementCommand(source, true, 20, original.provider(), original.username(),
+                    original.workspaceContext(), original.provenance(), original.analysisScope());
+            var targets = new LinkedHashMap<TaxonomyShardRoot, String>();
+            var mapper = new ObjectMapper();
+            for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) targets.put(root, mapper.writeValueAsString(
+                    DurableClusterAnalysisExecutionTest.root(DurableClusterAnalysisExecutionTest.source(context), root.code())));
+            db.store.admit(context, command, null, Map.of(CP, targets.get(CP), IP, targets.get(IP)), targets);
+            var task = db.task(CP); db.store.start(task);
+            if (cancel) assertTrue(db.store.cancel(context));
+            else {
+                var completion = new AnalysisMessageFactory(context, Clock.systemUTC())
+                        .completed(task, AnalysisTaskOutcome.STOPPED, 50d, 1, "TIME_LIMIT");
+                db.completions.commit(new PreparedAnalysisCompletion<>(completion,
+                        () -> db.store.persistResult(task, result("CP", 50))));
+                assertTrue(db.store.accept(completion));
+            }
+            var restored = db.store.snapshot(context).result();
+            assertNotNull(restored.getArchitectureView());
+            assertEquals(source, restored.getArchitectureView().getOriginalRequirementText());
+            assertTrue(db.store.snapshot(context).state().terminal());
+            assertEquals(1, db.sent.size(), "No new provider task is dispatched after the cooperative stop");
+        }
+    }
+
     @Test void earlyDeliveryCannotStartALaterRootOrConsumeItsAttempt() {
         try (var db = new Database()) {
             var context = context("early-root"); db.admit(context);

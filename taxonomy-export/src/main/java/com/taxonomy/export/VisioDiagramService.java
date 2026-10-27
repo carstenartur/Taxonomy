@@ -99,7 +99,7 @@ public class VisioDiagramService {
                 if (node.parentId() != null) values.put("taxonomy.parentId", VisioProperty.text(node.parentId()));
                 page.getShapes().add(shape);
                 if (node.container()) doc.getLosses().add(new VisioLoss("element", node.id(), "container", "MAPPED",
-                        "Visual container rendered as a flat rectangle, explicitly marked non-semantic; parent identity retained in shape data."));
+                        "Explicit visual container rendered with native membership for present descendants; it remains non-semantic and retains original parent identity in shape data."));
             }
             layerIdx++;
         }

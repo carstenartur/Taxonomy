@@ -264,6 +264,31 @@ public final class RecoveryCheckpointPersistenceProbe {
         }
     }
 
+    public static void pausedWorkingViewKeepsItsExactFrozenSource() {
+        String source = "  Frozen continuation input\nÜnicode: Österreich.  ";
+        try (var db = new Database()) {
+            db.transaction(em -> {
+                var request = new com.taxonomy.dto.AnalysisRequest(source);
+                request.setIncludeArchitectureView(true);
+                request.setMaxArchitectureNodes(20);
+                em.find(AnalysisContinuationRun.class, db.id).requestJson = db.mapper.writeValueAsString(request);
+                return null;
+            });
+            db.question("left-open", "READY", 0, 1, null);
+            var node = new com.taxonomy.dto.TaxonomyNodeDto();
+            node.setCode("BP"); node.setTaxonomyRoot("BP"); node.setNameEn("Business Processes");
+            var result = new AnalysisResult(Map.of("BP", 50d), List.of(node)); result.setStatus("SUCCESS");
+
+            var completed = db.transaction(em -> db.store(em).complete(db.claim(), result, List.of(node)));
+
+            check("STOPPED".equals(completed.getRecovery().state()), "Pending independent work must retain a stopped outcome");
+            check(completed.getArchitectureView() != null && source.equals(completed.getArchitectureView().getOriginalRequirementText()),
+                    "Cooperative continuation completion lost the exact admitted requirement source");
+            var restored = db.mapper.readValue(db.mapper.writeValueAsString(completed), AnalysisResult.class);
+            check(source.equals(restored.getArchitectureView().getOriginalRequirementText()), "Captured source was lost during result serialization");
+        }
+    }
+
     public static void completionMarksUncertainWithoutPayloadReads() {
         try (var db = new Database()) {
             db.question("pending", "ATTEMPT", 3, 1, null);

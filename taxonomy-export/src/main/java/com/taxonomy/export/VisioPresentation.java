@@ -9,6 +9,7 @@ final class VisioPresentation {
     private VisioPresentation() { }
 
     static void apply(VisioDocument document) {
+        document.getPages().forEach(VisioContainers::fit);
         VisioPage overview = document.getPages().getFirst();
         Map<String, VisioShape> nodes = new LinkedHashMap<>();
         for (var shape : overview.getShapes()) nodes.put(shape.getId(), shape);
@@ -19,8 +20,20 @@ final class VisioPresentation {
         int unplaced = 0;
         boolean shortenedOverviewType = false;
         for (var page : document.getPages()) {
+            // Container fitting can shift each page independently, including impact subsets.
+            Map<String, VisioShape> pageNodes = new HashMap<>();
+            page.getShapes().forEach(shape -> pageNodes.put(shape.getId(), shape));
             var occupied = new Occupancy();
-            for (var shape : page.getShapes()) occupied.add(new Box(shape.getX(), shape.getY(), shape.getWidth() + .12, shape.getHeight() + .12));
+            for (var shape : page.getShapes()) {
+                // A container's interior is intentionally occupied by members;
+                // only its title blocks captions. Avoid huge spatial bucket
+                // allocations for a container around a large graph.
+                if (VisioNativeShape.isContainer(shape)) {
+                    double header = Math.min(shape.getHeight(), VisioContainers.HEADER_HEIGHT);
+                    occupied.add(new Box(shape.getX(), shape.getY() + shape.getHeight() / 2 - header / 2,
+                            Math.min(shape.getWidth(), 20) + .12, header + .12));
+                } else occupied.add(new Box(shape.getX(), shape.getY(), shape.getWidth() + .12, shape.getHeight() + .12));
+            }
             for (var connect : page.getConnects()) {
                 String key = relationKeys.get(id(connect));
                 connect.getProperties().put("taxonomy.displayKey", VisioProperty.text(key));
@@ -34,7 +47,7 @@ final class VisioPresentation {
                             "Overview type shortened; consult native relationship details and full taxonomy.type."));
                 }
                 double width = dense ? .7 : 2.0, height = dense ? .3 : .5;
-                var from = nodes.get(connect.getFromShape()); var to = nodes.get(connect.getToShape());
+                var from = pageNodes.get(connect.getFromShape()); var to = pageNodes.get(connect.getToShape());
                 Box position = place(occupied, from, to, width, height);
                 if (position == null) {
                     // An omitted caption is explicit; its canonical connector is never omitted.
@@ -53,7 +66,9 @@ final class VisioPresentation {
                 unplaced + " overview captions could not be placed without collision. Native connectors/data remain; consult relationship details."));
         // Mandatory readable evidence reserves page capacity before optional diagram details.
         VisioEvidencePages.append(document, overview);
+        VisioContextPages.append(document);
         if (dense || unplaced > 0 || shortenedOverviewType) addDetails(document, overview, nodes);
+        VisioContextPages.decorateDiagrams(document);
     }
 
     private static Box place(Occupancy occupied, VisioShape from, VisioShape to, double width, double height) {
@@ -72,6 +87,7 @@ final class VisioPresentation {
         int shapes = document.getPages().stream().mapToInt(p -> p.getShapes().size() + (p.getLegend() == null ? 0 : 1)).sum();
         int connectors = document.getPages().stream().mapToInt(p -> p.getConnects().size()).sum();
         int covered = 0;
+        int contextShapesPerDetail = VisioContextPages.hasContext(document) ? 1 : 0;
         int diagramPages = (int) document.getPages().stream().filter(page -> !page.isEvidencePage()).count();
         while (covered < overview.getConnects().size() && diagramPages < VisioPackageValidator.MAX_DIAGRAM_PAGES) {
             List<VisioConnect> batch = new ArrayList<>();
@@ -82,7 +98,7 @@ final class VisioPresentation {
                 if (candidate.size() > 6) break;
                 endpoints.addAll(candidate); batch.add(c);
             }
-            if (shapes + endpoints.size() > 20_000 || connectors + batch.size() > 60_000) break;
+            if (shapes + endpoints.size() + contextShapesPerDetail > 20_000 || connectors + batch.size() > 60_000) break;
             String range = key(batch.getFirst()) + "–" + key(batch.getLast());
             VisioPage page = new VisioPage(Integer.toString(document.getPages().size()), "Relationships " + range);
             page.setRelationshipDetail(true);
@@ -111,7 +127,8 @@ final class VisioPresentation {
                 connect.getProperties().put("taxonomy.captionDisposition", VisioProperty.text(shortened(source.getRelationType(), type) ? "TYPE_TRUNCATED" : "READABLE_DETAIL"));
                 page.getConnects().add(connect); row++;
             }
-            shapes += endpoints.size(); connectors += batch.size(); covered += batch.size();
+            shapes += endpoints.size() + contextShapesPerDetail; connectors += batch.size(); covered += batch.size();
+            VisioContainers.fit(page);
             document.getPages().add(page); diagramPages++;
         }
         updateDetailCoverage(document, "page/node/connector capacity");

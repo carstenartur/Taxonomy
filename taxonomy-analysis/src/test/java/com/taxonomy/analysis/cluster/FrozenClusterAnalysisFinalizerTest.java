@@ -200,10 +200,42 @@ class FrozenClusterAnalysisFinalizerTest {
         verifyNoMoreInteractions(store);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"evidence", "scored", "rendering-fallback"})
+    void finalFrozenViewRetainsExactAdmittedTextAcrossAssemblyPaths(String path) {
+        String source = "  Frozen submitted input\nÜnicode: Österreich.  ";
+        var context = prepare(source);
+        if (path.equals("evidence")) {
+            var report = new RelationSearchReport(1, "digest", "frozen-test", List.of(),
+                    new RelationSearchModel.Result(List.of(), List.of(), List.of(), 0, 0, 1), 0, 2, 1, List.of(), "");
+            store.snapshot(context).result().setRelationSearchReport(report);
+            when(architecture.buildFromEvidence(anyMap(), anyMap(), eq(1), eq(report))).thenReturn(new RequirementArchitectureView());
+        }
+        if (path.equals("rendering-fallback")) when(metadata.resolve()).thenThrow(new IllegalStateException("fixture metadata unavailable"));
+
+        finalizer.accept(context);
+
+        verify(store).finalizeResult(eq(context), argThat(result -> {
+            assertThat(result.getArchitectureView().getOriginalRequirementText()).isEqualTo(source);
+            var restored = mapper.readValue(mapper.writeValueAsString(result), AnalysisResult.class);
+            assertThat(restored.getArchitectureView().getOriginalRequirementText()).isEqualTo(source);
+            assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(Map.of("CP-1023", 55d, "IP-1136", 80d));
+            return true;
+        }));
+        assertThat(FrozenCatalogueContext.current()).isNull();
+        verifyNoInteractions(nodes);
+    }
+
     private com.taxonomy.analysis.dag.AnalysisOperationContext prepare() {
-        var context = DurableClusterAnalysisExecutionTest.context("finalizing");
+        return prepare(DurableClusterAnalysisExecutionTest.command(AnalysisMode.TAXONOMIES_ONLY, "MOCK").businessText());
+    }
+
+    private com.taxonomy.analysis.dag.AnalysisOperationContext prepare(String source) {
+        var base = DurableClusterAnalysisExecutionTest.context("finalizing");
+        var context = new com.taxonomy.analysis.dag.AnalysisOperationContext(base.operationId(), base.authority(),
+                com.taxonomy.analysis.dag.RequirementReference.adHoc(source), base.correlationId());
         var c = DurableClusterAnalysisExecutionTest.command(AnalysisMode.TAXONOMIES_ONLY, "MOCK");
-        when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(c.businessText(), true, 1,
+        when(store.command(context)).thenReturn(new AnalyzeRequirementCommand(source, true, 1,
                 c.provider(), c.username(), c.workspaceContext(), c.provenance(), c.analysisScope()));
         // Like durable root results, the merged result retains its own catalogue tree.
         var result = new AnalysisResult(Map.of("CP-1023", 55, "IP-1136", 80), List.of(retained("CP"), retained("IP")));

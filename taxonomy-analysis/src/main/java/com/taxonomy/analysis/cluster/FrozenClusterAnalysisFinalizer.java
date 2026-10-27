@@ -75,6 +75,8 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
             if (result.getErrorMessage() == null || result.getErrorMessage().isBlank()) result.setErrorMessage(warning);
             result.setArchitectureView(PartialArchitectureProjection.complete(result, result.getArchitectureView(), command.maxArchitectureNodes()));
         }
+        if (result.getArchitectureView() != null && command.businessText() != null)
+            result.getArchitectureView().setOriginalRequirementText(command.businessText());
         // The store rechecks authority, FINALIZING state and cancellation under its short lock.
         store.finalizeResult(context, result);
     }

@@ -6,6 +6,9 @@ class RecoveryContinuationPayloadTest {
     @Test void originalInputReadsItsFullRequestAndScopeWithoutOtherSavedPayloads() {
         RecoveryCheckpointPersistenceProbe.originalRequestUsesOnlyItsPayloadAndScope();
     }
+    @Test void pausedWorkingViewKeepsItsExactFrozenSource() {
+        RecoveryCheckpointPersistenceProbe.pausedWorkingViewKeepsItsExactFrozenSource();
+    }
     @Test void ordinaryContinuationChecksFailureStatesWithoutLoadingAnswers() {
         RecoveryCheckpointPersistenceProbe.continueUsesQuestionStates();
     }

@@ -5,6 +5,14 @@ import java.util.List;
 
 public class RequirementArchitectureView {
 
+    /**
+     * Optional captured analysis input for working-view handoff. Client-provided
+     * presentation data; it does not certify a saved requirement version or author.
+     */
+    private String originalRequirementText;
+    public String getOriginalRequirementText() { return originalRequirementText; }
+    public void setOriginalRequirementText(String value) { originalRequirementText = value; }
+
     private AnalysisCoverage analysisCoverage;
     public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }
     public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }

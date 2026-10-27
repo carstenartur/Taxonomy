@@ -26,7 +26,7 @@ class VisioDynamicGlueContractTest {
             "http://schemas.microsoft.com/office/visio/2012/main";
 
     @Test
-    void masterlessConnectorUsesCanonicalRotatingTransformAndDynamicGlue()
+    void nativePointGlueUsesCanonicalRotatingTransformAndEditableRouting()
             throws Exception {
         VisioPage page = new VisioPage("1", "Architecture");
         page.getShapes().add(new VisioShape(
@@ -46,20 +46,29 @@ class VisioDynamicGlueContractTest {
         assertThat(cellValue(connector, "ObjType")).isEqualTo("2");
         assertThat(cellValue(connector, "GlueType")).isEqualTo("2");
 
-        // Persisted values already place the connector between the linked shape
-        // centres, even before a consumer recalculates ShapeSheet formulas.
-        assertThat(cellValue(connector, "BeginX")).isEqualTo("1");
+        // Persisted values place the connector on the linked boundaries before
+        // a consumer recalculates the connection-point dependencies.
+        assertThat(cellValue(connector, "BeginX")).isEqualTo("2");
         assertThat(cellValue(connector, "BeginY")).isEqualTo("1");
-        assertThat(cellValue(connector, "EndX")).isEqualTo("4");
+        assertThat(cellValue(connector, "EndX")).isEqualTo("3");
         assertThat(cellValue(connector, "EndY")).isEqualTo("3");
         assertThat(cellValue(connector, "PinX")).isEqualTo("2.5");
         assertThat(cellValue(connector, "PinY")).isEqualTo("2");
         assertThat(cellValue(connector, "Width"))
-                .isEqualTo("3.605551275463989");
+                .isEqualTo("2.23606797749979");
         assertThat(cellValue(connector, "LocPinX"))
-                .isEqualTo("1.8027756377319946");
+                .isEqualTo("1.118033988749895");
         assertThat(cellValue(connector, "Angle"))
-                .isEqualTo("0.5880026035475675");
+                .isEqualTo("1.1071487177940904");
+
+        assertThat(cellFormula(connector, "BeginX"))
+                .isEqualTo("PAR(PNT(Sheet.1!Connections.X2,Sheet.1!Connections.Y2))");
+        assertThat(cellFormula(connector, "BeginY"))
+                .isEqualTo(cellFormula(connector, "BeginX"));
+        assertThat(cellFormula(connector, "EndX"))
+                .isEqualTo("PAR(PNT(Sheet.2!Connections.X1,Sheet.2!Connections.Y1))");
+        assertThat(cellFormula(connector, "EndY"))
+                .isEqualTo(cellFormula(connector, "EndX"));
 
         assertThat(cellFormula(connector, "PinX"))
                 .isEqualTo("(BeginX+EndX)*0.5");
@@ -76,15 +85,15 @@ class VisioDynamicGlueContractTest {
         Element lineTo = geometryRow(connector, "LineTo");
         assertThat(cellFormula(lineTo, "X")).isEqualTo("Width");
         assertThat(cellValue(lineTo, "X"))
-                .isEqualTo("3.605551275463989");
+                .isEqualTo("2.23606797749979");
         assertThat(cellValue(lineTo, "Y")).isEqualTo("0");
 
         NodeList connects = document.getElementsByTagNameNS(VISIO_NS, "Connect");
         assertThat(connects.getLength()).isEqualTo(2);
         assertThat(connectAttributes(connects))
                 .containsExactly(
-                        "BeginX:1:PinX",
-                        "EndX:2:PinX");
+                        "BeginX:1:Connections.X2",
+                        "EndX:2:Connections.X1");
     }
 
     private static Document parse(String xml) throws Exception {

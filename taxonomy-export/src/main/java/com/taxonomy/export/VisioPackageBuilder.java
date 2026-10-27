@@ -2,6 +2,7 @@ package com.taxonomy.export;
 
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioNativeShape;
 import com.taxonomy.visio.converter.VisioDocumentConverter;
 import com.taxonomy.visio.converter.VisioPageContentsConverter;
 import com.taxonomy.visio.converter.VisioPagesConverter;
@@ -113,11 +114,17 @@ public class VisioPackageBuilder {
         parts.put("visio/_rels/document.xml.rels", buildDocumentRelationships());
         parts.put("visio/pages/pages.xml", buildPagesXml(doc));
         parts.put("visio/pages/_rels/pages.xml.rels", buildPagesRelationships(doc));
+        parts.put("visio/masters/masters.xml", buildMastersXml());
+        parts.put("visio/masters/_rels/masters.xml.rels", buildMastersRelationships());
+        for (VisioNativeShape master : VisioNativeShape.values())
+            parts.put("visio/masters/master" + master.id() + ".xml", buildMasterXml(master));
 
         for (int index = 0; index < doc.getPages().size(); index++) {
             VisioPage page = doc.getPages().get(index);
             String name = "visio/pages/page" + (index + 1) + ".xml";
             parts.put(name, previousParts.containsKey(name) ? previousParts.get(name) : buildPageXml(page));
+            if (!VisioNativeShape.usedOn(page).isEmpty())
+                parts.put("visio/pages/_rels/page" + (index + 1) + ".xml.rels", buildPageMasterRelationships(page));
         }
         return parts;
     }
@@ -148,6 +155,10 @@ public class VisioPackageBuilder {
                 .append("ContentType=\"application/vnd.ms-visio.windows+xml\"/>\n");
         xml.append("  <Override PartName=\"/visio/pages/pages.xml\" ")
                 .append("ContentType=\"application/vnd.ms-visio.pages+xml\"/>\n");
+        xml.append("  <Override PartName=\"/visio/masters/masters.xml\" ContentType=\"application/vnd.ms-visio.masters+xml\"/>\n");
+        for (VisioNativeShape master : VisioNativeShape.values())
+            xml.append("  <Override PartName=\"/visio/masters/master").append(master.id())
+                    .append(".xml\" ContentType=\"application/vnd.ms-visio.master+xml\"/>\n");
         for (int index = 0; index < doc.getPages().size(); index++) {
             xml.append("  <Override PartName=\"/visio/pages/page")
                     .append(index + 1)
@@ -228,7 +239,48 @@ public class VisioPackageBuilder {
                 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
                   <Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/pages" Target="pages/pages.xml"/>
                   <Relationship Id="rId2" Type="http://schemas.microsoft.com/visio/2010/relationships/windows" Target="windows.xml"/>
+                  <Relationship Id="rId3" Type="http://schemas.microsoft.com/visio/2010/relationships/masters" Target="masters/masters.xml"/>
                 </Relationships>""";
+    }
+
+    private String buildMastersXml() {
+        StringBuilder xml = new StringBuilder(XML_DECLARATION)
+                .append("<Masters xmlns=\"http://schemas.microsoft.com/office/visio/2012/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
+        for (VisioNativeShape master : VisioNativeShape.values()) {
+            xml.append("<Master ID=\"").append(master.id()).append("\" Name=\"").append(master.label())
+                    .append("\" NameU=\"").append(master.label()).append("\" IsCustomName=\"1\" IsCustomNameU=\"1\" MatchByName=\"1\">")
+                    .append("<PageSheet><Cell N=\"PageWidth\" V=\"4\"/><Cell N=\"PageHeight\" V=\"3\"/></PageSheet>")
+                    .append("<Rel r:id=\"rId").append(master.id()).append("\"/></Master>");
+        }
+        return xml.append("</Masters>").toString();
+    }
+
+    private String buildMastersRelationships() {
+        StringBuilder xml = new StringBuilder(XML_DECLARATION)
+                .append("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+        for (VisioNativeShape master : VisioNativeShape.values())
+            xml.append("<Relationship Id=\"rId").append(master.id())
+                    .append("\" Type=\"http://schemas.microsoft.com/visio/2010/relationships/master\" Target=\"master")
+                    .append(master.id()).append(".xml\"/>");
+        return xml.append("</Relationships>").toString();
+    }
+
+    private String buildMasterXml(VisioNativeShape master) {
+        XStream xstream = new XStream(new XppDriver());
+        xstream.setMode(XStream.NO_REFERENCES);
+        xstream.alias("MasterContents", VisioPage.class);
+        xstream.registerConverter(new VisioPageContentsConverter(master));
+        return XML_DECLARATION + xstream.toXML(new VisioPage("0", master.label()));
+    }
+
+    private String buildPageMasterRelationships(VisioPage page) {
+        StringBuilder xml = new StringBuilder(XML_DECLARATION)
+                .append("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+        for (int id : VisioNativeShape.usedOn(page))
+            xml.append("<Relationship Id=\"rId").append(id)
+                    .append("\" Type=\"http://schemas.microsoft.com/visio/2010/relationships/master\" Target=\"../masters/master")
+                    .append(id).append(".xml\"/>");
+        return xml.append("</Relationships>").toString();
     }
 
     private String buildPagesXml(VisioDocument doc) {

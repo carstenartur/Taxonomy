@@ -51,7 +51,17 @@ class ArchitectureVisioHandoffAcceptanceTest {
         assertTrue(data.contains("Reviewed rationale"));
         assertTrue(data.contains("Approved evidence reference"));
         assertTrue(data.contains("ORIGINAL_PROVIDER_REASON_SENTINEL"));
-        assertFalse(data.contains("PRIVATE_REQUIREMENT_SENTINEL"));
+        assertEquals("FROZEN_REQUIREMENT_SENTINEL", authority.at("/taxonomy.requirementText/value").asText());
+        assertEquals("R90", authority.at("/taxonomy.requirementKey/value").asText());
+        assertEquals("Requirement", authority.at("/taxonomy.requirementTitle/value").asText());
+        assertEquals("Taxonomy Architecture Analyzer", authority.at("/taxonomy.generatorName/value").asText());
+        assertEquals("alice", authority.at("/taxonomy.exportedBy/value").asText());
+        assertEquals("1.5.3-test", authority.at("/taxonomy.generatorVersion/value").asText());
+        assertEquals("version-author", authority.at("/taxonomy.requirementVersionCreatedBy/value").asText());
+        assertEquals("2026-09-07T10:00:00Z", authority.at("/taxonomy.requirementVersionCreatedAt/value").asText());
+        assertEquals("2026-10-27T12:34:56Z", authority.at("/taxonomy.exportedAt/value").asText());
+        assertEquals("https://taxonomy.example/app/projects/42/requirements/90", authority.at("/taxonomy.requirementUrl/value").asText());
+        assertFalse(authority.at("/taxonomy.exportedAt/value").asText().isBlank());
         assertFalse(data.contains("PRIVATE_WARNING_SENTINEL"));
         assertEquals(1, source.loads);
     }
@@ -78,6 +88,9 @@ class ArchitectureVisioHandoffAcceptanceTest {
         assertFalse(metadata.document().containsKey("taxonomy.requirementVersionId"));
         assertTrue(metadata.losses().stream().anyMatch(loss -> loss.field().equals("requirementVersionId") && loss.kind().equals("OMITTED")));
         assertTrue(metadata.losses().stream().anyMatch(loss -> loss.field().equals("selectionProfileFingerprint")));
+        assertFalse(metadata.document().containsKey("taxonomy.requirementVersionCreatedBy"));
+        assertTrue(metadata.losses().stream().anyMatch(loss -> loss.field().equals("requirementVersionCreatedBy")));
+        assertFalse(metadata.losses().stream().anyMatch(loss -> loss.field().equals("requirementText")));
     }
 
     @Test void otherRepositoryAndUnexpectedSnapshotCannotProduceAnArtifact() {
@@ -160,7 +173,9 @@ class ArchitectureVisioHandoffAcceptanceTest {
 
     private static ArchitectureSnapshotExportService service(FrozenWorkbench source) {
         return new ArchitectureSnapshotExportService(source, new CanonicalDiagramExportService(
-                new VisioDiagramService(), new VisioPackageBuilder(), new ArchiMateDiagramService(), new ArchiMateXmlExporter()));
+                new VisioDiagramService(), new VisioPackageBuilder(), new ArchiMateDiagramService(), new ArchiMateXmlExporter()),
+                new VisioExportContextService(new com.taxonomy.architecture.decision.DecisionReportBuildMetadataService("1.5.3-test", "commit"),
+                        "https://taxonomy.example/app", java.time.Clock.fixed(Instant.parse("2026-10-27T12:34:56Z"), java.time.ZoneOffset.UTC)));
     }
 
     private static Projection projection() {
@@ -173,10 +188,10 @@ class ArchitectureVisioHandoffAcceptanceTest {
                 "Approved evidence reference", "alice", CREATED, "Reviewed rationale");
         var relation = new RelationMetadata("CP-1", "CS-1", "SUPPORTS", "HUMAN", "trace", .7, .9,
                 "ORIGINAL_PROVIDER_REASON_SENTINEL", ReviewStatus.CONFIRMED, "alice", CREATED, "Reviewed relationship");
-        return new Projection(42L, "P42", "Project", 90L, "R90", "Requirement", "PRIVATE_REQUIREMENT_SENTINEL",
+        return new Projection(42L, "P42", "Project", 90L, "R90", "Requirement", "FROZEN_REQUIREMENT_SENTINEL",
                 "snapshot-965", AnalysisStatus.SUCCESS, CREATED, "provider", "model", "workspace-a", "reviewed",
                 "abcdef1234567890", graph, null, Map.of("CP-1", element), Map.of(relation.signature(), relation),
-                List.of("PRIVATE_WARNING_SENTINEL"), new SnapshotProvenance(901L, "catalogue-fingerprint", "repository-a"));
+                List.of("PRIVATE_WARNING_SENTINEL"), new SnapshotProvenance(901L, "catalogue-fingerprint", "repository-a", "version-author", Instant.parse("2026-09-07T10:00:00Z")));
     }
 
     private static final class FrozenWorkbench extends ArchitectureWorkbenchService {

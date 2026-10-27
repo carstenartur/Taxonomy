@@ -176,5 +176,9 @@ public final class ArchitectureWorkbenchDtos {
     }
 
     public record SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint,
-                                     String repositoryId) { }
+                                     String repositoryId, String requirementVersionCreatedBy, Instant requirementVersionCreatedAt) {
+        public SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint, String repositoryId) {
+            this(requirementVersionId, taxonomyFingerprint, repositoryId, null, null);
+        }
+    }
 }

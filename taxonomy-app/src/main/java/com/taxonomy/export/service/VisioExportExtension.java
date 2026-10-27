@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /** Spring adapter for Visio VSDX output. */
@@ -33,10 +32,21 @@ public class VisioExportExtension implements ExportFormatExtension {
     private final VisioDiagramService visioDiagramService;
     private final VisioPackageBuilder visioPackageBuilder;
 
+    private final VisioWorkingViewMetadata workingViewMetadata;
+
+    /** Compatibility constructor for isolated callers without application context. */
     public VisioExportExtension(VisioDiagramService visioDiagramService,
                                 VisioPackageBuilder visioPackageBuilder) {
+        this(visioDiagramService, visioPackageBuilder, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public VisioExportExtension(VisioDiagramService visioDiagramService,
+                                VisioPackageBuilder visioPackageBuilder,
+                                VisioWorkingViewMetadata workingViewMetadata) {
         this.visioDiagramService = visioDiagramService;
         this.visioPackageBuilder = visioPackageBuilder;
+        this.workingViewMetadata = workingViewMetadata;
     }
 
     @Override
@@ -53,8 +63,10 @@ public class VisioExportExtension implements ExportFormatExtension {
                     elements.put(code, Map.of("taxonomy.presenceReason", VisioProperty.text(reason)));
             });
         }
+        String originalText = context.options().get("originalRequirementText") instanceof String text ? text : null;
         VisioDocument document = visioDiagramService.convert(context.diagram(),
-                new VisioExportMetadata(Map.of(), elements, Map.of(), List.of()));
+                new VisioExportMetadata(VisioWorkingViewMetadata.document(originalText, workingViewMetadata),
+                        elements, Map.of(), VisioExportMetadata.unbound().losses()));
         try {
             return new ExportResult(visioPackageBuilder.build(document));
         } catch (IOException e) {

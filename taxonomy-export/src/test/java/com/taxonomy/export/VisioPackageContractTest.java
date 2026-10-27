@@ -42,7 +42,7 @@ class VisioPackageContractTest {
     private final VisioPackageBuilder builder = new VisioPackageBuilder();
 
     @Test
-    void pageContentsUsesSchemaCollectionsAndMasterlessGeometry() throws Exception {
+    void pageContentsUsesSchemaCollectionsAndNativeMasterGeometry() throws Exception {
         Document page = parseXml(entry(
                 builder.build(VisioPackageBuilderTest.representativeDocument()),
                 "visio/pages/page1.xml"));
@@ -60,15 +60,15 @@ class VisioPackageContractTest {
                         .matches("[1-9][0-9]*"));
 
         Element connector = shapeById(shapeElements, "43");
-        assertThat(connector.hasAttribute("Master")).isFalse();
+        assertThat(connector.getAttribute("Master")).isEqualTo("8");
         assertThat(cellValue(connector, "OneD")).isEqualTo("1");
         assertThat(cellValue(connector, "ObjType")).isEqualTo("2");
         assertThat(cellValue(connector, "GlueType")).isEqualTo("2");
-        assertThat(cellValue(connector, "BeginX")).isEqualTo("1.5");
+        assertThat(cellValue(connector, "BeginX")).isEqualTo("2.5");
         assertThat(cellValue(connector, "BeginY")).isEqualTo("2");
-        assertThat(cellValue(connector, "EndX")).isEqualTo("4.5");
+        assertThat(cellValue(connector, "EndX")).isEqualTo("3.5");
         assertThat(cellValue(connector, "EndY")).isEqualTo("2");
-        assertThat(cellValue(connector, "Width")).isEqualTo("3");
+        assertThat(cellValue(connector, "Width")).isEqualTo("1");
         assertThat(cellValue(connector, "Height")).isEqualTo("0");
         assertThat(cellValue(connector, "Angle")).isEqualTo("0");
         assertThat(directChildren(connector, "Section"))
@@ -76,6 +76,7 @@ class VisioPackageContractTest {
                         .isEqualTo("Geometry"));
 
         Element capability = shapeById(shapeElements, "10");
+        assertThat(capability.getAttribute("Master")).isEqualTo("1");
         assertThat(directChildren(capability, "Section"))
                 .anySatisfy(section -> assertThat(section.getAttribute("N"))
                         .isEqualTo("Geometry"));

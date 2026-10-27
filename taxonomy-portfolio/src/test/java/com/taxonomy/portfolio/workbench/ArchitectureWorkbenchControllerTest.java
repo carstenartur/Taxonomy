@@ -166,14 +166,14 @@ class ArchitectureWorkbenchControllerTest {
                         Format.VISIO_VSDX,
                         "application/vnd.ms-visio.drawing",
                         "architecture-snapshot-1-abcdef123456.vsdx",
-                        "visio-2012-opc-supported-subset-v2",
+                        "visio-2012-opc-supported-subset-v3",
                         "vsdx-hash",
                         "PK-test".getBytes(
                                 StandardCharsets.ISO_8859_1)));
         when(snapshotExportService.exportVisioBundle(42L, "snapshot-1", "alice", context))
                 .thenReturn(artifact(Format.VISIO_BUNDLE, "application/zip",
                         "architecture-snapshot-1-abcdef123456.visio.zip",
-                        "visio-2012-opc-supported-subset-v2", "bundle-hash",
+                        "visio-2012-opc-supported-subset-v3", "bundle-hash",
                         "PK-bundle".getBytes(StandardCharsets.ISO_8859_1)));
 
         var archiMate =

@@ -179,7 +179,7 @@ class ArchitectureExportDocumentationContractTest {
                 .contains("Download ArchiMate + manifest")
                 .contains("independent-tool acceptance pending")
                 .contains("Download Visio + manifest")
-                .contains("visio-2012-opc-supported-subset-v2")
+                .contains("visio-2012-opc-supported-subset-v3")
                 .contains("Microsoft Visio desktop certification pending");
         assertThat(controller)
                 .contains("schema-validated ArchiMate 3.1 supported subset")

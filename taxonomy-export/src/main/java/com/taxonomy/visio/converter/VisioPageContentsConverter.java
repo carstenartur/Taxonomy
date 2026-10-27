@@ -5,6 +5,9 @@ import com.taxonomy.visio.VisioTextBox;
 import com.taxonomy.visio.VisioPage;
 import com.taxonomy.visio.VisioShape;
 import com.taxonomy.visio.VisioProperty;
+import com.taxonomy.visio.VisioNativeShape;
+import com.taxonomy.visio.VisioConnectionPoints;
+import com.taxonomy.visio.VisioContainers;
 import com.thoughtworks.xstream.converters.Converter;
 import com.thoughtworks.xstream.converters.MarshallingContext;
 import com.thoughtworks.xstream.converters.UnmarshallingContext;
@@ -16,10 +19,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Marshals one masterless page using the Visio 2012 {@code PageContents}
- * structure. Regular nodes carry explicit rectangle geometry; relationship
- * connectors carry explicit one-dimensional line geometry and are glued through
- * the page's {@code Connects} collection.
+ * Marshals native master instances with cached geometry and explicit point-glue
+ * dependencies. Connection records and endpoint formulas describe the same ports.
  */
 public class VisioPageContentsConverter implements Converter {
 
@@ -28,6 +29,14 @@ public class VisioPageContentsConverter implements Converter {
     private static final String REL_NS =
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static final String LINE_COLOR = "#44546A";
+    private final VisioNativeShape masterDefinition;
+
+    public VisioPageContentsConverter() { this(null); }
+
+    /** Uses the same geometry policy to emit an original document master. */
+    public VisioPageContentsConverter(VisioNativeShape masterDefinition) {
+        this.masterDefinition = masterDefinition;
+    }
 
     @Override
     public boolean canConvert(Class type) {
@@ -45,8 +54,29 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("xmlns", VISIO_NS);
         writer.addAttribute("xmlns:r", REL_NS);
 
+        if (masterDefinition != null) {
+            writer.startNode("Shapes");
+            if (masterDefinition == VisioNativeShape.CONNECTOR) {
+                writeConnectorShape(writer, 1, new VisioConnect("1", "2", ""),
+                        new VisioShape("1", "", 0, 0, 0, 0, "", false),
+                        new VisioShape("2", "", 2, 0, 0, 0, "", false));
+            } else {
+                double width = masterDefinition == VisioNativeShape.CONTAINER ? 4 : 2;
+                double height = masterDefinition == VisioNativeShape.CONTAINER ? 3 : 1;
+                writeRegularShape(writer, new VisioShape("1", masterDefinition.label(), width / 2, height / 2, width, height,
+                        masterDefinition.label(), false), masterDefinition, null);
+            }
+            writer.endNode();
+            return;
+        }
+
+        VisioContainers.Membership membership = VisioContainers.membership(page);
+
         if (!page.getShapes().isEmpty() || !page.getConnects().isEmpty() || page.getLegend() != null) {
             writer.startNode("Shapes");
+            // Container outlines are behind both members and their connectors.
+            for (VisioShape shape : page.getShapes()) if (VisioNativeShape.isContainer(shape))
+                writeRegularShape(writer, shape, VisioNativeShape.CONTAINER, membership.formula(shape.getId()));
             long connectorId = maximumShapeId(page);
             for (VisioConnect connect : page.getConnects()) {
                 connectorId++;
@@ -58,12 +88,13 @@ public class VisioPageContentsConverter implements Converter {
                         requireShape(shapesById, connect.getToShape(), "target"));
             }
             // Shape order is drawing order: opaque nodes cover crossing strokes.
-            for (VisioShape shape : page.getShapes()) writeRegularShape(writer, shape);
+            for (VisioShape shape : page.getShapes()) if (!VisioNativeShape.isContainer(shape))
+                writeRegularShape(writer, shape, VisioNativeShape.of(shape), membership.formula(shape.getId()));
             if (page.getLegend() != null) {
                 var box = page.getLegend();
                 var legend = new VisioShape(Long.toString(connectorId + 1), box.text(), box.x(), box.y(), box.width(), box.height(), "Legend", false);
                 legend.getProperties().put("taxonomy.presentationOnly", VisioProperty.bool(true));
-                writeRegularShape(writer, legend);
+                writeRegularShape(writer, legend, null, null);
             }
             writer.endNode();
         }
@@ -73,12 +104,9 @@ public class VisioPageContentsConverter implements Converter {
             long connectorId = maximumShapeId(page);
             for (VisioConnect connect : page.getConnects()) {
                 connectorId++;
-                // Dynamic glue from a routable 1-D endpoint to a 2-D shape pin is
-                // represented by one BeginX/EndX Connect row per endpoint. Visio
-                // couples the corresponding Y coordinate; explicit BeginY/EndY
-                // rows are reserved for other glue targets such as guides.
-                writeGlue(writer, connectorId, "BeginX", connect.getFromShape());
-                writeGlue(writer, connectorId, "EndX", connect.getToShape());
+                var endpoints = VisioConnectionPoints.between(shapesById.get(connect.getFromShape()), shapesById.get(connect.getToShape()));
+                writeGlue(writer, connectorId, "BeginX", connect.getFromShape(), endpoints.source().side());
+                writeGlue(writer, connectorId, "EndX", connect.getToShape(), endpoints.target().side());
             }
             writer.endNode();
         }
@@ -92,16 +120,18 @@ public class VisioPageContentsConverter implements Converter {
                 "VisioPageContentsConverter does not support unmarshaling");
     }
 
-    private static void writeRegularShape(
+    private void writeRegularShape(
             HierarchicalStreamWriter writer,
-            VisioShape shape) {
+            VisioShape shape, VisioNativeShape kind, String relationships) {
+        boolean evidence = VisioNativeShape.isPresentationOnly(shape) && "Evidence".equals(shape.getType());
         writer.startNode("Shape");
         writer.addAttribute("ID", shape.getId());
         writer.addAttribute("NameU", "TaxonomyShape." + shape.getId());
         writer.addAttribute("IsCustomNameU", "1");
-        writer.addAttribute("Name", "Evidence".equals(shape.getType()) ? "Full recorded evidence" : shape.getText());
+        writer.addAttribute("Name", evidence ? "Full recorded evidence" : shape.getText());
         writer.addAttribute("IsCustomName", "1");
         writer.addAttribute("Type", "Shape");
+        if (kind != null && masterDefinition == null) writer.addAttribute("Master", Integer.toString(kind.id()));
         writeStyleReferences(writer);
 
         writeCell(writer, "PinX", decimal(shape.getX()));
@@ -112,19 +142,39 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "LocPinY", decimal(shape.getHeight() / 2.0), "Height*0.5");
         writeCell(writer, "Angle", "0");
         writeCell(writer, "FillForegnd", com.taxonomy.export.DiagramPresentation.fill(shape.getType()));
-        writeCell(writer, "FillPattern", "1");
+        boolean container = kind == VisioNativeShape.CONTAINER;
+        writeCell(writer, "FillPattern", container ? "0" : "1");
         writeCell(writer, "LineColor", LINE_COLOR);
         writeCell(writer, "LinePattern", "1");
         writeCell(writer, "LineWeight", shape.isAnchor() ? "0.02777777777777778" : "0.01388888888888889");
-        boolean evidence = "Evidence".equals(shape.getType());
-        writeCell(writer, "VerticalAlign", evidence ? "0" : "1");
+        if (kind == VisioNativeShape.SERVICE) writeCell(writer, "Rounding", decimal(Math.min(shape.getWidth(), shape.getHeight()) * .15), "MIN(Width,Height)*0.15");
+        if (kind == VisioNativeShape.APPLICATION) writeCell(writer, "RightMargin", decimal(shape.getWidth() * .2), "Width*0.2");
+        writeCell(writer, "VerticalAlign", evidence || container ? "0" : "1");
+        if (kind != null) {
+            writeCell(writer, "ObjType", container ? "4" : "1");
+            writeConnectionPoints(writer, shape.getWidth(), shape.getHeight());
+        }
+        if (relationships != null) writeCell(writer, "Relationships", "0", relationships);
+        if (container) {
+            writer.startNode("Section"); writer.addAttribute("N", "User");
+            writer.startNode("Row"); writer.addAttribute("N", "msvStructureType");
+            writeStringCell(writer, "Value", "Container");
+            writer.endNode(); writer.endNode();
+            double header = Math.min(shape.getHeight(), VisioContainers.HEADER_HEIGHT);
+            writeCell(writer, "TxtPinX", decimal(shape.getWidth() / 2), "Width*0.5");
+            writeCell(writer, "TxtPinY", decimal(shape.getHeight() - header / 2), "Height-TxtHeight*0.5");
+            writeCell(writer, "TxtWidth", decimal(shape.getWidth()), "Width");
+            writeCell(writer, "TxtHeight", decimal(header), "MIN(Height," + VisioContainers.HEADER_HEIGHT + ")");
+            writeCell(writer, "TxtLocPinX", decimal(shape.getWidth() / 2), "TxtWidth*0.5");
+            writeCell(writer, "TxtLocPinY", decimal(header / 2), "TxtHeight*0.5");
+        }
         if (evidence) {
             writeCell(writer, "LeftMargin", "0.1");
             writeCell(writer, "RightMargin", "0.1");
             writeCell(writer, "TopMargin", "0.1");
             writeCell(writer, "BottomMargin", "0.1");
         }
-        writeCharacterStyle(writer, evidence ? 10 : shape.getHeight() >= 1 ? 12 : 10);
+        writeCharacterStyle(writer, evidence || container ? 10 : shape.getHeight() >= 1 ? 12 : 10);
         if (evidence) {
             writer.startNode("Section"); writer.addAttribute("N", "Paragraph");
             writer.startNode("Row"); writer.addAttribute("IX", "0");
@@ -132,7 +182,7 @@ public class VisioPageContentsConverter implements Converter {
             writeCell(writer, "SpLine", "-1.2");
             writer.endNode(); writer.endNode();
         }
-        writeRectangleGeometry(writer, shape.getWidth(), shape.getHeight());
+        writeNativeGeometry(writer, kind, shape.getWidth(), shape.getHeight(), kind != null && masterDefinition == null);
         writeProperties(writer, shape.getProperties());
 
         writer.startNode("Text");
@@ -141,16 +191,17 @@ public class VisioPageContentsConverter implements Converter {
         writer.endNode();
     }
 
-    private static void writeConnectorShape(
+    private void writeConnectorShape(
             HierarchicalStreamWriter writer,
             long connectorId,
             VisioConnect connect,
             VisioShape source,
             VisioShape target) {
-        double beginX = source.getX();
-        double beginY = source.getY();
-        double endX = target.getX();
-        double endY = target.getY();
+        var endpoints = VisioConnectionPoints.between(source, target);
+        double beginX = endpoints.source().x();
+        double beginY = endpoints.source().y();
+        double endX = endpoints.target().x();
+        double endY = endpoints.target().y();
         double width = Math.hypot(endX - beginX, endY - beginY);
         double angle = Math.atan2(endY - beginY, endX - beginX);
 
@@ -159,22 +210,24 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("NameU", "TaxonomyConnector." + connectorId);
         writer.addAttribute("IsCustomNameU", "1");
         writer.addAttribute("Type", "Shape");
+        if (masterDefinition == null) writer.addAttribute("Master", Integer.toString(VisioNativeShape.CONNECTOR.id()));
         writeStyleReferences(writer);
 
         writeCell(writer, "OneD", "1");
-        // A masterless custom connector is not automatically recognised as the
-        // built-in Dynamic Connector. Mark it explicitly routable and allow
-        // walking/dynamic glue before connecting BeginX/EndX to 2-D shape pins.
+        // Routable native connector. Current attachments are explicit static
+        // point glue; GlueType permits a person to reattach dynamically in Visio.
         writeCell(writer, "ObjType", "2");
         writeCell(writer, "GlueType", "2");
 
         // Persist meaningful calculated values as well as formulas. Consumers
         // that do not immediately recalculate the ShapeSheet still render the
         // connector between the selected source and target positions.
-        writeCell(writer, "BeginX", decimal(beginX));
-        writeCell(writer, "BeginY", decimal(beginY));
-        writeCell(writer, "EndX", decimal(endX));
-        writeCell(writer, "EndY", decimal(endY));
+        String fromFormula = masterDefinition == null ? endpoints.source().formula(source.getId()) : null;
+        String toFormula = masterDefinition == null ? endpoints.target().formula(target.getId()) : null;
+        writeCell(writer, "BeginX", decimal(beginX), fromFormula);
+        writeCell(writer, "BeginY", decimal(beginY), fromFormula);
+        writeCell(writer, "EndX", decimal(endX), toFormula);
+        writeCell(writer, "EndY", decimal(endY), toFormula);
 
         // Use Visio's normal rotating 1-D transform. The local geometry is a
         // horizontal line of Width; the endpoint-derived Pin/Width/Angle cells
@@ -241,12 +294,14 @@ public class VisioPageContentsConverter implements Converter {
             HierarchicalStreamWriter writer,
             long connectorId,
             String fromCell,
-            String endpointShapeId) {
+            String endpointShapeId, VisioConnectionPoints.Side side) {
         writer.startNode("Connect");
         writer.addAttribute("FromSheet", String.valueOf(connectorId));
         writer.addAttribute("FromCell", fromCell);
+        writer.addAttribute("FromPart", fromCell.equals("BeginX") ? "9" : "12");
         writer.addAttribute("ToSheet", endpointShapeId);
-        writer.addAttribute("ToCell", "PinX");
+        writer.addAttribute("ToCell", "Connections.X" + side.number());
+        writer.addAttribute("ToPart", Integer.toString(99 + side.number()));
         writer.endNode();
     }
 
@@ -275,15 +330,87 @@ public class VisioPageContentsConverter implements Converter {
         }
         writer.endNode();
         var evidencePage = properties.get("taxonomy.evidencePage");
-        if (evidencePage != null) {
+        var requirementUrl = properties.get("taxonomy.requirementUrl");
+        if (evidencePage != null || requirementUrl != null) {
             writer.startNode("Section"); writer.addAttribute("N", "Hyperlink");
-            writer.startNode("Row"); writer.addAttribute("N", "FullEvidence");
-            writeCell(writer, "Description", "Full recorded evidence");
-            writeCell(writer, "Address", "");
-            writeCell(writer, "SubAddress", evidencePage.value());
-            writeCell(writer, "Default", "1");
-            writer.endNode(); writer.endNode();
+            if (evidencePage != null) {
+                writer.startNode("Row"); writer.addAttribute("N", "FullEvidence");
+                writeStringCell(writer, "Description", "Full recorded evidence");
+                writeStringCell(writer, "Address", "");
+                writeStringCell(writer, "SubAddress", evidencePage.value());
+                writeCell(writer, "Default", "1");
+                writer.endNode();
+            }
+            if (requirementUrl != null) {
+                com.taxonomy.visio.VisioHyperlinks.validateRequirementUrl(requirementUrl);
+                writer.startNode("Row"); writer.addAttribute("N", "Requirement");
+                writeStringCell(writer, "Description", "Open requirement in Taxonomy");
+                writeStringCell(writer, "Address", requirementUrl.value());
+                writeCell(writer, "Default", evidencePage == null ? "1" : "0");
+                writer.endNode();
+            }
+            writer.endNode();
         }
+    }
+
+    private static void writeConnectionPoints(HierarchicalStreamWriter writer, double width, double height) {
+        writer.startNode("Section"); writer.addAttribute("N", "Connection");
+        for (var side : VisioConnectionPoints.Side.values()) {
+            writer.startNode("Row"); writer.addAttribute("IX", Integer.toString(side.number() - 1));
+            writeCell(writer, "X", decimal(width * side.xFraction()), "Width*" + decimal(side.xFraction()));
+            writeCell(writer, "Y", decimal(height * side.yFraction()), "Height*" + decimal(side.yFraction()));
+            writeCell(writer, "DirX", "0");
+            writeCell(writer, "DirY", "0");
+            writeCell(writer, "Type", "0");
+            writer.endNode();
+        }
+        writer.endNode();
+    }
+
+    private static void writeNativeGeometry(HierarchicalStreamWriter writer, VisioNativeShape kind,
+            double width, double height, boolean inherited) {
+        if (kind == null) {
+            writeRectangleGeometry(writer, width, height);
+            return;
+        }
+        double[][] outline = switch (kind) {
+            case INFORMATION -> new double[][]{{0, 0}, {1, 0}, {1, .75}, {.88, 1}, {0, 1}, {0, 0}};
+            case ROLE -> new double[][]{{.08, 0}, {.92, 0}, {1, .5}, {.92, 1}, {.08, 1}, {0, .5}, {.08, 0}};
+            default -> new double[][]{{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}};
+        };
+        writePolygon(writer, 0, width, height, outline, kind == VisioNativeShape.CONTAINER, inherited);
+        if (kind == VisioNativeShape.INFORMATION)
+            writePolygon(writer, 1, width, height, new double[][]{{.88, 1}, {.88, .75}, {1, .75}}, true, inherited);
+        if (kind == VisioNativeShape.APPLICATION) {
+            writePolygon(writer, 1, width, height, new double[][]{{.82, .72}, {.97, .72}, {.97, .95}, {.82, .95}, {.82, .72}}, true, inherited);
+            writePolygon(writer, 2, width, height, new double[][]{{.78, .76}, {.86, .76}, {.86, .81}, {.78, .81}, {.78, .76}}, true, inherited);
+            writePolygon(writer, 3, width, height, new double[][]{{.78, .86}, {.86, .86}, {.86, .91}, {.78, .91}, {.78, .86}}, true, inherited);
+        }
+        if (kind == VisioNativeShape.CONTAINER) {
+            writer.startNode("Section"); writer.addAttribute("N", "Geometry"); writer.addAttribute("IX", "1");
+            writeCell(writer, "NoFill", "1");
+            double bottom = height - Math.min(height, VisioContainers.HEADER_HEIGHT);
+            String y = inherited ? "Inh" : "Height-MIN(Height," + VisioContainers.HEADER_HEIGHT + ")";
+            writeGeometryRow(writer, "MoveTo", 1, 0, bottom, inherited ? "Inh" : null, y);
+            writeGeometryRow(writer, "LineTo", 2, width, bottom, inherited ? "Inh" : "Width", y);
+            writer.endNode();
+        }
+    }
+
+    private static void writePolygon(HierarchicalStreamWriter writer, int section, double width, double height,
+            double[][] points, boolean noFill, boolean inherited) {
+        writer.startNode("Section"); writer.addAttribute("N", "Geometry"); writer.addAttribute("IX", Integer.toString(section));
+        if (noFill) writeCell(writer, "NoFill", "1");
+        for (int index = 0; index < points.length; index++) {
+            double x = points[index][0], y = points[index][1];
+            writeGeometryRow(writer, index == 0 ? "MoveTo" : "LineTo", index + 1, width * x, height * y,
+                    inherited ? "Inh" : "Width*" + decimal(x), inherited ? "Inh" : "Height*" + decimal(y));
+        }
+        writer.endNode();
+    }
+
+    private static void writeStringCell(HierarchicalStreamWriter writer, String name, String value) {
+        writer.startNode("Cell"); writer.addAttribute("N", name); writer.addAttribute("V", value); writer.addAttribute("U", "STR"); writer.endNode();
     }
 
     private static void writeRectangleGeometry(
