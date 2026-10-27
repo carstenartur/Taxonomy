@@ -176,10 +176,14 @@ class PortfolioSnapshotSelectionInflightTest {
             assertThat(f.parseCalls).hasValue(1);
             first.release();
             Throwable ownerFailure = owner.failure(), followerFailure = follower.failure();
-            assertThat(ownerFailure).isSameAs(cancellation);
+            // Java 23+ adds a caller-side cancellation wrapper for each Future.get().
+            assertThat(ownerFailure).isInstanceOf(CancellationException.class).hasCause(cancellation);
             assertThat(ownerFailure.getSuppressed()).isEmpty();
+            assertThat(cancellation.getSuppressed()).isEmpty();
             assertThat(followerFailure).isInstanceOf(PortfolioException.class).isNotSameAs(ownerFailure)
-                    .hasCause(ownerFailure);
+                    .hasRootCause(cancellation);
+            assertThat(followerFailure.getCause()).isInstanceOf(CancellationException.class)
+                    .isNotSameAs(ownerFailure).hasCause(cancellation);
             assertThat(followerFailure.getSuppressed()).containsExactly(followerFree);
             assertThat(first.frees).hasValue(1); assertThat(second.frees).hasValue(1);
             var later = f.request("snapshot"); later.release();
