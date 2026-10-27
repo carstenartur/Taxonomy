@@ -717,7 +717,7 @@ public class LlmService {
                 }
             }
 
-            callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,
+            callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores, allReasons,
                     warnings, allDiscrepancies, productCoverageGaps,
                     streamingCoverage(scope, plannedTree, allScores, openAssessments, null));
         } catch (AnalysisStoppedException stopped) {

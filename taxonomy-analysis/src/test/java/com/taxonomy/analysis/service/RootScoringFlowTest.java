@@ -150,6 +150,72 @@ class RootScoringFlowTest {
         return service(provider, new Catalogue(withChild), gateway, embeddings);
     }
 
+    @Test
+    void streamingCompletionRetainsParsedReasonsWithoutDependingOnEarlierEvents() {
+        var gateway = new Gateway("{\"BP\":{\"score\":50,\"reason\":\"Root evidence\"}}",
+                "{\"BP-1\":{\"score\":50,\"reason\":\"Child evidence\"}}");
+        var llm = service(LlmProvider.OPENAI, true, gateway, null);
+        var budget = new AiPromptBudgetPolicy(null) {
+            @Override public com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor requireWithinBudget(
+                    String text, String provider) { return null; }
+        };
+        var useCase = new com.taxonomy.analysis.usecase.StreamRequirementAnalysisUseCase(llm, budget);
+        var mapper = new com.taxonomy.analysis.controller.AnalysisSseEventMapper();
+        var events = new ArrayList<com.taxonomy.analysis.controller.AnalysisSseEventMapper.MappedEvent>();
+
+        useCase.stream(new com.taxonomy.analysis.usecase.StreamRequirementAnalysisCommand(
+                "requirement", null, java.util.Locale.ENGLISH), event -> events.add(mapper.map(event)));
+
+        var batches = events.stream().filter(event -> event.name().equals("scores"))
+                .map(event -> (Map<?, ?>) event.payload()).toList();
+        assertEquals(Map.of("BP", "Root evidence"), batches.getFirst().get("reasons"));
+        assertEquals(Map.of("BP-1", "Child evidence"), batches.getLast().get("reasons"));
+        var terminal = events.getLast();
+        assertEquals("complete", terminal.name());
+        var payload = (Map<?, ?>) terminal.payload();
+        assertEquals(Map.of("BP", 50d, "BP-1", 50d), payload.get("totalScores"));
+        assertEquals(Map.of("BP", "Root evidence", "BP-1", "Child evidence"), payload.get("reasons"),
+                "The authoritative terminal event must restore explanations even if an incremental event was missed");
+    }
+
+    @Test
+    void streamingCompletionPreservesReasonsAlongsideUnresolvedRootCoverage() {
+        var gateway = new Gateway("""
+                {"CO":{"status":"UNRESOLVED","score":null,
+                "reason":"Connectivity is unspecified.","question":"Must devices exchange entries?"}}
+                """, """
+                {"UA":{"status":"RELEVANT","score":40,
+                "reason":"A time-recording application is required.","question":""}}
+                """);
+        var llm = service(LlmProvider.OPENAI, new TwoRootCatalogue(), gateway, null);
+        var budget = new AiPromptBudgetPolicy(null) {
+            @Override public com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor requireWithinBudget(
+                    String text, String provider) { return null; }
+        };
+        var useCase = new com.taxonomy.analysis.usecase.StreamRequirementAnalysisUseCase(llm, budget);
+        var mapper = new com.taxonomy.analysis.controller.AnalysisSseEventMapper();
+        var events = new ArrayList<com.taxonomy.analysis.controller.AnalysisSseEventMapper.MappedEvent>();
+
+        useCase.stream(new com.taxonomy.analysis.usecase.StreamRequirementAnalysisCommand(
+                "Record time; connectivity is unspecified.", null, java.util.Locale.ENGLISH),
+                event -> events.add(mapper.map(event)));
+
+        var terminal = events.getLast();
+        assertEquals("complete", terminal.name());
+        var payload = (Map<?, ?>) terminal.payload();
+        assertEquals("PARTIAL", payload.get("status"));
+        assertEquals(Map.of("UA", 40d), payload.get("rawScores"));
+        assertEquals(Map.of("CO", "Connectivity is unspecified.", "UA", "A time-recording application is required."),
+                payload.get("reasons"));
+        var coverage = assertInstanceOf(AnalysisCoverage.class, payload.get("analysisCoverage"));
+        var unknown = coverage.nodes().get("CO");
+        assertEquals(AnalysisCoverage.State.UNKNOWN, unknown.state());
+        assertNull(unknown.score());
+        assertNull(unknown.effectiveRelevance());
+        assertTrue(unknown.reason().contains("Must devices exchange entries?"));
+        assertEquals("BLOCKED_BY:CO", coverage.nodes().get("CO-1000").reason());
+    }
+
     private static LlmService service(LlmProvider provider, TaxonomyService catalogue, Gateway gateway,
                                       LocalEmbeddingService embeddings) {
         var config = new Provider(provider);

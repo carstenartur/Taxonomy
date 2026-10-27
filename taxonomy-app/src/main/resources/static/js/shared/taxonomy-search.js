@@ -693,6 +693,22 @@
                 window.TaxonomyState ? window.TaxonomyState.currentScores : null);
         }
         var node = findTreeNode(code);
+        var filter = document.getElementById('diagramRelevanceFilter');
+        var state = window.TaxonomyState;
+        function containsCode(nodes) {
+            return (nodes || []).some(function (entry) {
+                return entry.code === code || containsCode(entry.children);
+            });
+        }
+        if (!node && filter && filter.value !== 'all' && state
+                && containsCode(state.taxonomyData) && window.TaxonomyBrowse?.renderView) {
+            // A deliberate search selection may reveal an unassessed/zero node.
+            // Keep the displayed filter honest instead of adding hidden exceptions.
+            filter.value = 'all';
+            window.TaxonomyBrowse.renderView(state.taxonomyData, state.currentScores);
+            window.TaxonomyBrowse.ensureNodeRendered?.(code, state.currentScores);
+            node = findTreeNode(code);
+        }
         if (!node) return null;
 
         var ancestor = node.parentElement;

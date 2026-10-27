@@ -71,6 +71,7 @@ public class AnalysisSseEventMapper {
             payload.put("analysisDurationMillis", complete.analysisDurationMillis());
             payload.put("totalScores", semantics.effectiveScores());
             payload.put("rawScores", complete.allScores());
+            payload.put("reasons", complete.allReasons() == null ? Map.of() : complete.allReasons());
             payload.put("effectiveScores", semantics.effectiveScores());
             payload.put("productSuitabilityScores", semantics.productSuitabilityScores());
             payload.put("scoreDetails", semantics.scoreDetails());

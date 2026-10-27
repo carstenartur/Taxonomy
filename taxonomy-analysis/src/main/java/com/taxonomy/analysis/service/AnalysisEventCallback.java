@@ -36,6 +36,13 @@ public interface AnalysisEventCallback {
         onComplete(status, allScores, warnings, discrepancies, productCoverageGaps);
     }
 
+    /** Complete explanations and assessment coverage; coverage-aware observers remain compatible. */
+    default void onComplete(String status, Map<String, Double> allScores, Map<String, String> allReasons,
+                            List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                            List<ProductCoverageGap> productCoverageGaps, AnalysisCoverage coverage) {
+        onComplete(status, allScores, warnings, discrepancies, productCoverageGaps, coverage);
+    }
+
     /** Analysis stopped due to an error (possibly with partial scores). */
     void onError(String status, String errorMessage,
                  Map<String, Double> partialScores, List<String> warnings,

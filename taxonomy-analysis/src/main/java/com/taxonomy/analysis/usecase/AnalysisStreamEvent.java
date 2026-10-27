@@ -33,16 +33,23 @@ public sealed interface AnalysisStreamEvent
                     List<String> warnings,
                     List<TaxonomyDiscrepancy> discrepancies,
                     List<ProductCoverageGap> productCoverageGaps,
+                    Map<String, String> allReasons,
                     Long analysisDurationMillis,
                     AnalysisCoverage analysisCoverage) implements AnalysisStreamEvent {
         public Complete(String status, Map<String, Double> allScores, List<String> warnings,
                         List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                        Long analysisDurationMillis, AnalysisCoverage analysisCoverage) {
+            this(status, allScores, warnings, discrepancies, productCoverageGaps, Map.of(),
+                    analysisDurationMillis, analysisCoverage);
+        }
+        public Complete(String status, Map<String, Double> allScores, List<String> warnings,
+                        List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
                         Long analysisDurationMillis) {
-            this(status, allScores, warnings, discrepancies, productCoverageGaps, analysisDurationMillis, null);
+            this(status, allScores, warnings, discrepancies, productCoverageGaps, Map.of(), analysisDurationMillis, null);
         }
         public Complete(String status, Map<String, Double> allScores, List<String> warnings,
                         List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps) {
-            this(status, allScores, warnings, discrepancies, productCoverageGaps, null);
+            this(status, allScores, warnings, discrepancies, productCoverageGaps, Map.of(), null, null);
         }
     }
 

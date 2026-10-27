@@ -6,6 +6,7 @@ import com.taxonomy.testsupport.BrowserSession;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
@@ -115,6 +116,9 @@ class TaxonomyDecisionDiagramUiIT {
         browser.findElement(By.cssSelector("#decisionReasonDialog button")).click();
         browser.executeScript("document.querySelector(\"[data-diagram-node='fixture-second'] + .dm-reason-action\").dispatchEvent(new MouseEvent('click',{bubbles:true}))");
         assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains(LABELS.getProperty("views.diagram.reasonMissing"));
+        browser.findElement(By.cssSelector("#decisionReasonDialog button")).click();
+        browser.executeScript("TaxonomyState.lastAnalysisStatus='IN_PROGRESS';document.querySelector(\"[data-diagram-node='fixture-second'] + .dm-reason-action\").dispatchEvent(new MouseEvent('click',{bubbles:true}))");
+        assertThat(browser.findElement(By.id("decisionReasonDialog")).getText()).contains(LABELS.getProperty("views.diagram.reasonPending"));
     }
     @Test void printUsesCompleteReadablePagesAndPreservesZoomCollapseAndStoredResults() throws Exception {
         browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent']")).click(); settle();
@@ -210,11 +214,14 @@ class TaxonomyDecisionDiagramUiIT {
         assertThat(browser.executeScript("return printFrame.contentDocument.querySelectorAll('[data-print-node=fixture-unassessed]').length")).isEqualTo(1L);
         assertThat(browser.executeScript("return JSON.stringify(fixtureScores)===recordedMixedScores")).isEqualTo(true);
     }
-    @Test void largeSheetPrintKeepsEveryNodeAndConnectorOnOnePdfPage() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"A1", "A0"})
+    void largeSheetPrintKeepsEveryNodeAndConnectorOnOnePdfPage(String paper) throws Exception {
         browser.findElement(By.cssSelector("[data-diagram-node='fixture-parent']")).click(); settle();
         browser.executeScript("document.querySelector('.tax-diagram-controls button').click();window.sheetScreenBefore=document.querySelector('#decision-map-svg').outerHTML;window.sheetResultsBefore=JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons});");
         preparePrint();
         new org.openqa.selenium.support.ui.Select(browser.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue("single");
+        new org.openqa.selenium.support.ui.Select(browser.findElement(By.cssSelector(".tax-diagram-print-paper"))).selectByValue(paper);
         clickPrint();
         assertThat(browser.executeScript(PRINT_IDENTITIES)).isEqualTo("");
         assertThat(browser.executeScript("""
@@ -224,14 +231,19 @@ class TaxonomyDecisionDiagramUiIT {
             if(svg.querySelectorAll('path').length!==24)return 'Incomplete connectors';
             if(vb.height<=620)return 'Large diagram was scaled to A4';
             if(vb.width/vb.height<0.5||vb.width/vb.height>2.5)return 'Narrow single-sheet stripe';
+            if(Number(doc.querySelector('.diagram-print-page').dataset.printScale)<(arguments[0]==='A0'?1:0.8))
+                return 'A4-width labels forced unnecessarily small print';
             if(!doc.body.textContent.includes('Final saved line.'))return 'Missing complete saved explanation';
             if(doc.body.textContent.includes('views.diagram.'))return 'Untranslated print labels';
+            if(doc.querySelector('[data-parent-page]')||doc.querySelector('[data-print-section]'))return 'A4 fragments replaced continuous edges';
+            const bounds=svg.getBoundingClientRect();
             for(const node of svg.querySelectorAll('[data-print-node]')){
-                const b=node.getBBox();if(b.x<0||b.y<0||b.x+b.width>vb.width||b.y+b.height>vb.height)return 'Clipped '+node.dataset.printNode;
+                const b=node.getBoundingClientRect();
+                if(b.left<bounds.left||b.top<bounds.top||b.right>bounds.right||b.bottom>bounds.bottom)return 'Clipped '+node.dataset.printNode;
             }
             return document.querySelector('#decision-map-svg').outerHTML===sheetScreenBefore
                 && JSON.stringify({data:fixtureData,scores:fixtureScores,reasons:TaxonomyState.currentReasons})===sheetResultsBefore?'':'Screen or saved evidence changed';
-            """)).isEqualTo("");
+            """,paper)).isEqualTo("");
         String html=(String)browser.executeScript("return printFrame.contentDocument.documentElement.outerHTML");
         String source=browser.getWindowHandle();browser.switchTo().newWindow(WindowType.TAB);
         try {
@@ -239,10 +251,12 @@ class TaxonomyDecisionDiagramUiIT {
             var result=((HasCdp)new Augmenter().augment(browser)).executeCdpCommand("Page.printToPDF",Map.of("preferCSSPageSize",true,"printBackground",true));
             byte[] bytes=Base64.getDecoder().decode((String)result.get("data"));
             Path directory=Path.of("target/decision-diagram-evidence");Files.createDirectories(directory);
-            Files.write(directory.resolve("decision-large-sheet-print.pdf"),bytes);
+            Files.write(directory.resolve("decision-large-sheet-"+paper+"-print.pdf"),bytes);
             try(var pdf=Loader.loadPDF(bytes)) {
                 assertThat(pdf.getNumberOfPages()).isEqualTo(1);
-                assertThat(pdf.getPage(0).getMediaBox().getHeight()).isGreaterThan(842f);
+                var box=pdf.getPage(0).getMediaBox();
+                assertThat(Math.min(box.getWidth(),box.getHeight())).isCloseTo((paper.equals("A0")?841:594)*72f/25.4f,org.assertj.core.data.Offset.offset(1f));
+                assertThat(Math.max(box.getWidth(),box.getHeight())).isCloseTo((paper.equals("A0")?1189:841)*72f/25.4f,org.assertj.core.data.Offset.offset(1f));
                 assertThat(new PDFTextStripper().getText(pdf)).contains("fixture-deeper", "fixture-second", "75%", "Final saved line.");
             }
         } finally {browser.close();browser.switchTo().window(source);}

@@ -88,7 +88,23 @@ public class AnalysisProgressRegistry {
                            Long finishedAt, long elapsedMillis, Long executionStartedAt,
                            long queueWaitMillis, long executionMillis,
                            com.taxonomy.dto.AnalysisNodeProgress nodeProgress,
-                           com.taxonomy.dto.RelationSearchProgress relationProgress) { }
+                           com.taxonomy.dto.RelationSearchProgress relationProgress,
+                           Map<String, String> reasons, boolean reasonsTruncated) {
+        public Snapshot(String operationId, String status, String phase, String node, String stopReason,
+                        long sequence, long startedAt, long lastActivityAt, long serverTime,
+                        int evaluatedNodes, boolean scoresTruncated, Map<String, Double> rawScores,
+                        List<CallView> calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
+                        String databaseStorage, String indexStorage, AnalysisProvenance provenance,
+                        Long finishedAt, long elapsedMillis, Long executionStartedAt,
+                        long queueWaitMillis, long executionMillis,
+                        com.taxonomy.dto.AnalysisNodeProgress nodeProgress,
+                        com.taxonomy.dto.RelationSearchProgress relationProgress) {
+            this(operationId, status, phase, node, stopReason, sequence, startedAt, lastActivityAt, serverTime,
+                    evaluatedNodes, scoresTruncated, rawScores, calls, omittedCalls, memory, databaseStorage,
+                    indexStorage, provenance, finishedAt, elapsedMillis, executionStartedAt, queueWaitMillis,
+                    executionMillis, nodeProgress, relationProgress, Map.of(), false);
+        }
+    }
 
     /** Immutable decision made at the run's cancellation/completion linearization point. */
     public record Terminal(String status, String stopReason) {
@@ -363,6 +379,7 @@ public class AnalysisProgressRegistry {
                 () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
         final ArrayDeque<Call> calls = new ArrayDeque<>();
         final Map<String, Double> scores = new LinkedHashMap<>();
+        final AnalysisReasonPreview reasonPreview = new AnalysisReasonPreview();
         final AnalysisNodeTracker nodeTracker = new AnalysisNodeTracker();
         com.taxonomy.dto.RelationSearchProgress relationProgress;
         volatile String status = "QUEUED";
@@ -401,7 +418,7 @@ public class AnalysisProgressRegistry {
             nodeTracker.plan(tree); touch();
         }
         @Override public synchronized void assessment(LlmCallDetail detail) {
-            nodeTracker.accept(detail); touch();
+            retainAssessment(detail); touch();
         }
         @Override public synchronized void relations(com.taxonomy.dto.RelationSearchProgress progress) {
             relationProgress = progress; touch();
@@ -433,7 +450,7 @@ public class AnalysisProgressRegistry {
             touch();
         }
         @Override public synchronized void completed(long id, LlmCallDetail detail, long duration) {
-            nodeTracker.accept(detail);
+            retainAssessment(detail);
             Call call = calls.stream().filter(c -> c.id == id).findFirst().orElse(null);
             if (call != null) {
                 call.status = RootAssessmentEvidence.isClarification(detail) ? "CLARIFICATION"
@@ -446,13 +463,20 @@ public class AnalysisProgressRegistry {
                 call.response = bounded(detail.getRawResponse(), MAX_TEXT);
                 call.truncated = call.promptLength > MAX_TEXT || call.responseLength > MAX_TEXT;
             }
-            if ((detail.getError() == null || detail.getError().isBlank()) && detail.getScores() != null)
-                detail.getScores().forEach((code, score) -> {
-                if (code == null || score == null) return;
-                if (scores.containsKey(code) || scores.size() < MAX_SCORES) scores.put(code, score);
-                else scoresTruncated = true;
-            });
             phase("SCORING", null);
+        }
+        private void retainAssessment(LlmCallDetail detail) {
+            if (detail == null) return;
+            nodeTracker.accept(detail);
+            if (detail.getError() != null && !detail.getError().isBlank()
+                    || detail.getScores() == null) return;
+            detail.getScores().forEach((code, score) -> {
+                if (code == null || score == null) return;
+                if (scores.containsKey(code) || scores.size() < MAX_SCORES) {
+                    scores.put(code, score);
+                    reasonPreview.retain(code, detail.getReasons() == null ? null : detail.getReasons().get(code));
+                } else scoresTruncated = true;
+            });
         }
         @Override public synchronized void stoppedAfterResponse(long id, LlmCallDetail detail,
                 long duration, AnalysisStoppedException.Reason reason) {
@@ -504,7 +528,7 @@ public class AnalysisProgressRegistry {
                     calls.stream().map(Call::view).toList(), omittedCalls, guard.reading(),
                     databaseStorage, indexStorage, provenance, active() ? null : finishedAt,
                     elapsed, executionStartedAt, queued, executionStartedAt == null ? 0L : Math.max(0L, elapsed - queued),
-                    nodeTracker.snapshot(), relationProgress);
+                    nodeTracker.snapshot(), relationProgress, reasonPreview.reasons(), reasonPreview.truncated());
         }
     }
 

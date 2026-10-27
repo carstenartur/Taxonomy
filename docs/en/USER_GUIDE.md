@@ -478,7 +478,9 @@ After running an analysis, the sunburst chart displays heat-mapped colour gradie
 
 ![Scored sunburst view](../images/39-scored-sunburst.png)
 
-Sunburst, Tree and Decision share a relevance selector. **All nodes** shows the available view; **Hide zero relevance** removes measured zeroes while retaining unknown or pending evaluations; **Only > 0** retains positive results and their ancestor paths. The selection applies to the diagram and its printout. An ancestor retained for orientation is not an additional positive result.
+List, Tabs, Sunburst, Tree, Decision and Summary share the same relevance selector. **All nodes** shows the available view; **Hide zero relevance** removes measured zeroes while retaining unknown or pending evaluations; **Only > 0** retains positive results and their ancestor paths. The selection also applies to diagram printing. An ancestor retained for orientation is not an additional positive result. Stored scores and the complete catalogue remain intact. Explicitly selecting a hidden search result switches to **All nodes** so that the selected entry is reachable. A new manual assessment also begins with all nodes.
+
+During an analysis, Sunburst, Tree and Decision retain their reading position when new results arrive: zoom, pan, scroll position and manually opened or closed branches are restored. Sunburst remembers its focused subtree. Each view and selected tree taxonomy has its own state, including when the tree switches between SVG and Canvas rendering. If filtering removes the selected node, a surviving ancestor becomes the selection. **Fit diagram** and **Reset zoom** explicitly change the viewport. A new analysis or a newly loaded requirement draft begins with a fresh view state.
 
 ### Tree View
 
@@ -486,7 +488,7 @@ Sunburst, Tree and Decision share a relevance selector. **All nodes** shows the 
 
 The Tree view renders the taxonomy as an interactive node-link diagram. Use the **Taxonomy root selector** dropdown to choose which root to display when there are multiple taxonomy roots.
 
-**Expand all** opens every branch of the selected taxonomy in one action. **View rationale** shows the selected node’s complete saved explanation. **Print diagram** includes the complete selected taxonomy with the current relevance filter, including collapsed and offscreen branches. Numeric percentages remain visible; numbered references lead to full explanations in the printout. **Print layout** offers **A4 pages** and **One large sheet**. Both SVG and large Canvas trees use complete vector graphics for printing.
+Tree and Decision offer **Expand all** and **Collapse all**. **Reason** shows the selected node’s complete saved explanation. **Print diagram** includes the complete selected taxonomy with the current relevance filter, including collapsed and offscreen branches. Numeric percentages remain visible; numbered references lead to full explanations in the printout. **Print layout** and **Paper size** are separate settings, described below. Both SVG and large Canvas trees use complete vector graphics for printing.
 
 ![Tree view](../images/07-tree-view.png)
 
@@ -496,7 +498,21 @@ The Decision Map view shows the taxonomy as a decision-tree style layout optimis
 
 Taxonomies occupy separate areas. Spacing accounts for complete wrapped node names and remains clear when branches expand or collapse. **Reason** at a node opens its saved analysis reason and a separately labelled catalogue description. The action also works with a keyboard or touchscreen; **Close** or Escape returns focus to the node.
 
-Use **Print diagram** in the diagram toolbar to open a separate print view. It includes every relevant branch with the selected relevance filter, independently of zoom and collapsed screen branches. **A4 pages** distributes large areas across landscape pages, retaining headings and references to continued connections. **One large sheet** arranges related, numbered sections across a balanced sheet instead of shrinking a tall narrow tree into a thin strip. Section references retain parent and continuation context. Both print layouts include percentages and complete recorded explanations. Choose a printer or **Save as PDF** in the browser. If the browser blocks the print window, allow pop-ups for this application and select **Print diagram** again.
+Already recorded analysis reasons travel with live scores. A reason arriving later refreshes the view even when its numerical score is unchanged. While an analysis is running, the dialog explicitly identifies a reason not yet included in the received results. **No reason was recorded for this assessment** describes missing reasons in completed or imported results. Opening the dialog does not trigger a new model request or invent an explanation.
+
+Use **Print diagram** in the diagram toolbar to open a separate print view. It contains the branches selected by the relevance filter, independently of zoom and collapsed screen branches. Three print layouts are available:
+
+- **A4 pages** distributes extensive trees across readable A4 landscape pages. Headings and references identify continued connections.
+- **One large sheet** places all selected taxonomies on one sheet with continuous parent-child connections.
+- **One sheet per subtaxonomy** gives each selected area its own sheet. Filtered-out areas do not receive an empty page.
+
+For the two full-sheet layouts, **Paper size** offers A4, A3, A2, **A1** and **A0**. The first switch from A4 sections to a full sheet defaults to A1. Orientation and scale follow the complete content; result updates retain the settings. Large sheets contain connected trees rather than assembled A4 fragments. All layouts include percentages and the complete recorded reasons for selected nodes. An extensive tree is scaled to the chosen sheet; for larger text, choose larger paper, one sheet per subtaxonomy or readable A4 sections.
+
+![Diagram options with the positive relevance filter, one sheet per subtaxonomy and A0 paper](../images/diagram-print-controls-en.png)
+
+*Production diagram controls shown with a deterministic component fixture. [Capture source](../images/diagram-print-controls-2026-10-27.json); [verification scope](../testing/stable-diagrams-and-print.md).*
+
+Choose a printer supporting the selected paper size or **Save as PDF** in the browser. The print view specifies physical sheet dimensions, such as 594 × 841 mm for A1 and 841 × 1189 mm for A0; the print dialog must not override them with A4. Printing leaves the screen view and stored results intact. If the browser blocks the print window, allow pop-ups for this application and select **Print diagram** again.
 
 ![Decision Map view (scored)](../images/69-decision-map-scored.png)
 

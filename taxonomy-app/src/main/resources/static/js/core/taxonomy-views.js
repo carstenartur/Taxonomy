@@ -11,6 +11,25 @@
         var focused = document.activeElement;
         container._taxRestoreNodeFocus = !!(focused && container.contains(focused)
             && focused.getAttribute('data-diagram-node'));
+        container._taxRestoreControlFocus = null;
+        if (focused && container.contains(focused) && focused.closest && focused.closest('.tax-diagram-controls')) {
+            var controls = Array.from(container.querySelectorAll('.tax-diagram-controls button, .tax-diagram-controls input, .tax-diagram-controls select'));
+            container._taxRestoreControlFocus = {index: controls.indexOf(focused), tag: focused.tagName,
+                className: focused.className, text: focused.tagName === 'BUTTON' ? focused.textContent : ''};
+        }
+    }
+
+    function restoreDiagramControlFocus(container) {
+        var saved = container._taxRestoreControlFocus;
+        container._taxRestoreControlFocus = null;
+        if (!saved) { return; }
+        var controls = Array.from(container.querySelectorAll('.tax-diagram-controls button, .tax-diagram-controls input, .tax-diagram-controls select'));
+        var matching = controls.find(function (control) {
+            return control.tagName === saved.tag && control.className === saved.className
+                && (saved.tag !== 'BUTTON' || control.textContent === saved.text);
+        });
+        var target = matching || controls[saved.index];
+        if (target && target.tagName === saved.tag) { target.focus({preventScroll: true}); }
     }
 
     function diagramNodeLabel(node, scores, zoomable) {
@@ -34,10 +53,11 @@
         surface.setAttribute('aria-label', container.getAttribute('aria-label') || t('views.diagram.controls'));
         if (options.canvas) { surface.setAttribute('tabindex', '0'); }
 
-        function select(entry, focus) {
+        function select(entry, focus, restoring) {
             if (!entry) { return; }
             active = entry;
             container.setAttribute('data-active-node', entry.node.data.code);
+            container._taxDiagramSelectionPath = diagramNodePath(entry.node);
             entries.forEach(function (candidate) {
                 if (!options.canvas) { candidate.element.setAttribute('tabindex', candidate === active ? '0' : '-1'); }
             });
@@ -50,13 +70,17 @@
                     surface.setAttribute('aria-expanded', !!entry.node.children);
                 }
             }
-            if (options.change) { options.change(entry.node); }
-            if (focus) { entry.element.focus(); }
+            if (options.change) { options.change(entry.node, restoring); }
+            if (focus) {
+                container._taxRestoringDiagramFocus = !!restoring;
+                entry.element.focus(restoring ? {preventScroll: true} : undefined);
+                container._taxRestoringDiagramFocus = false;
+            }
         }
 
         surface.addEventListener('focusin', function (event) {
             var entry = options.canvas ? active : entries.find(function (candidate) { return candidate.element === event.target; });
-            if (entry) { select(entry, false); }
+            if (entry) { select(entry, false, container._taxRestoringDiagramFocus); }
         });
         surface.addEventListener('keydown', function (event) {
             var entry = options.canvas ? active : entries.find(function (candidate) { return candidate.element === event.target; });
@@ -103,13 +127,17 @@
                 });
                 var code = container.getAttribute('data-active-node');
                 var chosen = entries.find(function (entry) { return entry.node.data.code === code; });
+                (container._taxDiagramSelectionPath || []).some(function (ancestorCode) {
+                    if (!chosen) { chosen = entries.find(function (entry) { return entry.node.data.code === ancestorCode; }); }
+                    return !!chosen;
+                });
                 var ancestor = previous && previous.node.parent;
                 while (!chosen && ancestor) {
                     chosen = entries.find(function (entry) { return entry.node === ancestor; });
                     ancestor = ancestor.parent;
                 }
                 active = null;
-                select(chosen || entries[0], hadFocus);
+                select(chosen || entries[0], hadFocus, true);
                 if (options.canvas && !active) { surface.setAttribute('aria-label', t('views.no.scored.nodes')); }
             },
             selectNode: function (node) {
@@ -176,10 +204,24 @@
         update(root);
     }
 
+    function collapseDiagramTree(root, update) {
+        function collapse(node) {
+            (node.children || node._children || []).forEach(collapse);
+            if (node.children && node.children.length) {
+                node._children = node.children;
+                node.children = null;
+            }
+        }
+        (root.children || []).forEach(collapse);
+        hideTooltip();
+        update(root);
+    }
+
     function installTreeActions(container, root, update, navigation, scores) {
         var toolbar = container.querySelector('.tax-diagram-controls');
         [
             {key: 'views.diagram.expandAll', className: 'tax-diagram-expand-all', run: function () { expandDiagramTree(root, update); }},
+            {key: 'views.diagram.collapseAll', className: 'tax-diagram-collapse-all', run: function () { collapseDiagramTree(root, update); }},
             {key: 'views.diagram.rationale', className: 'tax-diagram-rationale', run: function () {
                 var selected = navigation.current();
                 if (selected) { showDecisionReason(selected.data, scores, this); }
@@ -305,6 +347,172 @@
     var TREE_INITIAL_DEPTH = 3;  // collapse nodes at depth >= this on initial render
     var TREE_LABEL_FONT = '12px Arial, Helvetica, sans-serif';
     var TREE_BADGE_FONT = 'bold 10px Arial, Helvetica, sans-serif';
+
+    function diagramNodePath(node) {
+        var path = [];
+        while (node) { path.push(node.data.code); node = node.parent; }
+        return path;
+    }
+
+    function captureDiagramReadState(container) {
+        if (container._taxCaptureDiagramState) {
+            container._taxCaptureDiagramState();
+            container._taxCaptureDiagramState = null;
+        }
+    }
+
+    /** Called before the dispatcher clears a diagram, including empty/list projections. */
+    function prepareDiagramContext(container, context) {
+        captureDiagramReadState(container);
+        rememberDiagramFocus(container);
+        var store = container._taxDiagramReadState;
+        if (!store || !Object.is(store.analysisKey, context.analysisKey)) {
+            container._taxDiagramReadState = {analysisKey: context.analysisKey, views: new Map()};
+            container._taxDiagramContextChanged = true;
+            container._taxRestoreNodeFocus = false;
+            container._taxRestoreControlFocus = null;
+        }
+        container._taxPendingDiagramContext = context;
+    }
+
+    function beginDiagramReadState(container, view, data) {
+        captureDiagramReadState(container);
+        rememberDiagramFocus(container);
+        container._canvasRenderer = false;
+        container._canvasData = null;
+        container._canvasScores = null;
+        if (container._taxDiagramContextChanged) {
+            container._taxRestoreNodeFocus = false;
+            container._taxRestoreControlFocus = null;
+            container._taxDiagramContextChanged = false;
+        }
+        var store = container._taxDiagramReadState;
+        if (!store) { store = container._taxDiagramReadState = {views: new Map()}; }
+        var context = container._taxPendingDiagramContext;
+        container._taxPendingDiagramContext = null;
+        // SVG and Canvas are two renderers of the same selected tree.
+        var treeRoot = view === 'tree' ? context && context.view === 'tree' && context.treeRoot
+            || (data || []).map(function (node) { return node.code; }).join('|') : '';
+        var key = JSON.stringify([view, treeRoot]);
+        var state = store.views.get(key);
+        if (!state) { state = {branches: new Map()}; store.views.set(key, state); }
+        container._taxDiagramSelectionPath = state.selectionPath || [];
+        container.removeAttribute('data-active-node');
+        if (state.selectionPath && state.selectionPath.length) {
+            container.setAttribute('data-active-node', state.selectionPath[0]);
+        }
+        return state;
+    }
+
+    function visitDiagramBranches(node, visit) {
+        visit(node);
+        (node.children || node._children || []).forEach(function (child) { visitDiagramBranches(child, visit); });
+    }
+
+    function restoreDiagramBranches(root, state, initiallyCollapsed) {
+        var nodes = root.descendants();
+        if (initiallyCollapsed) { collapseInitialTree(root); }
+        nodes.forEach(function (node) {
+            var children = node.children || node._children;
+            if (!children || !state.branches.has(node.data.code)) { return; }
+            var expanded = state.branches.get(node.data.code);
+            node.children = expanded ? children : null;
+            node._children = expanded ? null : children;
+        });
+    }
+
+    /** Prefer the selected visible node; otherwise anchor the part the reader can see. */
+    function diagramViewportAnchor(options, transform) {
+        var surface = options.surface;
+        var bounds = surface.getBoundingClientRect();
+        var clip = {left: Math.max(0, bounds.left), top: Math.max(0, bounds.top),
+            right: Math.min(window.innerWidth, bounds.right), bottom: Math.min(window.innerHeight, bounds.bottom)};
+        for (var parent = surface.parentElement; parent; parent = parent.parentElement) {
+            var style = window.getComputedStyle(parent);
+            var box = parent.getBoundingClientRect();
+            if (/(auto|scroll|hidden|clip)/.test(style.overflowX)) {
+                clip.left = Math.max(clip.left, box.left); clip.right = Math.min(clip.right, box.right);
+            }
+            if (/(auto|scroll|hidden|clip)/.test(style.overflowY)) {
+                clip.top = Math.max(clip.top, box.top); clip.bottom = Math.min(clip.bottom, box.bottom);
+            }
+        }
+        var selected = options.navigation.current(), nearest = null, distance = Infinity;
+        options.root.descendants().forEach(function (node) {
+            if (node.data.code === '__root__') { return; }
+            var point = options.position(node);
+            var x = bounds.left + transform.x + point.x * transform.k;
+            var y = bounds.top + transform.y + point.y * transform.k;
+            if (x < clip.left || x > clip.right || y < clip.top || y > clip.bottom) { return; }
+            var next = node === selected ? -1 : Math.pow(x - (clip.left + clip.right) / 2, 2)
+                + Math.pow(y - (clip.top + clip.bottom) / 2, 2);
+            if (next < distance) { nearest = node; distance = next; }
+        });
+        return nearest || selected;
+    }
+
+    function bindDiagramReadState(container, state, options) {
+        state.rendered = true;
+        container._taxCaptureDiagramState = function () {
+            var selected = options.navigation.current();
+            if (selected) { state.selectionPath = diagramNodePath(selected); }
+            visitDiagramBranches(options.root, function (node) {
+                if (node.children || node._children) { state.branches.set(node.data.code, !!node.children); }
+            });
+            if (options.focused) { state.focusPath = diagramNodePath(options.focused()); }
+            else {
+                var transform = d3.zoomTransform(options.surface);
+                state.transform = {x: transform.x, y: transform.y, k: transform.k};
+                var surfaceBox = options.surface.getBoundingClientRect(), containerBox = container.getBoundingClientRect();
+                state.surfaceOffset = {x: surfaceBox.left - containerBox.left, y: surfaceBox.top - containerBox.top};
+                var anchor = diagramViewportAnchor(options, transform);
+                state.anchors = [];
+                while (anchor && anchor.data.code !== '__root__') {
+                    state.anchors.push({code: anchor.data.code, point: options.position(anchor)});
+                    anchor = anchor.parent;
+                }
+            }
+            state.scroll = [];
+            for (var element = container; element && element !== document.body; element = element.parentElement) {
+                state.scroll.push({element: element, left: element.scrollLeft || 0, top: element.scrollTop || 0});
+            }
+            if (options.scroller) {
+                state.innerScroll = {left: options.scroller.scrollLeft, top: options.scroller.scrollTop};
+            }
+            state.pageScroll = {left: window.scrollX || 0, top: window.scrollY || 0};
+        };
+    }
+
+    function restoreDiagramViewport(state, selection, zoom, root, position, scroller, container) {
+        if (scroller && state.innerScroll) {
+            scroller.scrollLeft = state.innerScroll.left; scroller.scrollTop = state.innerScroll.top;
+        }
+        (state.scroll || []).forEach(function (scroll) {
+            if (scroll.element.isConnected !== false) {
+                scroll.element.scrollLeft = scroll.left; scroll.element.scrollTop = scroll.top;
+            }
+        });
+        if (state.pageScroll && window.scrollTo) { window.scrollTo(state.pageScroll.left, state.pageScroll.top); }
+        if (state.transform) {
+            var saved = state.transform, x = saved.x, y = saved.y;
+            if (state.surfaceOffset && container) {
+                var surfaceBox = selection.node().getBoundingClientRect(), containerBox = container.getBoundingClientRect();
+                x += state.surfaceOffset.x - (surfaceBox.left - containerBox.left);
+                y += state.surfaceOffset.y - (surfaceBox.top - containerBox.top);
+            }
+            var visible = root.descendants();
+            (state.anchors || []).some(function (anchor) {
+                var node = visible.find(function (candidate) { return candidate.data.code === anchor.code; });
+                if (!node) { return false; }
+                var point = position(node);
+                x += (anchor.point.x - point.x) * saved.k;
+                y += (anchor.point.y - point.y) * saved.k;
+                return true;
+            });
+            selection.call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(saved.k));
+        }
+        if (container) { restoreDiagramControlFocus(container); }
+    }
 
     function collapseInitialTree(root) {
         // Snapshot BEFORE hiding children: mutating a live D3 walk skips the very
@@ -466,8 +674,12 @@
         function project(node) {
             var children = (node.children || []).map(project).filter(Boolean);
             var detail = details && details[node.code];
+            // Stream hints carry the family code; its separately delivered score
+            // resolves pending products without rewriting their raw suitability.
+            var parentScore = detail && detail.parentCode && scores && scores[detail.parentCode];
+            if (!Number.isFinite(parentScore)) { parentScore = detail && detail.parentScore; }
             var pendingProduct = detail && detail.kind === 'PRODUCT_SUITABILITY'
-                && !Number.isFinite(detail.parentScore);
+                && !Number.isFinite(parentScore) && !Number.isFinite(detail.effectiveRelevance);
             var measured = scores && Object.prototype.hasOwnProperty.call(scores, node.code);
             // Hide-zero preserves unknown/pending evidence; strict positive requires an actual positive score.
             var keep = mode === 'positive'
@@ -492,7 +704,7 @@
      * @param {Array}       paletteData - Optional unfiltered catalogue used to preserve branch colours.
      */
     function renderSunburst(container, data, scores, paletteData) {
-        rememberDiagramFocus(container);
+        var readState = beginDiagramReadState(container, 'sunburst', data);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
@@ -524,10 +736,17 @@
         var hierarchy = d3.hierarchy(rootData)
             .sum(function (d) { return (!d.children || !d.children.length) ? 1 : 0; });
         d3.partition().size([2 * Math.PI, radius])(hierarchy);
+        var currentZoom = hierarchy;
+        (readState.focusPath || []).some(function (code) {
+            var node = hierarchy.descendants().find(function (candidate) { return candidate.data.code === code; });
+            if (node) { currentZoom = node; return true; }
+            return false;
+        });
 
-        // Store initial arc positions for transitions
+        // Restore the focused branch directly, without animating from the overview again.
         hierarchy.each(function (d) {
-            d.current = { x0: d.x0, x1: d.x1, y0: d.y0, y1: d.y1 };
+            d.current = currentZoom === hierarchy ? { x0: d.x0, x1: d.x1, y0: d.y0, y1: d.y1 }
+                : projectedArc(d, currentZoom);
         });
 
         var arc = d3.arc()
@@ -592,7 +811,7 @@
             .style('font-size', '11px')
             .style('fill', '#003580')
             .style('pointer-events', 'none')
-            .text(t('views.back'));
+            .text(currentZoom === hierarchy ? '' : t('views.back'));
 
         centerGroup.on('click', function () {
             if (currentZoom && currentZoom.parent) {
@@ -600,7 +819,6 @@
             }
         });
 
-        var currentZoom = hierarchy;
         var sunNavigation = createDiagramNavigation(container, svg.node(), {
             scores: scores, zoomable: true,
             activate: function (node) { if (node.children) { clicked(null, node); } }
@@ -611,20 +829,24 @@
             {key: 'views.diagram.overview', run: function () { clicked(null, hierarchy); }}
         ], 'views.diagram.keyboard');
         var backControl = sunControls.querySelector('button');
-        backControl.disabled = true;
+        backControl.disabled = currentZoom === hierarchy;
         centerGroup.attr('aria-hidden', 'true'); // The equivalent native Back button is in the local controls.
+
+        function projectedArc(d, p) {
+            return {
+                x0: Math.max(0, Math.min(1, (d.x0 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+                x1: Math.max(0, Math.min(1, (d.x1 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+                y0: Math.max(0, d.y0 - p.y0),
+                y1: Math.max(0, d.y1 - p.y0)
+            };
+        }
 
         function clicked(event, p) {
             currentZoom = p;
             hideTooltip();
 
             hierarchy.each(function (d) {
-                d.target = {
-                    x0: Math.max(0, Math.min(1, (d.x0 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
-                    x1: Math.max(0, Math.min(1, (d.x1 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
-                    y0: Math.max(0, d.y0 - p.y0),
-                    y1: Math.max(0, d.y1 - p.y0)
-                };
+                d.target = projectedArc(d, p);
             });
 
             var transition = svg.transition().duration(750);
@@ -674,6 +896,9 @@
         });
         obs.observe(container);
         container._taxObserver = obs;
+        restoreDiagramViewport(readState, null, null, null, null, null, container);
+        bindDiagramReadState(container, readState, {root: hierarchy, surface: svg.node(), navigation: sunNavigation,
+            focused: function () { return currentZoom; }});
         } catch (e) {
             console.error('Sunburst rendering failed:', e);
         }
@@ -689,7 +914,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderTreeDiagram(container, data, scores) {
-        rememberDiagramFocus(container);
+        var readState = beginDiagramReadState(container, 'tree', data);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
@@ -712,7 +937,7 @@
         var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
-        collapseInitialTree(root);
+        restoreDiagramBranches(root, readState, true);
         var measure = treeTextMeasure();
 
         var containerWidth = container.clientWidth || 800;
@@ -739,6 +964,9 @@
 
         var nodeSeq = 0;
         var updateToken = 0;
+        var restoringFirstLayout = !!readState.rendered;
+        var treeOffset = {x: 0, y: 0};
+        function nodePosition(node) { return {x: node.y + treeOffset.x, y: node.x + treeOffset.y}; }
 
         function update(source) {
             container.removeAttribute('data-transitions-complete');
@@ -746,6 +974,8 @@
             var layout = layoutTaxonomyTree(root, scores, measure);
             var nodes = layout.nodes;
             var links = layout.links;
+            var restoring = restoringFirstLayout;
+            restoringFirstLayout = false;
 
             // Resize SVG to fit horizontal layout
             var svgW = Math.max(containerWidth, layout.width + marginLeft + marginRight);
@@ -753,7 +983,8 @@
             svg.attr('width', svgW).attr('height', svgH);
 
             // Translate so the topmost node is at marginTop, root is inset by marginLeft
-            g.attr('transform', 'translate(' + (marginLeft - layout.left) + ',' + (marginTop - layout.top) + ')');
+            treeOffset = {x: marginLeft - layout.left, y: marginTop - layout.top};
+            g.attr('transform', 'translate(' + treeOffset.x + ',' + treeOffset.y + ')');
 
             var sourceX = source.x0 !== undefined ? source.x0 : (source.x != null ? source.x : 0);
             var sourceY = source.y0 !== undefined ? source.y0 : (source.y != null ? source.y : 0);
@@ -764,8 +995,8 @@
 
             var nodeEnter = node.enter().append('g')
                 .attr('class', 'tv-node')
-                .attr('transform', 'translate(' + sourceY + ',' + sourceX + ')')
-                .style('opacity', 0);
+                .attr('transform', function (d) { return 'translate(' + (restoring ? d.y : sourceY) + ',' + (restoring ? d.x : sourceX) + ')'; })
+                .style('opacity', restoring ? 1 : 0);
 
             nodeEnter.append('circle').attr('r', 7).attr('stroke-width', 1.5);
 
@@ -799,7 +1030,7 @@
             treeNavigation.update(diagramEntries(nodeUpdate));
 
             // Horizontal layout: translate(y, x) — y is horizontal position, x is vertical
-            var nodeT = nodeUpdate.transition().duration(300)
+            var nodeT = nodeUpdate.transition().duration(restoring ? 0 : 300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
 
@@ -842,12 +1073,13 @@
                 .attr('fill', 'none')
                 .attr('stroke', '#ccc')
                 .attr('stroke-width', 1.5)
-                .attr('d', function () {
+                .attr('d', function (d) {
+                    if (restoring) { return treeLinkPath(d); }
                     var o = { x: sourceX, y: sourceY };
                     return diag({ source: o, target: o });
                 });
 
-            var linkT = linkEnter.merge(link).transition().duration(300)
+            var linkT = linkEnter.merge(link).transition().duration(restoring ? 0 : 300)
                 .attr('d', treeLinkPath);
 
             link.exit().transition().duration(300)
@@ -861,7 +1093,7 @@
             // The version token prevents stale handlers from a prior update()
             // from racing with a newer call that already cleared the attribute.
             var settle = function () {
-                if (currentToken === updateToken) {
+                if (currentToken === updateToken && svg.node().isConnected !== false) {
                     container.setAttribute('data-transitions-complete', 'true');
                 }
             };
@@ -877,6 +1109,9 @@
         root.x0 = 0;
         root.y0 = 0;
         update(root);
+        restoreDiagramViewport(readState, svg, treeZoom, root, nodePosition, null, container);
+        bindDiagramReadState(container, readState, {root: root, surface: svg.node(), navigation: treeNavigation,
+            position: nodePosition});
 
         // Responsive resize – widen SVG if container grows, but never shrink below content width
         var obs = new ResizeObserver(function () {
@@ -1041,8 +1276,10 @@
             var score = document.createElement('p'); score.textContent = scoreText(node.code, scores[node.code]); dialog.appendChild(score);
         }
         var reasons = window.TaxonomyState && window.TaxonomyState.currentReasons || {};
+        var reasonMissing = window.TaxonomyState && window.TaxonomyState.lastAnalysisStatus === 'IN_PROGRESS'
+            ? t('views.diagram.reasonPending') : t('views.diagram.reasonMissing');
         [[t('views.diagram.catalogueDescription'), node.description || t('views.diagram.descriptionMissing')],
-            [t('views.diagram.analysisReason'), reasons[node.code] || t('views.diagram.reasonMissing')]].forEach(function (section) {
+            [t('views.diagram.analysisReason'), reasons[node.code] || reasonMissing]].forEach(function (section) {
             var label = document.createElement('h3'); label.className = 'h6'; label.textContent = section[0];
             var content = document.createElement('p'); content.className = 'tax-reason-text'; content.textContent = section[1];
             dialog.append(label, content);
@@ -1223,7 +1460,7 @@
     }
 
     /** Visible text, with no ellipsis or tooltip dependency; long reasons continue on the next section. */
-    function buildDiagramEvidencePages(nodes, scores, doc, measure, captionAreas) {
+    function buildDiagramEvidencePages(nodes, scores, doc, measure, captionAreas, evidenceNumbers) {
         var pages = [], lines = [], lineLimit = 27;
         function flush() {
             if (!lines.length) { return; }
@@ -1243,6 +1480,8 @@
             doc.body.appendChild(page); pages.push(page); lines = [];
         }
         diagramEvidence(nodes, scores, captionAreas).forEach(function (entry) {
+            // Separate taxonomy sheets retain the references assigned to the selected full hierarchy.
+            if (evidenceNumbers) { entry.number = evidenceNumbers[entry.data.code]; }
             var node = entry.data;
             var label = t('views.diagram.evidenceReference', entry.number) + ' · ' + node.code + (node.name ? ' – ' + node.name : '')
                 + (entry.score ? ' · ' + entry.score : '');
@@ -1262,7 +1501,7 @@
         return pages;
     }
 
-    /** Pack readable sections into a balanced large sheet without reducing font size. */
+    /** Preserve the existing appendix layout used by SVG exports. */
     function arrangePrintSheet(pages, doc, measure, className) {
         var tiles = pages.map(function (page) {
             var height = 12, width = 1000, blocks = [];
@@ -1308,11 +1547,131 @@
         return {width: width, height: height, svg: svg};
     }
 
-    function buildDecisionPrintSheet(layout, doc, className) {
-        var staged = detachedPrintDocument(doc);
-        var pages = buildDecisionPrintPages(Object.assign({}, layout, {singleSheet: true}), staged);
-        pages = pages.concat(buildDiagramEvidencePages(layout.nodes, layout.scores, staged, layout.measure, layout.captionAreas));
-        return arrangePrintSheet(pages, doc, layout.measure, className);
+    var DIAGRAM_PAPER_SIZES = {
+        A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], A0: [841, 1189]
+    };
+
+    /** Keep every hierarchy panel intact; fit complete panels and explanations onto one physical sheet. */
+    function arrangeDiagramPrintSheet(pages, doc, measure, className, paper) {
+        var tiles = pages.map(function (page) {
+            var height = 0, width = 0, blocks = [];
+            Array.from(page.children).forEach(function (child) {
+                if (String(child.tagName).toLowerCase() === 'svg') {
+                    blocks.push({svg: child, y: height});
+                    width = Math.max(width, Number(child.getAttribute('width')));
+                    height += Number(child.getAttribute('height')) + 12;
+                } else {
+                    String(child.textContent || '').split(/\r?\n/).forEach(function (paragraph) {
+                        decisionLines(paragraph, measure, 976).forEach(function (line) {
+                            blocks.push({text: line, y: height + 16});
+                            width = Math.max(width, measure(line) + 24); height += 20;
+                        });
+                    });
+                    height += 8;
+                }
+            });
+            return {width: width, height: height, blocks: blocks, panel: page.getAttribute('data-taxonomy-panel')};
+        });
+        var tileWidth = Math.max.apply(null, [320].concat(tiles.map(function (tile) { return tile.width; })));
+        var size = DIAGRAM_PAPER_SIZES[paper], best;
+        // Try columns without splitting or reordering any taxonomy's hierarchy. Short
+        // panels and evidence fill available columns beside a taller panel.
+        for (var columns = 1; columns <= Math.max(1, tiles.length); columns++) {
+            var heights = Array(columns).fill(16), positions = [];
+            tiles.forEach(function (tile) {
+                var column = heights.indexOf(Math.min.apply(null, heights));
+                positions.push({x: 16 + column * (tileWidth + 24), y: heights[column]});
+                heights[column] += tile.height + 24;
+            });
+            var width = columns * (tileWidth + 24) + 8;
+            var height = Math.max.apply(null, heights) - 8;
+            var orientations = size ? [size, [size[1], size[0]]] : [null];
+            orientations.forEach(function (dimensions) {
+                var printWidth = dimensions ? Math.floor((dimensions[0] - 20) * 96 / 25.4) : width;
+                var printHeight = dimensions ? Math.floor((dimensions[1] - 20) * 96 / 25.4) : height;
+                var fit = Math.min(printWidth / width, printHeight / height);
+                var score = dimensions ? fit : 1 / (width * height * (1 + Math.abs(Math.log(width / height / Math.SQRT2))));
+                if (!best || score > best.score) {
+                    best = {score: score, width: width, height: height, positions: positions,
+                        printWidth: printWidth, printHeight: printHeight, dimensions: dimensions, scale: Math.min(1, fit)};
+                }
+            });
+        }
+        var page = doc.createElement('section'); page.className = 'diagram-print-page ' + (className || 'decision-print-page');
+        page.setAttribute('data-print-scale', best.scale);
+        if (paper) { page.setAttribute('data-paper-format', paper); }
+        var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg', width: best.printWidth, height: best.printHeight,
+            viewBox: '0 0 ' + best.printWidth + ' ' + best.printHeight, role: 'img', 'aria-label': t('views.diagram.printTitle')});
+        var content = decisionSvgElement(doc, svg, 'g', {transform: 'translate('
+            + (best.printWidth - best.width * best.scale) / 2 + ','
+            + (best.printHeight - best.height * best.scale) / 2 + ') scale(' + best.scale + ')'});
+        tiles.forEach(function (tile, index) {
+            var position = best.positions[index];
+            var group = decisionSvgElement(doc, content, 'g', {transform: 'translate(' + position.x + ',' + position.y + ')'});
+            if (tile.panel) { group.setAttribute('data-taxonomy-panel', tile.panel); }
+            tile.blocks.forEach(function (block) {
+                if (block.svg) {
+                    block.svg.setAttribute('x', 0); block.svg.setAttribute('y', block.y); group.appendChild(block.svg);
+                } else {
+                    decisionSvgElement(doc, group, 'text', {x: 12, y: block.y, fill: '#111827', 'font-size': 14,
+                        'font-family': 'Arial, Helvetica, sans-serif', style: 'font-size:14px'}, block.text);
+                }
+            });
+        });
+        doc.body.appendChild(page);
+        return {width: best.printWidth, height: best.printHeight, dimensions: best.dimensions,
+            scale: best.scale, fit: best.score, page: page, svg: svg};
+    }
+
+    function buildDecisionPrintSheets(layout, doc, className, options) {
+        var evidenceNumbers = {};
+        diagramEvidence(layout.nodes, layout.scores, layout.captionAreas).forEach(function (entry) {
+            evidenceNumbers[entry.data.code] = entry.number;
+        });
+        var layouts = [layout];
+        if (options.paper) {
+            // A4-width cards turn verbose sibling lists into a very tall strip.
+            // Compare a bounded set of wider measured cards on detached hierarchies,
+            // then choose the one that prints at the largest readable scale.
+            var roots = [], panelAreas = {};
+            layout.panels.forEach(function (panel) {
+                panel.roots.forEach(function (root) { roots.push(root.data); panelAreas[root.data.code] = panel.area; });
+            });
+            [320, 420, 520].forEach(function (textWidth) {
+                layouts.push(layoutDecisionPanels(d3.hierarchy({code: '__root__', children: roots}), layout.scores,
+                    panelAreas, layout.measure, layout.captionAreas,
+                    {textWidth: textWidth, cardWidth: textWidth + 36, columnPitch: textWidth + 66, columnsPerPage: 4}));
+            });
+        }
+        var groups = options.mode === 'taxonomy' ? layout.panels : [null];
+        return groups.map(function (areaPanel, index) {
+            var best;
+            layouts.forEach(function (measured) {
+                var panels = areaPanel ? [measured.panels[index]] : measured.panels;
+                var staged = detachedPrintDocument(doc), nodes = [], areas = [];
+                var pages = panels.map(function (panel) {
+                    nodes = nodes.concat(panel.nodes); areas.push(panel.area);
+                    var page = doc.createElement('section');
+                    page.setAttribute('data-taxonomy-panel', panel.area.code);
+                    var width = panel.right + 16, height = panel.bottom - panel.top + 32;
+                    var svg = decisionSvgElement(doc, page, 'svg', {xmlns: 'http://www.w3.org/2000/svg', width: width, height: height,
+                        viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': containerLabel(panel.area, measured.scores)});
+                    panel.lines.forEach(function (line, lineIndex) {
+                        decisionSvgElement(doc, svg, 'text', {x: 16, y: 32 + lineIndex * 20, fill: '#111827',
+                            'font-size': 14, 'font-weight': 'bold', 'font-family': 'Arial, Helvetica, sans-serif'}, line);
+                    });
+                    // Every edge connects the original full parent and child on this sheet.
+                    drawDecisionPrintNodes(doc, svg, panel.nodes, measured, 0, 16 - panel.top, null);
+                    return page;
+                });
+                pages = pages.concat(buildDiagramEvidencePages(nodes, measured.scores, staged, measured.measure, areas, evidenceNumbers));
+                var candidate = arrangeDiagramPrintSheet(pages, staged, measured.measure, className, options.paper);
+                if (!best || candidate.fit > best.fit) { best = candidate; }
+            });
+            if (areaPanel) { best.page.setAttribute('data-taxonomy-panel', areaPanel.area.code); }
+            doc.body.appendChild(best.page);
+            return best;
+        });
     }
 
     function decisionPrintLinkWidth(node, scores, rankMap) {
@@ -1326,20 +1685,39 @@
         var mode = document.createElement('select');
         mode.className = 'form-select form-select-sm tax-diagram-print-mode';
         mode.setAttribute('aria-label', t('views.diagram.printMode'));
-        [['pages', 'views.diagram.printPages'], ['single', 'views.diagram.printSingle']].forEach(function (entry) {
+        [['pages', 'views.diagram.printPages'], ['single', 'views.diagram.printSingle'], ['taxonomy', 'views.diagram.printTaxonomy']].forEach(function (entry) {
             var option = document.createElement('option'); option.value = entry[0]; option.textContent = t(entry[1]); mode.appendChild(option);
         });
         mode.value = container._taxPrintMode || 'pages';
-        mode.addEventListener('change', function () { container._taxPrintMode = mode.value; });
+        var paper = document.createElement('select');
+        paper.className = 'form-select form-select-sm tax-diagram-print-paper';
+        paper.setAttribute('aria-label', t('views.diagram.printPaper'));
+        Object.keys(DIAGRAM_PAPER_SIZES).forEach(function (format) {
+            var option = document.createElement('option'); option.value = format; option.textContent = format; paper.appendChild(option);
+        });
+        function updatePaper() {
+            paper.disabled = mode.value === 'pages';
+            paper.value = paper.disabled ? 'A4' : container._taxPrintPaper || 'A1';
+            paper.title = t(paper.disabled ? 'views.diagram.printPaperSections' : 'views.diagram.printPaper');
+        }
+        updatePaper();
+        mode.addEventListener('change', function () { container._taxPrintMode = mode.value; updatePaper(); });
+        paper.addEventListener('change', function () { container._taxPrintPaper = paper.value; });
         var button = document.createElement('button'); button.type = 'button';
         button.className = 'btn btn-sm btn-outline-secondary tax-diagram-print-button';
         button.textContent = t('views.diagram.print');
-        button.addEventListener('click', function () { print(mode.value); });
+        button.addEventListener('click', function () { print({mode: mode.value, paper: paper.value}); });
         toolbar.insertBefore(mode, toolbar.querySelector('.tax-diagram-hint'));
+        toolbar.insertBefore(paper, toolbar.querySelector('.tax-diagram-hint'));
         toolbar.insertBefore(button, toolbar.querySelector('.tax-diagram-hint'));
     }
 
     function printDiagram(container, mode, titleKey, build) {
+        // String callers retain the original A4/custom-size API. Controls provide
+        // an explicit ISO paper format, independent from the sheet grouping.
+        var options = typeof mode === 'string' ? {mode: mode, paper: mode === 'pages' ? 'A4' : null} : mode || {mode: 'pages', paper: 'A4'};
+        if (['pages', 'single', 'taxonomy'].indexOf(options.mode) < 0) { options = {mode: 'pages', paper: 'A4'}; }
+        if (options.paper && !DIAGRAM_PAPER_SIZES[options.paper]) { options = {mode: options.mode, paper: 'A1'}; }
         // Open synchronously in the user gesture so normal popup policies can allow it.
         var popup = window.open('', '_blank');
         if (!popup) {
@@ -1353,13 +1731,20 @@
         var charset = doc.createElement('meta'); charset.setAttribute('charset', 'utf-8');
         doc.head.appendChild(charset);
         doc.title = t(titleKey);
-        var single = mode === 'single';
-        var size = build(doc, single);
-        // CSS pixels preserve the measured text size; add the 20mm page margins without scaling the diagram.
-        var pageSize = single ? Math.ceil(size.width + 76) + 'px ' + Math.ceil(size.height + 76) + 'px' : 'A4 landscape';
+        var sheets = build(doc, options);
         var style = doc.createElement('style');
-        style.textContent = '@page{size:' + pageSize + ';margin:10mm}html,body{margin:0;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif}.diagram-print-page{box-sizing:border-box;width:'
-            + (single ? Math.ceil(size.width) : 1040) + 'px;break-after:page;page-break-after:always;padding:0}.diagram-print-page:last-child{break-after:auto;page-break-after:auto}.diagram-print-page>svg{display:block;max-width:100%;height:auto}h2{font-weight:600}@media screen{body{padding:20px}.diagram-print-page{border-bottom:1px solid #ccc;margin-bottom:24px}}';
+        var pageRules = '';
+        if (options.mode !== 'pages') {
+            sheets.forEach(function (sheet, index) {
+                var name = 'diagram-sheet-' + index;
+                var pageSize = sheet.dimensions ? sheet.dimensions[0] + 'mm ' + sheet.dimensions[1] + 'mm'
+                    : Math.ceil(sheet.width + 76) + 'px ' + Math.ceil(sheet.height + 76) + 'px';
+                pageRules += '@page ' + name + '{size:' + pageSize + ';margin:10mm}';
+                sheet.page.style.cssText = 'page:' + name + ';width:' + sheet.width + 'px;height:' + sheet.height + 'px;break-inside:avoid';
+            });
+        }
+        style.textContent = '@page{size:A4 landscape;margin:10mm}' + pageRules
+            + 'html,body{margin:0;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif}.diagram-print-page{box-sizing:border-box;width:1040px;break-after:page;page-break-after:always;padding:0}.diagram-print-page:last-child{break-after:auto;page-break-after:auto}.diagram-print-page>svg{display:block;max-width:100%;height:auto}h2{font-weight:600}@media screen{body{padding:20px}.diagram-print-page{border-bottom:1px solid #ccc;margin-bottom:24px}}';
         doc.head.appendChild(style);
         var status = container.querySelector('.decision-print-status');
         if (status) { status.remove(); }
@@ -1370,14 +1755,14 @@
     }
 
     function printDecisionDiagram(layout, container, mode) {
-        printDiagram(container, mode, 'views.diagram.printTitle', function (doc, single) {
-            return single ? buildDecisionPrintSheet(layout, doc)
+        printDiagram(container, mode, 'views.diagram.printTitle', function (doc, options) {
+            return options.mode !== 'pages' ? buildDecisionPrintSheets(layout, doc, 'decision-print-page', options)
                 : buildDecisionPrintPages(layout, doc).concat(buildDiagramEvidencePages(layout.nodes, layout.scores, doc, layout.measure, layout.captionAreas));
         });
     }
 
     function printTreeDiagram(data, scores, container, mode) {
-        printDiagram(container, mode, 'views.diagram.printTreeTitle', function (doc, single) {
+        printDiagram(container, mode, 'views.diagram.printTreeTitle', function (doc, options) {
             var root = d3.hierarchy({code: '__root__', children: contentRoots(data)}), areas = {};
             data.forEach(function (area) {
                 if (isTaxonomyContainer(area)) { (area.children || []).forEach(function (branch) { areas[branch.code] = area; }); }
@@ -1387,7 +1772,7 @@
             // never slice a label or a glyph. The live SVG/Canvas hierarchy stays untouched.
             var layout = layoutDecisionPanels(root, scores || {}, areas, decisionMeasure(), data,
                 {textWidth: 174, cardWidth: 210, columnPitch: 240, columnsPerPage: 4});
-            if (single) { return buildDecisionPrintSheet(layout, doc, 'tree-print-page'); }
+            if (options.mode !== 'pages') { return buildDecisionPrintSheets(layout, doc, 'tree-print-page', options); }
             var pages = buildDecisionPrintPages(layout, doc);
             pages.forEach(function (page) { page.className = 'diagram-print-page tree-print-page'; });
             return pages.concat(buildDiagramEvidencePages(layout.nodes, layout.scores, doc, layout.measure, layout.captionAreas));
@@ -1395,7 +1780,7 @@
     }
 
     function renderDecisionMap(container, data, scores) {
-        rememberDiagramFocus(container);
+        var readState = beginDiagramReadState(container, 'decision', data);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
@@ -1494,6 +1879,7 @@
         // Synthetic root to hold the selected roots
         var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
+        restoreDiagramBranches(root, readState, false);
 
         var panelAreas = {};
         data.forEach(function (area) {
@@ -1531,10 +1917,13 @@
         var decisionNavigation = createDiagramNavigation(container, svg.node(), {
             scores: scores, activate: function (node) { toggleDiagramBranch(node, dmUpdate); }
         });
+        installTreeActions(container, root, dmUpdate, decisionNavigation, scores);
 
         var g = zoomLayer.append('g');
         var nodeSeq = 0;
         var dmUpdateToken = 0;
+        var restoringFirstLayout = !!readState.rendered;
+        var nodePosition = function (node) { return {x: node.y, y: node.x}; };
 
         var RANK_EMOJIS = ['', '\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49']; // 🥇🥈🥉
 
@@ -1589,6 +1978,8 @@
             decisionLayout = layoutDecisionPanels(root, scores, panelAreas, measureDecisionText, visibleAreas);
             var nodes = decisionLayout.nodes;
             var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
+            var restoring = restoringFirstLayout;
+            restoringFirstLayout = false;
             svg.attr('width', Math.max(containerWidth, decisionLayout.width)).attr('height', Math.max(400, decisionLayout.height));
             g.attr('transform', 'translate(0,0)');
             var captions = g.selectAll('text.dm-area-caption').data(decisionLayout.panels, function (panel) { return panel.area.code; });
@@ -1612,8 +2003,8 @@
 
             var nodeEnter = node.enter().append('g')
                 .attr('class', 'dm-node')
-                .attr('transform', 'translate(' + sourceY + ',' + sourceX + ')')
-                .style('opacity', 0);
+                .attr('transform', function (d) { return 'translate(' + (restoring ? d.y : sourceY) + ',' + (restoring ? d.x : sourceX) + ')'; })
+                .style('opacity', restoring ? 1 : 0);
 
             // Expansion and saved rationale are independent controls. Keep their
             // common positioned group neutral so assistive technology exposes both.
@@ -1673,7 +2064,7 @@
             var nodeUpdate = nodeEnter.merge(node);
             decisionNavigation.update(diagramEntries(nodeUpdate.select('.dm-node-control')));
 
-            var nodeT = nodeUpdate.transition().duration(300)
+            var nodeT = nodeUpdate.transition().duration(restoring ? 0 : 300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
 
@@ -1722,13 +2113,14 @@
             var linkEnter = link.enter().insert('path', 'g')
                 .attr('class', 'dm-link')
                 .attr('fill', 'none')
-                .attr('d', function () {
+                .attr('d', function (d) {
+                    if (restoring) { return diag(d); }
                     var o = { x: sourceX, y: sourceY };
                     return diag({ source: o, target: o });
                 });
 
             var linkUpdate = linkEnter.merge(link);
-            var linkT = linkUpdate.transition().duration(300).attr('d', diag);
+            var linkT = linkUpdate.transition().duration(restoring ? 0 : 300).attr('d', diag);
             linkUpdate
                 .attr('stroke', dmLinkStroke)
                 .attr('stroke-width', dmLinkStrokeWidth);
@@ -1744,7 +2136,7 @@
             // The version token prevents stale handlers from a prior dmUpdate()
             // from racing with a newer call that already cleared the attribute.
             var settle = function () {
-                if (currentToken === dmUpdateToken) {
+                if (currentToken === dmUpdateToken && svg.node().isConnected !== false) {
                     container.setAttribute('data-transitions-complete', 'true');
                 }
             };
@@ -1772,6 +2164,11 @@
 
         // ── Results table ────────────────────────────────────────────────────
         renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
+        if (svg && decisionNavigation) {
+            restoreDiagramViewport(readState, svg, decisionZoom, root, nodePosition, svgWrapper, container);
+            bindDiagramReadState(container, readState, {root: root, surface: svg.node(), navigation: decisionNavigation,
+                position: nodePosition, scroller: svgWrapper});
+        }
         container.setAttribute('data-view-rendered', 'decision');
     }
 
@@ -1888,7 +2285,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderTreeCanvas(container, data, scores) {
-        rememberDiagramFocus(container);
+        var readState = beginDiagramReadState(container, 'tree', data);
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
@@ -1912,7 +2309,7 @@
         var rootData = { code: '__root__', name: '', children: contentRoots(data) };
         var root = d3.hierarchy(rootData);
 
-        collapseInitialTree(root);
+        restoreDiagramBranches(root, readState, true);
         var measure = treeTextMeasure();
         var containerWidth = container.clientWidth || 800;
 
@@ -1944,9 +2341,9 @@
         var canvasNavigation = createDiagramNavigation(container, canvas, {
             scores: scores, canvas: true,
             activate: function (node) { toggleDiagramBranch(node, performLayout); },
-            change: function (node) {
+            change: function (node, restoring) {
                 canvasStatus.textContent = diagramNodeLabel(node, scores, false);
-                if (document.activeElement === canvas && canvasZoom) {
+                if (!restoring && document.activeElement === canvas && canvasZoom) {
                     d3.select(canvas).call(canvasZoom.translateTo,
                         node.y + canvas._offsetX, node.x + canvas._offsetY,
                         [(container.clientWidth || 800) / 2, 200]);
@@ -2141,6 +2538,10 @@
         root.x0 = 0;
         root.y0 = 0;
         performLayout();
+        function nodePosition(node) { return {x: node.y + canvas._offsetX, y: node.x + canvas._offsetY}; }
+        restoreDiagramViewport(readState, canvasSelection, canvasZoom, root, nodePosition, null, container);
+        bindDiagramReadState(container, readState, {root: root, surface: canvas, navigation: canvasNavigation,
+            position: nodePosition});
 
         // Responsive resize
         var obs = new ResizeObserver(function () {
@@ -2430,6 +2831,8 @@
 
     // ── Export ─────────────────────────────────────────────────────────────────
     window.TaxonomyViews = {
+        prepareDiagramContext: prepareDiagramContext,
+        restoreDiagramControlFocus: restoreDiagramControlFocus,
         renderSunburst: renderSunburst,
         filterRelevance: filterRelevance,
         filterZeroRelevance: filterZeroRelevance,

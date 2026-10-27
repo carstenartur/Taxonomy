@@ -8,6 +8,7 @@ const sources = ['shared/taxonomy-utils.js', 'core/taxonomy-browse.js', 'core/ta
     .map(file => readFileSync(new URL(sourcePath + file, import.meta.url), 'utf8'));
 const searchSource = readFileSync(new URL(sourcePath + 'shared/taxonomy-search.js', import.meta.url), 'utf8');
 const onboardingSource = readFileSync(new URL(sourcePath + 'shared/taxonomy-onboarding.js', import.meta.url), 'utf8');
+const viewsSource = readFileSync(new URL(sourcePath + 'core/taxonomy-views.js', import.meta.url), 'utf8');
 
 // A bounded, deterministic catalogue fixture. The BP-1000 -> BP-1327 -> BP-1060
 // and BR-1000 -> BR-1228 edges come from the checked-in 25AUG2025 Excel catalogue;
@@ -143,7 +144,7 @@ function tabStops(tree) {
         .map(item => item.dataset.code);
 }
 
-function harness({ view = 'list', data = catalogue(), scores = null, interactive = false, response,
+function harness({ view = 'list', data = catalogue(), scores = null, interactive = false, response, relevance,
     language = 'en', coverage = null, reasons = {} } = {}) {
     const document = { readyState: 'loading', activeElement: null, addEventListener() {}, dispatchEvent() {} };
     document.body = new Element('body', document); document.documentElement = new Element('html', document);
@@ -155,6 +156,10 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
     document.querySelector = selector => document.body.querySelector(selector);
     document.getElementById = id => document.body.querySelector('#' + id);
     const tree = document.createElement('div'); tree.id = 'taxonomyTree'; document.body.appendChild(tree);
+    if (relevance) {
+        const filter = document.createElement('select'); filter.id = 'diagramRelevanceFilter';
+        filter.value = relevance; document.body.appendChild(filter);
+    }
     const input = document.createElement('textarea'); input.id = 'businessText'; input.value = 'A deterministic requirement';
     document.body.appendChild(input);
     const status = document.createElement('div'); status.id = 'statusArea'; document.body.appendChild(status);
@@ -180,6 +185,7 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
         }
     });
     vm.runInContext(sources[0], context); context.TaxonomyUtils = window.TaxonomyUtils;
+    if (relevance) vm.runInContext(viewsSource, context);
     // Exercise the real expand/collapse commands without adding a production API.
     vm.runInContext(sources[1].replace('window.TaxonomyBrowse = {',
         'window.TaxonomyBrowse = { expandAllForTest: expandAll, collapseAllForTest: collapseAll,'), context);
@@ -204,6 +210,43 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
         key(key) { document.activeElement.dispatchEvent({ type: 'keydown', key }); }
     };
 }
+
+for (const view of ['list', 'tabs']) {
+    test(`${view} applies the shared positive selection to lazy children and restores all nodes`, () => {
+        const data = freeze(catalogue()), before = JSON.stringify(data);
+        const scores = freeze({ BP: 0, 'BP-1000': 0, 'BP-1327': 0, 'BP-1060': 75, BR: 0, 'BR-1000': 0 });
+        const h = harness({ view, data, scores, relevance: 'positive' });
+        h.browse.expandAllForTest();
+        assert.ok(h.group('BP'), 'the positive descendant keeps its original area');
+        assert.ok(h.row('BP-1060'), 'the selected leaf remains reachable through its ancestors');
+        assert.ok(h.group('BR') === null, 'zero and unassessed sibling branches are excluded');
+        assert.ok(h.row('BR-1228') === null, 'expanding must not recreate a filtered child');
+        assert.equal(h.browse.isRelevanceFilterActive(), true);
+        h.document.getElementById('diagramRelevanceFilter').value = 'all';
+        h.browse.renderView(data, scores); h.browse.expandAllForTest();
+        assert.ok(h.row('BR-1228'), 'changing the shared option restores unassessed nodes');
+        assert.equal(h.browse.isRelevanceFilterActive(), false);
+        assert.equal(JSON.stringify(data), before, 'filtering must not change stored catalogue evidence');
+    });
+    test(`${view} keeps an empty positive selection empty`, () => {
+        const data = freeze(catalogue());
+        const h = harness({ view, data, scores: { BP: 0, BR: 0 }, relevance: 'positive' });
+        assert.equal(h.tree.querySelectorAll('.tax-node').length, 0);
+        assert.equal(h.tree.getAttribute('data-view-rendered'), view);
+        assert.ok(h.tree.textContent.includes('view.relevance.empty'));
+        assert.equal(h.state.taxonomyData, data);
+    });
+}
+
+test('explicitly selecting a filtered search result reveals it by returning to all nodes', () => {
+    const h = harness({ scores: { 'BP-1060': 75 }, relevance: 'positive' });
+    assert.ok(h.group('BR') === null);
+    const target = h.loadSearch().revealNodeInTree('BR-1228');
+    assert.ok(target, 'an explicit search result must remain reachable when its assessment is unknown');
+    assert.equal(target.dataset.code, 'BR-1228');
+    assert.equal(h.document.getElementById('diagramRelevanceFilter').value, 'all');
+    assert.deepEqual(h.state.currentScores, { 'BP-1060': 75 });
+});
 
 test('list renders BP/BR as named groups and original entries as the first actual nodes', () => {
     const data = freeze(catalogue()), before = JSON.stringify(data);

@@ -25,8 +25,10 @@ export async function verifyReadingErgonomics({ page, evidence }) {
     for (const width of [390, 768, 1366, 1920, 2560]) {
       await page.setViewportSize({ width, height: 1080 });
       const positions = [];
-      for (const id of ['viewSunburst', 'viewTree', 'viewDecision', 'viewSummary']) {
+      for (const id of ['viewList', 'viewTabs', 'viewSunburst', 'viewTree', 'viewDecision', 'viewSummary']) {
         await page.locator('#' + id).click();
+        evidence.assert(await page.locator('#diagramRelevanceFilter').isVisible(),
+          `The shared relevance filter is unavailable in ${id} at ${width}px`);
         positions.push(await page.locator('#viewList').evaluate(button => {
           const rect = button.getBoundingClientRect();
           const header = button.closest('.card-header').getBoundingClientRect();

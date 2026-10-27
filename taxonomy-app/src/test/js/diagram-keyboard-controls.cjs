@@ -89,6 +89,18 @@ test('a complete renderer replacement restores focus to the previously active ta
     assert.equal(f.container._taxRestoreNodeFocus, false);
 });
 
+test('a removed active node restores focus to its surviving ancestor after hierarchy replacement', () => {
+    const f = fixture();
+    f.nav.update([f.entries[2], f.entries[0], f.entries[1]]);
+    f.entries[0].element.focus(); f.key('End');
+    f.container._taxRestoreNodeFocus = true;
+    f.document.activeElement = null;
+    const replacement = f.helpers.navigation(f.container, f.surface, {scores: {}, activate() {}});
+    replacement.update([f.entries[2], f.entries[0]]);
+    assert.equal(f.document.activeElement, f.entries[0].element,
+        'Filtering away the selected descendant must keep its surviving branch, even when another root comes first');
+});
+
 test('Canvas has one keyboard target with a readable current node and branch activation', () => {
     const f = fixture(true); f.surface.focus();
     assert.equal(f.surface.getAttribute('tabindex'), '0');

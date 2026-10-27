@@ -135,12 +135,14 @@ class AnalysisCompletionContractTest {
         }).when(json).writeValueAsString(any());
         doAnswer(invocation -> {
             AnalysisStreamEventHandler emit = invocation.getArgument(1);
-            emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80d), List.of(), List.of(), List.of()));
+            emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80d), List.of(), List.of(), List.of(),
+                    Map.of("CP", "completed provider explanation"), null, null));
             // A late duplicate/error cannot reopen or contradict the finalized stream.
             emit.handle(new AnalysisStreamEvent.Error("ERROR", "late duplicate", Map.of(), List.of(), List.of(), List.of()));
             return null;
         }).when(stream).stream(any(), any());
-        assertThat(executeStream()).contains("\"status\":\"SUCCESS\"").doesNotContain("late duplicate");
+        assertThat(executeStream()).contains("\"status\":\"SUCCESS\"", "\"reasons\":{\"CP\":\"completed provider explanation\"}")
+                .doesNotContain("late duplicate");
         verify(mapper, times(1)).map(any());
     }
 
@@ -192,7 +194,7 @@ class AnalysisCompletionContractTest {
             if ("cancelled".equals(ending)) registry.cancel(id, "alice", scope);
             if ("complete".equals(ending)) {
                 emit.handle(new AnalysisStreamEvent.Complete("PARTIAL", Map.of("CP", 80d),
-                        List.of("retained warning"), List.of(), List.of(), duration, coverage));
+                        List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason"), duration, coverage));
             } else {
                 emit.handle(new AnalysisStreamEvent.Error("PARTIAL", "retained diagnostic", Map.of("CP", 80d),
                         List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason"), duration, coverage));
@@ -205,7 +207,8 @@ class AnalysisCompletionContractTest {
         else assertThat(body).contains("\"analysisDurationMillis\":" + duration);
         assertThat(body.split("event:error", -1)).hasSize(2);
         assertThat(body).doesNotContain("catalogue projection unavailable", "\"status\":\"SUCCESS\"");
-        if (!"complete".equals(ending)) assertThat(body).contains("retained reason", "retained diagnostic");
+        assertThat(body).contains("retained reason");
+        if (!"complete".equals(ending)) assertThat(body).contains("retained diagnostic");
         String terminal = body.lines().filter(line -> line.startsWith("data:")).reduce((first, last) -> last).orElseThrow();
         var payload = new ObjectMapper().readTree(terminal.substring(5));
         var co = payload.path("analysisCoverage").path("nodes").path("CO");

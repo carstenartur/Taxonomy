@@ -33,6 +33,21 @@ test('a missing product-family evaluation must not become a zero rejection',()=>
     assert.equal(filter(product, {'IP-1286': 0}, detail).length, 1);
     assert.equal(filter(product, {'IP-1286': 0}, {'IP-1286': {...detail['IP-1286'], parentScore: 0}}).length, 0);
 });
+for (const familyScore of [0, 40]) test(`stream hints resolve product filtering when family evidence becomes ${familyScore}`,()=>{
+    const product = Object.freeze([Object.freeze({code:'IP-1286',parentCode:'IP-2072',children:Object.freeze([])})]);
+    // Incremental server hints identify the family; they do not copy its score into every product detail.
+    const details = Object.freeze({'IP-1286':Object.freeze({kind:'PRODUCT_SUITABILITY',parentCode:'IP-2072',rawScore:80})});
+    const project = context.window.TaxonomyViews.filterRelevance;
+    assert.equal(project(product,{'IP-1286':0},details,'positive').length,0);
+    assert.equal(project(product,{'IP-1286':0},details,'hide-zero').length,1);
+    const resolved = Object.freeze({'IP-2072':familyScore,'IP-1286':familyScore * 0.8});
+    assert.equal(project(product,resolved,details,'positive').length,familyScore > 0 ? 1 : 0);
+    assert.equal(project(product,resolved,details,'hide-zero').length,familyScore > 0 ? 1 : 0);
+    const authoritative = {'IP-1286':{...details['IP-1286'],effectiveRelevance:familyScore * 0.8}};
+    assert.equal(project(product,{'IP-1286':familyScore * 0.8},authoritative,'positive').length,familyScore > 0 ? 1 : 0);
+    assert.equal(project(product,{'IP-1286':familyScore * 0.8},authoritative,'hide-zero').length,familyScore > 0 ? 1 : 0);
+    assert.equal(Object.hasOwn(details['IP-1286'],'parentScore'),false,'Filtering must not rewrite evidence');
+});
 test('strict positive projection excludes unknown, pending and nonpositive evidence',()=>{
     const scores=Object.freeze({BP:0,BR:75,CP:null,CI:NaN,CO:'80',CR:-1,IP:Infinity});
     const project=context.window.TaxonomyViews.filterRelevance;

@@ -5,6 +5,8 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.MockedStatic;
 import org.springframework.core.env.StandardEnvironment;
 import java.util.Map;
@@ -30,6 +32,24 @@ class AnalysisProgressRegistryTest {
         memory.close();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void completedAndReplayedAssessmentsPublishTheirWholeReasonsBeforeTheRunEnds(boolean replayed) {
+        try (var handle = registry.open(null, "alice", scope, null)) {
+            var answer = detail("CP", "prompt", "response");
+            String reason = "Complete saved explanation. ".repeat(400) + "\nFINAL REASON LINE";
+            answer.setReasons(Map.of("CP", reason));
+            if (replayed) AnalysisRunControl.assessment(answer);
+            else AnalysisRunControl.call("MOCK", "CP", () -> answer);
+
+            var payload = new tools.jackson.databind.ObjectMapper().convertValue(
+                    registry.snapshot(handle.id(), "alice", scope), Map.class);
+            assertThat(payload).containsEntry("status", "RUNNING")
+                    .containsEntry("rawScores", Map.of("CP", 80d))
+                    .containsEntry("reasons", Map.of("CP", reason));
+        }
+    }
+
     @Test void completedCountSurvivesPreviewEvictionAndRepeatedAnswers() {
         try (var handle = registry.open(null, "alice", scope, null)) {
             var scores = new java.util.LinkedHashMap<String, Double>();
@@ -41,6 +61,49 @@ class AnalysisProgressRegistryTest {
             var snapshot = registry.snapshot(handle.id(), "alice", scope);
             assertThat(snapshot.rawScores()).hasSize(8192);
             assertThat(snapshot.evaluatedNodes()).isEqualTo(9000);
+        }
+    }
+
+    @Test void reasonPreviewIsBoundedWithoutPublishingPartialExplanationsOrUnretainedCodes() {
+        try (var handle = registry.open(null, "alice", scope, null)) {
+            var scores = new java.util.LinkedHashMap<String, Double>();
+            var reasons = new java.util.LinkedHashMap<String, String>();
+            String reason = "Vollständige Begründung. ".repeat(10) + "FINAL LINE";
+            for (int i = 0; i < 9000; i++) {
+                scores.put("fixture-" + i, 1d);
+                reasons.put("fixture-" + i, reason);
+            }
+            var answer = detail("CP", "prompt", "response");
+            answer.setScores(scores); answer.setReasons(reasons);
+            AnalysisRunControl.call("MOCK", "CP", () -> answer);
+            var snapshot = registry.snapshot(handle.id(), "alice", scope);
+            var payload = new tools.jackson.databind.ObjectMapper().convertValue(snapshot, Map.class);
+            assertThat(payload).containsEntry("reasonsTruncated", true);
+            @SuppressWarnings("unchecked")
+            Map<String, String> retained = (Map<String, String>) payload.get("reasons");
+            assertThat(retained).isNotEmpty();
+            assertThat(retained.keySet()).isSubsetOf(snapshot.rawScores().keySet());
+            assertThat(retained.values()).containsOnly(reason);
+            assertThat(retained.values().stream().mapToInt(value -> value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).sum())
+                    .isLessThanOrEqualTo(1024 * 1024);
+        }
+    }
+
+    @Test void emptyOrFailedLaterReasonsDoNotEraseTheCompletedExplanation() {
+        try (var handle = registry.open(null, "alice", scope, null)) {
+            AnalysisRunControl.call("MOCK", "CP", () -> detail("CP", "prompt", "response"));
+            for (String missing : new String[]{null, "", "   "}) {
+                var answer = detail("CP", "prompt", "response");
+                answer.setReasons(java.util.Collections.singletonMap("CP", missing));
+                AnalysisRunControl.call("MOCK", "CP", () -> answer);
+            }
+            var failed = detail("CP", "prompt", "response");
+            failed.setError("Incomplete response");
+            failed.setReasons(Map.of("CP", "Unaccepted replacement"));
+            AnalysisRunControl.call("MOCK", "CP", () -> failed);
+            var payload = new tools.jackson.databind.ObjectMapper().convertValue(
+                    registry.snapshot(handle.id(), "alice", scope), Map.class);
+            assertThat(payload).containsEntry("reasons", Map.of("CP", "reason"));
         }
     }
     @Test void failedFallbackZerosDoNotCompleteAssessments() {
