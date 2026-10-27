@@ -16,10 +16,21 @@ final class VisioSnapshotMetadata {
     private VisioSnapshotMetadata() { }
 
     static VisioExportMetadata from(Projection projection, DiagramModel graph, String graphSha256) {
+        return from(projection, graph, graphSha256, null);
+    }
+
+    static VisioExportMetadata from(Projection projection, DiagramModel graph, String graphSha256,
+            VisioExportContextService.ExportContext context) {
         Map<String, VisioProperty> properties = new LinkedHashMap<>();
+        if (context != null) properties.putAll(context.documentProperties());
         List<VisioLoss> losses = new ArrayList<>();
         String id = projection.snapshotId();
         put(properties, "snapshotId", id);
+        put(properties, "requirementText", projection.requirementText());
+        put(properties, "requirementKey", projection.requirementKey());
+        put(properties, "requirementTitle", projection.requirementTitle());
+        put(properties, "projectKey", projection.projectKey());
+        put(properties, "projectTitle", projection.projectTitle());
         put(properties, "snapshotStatus", projection.snapshotStatus());
         put(properties, "snapshotCreatedAt", projection.snapshotCreatedAt());
         if (projection.snapshotCreatedAt() != null) {
@@ -36,16 +47,22 @@ final class VisioSnapshotMetadata {
         put(properties, "canonicalGraphSha256", graphSha256);
         if (projection.exportProvenance() != null) {
             put(properties, "requirementVersionId", projection.exportProvenance().requirementVersionId());
+            put(properties, "requirementVersionCreatedBy", projection.exportProvenance().requirementVersionCreatedBy());
+            put(properties, "requirementVersionCreatedAt", projection.exportProvenance().requirementVersionCreatedAt());
             put(properties, "taxonomyFingerprint", projection.exportProvenance().taxonomyFingerprint());
             put(properties, "repositoryId", projection.exportProvenance().repositoryId());
         }
-        for (String field : List.of("requirementVersionId", "taxonomyFingerprint", "repositoryId", "selectionProfileFingerprint")) {
+        for (String field : List.of("requirementVersionId", "requirementVersionCreatedBy", "requirementVersionCreatedAt",
+                "taxonomyFingerprint", "repositoryId", "selectionProfileFingerprint", "requirementText",
+                "generatorName", "generatorVersion", "exportedBy", "exportedAt", "requirementUrl")) {
             if (!properties.containsKey("taxonomy." + field)) {
                 losses.add(new VisioLoss("model", id, field, "OMITTED",
-                        "Not retained in the authorized persisted snapshot projection; no current-state value was substituted."));
+                        field.equals("requirementUrl")
+                                ? "No editing link is available; consult the visible requirement URL status. No request-derived or relative URL was substituted."
+                                : "Unavailable in the authorized snapshot or explicit export context; no current-state value was substituted."));
             }
         }
-        for (String field : List.of("requirementText", "providerPayload", "prompt", "sourceEvidence", "warnings")) {
+        for (String field : List.of("providerPayload", "prompt", "sourceEvidence", "warnings")) {
             losses.add(new VisioLoss("model", id, field, "OMITTED",
                     field.equals("sourceEvidence")
                             ? "Raw model-level provider/source evidence is omitted; recorded scoped relationship evidence is retained where present."

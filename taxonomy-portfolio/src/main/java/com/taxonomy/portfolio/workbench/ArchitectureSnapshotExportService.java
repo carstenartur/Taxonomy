@@ -12,12 +12,14 @@ import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
@@ -37,10 +39,19 @@ public class ArchitectureSnapshotExportService {
 
     private final ArchitectureWorkbenchService workbenchService;
     private final CanonicalDiagramExportService diagramExportService;
+    private final VisioExportContextService visioExportContextService;
 
     public ArchitectureSnapshotExportService(
             ArchitectureWorkbenchService workbenchService,
             CanonicalDiagramExportService diagramExportService) {
+        this(workbenchService, diagramExportService,
+                new VisioExportContextService(null, "unknown", "", Clock.systemUTC()));
+    }
+
+    @Autowired
+    public ArchitectureSnapshotExportService(ArchitectureWorkbenchService workbenchService,
+            CanonicalDiagramExportService diagramExportService, VisioExportContextService visioExportContextService) {
+        this.visioExportContextService = Objects.requireNonNull(visioExportContextService);
         this.workbenchService = workbenchService;
         this.diagramExportService = diagramExportService;
     }
@@ -102,7 +113,7 @@ public class ArchitectureSnapshotExportService {
 
         DiagramModel canonicalDiagram = freeze(projection.diagram());
         String graphFingerprint = fingerprint(canonicalDiagram);
-        byte[] content = serialize(canonicalDiagram, format, projection, graphFingerprint);
+        byte[] content = serialize(canonicalDiagram, format, projection, graphFingerprint, username);
         if (content == null || content.length == 0) {
             throw PortfolioException.conflict(
                     "The canonical diagram exporter returned no content");
@@ -126,16 +137,18 @@ public class ArchitectureSnapshotExportService {
                 content);
     }
 
-    private byte[] serialize(DiagramModel canonicalDiagram, Format format, Projection projection, String graphFingerprint) {
+    private byte[] serialize(DiagramModel canonicalDiagram, Format format, Projection projection, String graphFingerprint, String username) {
         try {
             return switch (format) {
                 case ARCHIMATE_XML ->
                         diagramExportService.exportAsArchiMate(canonicalDiagram, ArchiMateSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint));
                 case ARCHIMATE_BUNDLE -> bundle(diagramExportService.prepareArchiMate(canonicalDiagram, ArchiMateSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint)));
                 case VISIO_VSDX ->
-                        diagramExportService.exportAsVisio(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint));
+                        diagramExportService.exportAsVisio(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint,
+                                visioExportContextService.create(projection.projectId(), projection.requirementId(), username)));
                 case VISIO_BUNDLE ->
-                        diagramExportService.exportAsVisioBundle(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint));
+                        diagramExportService.exportAsVisioBundle(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint,
+                                visioExportContextService.create(projection.projectId(), projection.requirementId(), username)));
             };
         } catch (IllegalArgumentException exception) {
             throw new PortfolioException(

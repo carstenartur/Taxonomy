@@ -35,6 +35,7 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_CATALOGUE_OVERLAY_ENABLED` | `taxonomy.catalogue.overlay.enabled` | `true` | Applies the versioned, fail-closed JSON overlay to the Excel baseline and reconciles persisted rows idempotently. |
 | `TAXONOMY_CATALOGUE_OVERLAY_RESOURCE` | `taxonomy.catalogue.overlay-resource` | `classpath:data/nato-taxonomy.json` | Overlay resource containing explicit parent corrections, product roles, secondary classifications and review metadata. |
 | `TAXONOMY_REPORT_TIME_ZONE` | `taxonomy.report.time-zone` | `Europe/Berlin` | Zone identifier used when rendering decision-report timestamps. |
+| `TAXONOMY_EXPORT_PUBLIC_BASE_URL` | `taxonomy.export.public-base-url` | empty | Optional trusted public application URL for saved-requirement editing links in Visio exports. Use an absolute HTTP(S) URL with any deployment context path, without credentials, query, fragment or encoded path. Empty leaves the link unavailable; normal sign-in and authorization still apply. |
 | `GIT_COMMIT` | `git.commit.id` | unset | Preferred build/source commit recorded in decision-report provenance. |
 | `GITHUB_SHA` | fallback for `git.commit.id` | `unknown` | Used only when `GIT_COMMIT` is absent. |
 | `TAXONOMY_SCHEMA_MIGRATION_ENABLED` | `taxonomy.schema-migration.enabled` | `true` | Runs idempotent portable schema-contract migrations. Disable only for controlled diagnostics. |

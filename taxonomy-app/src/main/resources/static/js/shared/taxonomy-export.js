@@ -486,6 +486,11 @@
         try {
             // Freeze exactly the current view at the click, not a later mutable state.
             var exportView = Object.assign({}, state.currentArchView);
+            // Legacy working views lack source text. Use the captured analysis baseline,
+            // never a later edited textarea; this remains client-provided working data.
+            if (/\/visio$/.test(url) && typeof exportView.originalRequirementText !== 'string') {
+                exportView.originalRequirementText = state.lastAnalyzedText;
+            }
             exportView.includedElements = exportView.includedElements.map(function (element) {
                 var reason = state.currentReasons?.[element.nodeCode];
                 if (typeof reason !== 'string' || !reason.trim()

@@ -3,6 +3,8 @@ package com.taxonomy.export;
 import com.microsoft.schemas.office.visio.x2012.main.PageContentsDocument;
 import com.microsoft.schemas.office.visio.x2012.main.PagesDocument;
 import com.microsoft.schemas.office.visio.x2012.main.VisioDocumentDocument1;
+import com.microsoft.schemas.office.visio.x2012.main.MastersDocument;
+import com.microsoft.schemas.office.visio.x2012.main.MasterContentsDocument;
 import org.apache.xmlbeans.XmlError;
 import org.apache.xmlbeans.XmlObject;
 import org.apache.xmlbeans.XmlOptions;
@@ -27,16 +29,18 @@ final class VisioOpcValidator {
     private static final String REL = "http://schemas.openxmlformats.org/package/2006/relationships";
     private static final String OFFICE_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static final String CONTENT_TYPES = "http://schemas.openxmlformats.org/package/2006/content-types";
-    private static final Map<String, String> RELATION_CONTENT_TYPES = Map.of(
-            "http://schemas.microsoft.com/visio/2010/relationships/document", "application/vnd.ms-visio.drawing.main+xml",
-            "http://schemas.microsoft.com/visio/2010/relationships/pages", "application/vnd.ms-visio.pages+xml",
-            "http://schemas.microsoft.com/visio/2010/relationships/windows", "application/vnd.ms-visio.windows+xml",
-            "http://schemas.microsoft.com/visio/2010/relationships/page", "application/vnd.ms-visio.page+xml",
-            "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties", "application/vnd.openxmlformats-package.core-properties+xml",
-            OFFICE_REL + "/extended-properties", "application/vnd.openxmlformats-officedocument.extended-properties+xml",
-            OFFICE_REL + "/custom-properties", "application/vnd.openxmlformats-officedocument.custom-properties+xml",
-            "https://github.com/carstenartur/Taxonomy/relationships/export-manifest", "application/json",
-            "https://github.com/carstenartur/Taxonomy/relationships/mapping-profile", "application/json");
+    private static final Map<String, String> RELATION_CONTENT_TYPES = Map.ofEntries(
+            Map.entry("http://schemas.microsoft.com/visio/2010/relationships/document", "application/vnd.ms-visio.drawing.main+xml"),
+            Map.entry("http://schemas.microsoft.com/visio/2010/relationships/pages", "application/vnd.ms-visio.pages+xml"),
+            Map.entry("http://schemas.microsoft.com/visio/2010/relationships/windows", "application/vnd.ms-visio.windows+xml"),
+            Map.entry("http://schemas.microsoft.com/visio/2010/relationships/page", "application/vnd.ms-visio.page+xml"),
+            Map.entry("http://schemas.microsoft.com/visio/2010/relationships/masters", "application/vnd.ms-visio.masters+xml"),
+            Map.entry("http://schemas.microsoft.com/visio/2010/relationships/master", "application/vnd.ms-visio.master+xml"),
+            Map.entry("http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties", "application/vnd.openxmlformats-package.core-properties+xml"),
+            Map.entry(OFFICE_REL + "/extended-properties", "application/vnd.openxmlformats-officedocument.extended-properties+xml"),
+            Map.entry(OFFICE_REL + "/custom-properties", "application/vnd.openxmlformats-officedocument.custom-properties+xml"),
+            Map.entry("https://github.com/carstenartur/Taxonomy/relationships/export-manifest", "application/json"),
+            Map.entry("https://github.com/carstenartur/Taxonomy/relationships/mapping-profile", "application/json"));
 
     private VisioOpcValidator() { }
 
@@ -54,7 +58,8 @@ final class VisioOpcValidator {
             }
             for (String required : List.of("[Content_Types].xml", "_rels/.rels", "docProps/core.xml", "docProps/app.xml",
                     "docProps/custom.xml", "visio/document.xml", "visio/windows.xml", "visio/_rels/document.xml.rels", "visio/pages/pages.xml",
-                    "visio/pages/_rels/pages.xml.rels", "taxonomy/manifest.json", "taxonomy/mapping-profile.json")) {
+                    "visio/pages/_rels/pages.xml.rels", "visio/masters/masters.xml", "visio/masters/_rels/masters.xml.rels",
+                    "taxonomy/manifest.json", "taxonomy/mapping-profile.json")) {
                 check(parts.containsKey(required), "Missing required OPC part " + required);
             }
             Map<String, String> types = contentTypes(xml.get("[Content_Types].xml"), parts);
@@ -115,6 +120,8 @@ final class VisioOpcValidator {
                 check(styleIds.contains(((Element) settings.item(0)).getAttribute(name)), "Unresolved default style reference");
             }
 
+            Map<String, String> masters = validateMasters(xml, references, types, styleIds);
+
             Set<String> pageIds = new HashSet<>(), pageTargets = new HashSet<>();
             for (Element page : children(xml.get("visio/pages/pages.xml").getDocumentElement())) {
                 check(pageIds.add(page.getAttribute("ID")), "Duplicate page ID");
@@ -125,7 +132,7 @@ final class VisioOpcValidator {
                 check(pageTargets.add(target) && "application/vnd.ms-visio.page+xml".equals(types.get(target)), "Invalid or duplicate page contents reference");
                 Document contents = xml.get(target);
                 validateSchema(PageContentsDocument.Factory.parse(contents));
-                validateShapes(contents, styleIds);
+                validateShapes(contents, styleIds, masters, new HashSet<>(references.getOrDefault(target, Map.of()).values()));
             }
             check(!pageIds.isEmpty() && pageIds.size() <= VisioPackageValidator.MAX_PAGES,
                     "Visio profile requires 1 to " + VisioPackageValidator.MAX_PAGES + " pages");
@@ -163,7 +170,37 @@ final class VisioOpcValidator {
         return result;
     }
 
-    private static void validateShapes(Document page, Set<String> styleIds) {
+    private static Map<String, String> validateMasters(Map<String, Document> xml,
+            Map<String, Map<String, String>> references, Map<String, String> types, Set<String> styleIds) throws Exception {
+        validateSchema(MastersDocument.Factory.parse(xml.get("visio/masters/masters.xml")));
+        Map<String, String> masters = new HashMap<>();
+        Set<String> indexed = new HashSet<>();
+        for (Element master : children(xml.get("visio/masters/masters.xml").getDocumentElement())) {
+            String id = master.getAttribute("ID");
+            var rels = master.getElementsByTagNameNS(VISIO, "Rel");
+            check(id.matches("[1-9][0-9]*") && rels.getLength() == 1, "Invalid native master index");
+            String target = references.get("visio/masters/masters.xml").get(((Element) rels.item(0)).getAttributeNS(OFFICE_REL, "id"));
+            check("application/vnd.ms-visio.master+xml".equals(types.get(target)) && indexed.add(target)
+                    && masters.putIfAbsent(id, target) == null, "Unresolved or duplicate native master");
+            Document contents = xml.get(target);
+            validateSchema(MasterContentsDocument.Factory.parse(contents));
+            var shapes = contents.getElementsByTagNameNS(VISIO, "Shape");
+            check(shapes.getLength() == 1, "Native master requires one top-level shape");
+            Element shape = (Element) shapes.item(0);
+            check(shape.getAttribute("ID").equals("1") && !shape.hasAttribute("Master") && !shape.hasAttribute("MasterShape"),
+                    "Invalid native master definition");
+            validateStyles(shape, styleIds);
+        }
+        check(indexed.size() == types.values().stream().filter("application/vnd.ms-visio.master+xml"::equals).count(), "Unindexed master contents");
+        return masters;
+    }
+
+    private static void validateStyles(Element shape, Set<String> styleIds) {
+        for (String style : List.of("LineStyle", "FillStyle", "TextStyle"))
+            check(styleIds.contains(shape.getAttribute(style)), "Unresolved shape style reference");
+    }
+
+    private static void validateShapes(Document page, Set<String> styleIds, Map<String, String> masters, Set<String> pageMasters) {
         Map<String, Element> shapes = new HashMap<>();
         var entries = page.getElementsByTagNameNS(VISIO, "Shape");
         Set<String> connectors = new HashSet<>();
@@ -171,9 +208,16 @@ final class VisioOpcValidator {
             Element shape = (Element) entries.item(i);
             String id = shape.getAttribute("ID");
             check(id.matches("[1-9][0-9]*") && shapes.putIfAbsent(id, shape) == null, "Invalid or duplicate shape ID");
-            check(!shape.hasAttribute("Master") && !shape.hasAttribute("MasterShape"), "Master references are outside the masterless profile");
-            for (String style : List.of("LineStyle", "FillStyle", "TextStyle")) check(styleIds.contains(shape.getAttribute(style)), "Unresolved shape style reference");
-            for (Element cell : children(shape)) if (cell.getLocalName().equals("Cell") && cell.getAttribute("N").equals("OneD") && cell.getAttribute("V").equals("1")) connectors.add(id);
+            check(!shape.hasAttribute("MasterShape"), "Nested master-shape references are outside the native profile");
+            if (shape.hasAttribute("Master")) {
+                String target = masters.get(shape.getAttribute("Master"));
+                check(target != null && pageMasters.contains(target), "Unresolved native master reference");
+            }
+            validateStyles(shape, styleIds);
+            validateHyperlinks(shape);
+            Element oneD = directCell(shape, "OneD");
+            if (oneD != null && oneD.getAttribute("V").equals("1")) connectors.add(id);
+            else if (shape.hasAttribute("Master")) validateNativePorts(shape);
         }
         Map<String, Set<String>> endpoints = new HashMap<>();
         var glue = page.getElementsByTagNameNS(VISIO, "Connect");
@@ -181,10 +225,127 @@ final class VisioOpcValidator {
             Element connection = (Element) glue.item(i);
             String from = connection.getAttribute("FromSheet"), to = connection.getAttribute("ToSheet"), cell = connection.getAttribute("FromCell");
             check(connectors.contains(from) && shapes.containsKey(to) && !connectors.contains(to), "Unresolved connector endpoint");
-            check((cell.equals("BeginX") || cell.equals("EndX")) && connection.getAttribute("ToCell").equals("PinX"), "Invalid dynamic glue endpoint");
+            String pointCell = connection.getAttribute("ToCell");
+            check((cell.equals("BeginX") || cell.equals("EndX")) && pointCell.matches("Connections\\.X[1-4]"), "Invalid point-glue endpoint");
             check(endpoints.computeIfAbsent(from, ignored -> new HashSet<>()).add(cell), "Duplicate connector glue endpoint");
+            int point = Integer.parseInt(pointCell.substring("Connections.X".length()));
+            check(connection.getAttribute("FromPart").equals(cell.equals("BeginX") ? "9" : "12")
+                    && connection.getAttribute("ToPart").equals(Integer.toString(99 + point)), "Mismatched point-glue part identifiers");
+            Element port = connectionPoint(shapes.get(to), point - 1);
+            check(port != null, "Unresolved native connection point");
+            String formula = "PAR(PNT(Sheet." + to + "!Connections.X" + point + ",Sheet." + to + "!Connections.Y" + point + "))";
+            Element x = directCell(shapes.get(from), cell), y = directCell(shapes.get(from), cell.replace('X', 'Y'));
+            check(x != null && y != null && formula.equals(x.getAttribute("F")) && formula.equals(y.getAttribute("F")),
+                    "Missing or mismatched connector endpoint dependency");
+            Element target = shapes.get(to);
+            double expectedX = number(target, "PinX") - number(target, "LocPinX") + number(port, "X");
+            double expectedY = number(target, "PinY") - number(target, "LocPinY") + number(port, "Y");
+            check(close(Double.parseDouble(x.getAttribute("V")), expectedX) && close(Double.parseDouble(y.getAttribute("V")), expectedY),
+                    "Cached connector endpoint does not match its connection point");
         }
         for (String id : connectors) check(endpoints.getOrDefault(id, Set.of()).equals(Set.of("BeginX", "EndX")), "Incomplete connector glue");
+        validateContainerMembership(shapes);
+    }
+
+    private static void validateNativePorts(Element shape) {
+        double width = number(shape, "Width"), height = number(shape, "Height");
+        for (var side : com.taxonomy.visio.VisioConnectionPoints.Side.values()) {
+            Element port = connectionPoint(shape, side.number() - 1);
+            check(port != null, "Missing native connection point");
+            Element x = directCell(port, "X"), y = directCell(port, "Y");
+            String xFraction = java.math.BigDecimal.valueOf(side.xFraction()).stripTrailingZeros().toPlainString();
+            String yFraction = java.math.BigDecimal.valueOf(side.yFraction()).stripTrailingZeros().toPlainString();
+            check(x != null && y != null && x.getAttribute("F").equals("Width*" + xFraction)
+                    && y.getAttribute("F").equals("Height*" + yFraction), "Missing connection-point resize dependency");
+            check(close(number(port, "X"), width * side.xFraction()) && close(number(port, "Y"), height * side.yFraction()),
+                    "Cached connection point does not match shape size");
+        }
+    }
+
+    private static Element directCell(Element parent, String name) {
+        return children(parent).stream().filter(child -> child.getLocalName().equals("Cell") && child.getAttribute("N").equals(name)).findFirst().orElse(null);
+    }
+
+    private static Element connectionPoint(Element shape, int index) {
+        for (Element section : children(shape)) if (section.getLocalName().equals("Section") && section.getAttribute("N").equals("Connection"))
+            for (Element row : children(section)) if (row.getAttribute("IX").equals(Integer.toString(index))) return row;
+        return null;
+    }
+
+    private static double number(Element parent, String name) {
+        Element cell = directCell(parent, name);
+        check(cell != null, "Missing geometry cell " + name);
+        double number = Double.parseDouble(cell.getAttribute("V"));
+        check(Double.isFinite(number), "Non-finite geometry cell " + name);
+        return number;
+    }
+
+    private static boolean close(double actual, double expected) {
+        return Double.isFinite(actual) && Math.abs(actual - expected) <= Math.max(1e-9, Math.abs(expected) * 1e-12);
+    }
+
+    private static void validateHyperlinks(Element shape) {
+        for (Element section : children(shape)) if (section.getLocalName().equals("Section") && section.getAttribute("N").equals("Hyperlink"))
+            for (Element row : children(section)) {
+                for (Element cell : children(row)) check(!cell.hasAttribute("F"), "Hyperlinks must be literal");
+                Element address = directCell(row, "Address");
+                if (address != null && !address.getAttribute("V").isEmpty()) {
+                    check(row.getAttribute("N").equals("Requirement"), "Unrecognized external hyperlink");
+                    com.taxonomy.visio.VisioHyperlinks.validateRequirementUrl(com.taxonomy.visio.VisioProperty.text(address.getAttribute("V")));
+                }
+            }
+    }
+
+    private static boolean isContainer(Element shape) {
+        for (Element section : children(shape)) if (section.getLocalName().equals("Section") && section.getAttribute("N").equals("User"))
+            for (Element row : children(section)) if (row.getAttribute("N").equals("msvStructureType")) {
+                Element value = directCell(row, "Value");
+                return value != null && value.getAttribute("V").equals("Container");
+            }
+        return false;
+    }
+
+    private static void validateContainerMembership(Map<String, Element> shapes) {
+        Map<String, Set<String>> members = new HashMap<>();
+        Map<String, String> owners = new HashMap<>();
+        var relationship = java.util.regex.Pattern.compile("DEPENDSON\\(([14]),(Sheet\\.[1-9][0-9]*!SheetRef\\(\\)(?:,Sheet\\.[1-9][0-9]*!SheetRef\\(\\))*)\\)");
+        for (var entry : shapes.entrySet()) {
+            Element cell = directCell(entry.getValue(), "Relationships");
+            if (cell == null) continue;
+            String formula = cell.getAttribute("F");
+            var matcher = relationship.matcher(formula);
+            List<String> clauses = new ArrayList<>();
+            Set<String> kinds = new HashSet<>();
+            while (matcher.find()) {
+                clauses.add(matcher.group());
+                check(kinds.add(matcher.group(1)), "Duplicate container relationship kind");
+                for (String reference : matcher.group(2).split(",")) {
+                    String target = reference.substring(6, reference.indexOf('!'));
+                    check(shapes.containsKey(target) && !target.equals(entry.getKey()), "Unresolved container member");
+                    if (matcher.group(1).equals("1")) {
+                        check(isContainer(entry.getValue()), "Membership declared by a non-container");
+                        check(members.computeIfAbsent(entry.getKey(), ignored -> new HashSet<>()).add(target), "Duplicate container member");
+                    } else {
+                        check(isContainer(shapes.get(target)) && owners.putIfAbsent(entry.getKey(), target) == null, "Invalid container owner");
+                    }
+                }
+            }
+            check(!clauses.isEmpty() && formula.equals("SUM(" + String.join(",", clauses) + ")"), "Invalid container relationship expression");
+        }
+        for (var entry : members.entrySet()) for (String member : entry.getValue())
+            check(entry.getKey().equals(owners.get(member)), "Missing reciprocal container membership");
+        for (var entry : owners.entrySet())
+            check(members.getOrDefault(entry.getValue(), Set.of()).contains(entry.getKey()), "Missing reciprocal container membership");
+        Set<String> visited = new HashSet<>();
+        for (String start : owners.keySet()) {
+            Set<String> path = new HashSet<>();
+            String current = start;
+            while (current != null && !visited.contains(current)) {
+                check(path.add(current), "Cyclic container membership");
+                current = owners.get(current);
+            }
+            visited.addAll(path);
+        }
     }
 
     private static Document parse(byte[] xml) throws Exception {

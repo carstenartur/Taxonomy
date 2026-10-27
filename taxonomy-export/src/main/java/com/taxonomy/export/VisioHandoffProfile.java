@@ -17,7 +17,7 @@ import java.util.Map;
 
 /** Executable metadata/loss contract shared by the OPC package and downloadable handoff bundle. */
 public final class VisioHandoffProfile {
-    public static final String ID = "visio-2012-opc-supported-subset-v2";
+    public static final String ID = "visio-2012-opc-supported-subset-v3";
     static final int MAX_XML_BYTES = 32 * 1024 * 1024;
     private static final JsonMapper JSON = JsonMapper.builder()
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
@@ -85,7 +85,7 @@ public final class VisioHandoffProfile {
     }
 
     private static String loadProfile() {
-        try (var input = VisioHandoffProfile.class.getResourceAsStream("/visio/handoff-profile-v2.json")) {
+        try (var input = VisioHandoffProfile.class.getResourceAsStream("/visio/handoff-profile-v3.json")) {
             if (input == null) throw new IllegalStateException("Missing Visio profile");
             String profile = new String(input.readAllBytes(), StandardCharsets.UTF_8);
             if (!ID.equals(JSON.readTree(profile).path("profileVersion").asText())) throw new IllegalStateException("Visio profile version mismatch");

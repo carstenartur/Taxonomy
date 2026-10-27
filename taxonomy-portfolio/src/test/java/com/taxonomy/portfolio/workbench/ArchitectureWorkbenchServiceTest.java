@@ -81,6 +81,9 @@ class ArchitectureWorkbenchServiceTest {
         assertThat(projection.scene().nodes()).hasSize(2);
         assertThat(projection.scene().edges()).hasSize(1);
         assertThat(projection.requirementText()).isEqualTo("Provide secure command information.");
+        assertThat(projection.exportProvenance().requirementVersionCreatedBy()).isEqualTo("alice");
+        assertThat(projection.exportProvenance().requirementVersionCreatedAt())
+                .isEqualTo(Instant.parse("2026-08-05T11:00:00Z"));
         assertThat(svg).contains("CP-1").contains("CR-1").doesNotContain("window.print");
         assertThat(new String(pdf, 0, 5, java.nio.charset.StandardCharsets.ISO_8859_1))
                 .isEqualTo("%PDF-");
@@ -241,6 +244,29 @@ class ArchitectureWorkbenchServiceTest {
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("no persisted architecture view");
         verifyNoInteractions(projectService);
+    }
+
+    @Test
+    void keepsFrozenTextAuthorAndDateAfterANewerVersionBecomesCurrent() {
+        prepareSnapshot(snapshotWithArchitecture());
+        RequirementVersionView current = new RequirementVersionView(100L, 4,
+                "New current text must not appear in the frozen export.", "new-hash", "Edited later", "bob",
+                Instant.parse("2026-08-06T13:00:00Z"), null);
+        RequirementView original = requirement();
+        when(projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, "alice", CONTEXT)).thenReturn(
+                new RequirementView(original.id(), original.projectId(), original.requirementKey(), original.title(),
+                        original.status(), original.priority(), original.criticality(), original.requirementType(),
+                        original.reviewStatus(), original.ownerUsername(), current.id(), original.currentAnalysisSnapshotId(),
+                        original.createdAt(), current.createdAt(), current));
+        when(projectService.listRequirementVersions(PROJECT_ID, REQUIREMENT_ID, "alice", CONTEXT))
+                .thenReturn(List.of(current, version()));
+
+        Projection projection = service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+
+        assertThat(projection.requirementText()).isEqualTo(version().text());
+        assertThat(projection.exportProvenance().requirementVersionId()).isEqualTo(version().id());
+        assertThat(projection.exportProvenance().requirementVersionCreatedBy()).isEqualTo(version().createdBy());
+        assertThat(projection.exportProvenance().requirementVersionCreatedAt()).isEqualTo(version().createdAt());
     }
 
     @Test

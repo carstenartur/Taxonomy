@@ -724,6 +724,7 @@ public class AnalysisContinuationStore {
         }
         if (result.getArchitectureView() != null) {
             var view = result.getArchitectureView(); view.setAnalysisCoverage(result.getAnalysisCoverage());
+            if (frozenRequest.getBusinessText() != null) view.setOriginalRequirementText(frozenRequest.getBusinessText());
             view.setAnalysisStatus(result.getStatus());
             if (!open.isEmpty()) {
                 var notes = new ArrayList<>(view.getNotes() == null ? List.<String>of() : view.getNotes());

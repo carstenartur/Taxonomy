@@ -10,7 +10,9 @@ unzip -q representative.visio.zip -d verified-members
 (cd verified-members && sha256sum -c ../CONTENTS.sha256)
 ```
 
-All authority/review values are synthetic. In particular the all-zero `authoritativeCommit` is sample data, **not** a release source SHA or a completed product-certification record.
+The profile is `visio-2012-opc-supported-subset-v3`, with eight embedded original native masters, attached one-dimensional connectors, editable context blocks and a complete original-requirement page.
+
+All authority/review/source values are synthetic. In particular the all-zero `authoritativeCommit` is sample data, **not** a release source SHA or a completed product-certification record.
 
 | Object | Fixture value |
 | --- | --- |
@@ -19,12 +21,14 @@ All authority/review values are synthetic. In particular the all-zero `authorita
 | `CS-03` | Core service, score 0.4, outside the impact selection |
 | `relation/α` | `CP-01` → `BP-02`, `SUPPORTS`, score 0.8 |
 | `relation/β` | `BP-02` → `CS-03`, `USES`, score 0.6 |
-| Primary page | Three elements and both connectors |
+| Primary page | Three elements and both connectors, with editable source context |
 | Impact page | `CP-01`, `BP-02` and `relation/α` |
 | Evidence page | Full recorded explanations and complete labels, linked from their graph objects |
+| Requirement page | Complete original requirement text, historical author/date, export actor/date and software identity |
+| Editing link | Literal `https://taxonomy.example.org/projects/7/requirements/42`; reserved example data, not a live target |
 
 Names include accents, Japanese characters, XML delimiters and an emoji. The human rationale deliberately begins with a formula-like string; tests ensure it is emitted as a literal value without an `F` formula attribute.
 
-The automated secondary consumer is Apache POI XDGF 5.5.1 with XMLBeans 5.3.0 and the full Visio schema JAR. The graph and evidence pages load and render with Java 21 on Linux. Observed previews lack Japanese/emoji glyphs and arrowheads; successful POI loading/rendering does not certify visual fidelity or Microsoft Visio edit/save behavior.
+The automated secondary consumer is Apache POI XDGF 5.5.1 with XMLBeans 5.3.0 and the full Visio schema JAR. All four pages load and render with Java 25 on Linux. The fixture contains 16 rendered shapes and six connector endpoint records. Observed previews lack Japanese/emoji glyphs and arrowheads; successful POI loading/rendering does not certify visual fidelity or Microsoft Visio edit/save behavior.
 
 Microsoft Visio desktop evidence is **pending**. Follow the [profile and acceptance procedure](../../../../../docs/dev/VISIO_HANDOFF_PROFILE.md) for a candidate release SHA. Retain the original fixture, edited output, exact source/version identities, checksums and screenshots with the result record. No desktop results are pre-filled in this fixture.

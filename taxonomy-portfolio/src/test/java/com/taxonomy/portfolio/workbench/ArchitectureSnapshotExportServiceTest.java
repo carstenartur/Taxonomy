@@ -100,7 +100,7 @@ class ArchitectureSnapshotExportServiceTest {
                 .isEqualTo(
                         "taxonomy-archimate-3.1-v2");
         assertThat(visioArtifact.exporterProfile())
-                .isEqualTo("visio-2012-opc-supported-subset-v2");
+                .isEqualTo("visio-2012-opc-supported-subset-v3");
 
         verify(workbenchService, times(2)).load(
                 PROJECT_ID,

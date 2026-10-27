@@ -18,6 +18,8 @@ import com.taxonomy.relations.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.BeforeEach;
 import com.taxonomy.dto.AnalysisScope;
 import com.taxonomy.dto.AnalysisMode;
@@ -234,6 +236,41 @@ class AnalyzeRequirementUseCaseTest {
         verify(llmService).analyzeWithBudget("requirement", scope);
         verify(requirementRelationSearchService).search("requirement", Map.of("BP-1017", 20d));
         assertThat(com.taxonomy.analysis.dag.inprocess.InProcessAnalysisOperation.current()).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"evidence", "partial", "rendering-fallback"})
+    void finalWorkingViewRetainsExactSubmittedTextAcrossAssemblyPaths(String path) {
+        String source = "  Original submitted input\nÜnicode: Österreich.  ";
+        var scope = new AnalysisScope(java.util.Set.of("BP"),
+                path.equals("evidence") ? AnalysisMode.FULL : AnalysisMode.TAXONOMIES_ONLY);
+        var command = new AnalyzeRequirementCommand(source, true, 20, null, "alice",
+                new WorkspaceContext("alice", "alice-ws", "draft"), null, scope);
+        var assessment = assessedBusinessProcess();
+        if (path.equals("partial")) assessment.setStatus("PARTIAL");
+        when(llmService.analyzeWithBudget(source, scope)).thenReturn(assessment);
+        when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext()))
+                .thenReturn(new ViewContext("commit", "draft", null, false, false, false));
+        if (path.equals("evidence")) {
+            var report = new com.taxonomy.dto.RelationSearchReport(1, "digest", "fixture", List.of(),
+                    new com.taxonomy.dto.RelationSearchModel.Result(List.of(), List.of(), List.of(), 0, 0, 1),
+                    0, 2, 1, List.of(), "");
+            when(requirementRelationSearchService.isEnabled()).thenReturn(true);
+            when(requirementRelationSearchService.search(source, assessment.getScores())).thenReturn(report);
+            when(architectureViewService.buildFromEvidence(assessment.getScores(), assessment.getScoreDetails(), 20, report))
+                    .thenReturn(new RequirementArchitectureView());
+        }
+        if (path.equals("rendering-fallback")) when(preferencesService.resolve()).thenThrow(new IllegalStateException("fixture metadata unavailable"));
+        else when(preferencesService.resolve()).thenReturn(DiagramViewMetadata.fromConfig(DiagramSelectionConfig.trace(), "trace"));
+
+        var result = useCase.analyze(command).analysisResult();
+
+        assertThat(result.getArchitectureView()).isNotNull();
+        assertThat(result.getArchitectureView().getOriginalRequirementText()).isEqualTo(source);
+        assertThat(result.getRawScores()).containsExactlyEntriesOf(Map.of("BP-1017", 20d));
+        if (!path.equals("evidence")) verifyNoInteractions(architectureViewService);
+        verify(llmService).analyzeWithBudget(source, scope);
+        verify(llmService, never()).analyzeWithBudget(any());
     }
 
     private static AnalysisResult assessedBusinessProcess() {

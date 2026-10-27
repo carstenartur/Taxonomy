@@ -55,8 +55,11 @@ class VisioEvidenceCapacityTest {
     @Test
     void diagramAndEvidenceBudgetsRemainIndependentlyBounded() throws Exception {
         var document = new VisioDocument();
-        for (int i = 0; i < VisioPackageValidator.MAX_DIAGRAM_PAGES; i++)
-            document.getPages().add(new VisioPage(Integer.toString(i), "Diagram " + i));
+        for (int i = 0; i < VisioPackageValidator.MAX_DIAGRAM_PAGES; i++) {
+            var page = new VisioPage(Integer.toString(i), "Diagram " + i);
+            page.getShapes().add(new VisioShape("1", "Graph node", 2, 2, 2, 1, "Capability", false));
+            document.getPages().add(page);
+        }
         for (int i = 0; i < VisioPackageValidator.MAX_EVIDENCE_PAGES; i++) {
             var page = new VisioPage(Integer.toString(document.getPages().size()), "Evidence " + i);
             page.setEvidencePage(true);

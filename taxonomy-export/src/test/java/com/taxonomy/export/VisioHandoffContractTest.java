@@ -40,11 +40,33 @@ class VisioHandoffContractTest {
     }
 
     static VisioDocument fixtureDocument() {
-        var authority = Map.of("taxonomy.snapshotId", VisioProperty.text("synthetic-965"),
-                "taxonomy.repositoryId", VisioProperty.text("synthetic-repository"),
-                "taxonomy.authoritativeCommit", VisioProperty.text("0000000000000000000000000000000000000000"),
-                "taxonomy.generatedAt", VisioProperty.text("2026-09-08T00:00:00Z"),
-                "taxonomy.timestampPolicy", VisioProperty.text("SOURCE_SNAPSHOT_CREATED_AT"));
+        var authority = new TreeMap<String, VisioProperty>();
+        Map.ofEntries(
+                Map.entry("snapshotId", "synthetic-965"),
+                Map.entry("repositoryId", "synthetic-repository"),
+                Map.entry("workspaceId", "synthetic-workspace"),
+                Map.entry("branch", "main"),
+                Map.entry("projectId", "7"),
+                Map.entry("projectKey", "DEMO"),
+                Map.entry("requirementId", "42"),
+                Map.entry("requirementKey", "DEMO-42"),
+                Map.entry("requirementTitle", "Editable architecture handoff"),
+                Map.entry("requirementVersionId", "12"),
+                Map.entry("requirementText", "Provide an editable architecture handoff with attached relationships.\n\n"
+                        + "Retain the original requirement, its historical author and date, and the export software version. "
+                        + "A safe link returns an authorized user to the requirement editing page."),
+                Map.entry("requirementVersionCreatedBy", "synthetic.requirement.author"),
+                Map.entry("requirementVersionCreatedAt", "2026-09-07T09:15:00Z"),
+                Map.entry("snapshotCreatedAt", "2026-09-08T00:00:00Z"),
+                Map.entry("authoritativeCommit", "0000000000000000000000000000000000000000"),
+                Map.entry("generatedAt", "2026-09-08T00:00:00Z"),
+                Map.entry("timestampPolicy", "SOURCE_SNAPSHOT_CREATED_AT"),
+                Map.entry("generatorName", "Taxonomy Architecture Analyzer"),
+                Map.entry("generatorVersion", "synthetic-v3"),
+                Map.entry("exportedBy", "synthetic.exporter"),
+                Map.entry("exportedAt", "2026-10-27T10:30:00Z"),
+                Map.entry("requirementUrl", "https://taxonomy.example.org/projects/7/requirements/42")
+        ).forEach((key, value) -> authority.put("taxonomy." + key, VisioProperty.text(value)));
         return new VisioDiagramService().convert(representative(), new VisioExportMetadata(authority,
                 Map.of("CP-01", Map.of("taxonomy.reviewStatus", VisioProperty.text("CONFIRMED"),
                         "taxonomy.decisionRationale", VisioProperty.text("=RUNADDON(\"literal only\") & reviewed"))),
@@ -85,15 +107,16 @@ class VisioHandoffContractTest {
 
     @Test void poiIndependentlyLoadsGraphAndEvidencePagesAndEveryGlueEndpoint() throws Exception {
         try (var reader = new XmlVisioDocument(new ByteArrayInputStream(new VisioPackageBuilder().build(fixtureDocument())))) {
-            assertEquals(3, reader.getPages().size());
+            assertEquals(4, reader.getPages().size());
             int shapes = 0, connections = 0;
             for (var page : reader.getPages()) {
-                assertTrue(page.getPageSize().getWidth() >= (page.getName().startsWith("Evidence ") ? 8.3 : 11));
+                boolean textPage = page.getName().startsWith("Evidence ") || page.getName().startsWith("Requirement ");
+                assertTrue(page.getPageSize().getWidth() >= (textPage ? 8.3 : 11));
                 assertTrue(page.getPageSize().getHeight() >= 8.5);
                 shapes += page.getContent().getTopLevelShapes().size();
                 connections += page.getContent().getConnections().size();
             }
-            assertEquals(11, shapes);
+            assertEquals(16, shapes);
             assertEquals(6, connections);
         }
     }
@@ -109,6 +132,19 @@ class VisioHandoffContractTest {
         assertArrayEquals(bundle.get("mapping-profile.json"), inner.get("taxonomy/mapping-profile.json"));
     }
 
+    @Test void evidenceNoticeDoesNotOverlapConnectorCaptions() {
+        var overview = fixtureDocument().getPages().getFirst();
+        var notice = overview.getLegend();
+        assertNotNull(notice);
+        double bottom = notice.y() - notice.height() / 2;
+        for (var connector : overview.getConnects()) {
+            var caption = connector.getTextBox();
+            if (caption != null && !caption.text().isBlank())
+                assertTrue(bottom > caption.y() + caption.height() / 2,
+                        "The full-evidence notice must clear every relationship caption");
+        }
+    }
+
     @Test void secondaryConsumerCanRenderEveryPageWithResolvedStyles() throws Exception {
         try (var reader = new XmlVisioDocument(new ByteArrayInputStream(new VisioPackageBuilder().build(fixtureDocument())))) {
             int index = 0;
@@ -118,7 +154,8 @@ class VisioHandoffContractTest {
                         new org.apache.poi.xdgf.usermodel.shape.ShapeRenderer());
                 var rendered = javax.imageio.ImageIO.read(image.toFile());
                 assertNotNull(rendered);
-                assertTrue(rendered.getWidth() >= (page.getName().startsWith("Evidence ") ? 590 : 700));
+                boolean textPage = page.getName().startsWith("Evidence ") || page.getName().startsWith("Requirement ");
+                assertTrue(rendered.getWidth() >= (textPage ? 590 : 700));
                 assertTrue(Files.size(image) > 1000);
             }
         }
@@ -136,7 +173,7 @@ class VisioHandoffContractTest {
 
     @Test void impactPageUsesIndependentShapesConnectorsAndPropertyMaps() {
         VisioDocument document = fixtureDocument();
-        assertEquals(3, document.getPages().size());
+        assertEquals(4, document.getPages().size());
         VisioPage primary = document.getPages().get(0);
         VisioPage impact = document.getPages().get(1);
 
@@ -263,7 +300,7 @@ class VisioHandoffContractTest {
             case "orphan" -> parts.put("orphan.xml", "<unreferenced/>");
             case "pageRef" -> parts.compute("visio/pages/pages.xml", (k, v) -> v.replace("r:id=\"rId1\"", "r:id=\"missing\""));
             case "shapeRef" -> parts.compute("visio/pages/page1.xml", (k, v) -> v.replace("ToSheet=\"1\"", "ToSheet=\"99999\""));
-            case "master" -> parts.compute("visio/pages/page1.xml", (k, v) -> v.replace("<Shape ID=", "<Shape Master=\"8\" ID="));
+            case "master" -> parts.compute("visio/pages/page1.xml", (k, v) -> v.replaceAll("Master=\"[0-9]+\"", "Master=\"99999\""));
             case "schema" -> parts.compute("visio/pages/page1.xml", (k, v) -> v.replace("<Shapes>", "<WrongShapes>").replace("</Shapes>", "</WrongShapes>"));
             case "doctype" -> parts.put("visio/pages/page1.xml", "<!DOCTYPE bad [<!ENTITY xxe SYSTEM 'file:///not-read'>]><PageContents xmlns='" + NS + "'>&xxe;</PageContents>");
             case "glue" -> parts.compute("visio/pages/page1.xml", (k, v) -> v.replace("FromCell=\"EndX\"", "FromCell=\"BeginX\""));
@@ -316,7 +353,7 @@ class VisioHandoffContractTest {
     }
 
     @Test void committedFixtureIsReproducible() throws Exception {
-        try (var input = getClass().getResourceAsStream("/visio-handoff-v2/representative.visio.zip")) {
+        try (var input = getClass().getResourceAsStream("/visio-handoff-v3/representative.visio.zip")) {
             assertNotNull(input);
             assertArrayEquals(input.readAllBytes(), new VisioPackageBuilder().buildBundle(fixtureDocument()));
         }

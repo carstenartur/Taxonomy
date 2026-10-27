@@ -17,8 +17,10 @@ final class VisioPackageValidator {
     static final int MAX_DIAGRAM_PAGES = 32;
     static final int MAX_EVIDENCE_PAGES = 128;
     static final int MAX_PAGES = MAX_DIAGRAM_PAGES + MAX_EVIDENCE_PAGES;
-    // Twelve fixed package parts plus one contents part per page.
-    static final int MAX_OPC_PARTS = 12 + MAX_PAGES;
+    // Existing parts, master index/relationships and original masters, page
+    // contents, and at most one master-relationship part per diagram page.
+    static final int MAX_OPC_PARTS = 12 + 2 + com.taxonomy.visio.VisioNativeShape.values().length
+            + MAX_PAGES + MAX_DIAGRAM_PAGES;
 
     static final long MAX_VISIO_ID = 0xffff_ffffL;
 
@@ -114,6 +116,7 @@ final class VisioPackageValidator {
                         false);
             }
 
+            com.taxonomy.visio.VisioContainers.membership(page);
             if (page.getLegend() != null) {
                 var box = page.getLegend();
                 validateXmlText(box.text(), "Legend display text");
@@ -215,6 +218,8 @@ final class VisioPackageValidator {
 
     static void validateProperties(Map<String, VisioProperty> properties) {
         if (properties.size() > 64) throw invalid("Too many Visio properties");
+        var requirementUrl = properties.get("taxonomy.requirementUrl");
+        if (requirementUrl != null) com.taxonomy.visio.VisioHyperlinks.validateRequirementUrl(requirementUrl);
         for (var entry : properties.entrySet()) {
             if (entry.getKey() == null || !entry.getKey().matches("taxonomy\\.[A-Za-z][A-Za-z0-9]{0,63}") || entry.getValue() == null) {
                 throw invalid("Unsafe Visio property key/value");

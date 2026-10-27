@@ -116,7 +116,7 @@ class VisioConverterTests {
     }
 
     @Test
-    void pageContentsConverterWritesMasterlessConnectorShape() {
+    void pageContentsConverterWritesNativeConnectorShape() {
         VisioPage page = new VisioPage("1", "Page");
         page.getShapes().add(new VisioShape("1", "A", 1.0, 1.0, 2.0, 0.75, "Capabilities", true));
         page.getShapes().add(new VisioShape("2", "B", 4.0, 1.0, 2.0, 0.75, "Services", false));
@@ -131,7 +131,7 @@ class VisioConverterTests {
         assertThat(xml).contains("BeginX");
         assertThat(xml).contains("EndX");
         assertThat(xml).doesNotContain("Dynamic connector");
-        assertThat(xml).doesNotContain("Master=\"");
+        assertThat(xml).contains("Master=\"8\"");
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.export.service.ExportFacade;
+import com.taxonomy.export.service.VisioExportExtension;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.spi.ExportContext;
 import com.taxonomy.export.spi.ExportFormatDescriptor;
@@ -201,6 +202,11 @@ public class ExportApiController {
         ExportFormatDescriptor descriptor = extension.descriptor();
         Map<String, Object> options = new HashMap<>(body);
         options.remove("businessText");
+        // The exact submitted source belongs to this analysis; never accept a
+        // separate client option claiming to be its original requirement.
+        if (VisioExportExtension.FORMAT_ID.equals(descriptor.id())) {
+            options.put("originalRequirementText", businessText);
+        }
 
         try {
             DiagramModel diagram = exportFacade.buildDiagram(businessText);
@@ -263,7 +269,12 @@ public class ExportApiController {
             DiagramModel diagram = exportFacade.buildCurrentDiagram(view);
             ExportFormatExtension extension = extensionOpt.get();
             ExportFormatDescriptor descriptor = extension.descriptor();
-            ExportResult result = extension.export(new ExportContext(diagram, Map.of("elementReasons", elementReasons(view))));
+            Map<String, Object> options = new HashMap<>();
+            options.put("elementReasons", elementReasons(view));
+            if (VisioExportExtension.FORMAT_ID.equals(descriptor.id()) && view.getOriginalRequirementText() != null) {
+                options.put("originalRequirementText", view.getOriginalRequirementText());
+            }
+            ExportResult result = extension.export(new ExportContext(diagram, options));
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=\"requirement-architecture." + descriptor.fileExtension() + "\"")
