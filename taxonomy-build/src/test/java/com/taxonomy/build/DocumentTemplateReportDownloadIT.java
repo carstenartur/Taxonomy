@@ -37,8 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DocumentTemplateReportDownloadIT {
 
     private static final String APP_RUNTIME_IMAGE =
-            "eclipse-temurin@sha256:"
-                    + "d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13";
+            "eclipse-temurin:25-jre-jammy@sha256:"
+                    + "f7f4c9bc54b8c1b734ddf49e056b4d158c08a6a234a7604a4b08c36b0c5ad68c";
     private static final String REPORT_NAME =
             "taxonomy-decision-rationale-report.docx";
     private static final String TEMPLATE_ID_PROPERTY = "Taxonomy.Template.Id";
