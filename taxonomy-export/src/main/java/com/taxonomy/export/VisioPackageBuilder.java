@@ -50,22 +50,30 @@ public class VisioPackageBuilder {
      */
     public byte[] build(VisioDocument doc) throws IOException {
         VisioPackageValidator.validate(doc);
+        // Stable sorting retains page IDs and all native page-name hyperlinks.
+        // Reserve evidence capacity during conversion, but do not put dozens of
+        // text pages between the overview and its editable relationship drawings.
+        doc.getPages().sort(java.util.Comparator.comparing(VisioPage::isEvidencePage));
         Map<String, String> parts = buildParts(doc, Map.of());
         long bytes = partBytes(parts);
         boolean trimmed = false;
-        // Optional trailing detail pages must never invalidate a serializable
-        // complete overview/impact package. Reuse base XML; only metadata/index
-        // parts need rebuilding. Counting removed page XML alone is conservative
-        // because its manifest entries will disappear too.
-        while (bytes > VisioHandoffProfile.MAX_XML_BYTES && doc.getPages().size() > 1 && doc.getPages().getLast().isRelationshipDetail()) {
-            String part = "visio/pages/page" + doc.getPages().size() + ".xml";
-            bytes -= parts.get(part).getBytes(StandardCharsets.UTF_8).length;
-            doc.getPages().removeLast();
+        // Appendices now follow drawings. Optional relationship pages may be
+        // in the middle, so prune them explicitly, never the mandatory text.
+        // Cache by stable page ID: positional part names change after removal.
+        Map<String, String> pageContents = new LinkedHashMap<>();
+        for (int index = 0; index < doc.getPages().size(); index++) {
+            pageContents.put(doc.getPages().get(index).getId(), parts.get("visio/pages/page" + (index + 1) + ".xml"));
+        }
+        for (int index = doc.getPages().size() - 1; bytes > VisioHandoffProfile.MAX_XML_BYTES && index > 0; index--) {
+            VisioPage page = doc.getPages().get(index);
+            if (!page.isRelationshipDetail()) continue;
+            bytes -= pageContents.get(page.getId()).getBytes(StandardCharsets.UTF_8).length;
+            doc.getPages().remove(index);
             trimmed = true;
         }
         if (trimmed) {
             VisioPresentation.updateDetailCoverage(doc, "byte capacity");
-            parts = buildParts(doc, parts);
+            parts = buildParts(doc, pageContents);
         }
         VisioOpcValidator.validate(parts);
 
@@ -110,7 +118,7 @@ public class VisioPackageBuilder {
         parts.put("taxonomy/manifest.json", VisioHandoffProfile.manifest(doc));
         parts.put("taxonomy/mapping-profile.json", VisioHandoffProfile.profileJson());
         parts.put("visio/document.xml", buildDocumentXml(doc));
-        parts.put("visio/windows.xml", buildWindowsXml());
+        parts.put("visio/windows.xml", VisioDrawingView.windowsXml(doc));
         parts.put("visio/_rels/document.xml.rels", buildDocumentRelationships());
         parts.put("visio/pages/pages.xml", buildPagesXml(doc));
         parts.put("visio/pages/_rels/pages.xml.rels", buildPagesRelationships(doc));
@@ -122,7 +130,7 @@ public class VisioPackageBuilder {
         for (int index = 0; index < doc.getPages().size(); index++) {
             VisioPage page = doc.getPages().get(index);
             String name = "visio/pages/page" + (index + 1) + ".xml";
-            parts.put(name, previousParts.containsKey(name) ? previousParts.get(name) : buildPageXml(page));
+            parts.put(name, previousParts.containsKey(page.getId()) ? previousParts.get(page.getId()) : buildPageXml(page));
             if (!VisioNativeShape.usedOn(page).isEmpty())
                 parts.put("visio/pages/_rels/page" + (index + 1) + ".xml.rels", buildPageMasterRelationships(page));
         }
@@ -226,11 +234,6 @@ public class VisioPackageBuilder {
         xstream.alias("VisioDocument", VisioDocument.class);
         xstream.registerConverter(new VisioDocumentConverter());
         return XML_DECLARATION + xstream.toXML(doc);
-    }
-
-    private String buildWindowsXml() {
-        return XML_DECLARATION
-                + "<Windows xmlns=\"http://schemas.microsoft.com/office/visio/2012/main\"/>";
     }
 
     private String buildDocumentRelationships() {

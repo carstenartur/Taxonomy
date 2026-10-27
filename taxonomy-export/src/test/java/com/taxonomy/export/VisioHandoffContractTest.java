@@ -352,10 +352,29 @@ class VisioHandoffContractTest {
                         List.of(new DiagramEdge("bad", "CP-01", target, "USES", .5)), graph.layout())));
     }
 
-    @Test void committedFixtureIsReproducible() throws Exception {
+    @Test void committedFixtureRetainsEveryPartExceptExplicitOpeningView() throws Exception {
         try (var input = getClass().getResourceAsStream("/visio-handoff-v3/representative.visio.zip")) {
             assertNotNull(input);
-            assertArrayEquals(input.readAllBytes(), new VisioPackageBuilder().buildBundle(fixtureDocument()));
+            var expectedBundle = bytes(input.readAllBytes());
+            var actualBundle = bytes(new VisioPackageBuilder().buildBundle(fixtureDocument()));
+            assertEquals(expectedBundle.keySet(), actualBundle.keySet());
+            assertArrayEquals(expectedBundle.get("mapping-profile.json"), actualBundle.get("mapping-profile.json"));
+            var expected = bytes(expectedBundle.get("diagram.vsdx"));
+            var actual = bytes(actualBundle.get("diagram.vsdx"));
+            // Retain the published pre-fix package as an independent golden baseline.
+            // Only the explicit opening view is intentionally new; every other
+            // uncompressed native part must remain byte-for-byte identical.
+            String openingView = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                    + "<Windows xmlns=\"http://schemas.microsoft.com/office/visio/2012/main\">"
+                    + "<Window ID=\"0\" WindowType=\"Drawing\" ContainerType=\"Page\" Container=\"0\""
+                    + " Page=\"0\" ViewCenterX=\"4.5\" ViewCenterY=\"2\" ViewScale=\"1\"/></Windows>";
+            assertNotNull(expected.put("visio/windows.xml", openingView.getBytes(StandardCharsets.UTF_8)));
+            assertEquals(expected.keySet(), actual.keySet());
+            for (var entry : expected.entrySet()) assertArrayEquals(entry.getValue(), actual.get(entry.getKey()), entry.getKey());
+            var expectedManifest = JSON.readTree(expectedBundle.get("manifest.json"));
+            ((com.fasterxml.jackson.databind.node.ObjectNode) expectedManifest.get("artifact"))
+                    .put("sha256", VisioHandoffProfile.sha256(actualBundle.get("diagram.vsdx")));
+            assertEquals(expectedManifest, JSON.readTree(actualBundle.get("manifest.json")));
         }
     }
 
