@@ -37,7 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DocumentTemplateReportDownloadIT {
 
     private static final String APP_RUNTIME_IMAGE =
-            "eclipse-temurin:25-jre-jammy@sha256:"
+            // Temurin 25 JRE on Jammy; Testcontainers requires the digest-only form.
+            "eclipse-temurin@sha256:"
                     + "f7f4c9bc54b8c1b734ddf49e056b4d158c08a6a234a7604a4b08c36b0c5ad68c";
     private static final String REPORT_NAME =
             "taxonomy-decision-rationale-report.docx";
