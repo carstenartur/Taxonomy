@@ -35,7 +35,7 @@ public record AnalysisCoverage(Map<String, NodeAssessment> nodes, int assessedNo
     }
     private static boolean unresolved(String reason) {
         return reason != null && (reason.startsWith("FAILED:") || reason.startsWith("LEFT_OPEN:")
-                || reason.startsWith("BLOCKED_BY:") || reason.startsWith("INTERRUPTED:"));
+                || reason.startsWith("CLARIFICATION:") || reason.startsWith("BLOCKED_BY:") || reason.startsWith("INTERRUPTED:"));
     }
     public boolean hasOpenEvaluations() { return failedOrBlockedNodes > 0; }
 

@@ -52,6 +52,26 @@ class AnalysisProgressRegistryTest {
             assertThat(registry.snapshot(handle.id(), "alice", scope).evaluatedNodes()).isZero();
         }
     }
+    @Test void validRootClarificationIsVisibleWithoutCountingAnExclusion() {
+        try (var handle = registry.open(null, "alice", scope, null)) {
+            var answer = tools.jackson.databind.json.JsonMapper.builder()
+                    .disable(tools.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build()
+                    .readValue("""
+                            {"scores":{},"reasons":{"CO":"The connection requirement is open."},
+                             "rootAssessments":{"CO":{"status":"UNRESOLVED","score":null,
+                               "reason":"The connection requirement is open.","question":"Must terminals connect online?"}},
+                             "provider":"MOCK","rawResponse":"valid root clarification",
+                             "error":"ROOT_UNRESOLVED: The connection requirement is open. Must terminals connect online?"}
+                            """, LlmCallDetail.class);
+            AnalysisRunControl.call("MOCK", "CO", () -> answer);
+            var snapshot = registry.snapshot(handle.id(), "alice", scope);
+            assertThat(snapshot.calls().getFirst().status()).isEqualTo("CLARIFICATION");
+            assertThat(snapshot.rawScores()).doesNotContainKey("CO");
+            assertThat(snapshot.evaluatedNodes()).isZero();
+            assertThat(registry.callDetail(handle.id(), snapshot.calls().getFirst().id(), "alice", scope).error())
+                    .contains("Must terminals connect online?");
+        }
+    }
     @Test void progressIsVisibleBeforeTheProviderReturns() {
         try(var handle=registry.open(null,"alice",scope,null)) {
             AnalysisRunControl.call("MOCK","CP", () -> {

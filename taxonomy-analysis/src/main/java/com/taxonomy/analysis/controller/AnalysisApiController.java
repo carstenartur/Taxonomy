@@ -721,12 +721,12 @@ public class AnalysisApiController {
         if (event instanceof AnalysisStreamEvent.Complete complete && complete.analysisDurationMillis() == null) {
             return new AnalysisStreamEvent.Complete(complete.status(), complete.allScores(), complete.warnings(),
                     complete.discrepancies(), complete.productCoverageGaps(),
-                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
+                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L), complete.analysisCoverage());
         }
         if (event instanceof AnalysisStreamEvent.Error error && error.analysisDurationMillis() == null) {
             return new AnalysisStreamEvent.Error(error.status(), error.errorMessage(), error.partialScores(),
                     error.warnings(), error.discrepancies(), error.productCoverageGaps(), error.partialReasons(),
-                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
+                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L), error.analysisCoverage());
         }
         return event;
     }
@@ -735,13 +735,14 @@ public class AnalysisApiController {
         String message = "The terminal result could not be fully rendered; collected raw evidence is retained.";
         if (event instanceof AnalysisStreamEvent.Complete complete) {
             return new AnalysisStreamEvent.Error("ERROR", message, complete.allScores(), complete.warnings(),
-                    complete.discrepancies(), complete.productCoverageGaps(), Map.of(), complete.analysisDurationMillis());
+                    complete.discrepancies(), complete.productCoverageGaps(), Map.of(), complete.analysisDurationMillis(),
+                    complete.analysisCoverage());
         }
         var error = (AnalysisStreamEvent.Error) event;
         String prior = error.errorMessage();
         return new AnalysisStreamEvent.Error("ERROR", prior == null || prior.isBlank() ? message : prior + " " + message,
                 error.partialScores(), error.warnings(), error.discrepancies(), error.productCoverageGaps(),
-                error.partialReasons(), error.analysisDurationMillis());
+                error.partialReasons(), error.analysisDurationMillis(), error.analysisCoverage());
     }
 
     /** No catalogue lookup, derived-score fabrication, or retry of the failed mapper. */
@@ -753,6 +754,7 @@ public class AnalysisApiController {
         payload.put("productCoverageGaps", error.productCoverageGaps());
         payload.put("scoreSemanticsUnavailable", true);
         payload.put("analysisDurationMillis", error.analysisDurationMillis());
+        if (error.analysisCoverage() != null) payload.put("analysisCoverage", error.analysisCoverage());
         return new AnalysisSseEventMapper.MappedEvent("error", payload);
     }
 
@@ -780,13 +782,13 @@ public class AnalysisApiController {
             var terminal = run.finishAndGet(complete.status());
             return new AnalysisStreamEvent.Complete(terminal.resultStatus(), complete.allScores(),
                     terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps(),
-                    complete.analysisDurationMillis());
+                    complete.analysisDurationMillis(), complete.analysisCoverage());
         }
         if (event instanceof AnalysisStreamEvent.Error error) {
             var terminal = run.finishAndGet(error.status());
             return new AnalysisStreamEvent.Error(terminal.resultStatus(), terminal.message(error.errorMessage()),
                     error.partialScores(), terminal.warnings(error.warnings()), error.discrepancies(),
-                    error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis());
+                    error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis(), error.analysisCoverage());
         }
         return event;
     }

@@ -317,6 +317,43 @@ Scheitert eine Anbieterabfrage, pausiert der Lauf und zeigt die betroffene Frage
 
 Ein Teilergebnis kennzeichnet fehlgeschlagene, übersprungene und abhängige Knoten als **Nicht bewertet**. Unbekannt ist weder eine gemessene Null noch ein Beleg für fehlende Relevanz. Globale Lücken-, Muster- und Empfehlungsaussagen bleiben bis zur Bewertung der offenen Bereiche ungeklärt. **Lauf abbrechen** erhält abgeschlossene Ergebnisse; **Neue Analyse** leert den Arbeitsentwurf wie oben beschrieben. Dieser Dialog betrifft die Ad-hoc-Analyse; persistierte Projektanalysejobs haben eine eigene Wiederholungsfunktion im Job-Center.
 
+<a id="root-relevance-clarification"></a>
+
+### Relevante, ausgeschlossene und ungeklärte Wurzeln
+
+Bei der generativen Wurzelbewertung unterscheidet die Analyse drei Ergebnisse:
+
+| Ergebnis | Bedeutung | Anzeige und weiterer Ablauf |
+|---|---|---|
+| **Relevant** | Die Anforderung belegt einen funktionalen Beitrag dieses Bereichs. Auch ein benötigter vorhandener oder gemeinsam genutzter Dienst zählt. | Positiver Wert; passende Unterknoten werden weiter untersucht. |
+| **Nicht relevant** | Die Anforderung und die Katalogbeschreibung belegen einen Ausschluss oder eine fehlende fachliche Übereinstimmung. | Explizit bewertete Null; dieser Zweig wird bei der hierarchischen Bewertung nicht vertieft. |
+| **Klärung erforderlich** | Eine entscheidende Angabe fehlt, sodass Relevanz und Ausschluss noch nicht begründet werden können. | Kein Zahlenwert. Grund und Rückfrage stehen am Wurzelknoten; andere Bereiche werden weiter bewertet. |
+
+Beispiel: Bei „Arbeitszeiterfassung“ kann offen sein, ob Geräte miteinander
+kommunizieren müssen. Bei ausdrücklich vorgesehenen Online-Terminals ist die
+benötigte Kommunikationsleistung relevant, auch wenn das vorhandene Netz sie
+bereits erbringt. Die Analyse darf daraus keine bestimmte IP-Version, kein VPN
+oder einen neu zu beschaffenden Netzdienst erfinden. Eine positive Bewertung
+eines allgemeinen Dienstes bleibt erhalten, wenn keiner seiner spezielleren
+Unterknoten durch die Anforderung belegt ist.
+
+Eine fachliche Rückfrage ist kein technischer Anbieterfehler. Die Analyse bleibt
+als Teilergebnis nutzbar; ein fehlerfreier Gesamtlauf ist dafür nicht erforderlich.
+Ergänzen Sie eine tatsächlich fehlende Entscheidung in der Anforderung und
+analysieren Sie den aktualisierten Text beziehungsweise die neue Version. Die
+Wiederholung derselben unveränderten Frage löst die fachliche Unklarheit nicht
+automatisch. Ein Wurzelwert allein bestätigt außerdem keine Architekturbeziehung;
+deren Zielsuche kann weitere Taxonomiebereiche unabhängig von diesem Wert prüfen.
+
+![CO mit „Klärung erforderlich“, vollständiger Rückfrage und erhaltenen Bewertungen anderer Bereiche](../images/root-relevance-clarification-de.png)
+
+*Aufnahme aus der laufenden Anwendung: Das gespeicherte R0-Teilergebnis der
+Produktdemo wurde exportiert und unverändert über den normalen Dateiimport
+geladen. CO zeigt eine Rückfrage ohne Zahlenwert; BP 40 %, CR 45 % und UA 70 %
+bleiben erhalten. Die Werte sind deklarierte Demoantworten.
+[Screenshot direkt öffnen](../images/root-relevance-clarification-de.png) ·
+[Quellstand und Bildnachweis](../images/root-relevance-clarification-capture.json).*
+
 Der vollständig aufgeklappte Baum zeigt Bewertungen auf jeder Ebene und macht es leicht zu erkennen, welche Zweige am relevantesten sind:
 
 > **Detailansicht** — Das Bild unten zeigt den vollständig aufgeklappten BP-Baum auf allen Ebenen. Klicken Sie auf einen beliebigen Knoten, um seine Bewertung und Begründung zu sehen.

@@ -698,9 +698,23 @@ public class AnalysisContinuationStore {
         if (!open.isEmpty() && !"CANCELLED".equals(result.getStatus()) && !"ERROR".equals(result.getStatus()))
             result.setStatus("PARTIAL");
         Map<String, String> missing = new LinkedHashMap<>();
-        for (var question : open) if (!AnalysisCheckpointSession.isRelationQuestion(question.key()))
-            for (String node : question.nodes()) missing.put(node,
-                (question.skipped() ? "LEFT_OPEN:" : "FAILED:") + question.key());
+        for (var question : open) if (!AnalysisCheckpointSession.isRelationQuestion(question.key())) {
+            Map<String, com.taxonomy.dto.RootAssessment> clarifications = Map.of();
+            if (!question.skipped() && question.error() != null
+                    && question.error().startsWith(com.taxonomy.analysis.service.RootAssessmentEvidence.DIAGNOSTIC_PREFIX)) {
+                var retainedQuestion = question(run, question.key());
+                if (retainedQuestion != null && "CLARIFICATION".equals(retainedQuestion.state)) {
+                    var detail = questionDetail(retainedQuestion.nodeCodes, retainedQuestion.prompt, retainedQuestion.detailJson);
+                    if (com.taxonomy.analysis.service.RootAssessmentEvidence.isClarification(detail))
+                        clarifications = detail.getRootAssessments();
+                }
+            }
+            for (String node : question.nodes()) {
+                var clarification = clarifications.get(node);
+                missing.put(node, clarification == null ? (question.skipped() ? "LEFT_OPEN:" : "FAILED:") + question.key()
+                        : "CLARIFICATION:" + clarification.reason() + " " + clarification.question());
+            }
+        }
         // This is evidence metadata, never a new official catalogue node or an invented score.
         result.setTree(tree);
         if (previous != null && result.getArchitectureView() == null && previous.getArchitectureView() != null) {

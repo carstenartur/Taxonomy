@@ -319,7 +319,7 @@ public final class ClusterAnalysisBackupRestorer {
         require(taskIds.contains(call.taskId()) && call.callNumber() > 0 && call.callNumber() <= ClusterAnalysisDiagnostics.MAX_CALLS
                 && call.logicalOrdinal() > 0 && call.deliveryAttempt() > 0 && call.startedAt() >= 0 && call.durationMillis() >= 0
                 && call.eventRevision() > 0 && call.eventRevision() <= revision
-                && Set.of("STARTED", "COMPLETED", "FAILED", "STOPPED").contains(call.state())
+                && Set.of("STARTED", "COMPLETED", "CLARIFICATION", "FAILED", "STOPPED").contains(call.state())
                 && call.provider() != null && !call.provider().isBlank() && call.provider().length() <= 128
                 && ClusterAnalysisDiagnostics.length(call.node()) <= 512 && ClusterAnalysisDiagnostics.length(call.error()) <= 1024
                 && ClusterAnalysisDiagnostics.length(call.prompt()) <= ClusterAnalysisDiagnostics.MAX_TEXT && ClusterAnalysisDiagnostics.length(call.response()) <= ClusterAnalysisDiagnostics.MAX_TEXT

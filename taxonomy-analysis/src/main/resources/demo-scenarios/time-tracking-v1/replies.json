@@ -1,7 +1,7 @@
 {
   "schema": "taxonomy-product-demo-replies-v1",
   "scenario": "time-tracking-v1",
-  "version": 1,
+  "version": 2,
   "iterations": {
     "R0": {
       "zeroReason": "Szenario-Antwort: Kein erkennbarer Bezug zur Arbeitszeiterfassung im Anforderungstext.",
@@ -10,7 +10,11 @@
         "BR": {"score": 0, "reason": "Szenario-Antwort: Die Anforderung nennt keine Rollen oder Zuständigkeiten."},
         "CP": {"score": 0, "reason": "Szenario-Antwort: Keine militärische oder operative Fähigkeit angesprochen."},
         "CI": {"score": 0, "reason": "Szenario-Antwort: Keine fachspezifischen Einsatzdienste angesprochen."},
-        "CO": {"score": 0, "reason": "Szenario-Antwort: Kommunikationsdienste werden nicht beschrieben."},
+        "CO": {
+          "status": "UNRESOLVED",
+          "reason": "Szenario-Antwort: Erfassungskanäle und notwendige Netzwerkverbindungen sind in R0 nicht festgelegt.",
+          "question": "Soll die Erfassung über vernetzte Anwendungen oder vollständig lokal ohne Netzwerk und spätere Synchronisierung erfolgen?"
+        },
         "CR": {"score": 45, "reason": "Szenario-Antwort: Ein unternehmensweites System benötigt Personal- und Basisdienste."},
         "IP": {"score": 0, "reason": "Szenario-Antwort: Konkrete Informationsprodukte werden nicht genannt."},
         "UA": {"score": 70, "reason": "Szenario-Antwort: Gefordert ist eine Anwendung zur Arbeitszeiterfassung."}
@@ -135,7 +139,7 @@
         "BR": {"score": 25, "reason": "Szenario-Antwort: Mitarbeiter und Vorgesetzte haben getrennte Aufgaben bei Korrekturen."},
         "CP": {"score": 0, "reason": "Szenario-Antwort: Keine militärische oder operative Fähigkeit angesprochen."},
         "CI": {"score": 0, "reason": "Szenario-Antwort: Standort- und Lageverfolgung ist ausdrücklich ausgeschlossen."},
-        "CO": {"score": 0, "reason": "Szenario-Antwort: Online-Terminals nutzen das vorhandene Netz; kein eigener Kommunikationsdienst gefordert."},
+        "CO": {"status": "RELEVANT", "score": 40, "reason": "Szenario-Antwort: Browser, Online-Terminals, zentrale Anmeldung und HR-Stammdaten benötigen funktionierende Verbindungen. Die Nutzung vorhandener Netzdienste erfüllt diese notwendige Abhängigkeit und macht sie nicht irrelevant; R1 legt keine Netzimplementierung fest."},
         "CR": {"score": 70, "reason": "Szenario-Antwort: Zentrale Anmeldung, HR-Stammdaten und Freigaben benötigen Basisdienste."},
         "IP": {"score": 0, "reason": "Szenario-Antwort: Konkrete Informationsprodukte werden nicht genannt."},
         "UA": {"score": 75, "reason": "Szenario-Antwort: Arbeitszeitanwendung im Browser und an Online-Terminals."}
@@ -146,6 +150,29 @@
         "UA-1253": {
           "UA-1605": {"score": 70, "reason": "Szenario-Antwort: Arbeitszeitanwendung mit Browser- und Terminalbuchung."},
           "UA-1604": {"score": 5, "reason": "Szenario-Antwort: Abrechnung bleibt Abnehmer; nicht Teil des Systems."}
+        },
+        "CO": {"CO-1000": {"score": 40, "reason": "Szenario-Antwort: Die ausdrücklich online genutzten Anwendungen und angebundenen Dienste benötigen Konnektivität, auch über vorhandene Netzdienste."}},
+        "CO-1000": {
+          "CO-1011": {"score": 40, "reason": "Szenario-Antwort: Browser und Online-Terminals benötigen Ende-zu-Ende-Verbindungen zu Arbeitszeitanwendung, zentraler Anmeldung und HR-System."},
+          "CO-1063": {"score": 0, "reason": "Szenario-Antwort: Das Budget wird der benötigten Ende-zu-Ende-Anbindung zugeordnet; R1 spezifiziert keine gesonderten Metro- oder Weitverkehrstransportdienste."},
+          "CO-1056": {"score": 0, "reason": "Szenario-Antwort: R1 legt keine physischen Übertragungsmedien fest; dafür wird kein gesondertes Budget von der belegten Ende-zu-Ende-Anbindung abgezweigt."}
+        },
+        "CO-1011": {
+          "CO-1002": {"score": 0, "reason": "Szenario-Antwort: Browser- und Terminalbuchungen belegen keinen analogen Signalzugang; das Budget bleibt bei paketbasierter Anbindung."},
+          "CO-1007": {"score": 0, "reason": "Szenario-Antwort: R1 spezifiziert keinen leitungsvermittelten Zugang; das Budget bleibt bei paketbasierter Anbindung."},
+          "CO-1010": {"score": 0, "reason": "Szenario-Antwort: Die zentrale Anmeldung legt keinen zusätzlichen Sicherheitsdienst auf Kommunikationszugangsebene fest; dafür wird kein separates Budget zugeteilt."},
+          "CO-1012": {"score": 0, "reason": "Szenario-Antwort: R1 spezifiziert keine Verwaltung oder Steuerung des Kommunikationszugangs; dafür wird kein separates Budget zugeteilt."},
+          "CO-1014": {"score": 0, "reason": "Szenario-Antwort: R1 legt keinen nativen digitalen Schnittstellenzugang fest; das Budget bleibt bei paketbasierter Anbindung."},
+          "CO-1020": {"score": 0, "reason": "Szenario-Antwort: R1 legt keinen eigenständigen Ende-zu-Ende-Transport von Frames fest; das Budget bleibt bei paketbasierter Anbindung."},
+          "CO-1030": {"score": 0, "reason": "Szenario-Antwort: R1 verlangt keinen Nachrichtenzugang über direkt an Übertragungsdienste angeschlossene Geräte; dafür wird kein Budget zugeteilt."},
+          "CO-1031": {"score": 0, "reason": "Szenario-Antwort: Arbeitszeitbuchungen und Stammdaten begründen keinen gesonderten Multimediazugang; dafür wird kein Budget zugeteilt."},
+          "CO-1038": {"score": 40, "reason": "Szenario-Antwort: Die Online-Nutzung im Browser und an Terminals sowie die angebundenen Dienste benötigen paketbasierte Datenübertragung. IP-Version und weitere Netzausgestaltung sind nicht festgelegt."}
+        },
+        "CO-1038": {
+          "CO-1024": {"score": 0, "reason": "Szenario-Antwort: R1 entscheidet nicht zwischen IPv4 und IPv6. Ohne belegte IPv4-Festlegung wird hier kein Budget zugeteilt; die notwendige paketbasierte Anbindung bleibt auf CO-1038 positiv."},
+          "CO-1025": {"score": 0, "reason": "Szenario-Antwort: R1 entscheidet nicht zwischen IPv4 und IPv6. Ohne belegte IPv6-Festlegung wird hier kein Budget zugeteilt; die notwendige paketbasierte Anbindung bleibt auf CO-1038 positiv."},
+          "CO-1067": {"score": 0, "reason": "Szenario-Antwort: R1 legt keine VPN-Tunnel fest. Ohne diese Konkretisierung wird hier kein Budget zugeteilt; die notwendige paketbasierte Anbindung bleibt auf CO-1038 positiv."},
+          "CO-1085": {"score": 0, "reason": "Szenario-Antwort: R1 legt keine private Verbindung zwischen lokaler Infrastruktur und Cloud-Ressourcen fest. Ohne diese Konkretisierung wird hier kein Budget zugeteilt; die notwendige paketbasierte Anbindung bleibt auf CO-1038 positiv."}
         },
         "CR": {"CR-1000": {"score": 70, "reason": "Szenario-Antwort: Basisdienste."}},
         "CR-1000": {
@@ -180,6 +207,7 @@
       "justifications": {
         "UA-1605": "Szenario-Antwort: R1 verlangt eine Arbeitszeitanwendung im Browser und an Online-Terminals ohne Offline-Erfassung. Der Pfad führt über Personalanwendungen direkt zu Arbeitszeitanwendungen. Die hohe Bewertung folgt aus den nun festgelegten Erfassungskanälen.",
         "UA-1604": "Szenario-Antwort: Die Abrechnung ist nur Abnehmer der Zeiten und nicht Teil des Systems.",
+        "CO-1038": "Szenario-Antwort: Browser, Online-Terminals, zentrale Anmeldung und HR-Anbindung benötigen paketbasierte Konnektivität, auch wenn bestehende Netzdienste genutzt werden. R1 spezifiziert weder eine IP-Version noch VPN-Tunnel oder eine private Cloud-Anbindung. Die belegte Relevanz bleibt daher bei Packet-based Access Services; den konkreteren Kindern wird ohne diese Festlegung kein Budget zugewiesen.",
         "CR-1036": "Szenario-Antwort: Mitarbeiterstammdaten werden laut R1 aus dem führenden HR-System übernommen.",
         "CR-1065": "Szenario-Antwort: Korrekturen werden laut R1 beantragt und von Vorgesetzten genehmigt; das erfordert einen Freigabe-Workflow.",
         "CR-1006": "Szenario-Antwort: R1 legt die zentrale Unternehmensanmeldung fest.",

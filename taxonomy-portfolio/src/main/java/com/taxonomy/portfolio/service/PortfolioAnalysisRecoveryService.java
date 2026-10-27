@@ -10,7 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Stream;
 
 /** Recovers failed items and expired worker claims without crossing exact tenants. */
 @Service
@@ -19,13 +22,16 @@ public class PortfolioAnalysisRecoveryService {
     private final RequirementAnalysisJobRepository jobRepository;
     private final RequirementAnalysisJobItemRepository itemRepository;
     private final ProjectPortfolioService projectService;
+    private final PortfolioAnalysisPersistenceService persistenceService;
 
     public PortfolioAnalysisRecoveryService(RequirementAnalysisJobRepository jobRepository,
                                             RequirementAnalysisJobItemRepository itemRepository,
-                                            ProjectPortfolioService projectService) {
+                                            ProjectPortfolioService projectService,
+                                            PortfolioAnalysisPersistenceService persistenceService) {
         this.jobRepository = jobRepository;
         this.itemRepository = itemRepository;
         this.projectService = projectService;
+        this.persistenceService = persistenceService;
     }
 
     /**
@@ -57,9 +63,22 @@ public class PortfolioAnalysisRecoveryService {
                 .findByJobIdAndProjectIdAndScopeKeyAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
                         jobId, projectId, scopeKey, AnalysisStatus.RUNNING, staleBefore);
 
+        var retryVersionIds = new HashMap<Long, Long>();
+        var retryTargets = new ArrayList<ProjectProviderBinding.Target>();
+        for (var item : Stream.concat(failed.stream(), stale.stream()).toList()) {
+            Long versionId = projectService.currentVersion(item.getRequirement()).getId();
+            retryVersionIds.put(item.getId(), versionId);
+            retryTargets.add(new ProjectProviderBinding.Target(item.getRequirementId(), versionId));
+        }
+        if (!retryTargets.isEmpty()) {
+            // Admission and resets share this transaction and the exact version IDs captured above.
+            persistenceService.requireRetainedProviderBinding(projectId, job.getId(), job.getProvider(),
+                    retryTargets, username, context);
+        }
+
         int prepared = 0;
         for (RequirementAnalysisJobItem item : failed) {
-            Long versionId = projectService.currentVersion(item.getRequirement()).getId();
+            Long versionId = retryVersionIds.get(item.getId());
             prepared += itemRepository.resetFailed(
                     item.getId(),
                     jobId,
@@ -70,7 +89,7 @@ public class PortfolioAnalysisRecoveryService {
                     versionId);
         }
         for (RequirementAnalysisJobItem item : stale) {
-            Long versionId = projectService.currentVersion(item.getRequirement()).getId();
+            Long versionId = retryVersionIds.get(item.getId());
             prepared += itemRepository.resetExpiredRunning(
                     item.getId(),
                     jobId,

@@ -118,8 +118,15 @@ class ProductDemoEndToEndTest {
         heap("after-A0");
         assertThat(a0.provider()).isEqualTo("DEMO.TIME-TRACKING-V1.R0");
         assertThat(a0.status()).as(() -> "A0 job " + a0 + " warnings " + analyses.getSnapshot(run.projectId(),
-                a0.items().getFirst().snapshotId(), USER, context).analysis().getWarnings()).isEqualTo(AnalysisStatus.SUCCESS);
+                a0.items().getFirst().snapshotId(), USER, context).analysis().getWarnings()).isEqualTo(AnalysisStatus.PARTIAL);
         String a0Snapshot = a0.items().getFirst().snapshotId();
+        var a0Evidence = analyses.getSnapshot(run.projectId(), a0Snapshot, USER, context).analysis();
+        assertThat(a0Evidence.getRawScores()).doesNotContainKey("CO").containsKey("UA-1605");
+        assertThat(a0Evidence.getAnalysisCoverage().nodes().get("CO")).satisfies(coverage -> {
+            assertThat(coverage.state()).isEqualTo(com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN);
+            assertThat(coverage.score()).isNull();
+            assertThat(coverage.reason()).startsWith("CLARIFICATION:");
+        });
 
         // Bottom-up reformulation with five questions and one surveillance addition.
         var requirement = projects.getRequirement(run.projectId(), run.requirementId(), USER, context);

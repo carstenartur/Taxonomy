@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.demo;
 
 import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.dto.RootAssessment;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -47,12 +48,12 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
     }
     public record Reformulation(String defaultSummary, Map<String, String> summaries,
                                 List<Addition> additions, List<Question> questions) { }
-    public record Iteration(String name, String zeroReason, Map<String, Score> roots,
+    public record Iteration(String name, String zeroReason, Map<String, RootAssessment> roots,
                             Map<String, Map<String, Score>> expansions, Map<String, String> justifications,
                             List<Relation> relations, Reformulation reformulation) {
-        /** Authored score of a node, or {@code null} when the scenario does not score it positively. */
+        /** Authored numeric assessment, or {@code null} for an open or undeclared node. */
         public Double authoredScore(String code) {
-            Score root = roots.get(code);
+            RootAssessment root = roots.get(code);
             if (root != null) return root.score();
             for (var children : expansions.values()) {
                 Score child = children.get(code);
@@ -61,10 +62,12 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
             return null;
         }
 
-        /** All codes the iteration scores (roots and declared children). */
+        /** Numeric evidence only; an unresolved root is never converted to zero. */
         public Map<String, Double> declaredScores() {
             var scores = new LinkedHashMap<String, Double>();
-            roots.forEach((code, score) -> scores.put(code, score.score()));
+            roots.forEach((code, assessment) -> {
+                if (!assessment.unresolved()) scores.put(code, assessment.score());
+            });
             expansions.values().forEach(children -> children.forEach((code, score) -> scores.put(code, score.score())));
             return Collections.unmodifiableMap(scores);
         }
@@ -150,8 +153,9 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
                 require(parentScore != null && parentScore > 0,
                         iteration.name() + ": expansion of unscored parent " + parent.getKey());
                 double sum = parent.getValue().values().stream().mapToDouble(Score::score).sum();
-                require(sum == parentScore, iteration.name() + ": children of " + parent.getKey()
-                        + " must sum to its authored score " + parentScore + " but sum to " + sum);
+                require(sum == 0 || sum == parentScore, iteration.name() + ": children of " + parent.getKey()
+                        + " must sum to its authored score " + parentScore
+                        + " or allocate zero when no more specific match is supported, but sum to " + sum);
             }
             for (var relation : iteration.relations()) {
                 require(relation.path().size() >= 2 && ROOTS.contains(relation.path().getFirst()),
@@ -193,8 +197,8 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
 
     private static Iteration iteration(String name, JsonNode node) {
         require(name.matches("R[0-9]{1,2}"), "Invalid iteration name " + name);
-        var roots = new LinkedHashMap<String, Score>();
-        node.path("roots").properties().forEach(e -> roots.put(e.getKey(), score(e.getValue())));
+        var roots = new LinkedHashMap<String, RootAssessment>();
+        node.path("roots").properties().forEach(e -> roots.put(e.getKey(), rootAssessment(e.getValue())));
         var expansions = new LinkedHashMap<String, Map<String, Score>>();
         for (var parent : node.path("expansions").properties()) {
             var children = new LinkedHashMap<String, Score>();
@@ -234,6 +238,23 @@ public record DemoScenario(String id, int version, String fingerprint, Map<Strin
         int value = node.path("score").asInt();
         require(value >= 0 && value <= 100, "Score must be within 0..100");
         return new Score(value, text(node, "reason"));
+    }
+
+    private static RootAssessment rootAssessment(JsonNode node) {
+        if (!node.has("status")) {
+            Score legacy = score(node);
+            return new RootAssessment(legacy.score() > 0 ? RootAssessment.Status.RELEVANT
+                    : RootAssessment.Status.IRRELEVANT, legacy.score(), legacy.reason(), "");
+        }
+        RootAssessment.Status status = RootAssessment.Status.valueOf(text(node, "status"));
+        JsonNode value = node.path("score");
+        require(value.isMissingNode() || value.isNull() || value.isNumber(), "Root score must be numeric or absent");
+        Double numeric = value.isNumber() ? value.asDouble() : null;
+        JsonNode question = node.path("question");
+        require(question.isMissingNode() || question.isNull() || question.isString(),
+                "Root question must be text or absent");
+        return new RootAssessment(status, numeric, text(node, "reason"),
+                question.isMissingNode() || question.isNull() ? "" : question.asString());
     }
 
     private static Map<String, String> localized(JsonNode node) {

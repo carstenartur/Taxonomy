@@ -16,6 +16,30 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClusterAnalysisDetailedProgressTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
 
+    @Test void validRootClarificationIsObservedWithoutAnExcludedRoot() {
+        try (var db = new Database(); var observation = observation(db.store)) {
+            var context = context("root-clarification-progress"); db.admitFrozen(context);
+            var task = releaseIpAfterUnassessedCp(db); var input = db.store.start(task);
+            var worker = db.store.diagnostics(task, input.deliveryAttempt());
+            var detail = tools.jackson.databind.json.JsonMapper.builder()
+                    .disable(tools.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build()
+                    .readValue("""
+                            {"scores":{},"reasons":{"IP":"The requested information product is unspecified."},
+                             "rootAssessments":{"IP":{"status":"UNRESOLVED","score":null,
+                               "reason":"The requested information product is unspecified.","question":"Which record is required?"}},
+                             "provider":"Mock","rawResponse":"valid root clarification",
+                             "error":"ROOT_UNRESOLVED: The requested information product is unspecified. Which record is required?"}
+                            """, LlmCallDetail.class);
+            long call = worker.started("Mock", "IP"); worker.completed(call, detail, 5);
+            var live = snapshot(observation, context);
+            assertEquals("CLARIFICATION", live.calls().getFirst().status());
+            var ip = live.nodeProgress().taxonomies().stream().filter(part -> part.root().equals("IP")).findFirst().orElseThrow();
+            assertNull(ip.rootPercent());
+            assertEquals(0, ip.excluded());
+            assertEquals(2, ip.open());
+        }
+    }
+
     @Test void liveRelationProgressPreservesTheAdmittedCumulativeBudget() {
         var plan = budgetPlan(10);
         var view = ClusterAnalysisProgress.combine(context("budget-progress"), ClusterAnalysisState.RUNNING,

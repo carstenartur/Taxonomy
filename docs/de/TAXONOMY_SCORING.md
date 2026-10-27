@@ -57,6 +57,14 @@ Die Normalisierung verteilt Gewichte. Sie beweist weder Erfüllung, Notwendigkei
 
 **Unabhängige Wurzeln:** `analyzeWithBudget` und `analyzeStreaming` bewerten jede Wurzel einzeln zwischen 0 und 100, ohne Summen-Prompt oder Kinderbudget-Normalisierung. Eine Wurzelantwort `20` bleibt `20`; `0` und `100` bleiben unterscheidbar. Der lokale ONNX-Pfad behält seinen Ähnlichkeitswert für die Wurzel ohne Budgetverteilung; Mock-Wurzeln behalten ihre begrenzten Demonstrationswerte. Ein positiver Wurzelwert wird erst zum Budget für ihre *Kinder*. Eine echte Kategorie mit nur einem Kind bleibt beim Kinderbudget-Vertrag.
 
+Der generative Wurzelvertrag `root-relevance-v2` unterscheidet zusätzlich
+`RELEVANT` (positiver Wert), `IRRELEVANT` (begründete Null) und `UNRESOLVED`
+(kein Zahlenwert, mit Grund und Rückfrage). Auch benötigte vorhandene Dienste
+können relevant sein. Ein ungeklärter Bereich bleibt als `UNKNOWN` im
+Teilergebnis sichtbar und erhält kein Kinderbudget; andere Bereiche laufen
+weiter. Ältere numerische Antworten bleiben lesbar, ohne nachträglich eine
+Begründung zu erfinden. [Anzeige und Beispiele](USER_GUIDE.md#root-relevance-clarification).
+
 ## Heutige IP-Produktrechnung
 
 `analysisRole=PRODUCT` aktiviert unabhängige Eignung für die Originalanforderung. Kandidaten werden nach Code sortiert, in konfigurierbaren Paketen von höchstens zehn geprüft und anhand der Standard-Mindestgrenze 50 gefiltert: `49, 80, 90` wird im strukturierten Ergebnis `0, 80, 90`. Das ist keine Aufteilung auf 100.

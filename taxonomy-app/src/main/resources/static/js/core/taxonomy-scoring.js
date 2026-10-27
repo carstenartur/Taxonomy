@@ -368,14 +368,16 @@
         const prompt = (detail && detail.prompt) ? detail.prompt : '';
         const rawResponse = (detail && detail.rawResponse) ? detail.rawResponse : '';
         const errorMsg = (detail && detail.error) ? detail.error : null;
+        const rootClarification = typeof errorMsg === 'string' && errorMsg.startsWith('ROOT_UNRESOLVED:');
         const reasons = (detail && detail.reasons) ? detail.reasons : {};
 
         const entry = document.createElement('details');
-        entry.className = 'llm-log-entry' + (errorMsg ? ' llm-log-error' : '');
+        entry.className = 'llm-log-entry' + (errorMsg && !rootClarification ? ' llm-log-error' : '');
 
         const summary = document.createElement('summary');
         summary.style.cursor = 'pointer';
-        const statusBadge = errorMsg
+        const statusBadge = rootClarification
+            ? '<span>' + escapeHtml(t('browse.container.area.clarification')) + '</span>' : errorMsg
             ? '<span class="llm-log-error-badge">&#10060; ERROR</span>'
             : '<span class="text-success">&#10003; ' + matchCount + ' match' + (matchCount !== 1 ? 'es' : '') + '</span>';
         summary.innerHTML =
@@ -389,7 +391,9 @@
         const body = document.createElement('div');
         body.className = 'px-2 pb-2';
 
-        const errorHtml = errorMsg
+        const errorHtml = rootClarification
+            ? '<div class="mt-1"><strong>' + escapeHtml(t('browse.container.area.clarification')) + ':</strong> '
+                + escapeHtml(errorMsg.substring('ROOT_UNRESOLVED:'.length).trim()) + '</div>' : errorMsg
             ? '<div class="mt-1 llm-log-error-detail"><strong>&#9888; ERROR:</strong> ' + escapeHtml(errorMsg) + '</div>'
             : '';
 
@@ -398,15 +402,19 @@
         let reasonsHtml = '';
         if (reasonEntries.length > 0) {
             const reasonLines = reasonEntries.map(([code, reason]) => {
-                const raw = scores && scores[code] !== undefined ? scores[code] : 0;
+                const raw = scores && scores[code];
                 const scoreDetail = detail && detail.scoreDetails
                     ? detail.scoreDetails[code] : (S.currentScoreDetails || {})[code];
-                const effective = S.currentScores && S.currentScores[code] !== undefined
+                const effective = !Number.isFinite(raw) ? null : S.currentScores && S.currentScores[code] !== undefined
                     ? S.currentScores[code]
                     : (isProductScore(scoreDetail)
                         ? effectiveProductScore(raw, scoreDetail) : raw);
+                const unresolvedRoot = detail && detail.rootAssessments && detail.rootAssessments[code]
+                    && detail.rootAssessments[code].status === 'UNRESOLVED';
+                const label = Number.isFinite(raw) ? scoreLabel(code, effective, raw, scoreDetail)
+                    : t(unresolvedRoot ? 'browse.container.area.clarification' : 'browse.container.area.unassessed');
                 return '<div class="llm-log-reason-entry"><code>' + escapeHtml(code) + '</code> '
-                    + '(' + escapeHtml(scoreLabel(code, effective, raw, scoreDetail)) + '): '
+                    + '(' + escapeHtml(label) + '): '
                     + escapeHtml(reason) + '</div>';
             }).join('');
             reasonsHtml = '<div class="mt-1"><strong>&#128172; REASONS:</strong>'
@@ -920,6 +928,7 @@
         S.scoreSemanticsVersion = 0;
         S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
+        S.analysisCoverage = null;
         S.lastAnalysisDurationMillis = null;
         S.lastAnalysisReasonLength = null;
         S.lastAnalysisLanguage = null;
@@ -1008,6 +1017,7 @@
                         provider: data.provider || '',
                         durationMs: data.durationMs || 0,
                         reasons: data.reasons || {},
+                        rootAssessments: data.rootAssessments || {},
                         scoreDetails: details,
                         error: data.error || null
                     }
@@ -1043,6 +1053,7 @@
             });
             acceptAnalysisReasonLength(data, false);
             if (data.reasons) Object.assign(S.currentReasons, data.reasons);
+            if (Object.prototype.hasOwnProperty.call(data, 'analysisCoverage')) S.analysisCoverage = data.analysisCoverage;
             syncVisibleScoreNodes();
             S.currentDiscrepancies = data.discrepancies || [];
             S.currentProductCoverageGaps = data.productCoverageGaps || [];
@@ -1098,6 +1109,7 @@
                     });
                     S.lastAnalysisDurationMillis = Number.isSafeInteger(data.analysisDurationMillis)
                         && data.analysisDurationMillis >= 0 ? data.analysisDurationMillis : null;
+                    if (Object.prototype.hasOwnProperty.call(data, 'analysisCoverage')) S.analysisCoverage = data.analysisCoverage;
                     if (typeof B().refreshAnalysisDuration === 'function') B().refreshAnalysisDuration();
                     syncVisibleScoreNodes();
                     updateAnalysisLog({ timestamp: new Date(), totalNodes: Object.keys(S.currentScores || {}).length,

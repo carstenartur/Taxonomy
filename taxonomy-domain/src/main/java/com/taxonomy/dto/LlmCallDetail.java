@@ -16,6 +16,7 @@ public class LlmCallDetail {
     private long durationMs;
     private String error;
     private TaxonomyDiscrepancy discrepancy;
+    private Map<String, RootAssessment> rootAssessments = Map.of();
 
     public LlmCallDetail() {}
 
@@ -42,4 +43,15 @@ public class LlmCallDetail {
 
     public TaxonomyDiscrepancy getDiscrepancy() { return discrepancy; }
     public void setDiscrepancy(TaxonomyDiscrepancy discrepancy) { this.discrepancy = discrepancy; }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public Map<String, RootAssessment> getRootAssessments() { return rootAssessments; }
+
+    public void setRootAssessments(Map<String, RootAssessment> values) {
+        if (values == null || values.isEmpty()) { rootAssessments = Map.of(); return; }
+        if (values.entrySet().stream().anyMatch(entry -> entry.getKey() == null || entry.getKey().isBlank()
+                || entry.getKey().length() > 256 || entry.getValue() == null))
+            throw new IllegalArgumentException("Root assessment evidence requires bounded identities and valid decisions");
+        rootAssessments = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(values));
+    }
 }

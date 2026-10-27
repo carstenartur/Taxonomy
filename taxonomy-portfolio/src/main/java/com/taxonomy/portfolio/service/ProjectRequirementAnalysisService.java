@@ -177,7 +177,9 @@ public class ProjectRequirementAnalysisService {
                                               String username,
                                               WorkspaceContext context) {
         AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
-        if (job.status() != AnalysisStatus.PENDING) {
+        if (job.status() == AnalysisStatus.PENDING) {
+            requireJobProviderBinding(job, username, context);
+        } else {
             recoveryService.prepareRetryableItems(
                     jobId,
                     projectId,
@@ -302,6 +304,13 @@ public class ProjectRequirementAnalysisService {
         }
     }
 
+    private void requireJobProviderBinding(AnalysisJobView job, String username, WorkspaceContext context) {
+        var targets = job.items().stream().map(item -> new ProjectProviderBinding.Target(
+                item.requirementId(), item.requirementVersionId())).toList();
+        persistenceService.requireRetainedProviderBinding(job.projectId(), job.id(), job.provider(),
+                targets, username, context);
+    }
+
     private AnalysisJobView executePendingItems(String jobId,
                                                 Long projectId,
                                                 String username,
@@ -328,6 +337,10 @@ public class ProjectRequirementAnalysisService {
             long startedAt = System.nanoTime();
             try (var providerScope = llmService.withProviderBinding(job.provider(), job.providerBinding());
                  var languageScope = com.taxonomy.analysis.service.AnalysisLanguageContext.open(job.analysisLanguage())) {
+                // A rejection after dispatch belongs to this claim's normal failure and reconciliation path.
+                persistenceService.requireRetainedProviderBinding(workItem.projectId(), workItem.jobId(), job.provider(),
+                        List.of(new ProjectProviderBinding.Target(workItem.requirementId(), workItem.requirementVersionId())),
+                        username, context);
                 AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
                                 workItem.requirementText(),
                                 true,

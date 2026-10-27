@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -32,7 +33,13 @@ public sealed interface AnalysisStreamEvent
                     List<String> warnings,
                     List<TaxonomyDiscrepancy> discrepancies,
                     List<ProductCoverageGap> productCoverageGaps,
-                    Long analysisDurationMillis) implements AnalysisStreamEvent {
+                    Long analysisDurationMillis,
+                    AnalysisCoverage analysisCoverage) implements AnalysisStreamEvent {
+        public Complete(String status, Map<String, Double> allScores, List<String> warnings,
+                        List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps,
+                        Long analysisDurationMillis) {
+            this(status, allScores, warnings, discrepancies, productCoverageGaps, analysisDurationMillis, null);
+        }
         public Complete(String status, Map<String, Double> allScores, List<String> warnings,
                         List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps) {
             this(status, allScores, warnings, discrepancies, productCoverageGaps, null);
@@ -46,7 +53,15 @@ public sealed interface AnalysisStreamEvent
                  List<TaxonomyDiscrepancy> discrepancies,
                  List<ProductCoverageGap> productCoverageGaps,
                  Map<String, String> partialReasons,
-                 Long analysisDurationMillis) implements AnalysisStreamEvent {
+                 Long analysisDurationMillis,
+                 AnalysisCoverage analysisCoverage) implements AnalysisStreamEvent {
+        public Error(String status, String errorMessage, Map<String, Double> partialScores,
+                     List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                     List<ProductCoverageGap> productCoverageGaps, Map<String, String> partialReasons,
+                     Long analysisDurationMillis) {
+            this(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps,
+                    partialReasons, analysisDurationMillis, null);
+        }
         public Error(String status, String errorMessage, Map<String, Double> partialScores,
                      List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                      List<ProductCoverageGap> productCoverageGaps, Map<String, String> partialReasons) {

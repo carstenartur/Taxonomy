@@ -692,7 +692,7 @@ class ProjectAnalysisBudgetContinuationTest {
                     bindings.getBeanProvider(ProjectProviderBinding.class)));
             var claims = proxied(new PortfolioAnalysisClaimPersistenceService(items, persistence, mock(HypothesisService.class)));
             var workQueue = proxied(new PortfolioAnalysisWorkQueue(jobs, items));
-            var recovery = proxied(new PortfolioAnalysisRecoveryService(jobs, items, projectService));
+            var recovery = proxied(new PortfolioAnalysisRecoveryService(jobs, items, projectService, persistence));
             var budget = mock(AiPromptBudgetPolicy.class);
             var relations = new RequirementRelationSearchService(catalogue, new RelationCompatibilityMatrix(), llm, budget);
             // Exercise explicit manual continuation with fixed source and prompt packing.

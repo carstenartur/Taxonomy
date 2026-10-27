@@ -8,7 +8,9 @@ Der CO-Prompt betrachtet Sprach- und Datenkommunikation, Netze, Übertragung und
 
 ## Bewertung heute
 
-CO verwendet die gemeinsame Kategorie-/Elternbudgetverteilung. Der reguläre Parser behandelt seine Kategorien rechnerisch wie BP, BR oder CP; nur die fachliche Frage des Prompts ist anders. Bei Elternwert 60 können Sprach- und Datendienstkandidaten beispielsweise 20 und 40 erhalten. Das bedeutet weder 20/40 Prozent Bandbreite noch Verfügbarkeit oder Zuverlässigkeit. Quell-Vorfahrenkontext und gemeinsame Null-/Fehlerregeln gelten.
+Die CO-Wurzel erhält eine unabhängige Relevanzbewertung. Eine notwendige Kommunikationsleistung kann auch dann relevant sein, wenn ein vorhandenes Netz sie erbringt. Eine entscheidende fehlende Angabe führt bei generativen Antworten zu einer Rückfrage ohne Zahlenwert. [Beispiele und Anzeige](../USER_GUIDE.md#root-relevance-clarification).
+
+CO-Unterknoten verwenden die gemeinsame Kategorie-/Elternbudgetverteilung. Der reguläre Parser behandelt ihre Kategorien rechnerisch wie BP, BR oder CP; nur die fachliche Frage des Prompts ist anders. Bei Elternwert 60 können Sprach- und Datendienstkandidaten beispielsweise 20 und 40 erhalten. Das bedeutet weder 20/40 Prozent Bandbreite noch Verfügbarkeit oder Zuverlässigkeit. Quell-Vorfahrenkontext und gemeinsame Null-/Fehlerregeln gelten.
 
 ## Mehrere Treffer und Konsequenzen
 

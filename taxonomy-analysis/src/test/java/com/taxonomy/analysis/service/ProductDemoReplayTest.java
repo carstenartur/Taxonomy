@@ -60,6 +60,75 @@ class ProductDemoReplayTest {
         assertThat(children.path("UA-1606").path("reason").asString()).isNotBlank();
     }
 
+    @Test void sparseTimeTrackingLeavesConnectivityOpenWithoutANumericScore() {
+        var reply = JSON.readTree(new DemoReplyBook(scenario, "R0")
+                .reply(scoringPrompt(true, scenario.r0Text(), 100, "CO"))).path("CO");
+
+        assertThat(reply.path("status").asString()).isEqualTo("UNRESOLVED");
+        assertThat(reply.has("score") && !reply.path("score").isNull()).isFalse();
+        assertThat(reply.path("reason").asString()).isNotBlank();
+        assertThat(reply.path("question").asString()).isNotBlank();
+        assertThat(scenario.iteration("R0").declaredScores()).doesNotContainKey("CO");
+        assertThat(scenario.iteration("R0").declaredScores()).containsEntry("UA", 70d);
+    }
+
+    @Test void onlineTimeTrackingIncludesNeededConnectivityWithoutRequiringANewNetwork() {
+        String text = scenario.r0Text() + "\n" + String.join("\n", scenario.r1RequiredPhrases());
+        var reply = JSON.readTree(new DemoReplyBook(scenario, "R1")
+                .reply(scoringPrompt(true, text, 100, "CO"))).path("CO");
+
+        assertThat(reply.path("status").asString()).isEqualTo("RELEVANT");
+        assertThat(reply.path("score").isNumber()).isTrue();
+        assertThat(reply.path("score").asDouble()).isPositive().isLessThanOrEqualTo(100d);
+        assertThat(reply.path("reason").asString()).isNotBlank();
+    }
+
+    @Test void supportedConnectivityDoesNotInventAnIpVersionOrPrivateCloudLink() throws Exception {
+        var iteration = scenario.iteration("R1");
+        assertThat(iteration.expansions()).containsKey("CO-1038");
+        assertThat(iteration.declaredScores().get("CO-1038")).isPositive();
+        String text = scenario.r0Text() + "\n" + String.join("\n", scenario.r1RequiredPhrases());
+        var offered = List.of("CO-1024", "CO-1025", "CO-1067", "CO-1085");
+        String reply = new DemoReplyBook(scenario, "R1")
+                .reply(scoringPrompt(false, text, 40, String.join(", ", offered)));
+        var nodes = offered.stream().map(code -> {
+            var node = new com.taxonomy.catalog.model.TaxonomyNode();
+            node.setCode(code); node.setTaxonomyRoot("CO"); node.setParentCode("CO-1038");
+            return node;
+        }).toList();
+        var parsed = new LlmResponseParser(JSON).parseScoreParseResult(reply, nodes, 40);
+
+        assertThat(parsed.scores()).containsOnlyKeys(offered).allSatisfy((code, value) -> assertThat(value).isZero());
+        assertThat(parsed.reasons()).containsOnlyKeys(offered).allSatisfy((code, reason) -> assertThat(reason).isNotBlank());
+        assertThat(iteration.declaredScores().get("CO-1038")).isPositive();
+    }
+
+    @Test void contradictoryUnresolvedDemoRootCannotBecomeNumericZero() throws IOException {
+        var resource = "demo-scenarios/time-tracking-v1/replies.json";
+        tools.jackson.databind.node.ObjectNode replies;
+        try (var input = getClass().getClassLoader().getResourceAsStream(resource)) {
+            replies = (tools.jackson.databind.node.ObjectNode) JSON.readTree(input);
+        }
+        var root = (tools.jackson.databind.node.ObjectNode) replies.path("iterations").path("R0").path("roots").path("CO");
+        root.put("status", "UNRESOLVED").put("score", 0)
+                .put("reason", "The deployment is not specified.")
+                .put("question", "Is any network communication required?");
+        Function<String, InputStream> resources = path -> path.equals(resource)
+                ? new ByteArrayInputStream(JSON.writeValueAsBytes(replies))
+                : getClass().getClassLoader().getResourceAsStream(path);
+
+        assertThatThrownBy(() -> DemoScenario.load("time-tracking-v1", resources))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void isolatedOfflineRequirementCannotReuseTheOnlineDemoAnswer() {
+        String offline = "Record working time only on an isolated offline terminal. "
+                + "No network communication, remote services or later synchronization is permitted.";
+        assertThatThrownBy(() -> new DemoReplyBook(scenario, "R1")
+                .reply(scoringPrompt(true, offline, 100, "CO")))
+                .hasMessageContaining("ITERATION_MISMATCH");
+    }
+
     @Test void fractionalParentBudgetKeepsPositiveDemoChildrenBelowOnePercent() {
         var book = new DemoReplyBook(scenario, "R0");
         var children = JSON.readTree(book.reply(scoringPrompt(false, scenario.r0Text(), 0.5,

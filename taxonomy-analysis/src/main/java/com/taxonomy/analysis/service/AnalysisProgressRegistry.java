@@ -436,7 +436,8 @@ public class AnalysisProgressRegistry {
             nodeTracker.accept(detail);
             Call call = calls.stream().filter(c -> c.id == id).findFirst().orElse(null);
             if (call != null) {
-                call.status = detail.getError() == null || detail.getError().isBlank() ? "COMPLETED" : "FAILED";
+                call.status = RootAssessmentEvidence.isClarification(detail) ? "CLARIFICATION"
+                        : detail.getError() == null || detail.getError().isBlank() ? "COMPLETED" : "FAILED";
                 call.duration = duration;
                 call.promptLength = length(detail.getPrompt());
                 call.responseLength = length(detail.getRawResponse());

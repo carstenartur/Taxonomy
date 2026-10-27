@@ -116,7 +116,9 @@ function harness(locale = 'en') {
   };
   const context = vm.createContext({
     window, document, console,
-    TaxonomyI18n: { t: (key, value) => key === 'browse.container.relevance' ? `Area relevance: ${value}%` : key }, TaxonomyUtils: sharedUtils,
+    TaxonomyI18n: { t: (key, value) => key === 'browse.container.relevance' ? `Area relevance: ${value}%`
+      : key === 'browse.container.area.clarification' ? locale === 'de' ? 'Klärung erforderlich' : 'Clarification needed'
+      : key === 'browse.container.area.unassessed' ? locale === 'de' ? 'Bereichsrelevanz nicht bewertet' : 'Area relevance not assessed' : key }, TaxonomyUtils: sharedUtils,
     CSS: { escape: value => value },
     EventSource: class {
       constructor() { transport = this; }
@@ -180,6 +182,49 @@ test('legacy LLM log renderer exposes copy controls for prompt and response', as
   buttons[0].emit('click'); buttons[1].emit('click');
   await Promise.resolve();
   assert.deepEqual(h.copiedDiagnostics, ['legacy prompt', '{"IP":80}']);
+});
+
+for (const locale of ['de', 'en']) {
+  test(`${locale}: a streamed root clarification never becomes an error or a reason with a fabricated zero`, () => {
+    const h = harness(locale);
+    const question = 'Should booking work online or entirely locally without later synchronization?';
+    const rootAssessments = { CO: { status: 'UNRESOLVED', score: null, reason: 'The recording channels are unspecified.', question } };
+    h.score({ BP: 72 });
+    h.send('scores', { scores: {}, rawScores: {}, reasons: { CO: 'The recording channels are unspecified. ' + question },
+      rootAssessments,
+      prompt: 'Recorded root request', rawResponse: JSON.stringify(rootAssessments),
+      error: 'ROOT_UNRESOLVED: The recording channels are unspecified. ' + question });
+    const entry = h.controls.llmCommLogContent.children[0];
+    const markup = node => [node.innerHTML || '', node.textContent || '', ...(node.children || []).map(markup)].join(' ');
+    const text = markup(entry);
+    assert.match(text, locale === 'de' ? /Klärung erforderlich/ : /Clarification needed/);
+    assert.ok(text.includes(question));
+    assert.doesNotMatch(text, /ERROR|0%|0\/100/);
+    assert.doesNotMatch(entry.className, /llm-log-error/);
+    assert.equal(h.state.currentRawScores.CO, undefined);
+    assert.equal(h.state.currentRawScores.BP, 72);
+  });
+}
+
+test('an explanation without recorded numeric evidence is displayed as unassessed in legacy logs', () => {
+  const h = harness();
+  h.api.appendLlmLogEntry('CO', {}, { reasons: { CO: 'No accepted assessment is recorded.' } });
+  const markup = node => [node.innerHTML || '', node.textContent || '', ...(node.children || []).map(markup)].join(' ');
+  const text = markup(h.controls.llmCommLogContent.children[0]);
+  assert.match(text, /Area relevance not assessed/);
+  assert.doesNotMatch(text, /0%|0\/100/);
+});
+
+test('a product explanation without its raw score cannot fabricate suitability from a known parent', () => {
+  const h = harness();
+  h.score({ [family]: 40 });
+  h.api.appendLlmLogEntry(product, {}, { reasons: { [product]: 'No accepted suitability is recorded.' },
+    scoreDetails: { [product]: { ...hint, parentScore: 40 } } });
+  const markup = node => [node.innerHTML || '', node.textContent || '', ...(node.children || []).map(markup)].join(' ');
+  const text = markup(h.controls.llmCommLogContent.children[0]);
+  assert.match(text, /not assessed/);
+  assert.doesNotMatch(text, /0%|0\/100/);
+  assert.equal(h.state.currentRawScores[product], undefined);
 });
 
 for (const language of ['en', 'de']) {
@@ -329,6 +374,24 @@ for (const terminal of ['complete', 'error']) {
     assert.equal(h.state.currentScores[product], 32);
     assert.match(h.badge().textContent, /80%.*32\/100/);
     assert.doesNotMatch(h.aria(), /pending/);
+  });
+  test(`${terminal}: authoritative root clarification coverage survives streaming completion`, () => {
+    const h = harness(); h.score({ BP: 72 });
+    const coverage = { assessedNodes: 1, unknownNodes: 2, failedOrBlockedNodes: 2, nodes: {
+      BP: { state: 'RELEVANT', score: 72, effectiveRelevance: 72, descendants: 'COMPLETE', reason: null },
+      CO: { state: 'UNKNOWN', score: null, effectiveRelevance: null, descendants: 'UNASSESSED',
+        reason: 'CLARIFICATION: Recording channels are unspecified. Is connectivity required?' },
+      'CO-1000': { state: 'UNKNOWN', score: null, effectiveRelevance: null, descendants: 'UNASSESSED', reason: 'BLOCKED_BY:CO' }
+    } };
+    h.send(terminal, { status: 'PARTIAL', totalScores: { BP: 72 }, partialScores: { BP: 72 }, rawScores: { BP: 72 },
+      reasons: { CO: 'Recording channels are unspecified. Is connectivity required?' }, analysisCoverage: coverage,
+      warnings: [], errorMessage: 'Other work was interrupted.' });
+    assert.ok(h.state.analysisCoverage, 'terminal coverage must be retained for the root renderer');
+    assert.deepEqual(JSON.parse(JSON.stringify(h.state.analysisCoverage)), coverage);
+    assert.equal(h.state.currentScores.CO, undefined);
+    assert.equal(h.state.currentRawScores.BP, 72);
+    assert.equal(h.state.lastAnalysisStatus, 'PARTIAL');
+    assert.equal(h.renders(), 1, 'terminal metadata must not rebuild the focused tree');
   });
 }
 

@@ -80,6 +80,7 @@ public class AnalysisSseEventMapper {
             payload.put("warnings", complete.warnings());
             payload.put("discrepancies", complete.discrepancies());
             payload.put("productCoverageGaps", complete.productCoverageGaps());
+            if (complete.analysisCoverage() != null) payload.put("analysisCoverage", complete.analysisCoverage());
             return new MappedEvent("complete", payload);
         }
         if (event instanceof AnalysisStreamEvent.Error error) {
@@ -99,6 +100,7 @@ public class AnalysisSseEventMapper {
             payload.put("warnings", error.warnings());
             payload.put("discrepancies", error.discrepancies());
             payload.put("productCoverageGaps", error.productCoverageGaps());
+            if (error.analysisCoverage() != null) payload.put("analysisCoverage", error.analysisCoverage());
             return new MappedEvent("error", payload);
         }
         throw new IllegalArgumentException("Unsupported analysis stream event: " + event);
@@ -122,6 +124,7 @@ public class AnalysisSseEventMapper {
         payload.put("message", scores.description());
         LlmCallDetail detail = scores.detail();
         if (detail != null) {
+            if (!detail.getRootAssessments().isEmpty()) payload.put("rootAssessments", detail.getRootAssessments());
             payload.put("prompt", detail.getPrompt() != null ? detail.getPrompt() : "");
             payload.put("rawResponse", detail.getRawResponse() != null ? detail.getRawResponse() : "");
             payload.put("provider", detail.getProvider() != null ? detail.getProvider() : "");

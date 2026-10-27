@@ -33,6 +33,30 @@ class ClusterAnalysisBackupRestoreTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    @Test void archivedRootClarificationRemainsInspectableWithoutRestartingWork() throws Exception {
+        try (var source = new Database(); var target = new Database()) {
+            var original = context("clarification-source"); source.admitFrozen(original);
+            var task = source.task(CP); var input = source.store.start(task);
+            var worker = source.store.diagnostics(task, input.deliveryAttempt());
+            long call = worker.started("Mock", "CP");
+            var detail = new com.taxonomy.dto.LlmCallDetail(); detail.setScores(Map.of());
+            detail.setRawResponse("Retained semantic clarification"); detail.setError("ROOT_UNRESOLVED: Which capability is requested?");
+            worker.completed(call, detail, 1);
+            // An imported archive describes a valid clarification observation independent of a live provider.
+            new TransactionTemplate(source.transactions).executeWithoutResult(status -> source.em.createQuery(
+                            "update ClusterAnalysisCall c set c.state='CLARIFICATION' where c.operationId=:id")
+                    .setParameter("id", original.operationId()).executeUpdate());
+            var archive = exportedArchive(source);
+            var restored = targetContext("clarification-restored");
+            new ClusterAnalysisBackupRestorer(target.em, target.transactions, JSON).restore(archive, restored, targetCommand());
+            var calls = archive(target, restored.operationId()).calls();
+            assertEquals("CLARIFICATION", calls.getFirst().state());
+            assertEquals("ROOT_UNRESOLVED: Which capability is requested?", calls.getFirst().error());
+            assertTrue(target.store.snapshot(restored).result().getRawScores().isEmpty());
+            assertNoOperationalState(target);
+        }
+    }
+
     @Test void backupRetainsWaitingPredecessorHistoryWithoutResumingItOnRestore() throws Exception {
         try (var source = new Database(); var target = new Database()) {
             var original = context("waiting-source"); source.admitFrozen(original);

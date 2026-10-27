@@ -10,7 +10,9 @@ import com.taxonomy.catalog.snapshot.*;
 import org.springframework.test.util.ReflectionTestUtils;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import org.junit.jupiter.api.Test;
@@ -59,6 +61,37 @@ class RootScoringFlowTest {
         @Override public com.taxonomy.extension.api.llm.ProviderId getActiveProviderId() { return provider.id(); }
         @Override public String getActiveProviderName() { return provider.name(); }
         @Override public String getApiKey(LlmProvider requested) { return "test-key"; }
+    }
+
+    private static class TwoRootCatalogue extends TaxonomyService {
+        private final TaxonomyNode communication = node("CO", null, "CO");
+        private final TaxonomyNode communicationChild = node("CO-1000", "CO", "CO");
+        private final TaxonomyNode application = node("UA", null, "UA");
+        TwoRootCatalogue() { super(null, null, null); }
+        @Override public List<TaxonomyNode> getRootNodes() { return List.of(communication, application); }
+        @Override public List<TaxonomyNode> getChildrenOf(String code) {
+            return code.equals("CO") ? List.of(communicationChild) : List.of();
+        }
+        @Override public TaxonomyNode getNodeByCode(String code) {
+            return switch (code) {
+                case "CO" -> communication;
+                case "CO-1000" -> communicationChild;
+                case "UA" -> application;
+                default -> null;
+            };
+        }
+        @Override public List<TaxonomyNodeDto> getFullTree() {
+            var co = dto(communication);
+            co.setChildren(List.of(dto(communicationChild)));
+            return List.of(co, dto(application));
+        }
+        private TaxonomyNodeDto dto(TaxonomyNode source) {
+            var dto = new TaxonomyNodeDto();
+            dto.setCode(source.getCode()); dto.setTaxonomyRoot(source.getTaxonomyRoot());
+            dto.setParentCode(source.getParentCode()); dto.setLevel(source.getLevel());
+            dto.setNameEn(source.getNameEn());
+            return dto;
+        }
     }
 
     private static final class Gateway implements LlmGateway {
@@ -177,6 +210,18 @@ class RootScoringFlowTest {
                 "A root answer obtained without catalogue context must not be reused under the new policy");
     }
 
+    @Test
+    void anAnswerFromTheNumericOnlyRootPolicyCannotBeReusedUnderTheClarificationPolicy() {
+        var llm = service(LlmProvider.OPENAI, false, new Gateway(), null);
+        String providerPolicy = ReflectionTestUtils.invokeMethod(llm, "recoveryProviderPolicyFingerprint", "OPENAI");
+        String formerPolicy = AnalysisCheckpointSession.digest(providerPolicy,
+                PromptTemplateService.childAllocationContract(100), PromptTemplateService.functionalScopeContract(),
+                TaxonomyService.ROOT_ASSESSMENT_CONTEXT_POLICY,
+                AnalysisReasonContext.POLICY, com.taxonomy.dto.AnalysisReasonLength.STANDARD.value());
+        assertNotEquals(formerPolicy, llm.recoveryPolicyFingerprint("OPENAI"),
+                "Previously forced numeric answers are evidence under a different assessment policy");
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {0, 20, 100})
     void remoteSingletonRootRetainsIndependentRelevance(double score) {
@@ -188,6 +233,89 @@ class RootScoringFlowTest {
         assertEquals(1, gateway.prompts.size());
         assertTrue(gateway.prompts.getFirst().contains("independent relevance"));
         assertFalse(gateway.prompts.getFirst().contains("sum to 100"));
+    }
+
+    @Test
+    void anOpenRootIsPartialWithItsMeaningPreservedInsteadOfAParseFailure() {
+        var gateway = new Gateway("""
+                {"BP":{"status":"UNRESOLVED","score":null,
+                "reason":"The requested process boundary is still open.",
+                "question":"Which process must the application support?"}}
+                """);
+        var llm = service(LlmProvider.OPENAI, true, gateway, null);
+        AnalysisResult result = llm.analyzeWithBudget("The process is not specified yet.");
+        assertEquals("PARTIAL", result.getStatus());
+        assertFalse(result.getRawScores().containsKey("BP"));
+        assertFalse(result.getRawScores().containsKey("BP-1"));
+        assertEquals("The requested process boundary is still open.", result.getReasons().get("BP"));
+        assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("Which process must the application support?")));
+        assertFalse(result.getWarnings().stream().anyMatch(w -> w.contains("Failed to parse")));
+        assertEquals(1, gateway.prompts.size(), "An open root must not spend an invented child budget");
+        assertEquals(0L, llm.getDiagnostics().get("failedCalls"), "A valid question is not a failed provider call");
+        assertEquals(true, llm.getDiagnostics().get("lastCallSuccess"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void anOpenCommunicationRootKeepsItsQuestionWhileTheApplicationIsStillAssessed(boolean streaming) {
+        var gateway = new Gateway("""
+                {"CO":{"status":"UNRESOLVED","score":null,
+                "reason":"Online and isolated operation are both possible from the requirement.",
+                "question":"Must entries be exchanged between devices?"}}
+                """, """
+                {"UA":{"status":"RELEVANT","score":40,
+                "reason":"The user needs an application to record time entries.","question":""}}
+                """);
+        var llm = service(LlmProvider.OPENAI, new TwoRootCatalogue(), gateway, null);
+        Map<String, Double> scores;
+        AnalysisCoverage coverage;
+        String status;
+        if (streaming) {
+            var callback = new Capture();
+            llm.analyzeStreaming("Record working time; connectivity is unspecified.", callback);
+            scores = callback.scores; coverage = callback.coverage; status = callback.status;
+            assertEquals("Must entries be exchanged between devices?",
+                    callback.details.getFirst().getRootAssessments().get("CO").question());
+        } else {
+            var result = llm.analyzeWithBudget("Record working time; connectivity is unspecified.");
+            scores = result.getRawScores(); coverage = result.getAnalysisCoverage(); status = result.getStatus();
+        }
+        assertEquals("PARTIAL", status);
+        assertEquals(Map.of("UA", 40d), scores);
+        assertNotNull(coverage);
+        var co = coverage.nodes().get("CO");
+        assertEquals(AnalysisCoverage.State.UNKNOWN, co.state());
+        assertNull(co.score()); assertNull(co.effectiveRelevance());
+        assertTrue(co.reason().startsWith("CLARIFICATION:"));
+        assertTrue(co.reason().contains("Must entries be exchanged between devices?"));
+        assertEquals("BLOCKED_BY:CO", coverage.nodes().get("CO-1000").reason());
+        assertEquals(AnalysisCoverage.State.RELEVANT, coverage.nodes().get("UA").state());
+        assertTrue(coverage.hasOpenEvaluations());
+        assertEquals(2, gateway.prompts.size(), "The next root continues, without a retry or a guessed child budget");
+        assertTrue(gateway.prompts.getFirst().contains("existing, shared or externally operated service"));
+        assertTrue(gateway.prompts.getFirst().contains("UNRESOLVED with score null"));
+    }
+
+    @Test
+    void streamingUsesTheAdmittedCatalogueWithoutAnotherLookupAfterReceivingEvidence() {
+        var admitted = new java.util.concurrent.atomic.AtomicBoolean();
+        var catalogue = new TwoRootCatalogue() {
+            @Override public List<TaxonomyNodeDto> getFullTree() {
+                if (admitted.get()) throw new IllegalStateException("The catalogue is no longer available");
+                return super.getFullTree();
+            }
+        };
+        var gateway = new Gateway("""
+                {"CO":{"status":"UNRESOLVED","score":null,"reason":"Connectivity is open.","question":"Online?"}}
+                """, "{\"UA\":40}");
+        gateway.beforeResponse = () -> admitted.set(true);
+        var callback = new Capture();
+        assertDoesNotThrow(() -> service(LlmProvider.OPENAI, catalogue, gateway, null)
+                .analyzeStreaming("Record time.", callback));
+        assertEquals("PARTIAL", callback.status);
+        assertEquals(Map.of("UA", 40d), callback.scores);
+        assertEquals(AnalysisCoverage.State.UNKNOWN, callback.coverage.nodes().get("CO").state());
+        assertTrue(callback.coverage.nodes().get("CO").reason().contains("Online?"));
     }
 
     @Test
@@ -326,13 +454,21 @@ class RootScoringFlowTest {
     private static final class Capture implements AnalysisEventCallback {
         String status;
         Map<String, Double> scores;
+        AnalysisCoverage coverage;
+        final List<LlmCallDetail> details = new ArrayList<>();
         @Override public void onPhase(String message, int progressPercent) { }
         @Override public void onScores(Map<String, Double> newScores, Map<String, String> reasons,
-                                       String description, LlmCallDetail detail) { }
+                                       String description, LlmCallDetail detail) { details.add(detail); }
         @Override public void onExpanding(String parentCode, List<String> childCodes) { }
         @Override public void onComplete(String status, Map<String, Double> scores, List<String> warnings,
                                          List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> gaps) {
             this.status = status; this.scores = Map.copyOf(scores);
+        }
+        @Override public void onComplete(String status, Map<String, Double> scores, List<String> warnings,
+                                         List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> gaps,
+                                         AnalysisCoverage coverage) {
+            onComplete(status, scores, warnings, discrepancies, gaps);
+            this.coverage = coverage;
         }
         @Override public void onError(String status, String message, Map<String, Double> scores,
                                       List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,

@@ -72,8 +72,17 @@ public class StreamRequirementAnalysisUseCase {
                                        List<String> warnings,
                                        List<TaxonomyDiscrepancy> discrepancies,
                                        List<ProductCoverageGap> productCoverageGaps) {
+                    onComplete(status, allScores, warnings, discrepancies, productCoverageGaps, null);
+                }
+
+                @Override
+                public void onComplete(String status, Map<String, Double> allScores,
+                                       List<String> warnings,
+                                       List<TaxonomyDiscrepancy> discrepancies,
+                                       List<ProductCoverageGap> productCoverageGaps,
+                                       com.taxonomy.dto.AnalysisCoverage coverage) {
                     handler.handle(new AnalysisStreamEvent.Complete(
-                            status, allScores, warnings, discrepancies, productCoverageGaps, elapsedMillis(startedNanos)));
+                            status, allScores, warnings, discrepancies, productCoverageGaps, elapsedMillis(startedNanos), coverage));
                 }
 
                 @Override
@@ -91,9 +100,18 @@ public class StreamRequirementAnalysisUseCase {
                                     Map<String, Double> partialScores, Map<String, String> partialReasons,
                                     List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                                     List<ProductCoverageGap> productCoverageGaps) {
+                    onError(status, errorMessage, partialScores, partialReasons, warnings, discrepancies, productCoverageGaps, null);
+                }
+
+                @Override
+                public void onError(String status, String errorMessage,
+                                    Map<String, Double> partialScores, Map<String, String> partialReasons,
+                                    List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                                    List<ProductCoverageGap> productCoverageGaps,
+                                    com.taxonomy.dto.AnalysisCoverage coverage) {
                     handler.handle(new AnalysisStreamEvent.Error(
                             status, errorMessage, partialScores, warnings, discrepancies,
-                            productCoverageGaps, partialReasons, elapsedMillis(startedNanos)));
+                            productCoverageGaps, partialReasons, elapsedMillis(startedNanos), coverage));
                 }
             };
             if (command.analysisScope().legacyFull()) llmService.analyzeStreaming(command.businessText(), callback);

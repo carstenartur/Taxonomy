@@ -3,6 +3,7 @@ package com.taxonomy.analysis.controller;
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
 import com.taxonomy.analysis.usecase.*;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.AnalysisRequest;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.versioning.service.RepositoryStateService;
@@ -11,6 +12,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.MessageSource;
 import org.springframework.mock.env.MockEnvironment;
@@ -174,26 +176,47 @@ class AnalysisCompletionContractTest {
         assertThat(registry.recent("alice", new WorkspaceContext("alice", null, "draft"), null, null)).isEmpty();
     }
 
-    @ParameterizedTest @ValueSource(strings = {"complete", "error", "cancelled"})
-    void terminalMappingFailureStillDeliversOneClosedEvidenceBearingTerminalEvent(String ending) throws Exception {
+    @ParameterizedTest @CsvSource({"complete,8765", "error,8765", "cancelled,8765",
+            "complete,", "error,", "cancelled,"})
+    void terminalMappingFailureStillDeliversOneClosedEvidenceBearingTerminalEvent(String ending, Long duration) throws Exception {
+        String clarification = "CLARIFICATION:The requirement does not specify remote communication. "
+                + "Must time-recording terminals send their data to a central service?";
+        var coverage = new AnalysisCoverage(Map.of(
+                "CP", new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.RELEVANT, 80d, 80d,
+                        AnalysisCoverage.Descendants.COMPLETE, null),
+                "CO", new AnalysisCoverage.NodeAssessment(AnalysisCoverage.State.UNKNOWN, null, null,
+                        AnalysisCoverage.Descendants.UNASSESSED, clarification)), 1, 1, 1);
         doThrow(new IllegalStateException("catalogue projection unavailable")).when(mapper).map(any());
         doAnswer(invocation -> {
             AnalysisStreamEventHandler emit = invocation.getArgument(1);
             if ("cancelled".equals(ending)) registry.cancel(id, "alice", scope);
             if ("complete".equals(ending)) {
-                emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80d),
-                        List.of("retained warning"), List.of(), List.of(), 8765L));
+                emit.handle(new AnalysisStreamEvent.Complete("PARTIAL", Map.of("CP", 80d),
+                        List.of("retained warning"), List.of(), List.of(), duration, coverage));
             } else {
                 emit.handle(new AnalysisStreamEvent.Error("PARTIAL", "retained diagnostic", Map.of("CP", 80d),
-                        List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason"), 8765L));
+                        List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason"), duration, coverage));
             }
             return null;
         }).when(stream).stream(any(), any());
         String body = executeStream();
-        assertThat(body).contains("event:error", "\"CP\":80", "retained warning", "scoreSemanticsUnavailable", "\"analysisDurationMillis\":8765");
+        assertThat(body).contains("event:error", "\"CP\":80", "retained warning", "scoreSemanticsUnavailable");
+        if (duration == null) assertMeasuredDuration(body);
+        else assertThat(body).contains("\"analysisDurationMillis\":" + duration);
         assertThat(body.split("event:error", -1)).hasSize(2);
         assertThat(body).doesNotContain("catalogue projection unavailable", "\"status\":\"SUCCESS\"");
         if (!"complete".equals(ending)) assertThat(body).contains("retained reason", "retained diagnostic");
+        String terminal = body.lines().filter(line -> line.startsWith("data:")).reduce((first, last) -> last).orElseThrow();
+        var payload = new ObjectMapper().readTree(terminal.substring(5));
+        var co = payload.path("analysisCoverage").path("nodes").path("CO");
+        assertThat(co.path("state").asText()).isEqualTo("UNKNOWN");
+        assertThat(co.path("score").isNull()).isTrue();
+        assertThat(co.path("effectiveRelevance").isNull()).isTrue();
+        assertThat(co.path("reason").asText()).isEqualTo(clarification);
+        assertThat(payload.path("analysisCoverage").path("failedOrBlockedNodes").asInt()).isEqualTo(1);
+        assertThat(payload.path("rawScores").has("CO")).isFalse();
+        verify(mapper, times(1)).map(any());
+        verify(taxonomy, never()).getFingerprintTree();
         assertThat(registry.snapshot(id, "alice", scope).status())
                 .isEqualTo("cancelled".equals(ending) ? "CANCELLED" : "ERROR");
         assertThat(com.taxonomy.analysis.service.AnalysisRunControl.active()).isFalse();

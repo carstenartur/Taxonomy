@@ -8,7 +8,9 @@ The CO prompt focuses on voice, data, networks, transmission and communication i
 
 ## Current scoring
 
-CO uses the shared category / parent-budget parser; the prompt's subject differs from BP or CP, not the arithmetic. Voice and data candidates might receive 20 and 40 from parent 60. These are not bandwidth, availability or reliability percentages. Source context and shared zero/error limitations apply.
+The CO root receives an independent relevance assessment. A necessary communications contribution can be relevant even when an existing network supplies it. A material missing fact produces a clarification question without a numeric score in generative responses. [Examples and display](../USER_GUIDE.md#root-relevance-clarification).
+
+CO descendants use the shared category / parent-budget parser; the prompt's subject differs from BP or CP, not the arithmetic. Voice and data candidates might receive 20 and 40 from parent 60. These are not bandwidth, availability or reliability percentages. Source context and shared zero/error limitations apply.
 
 ## Multiple matches and consequences
 

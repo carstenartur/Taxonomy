@@ -528,9 +528,12 @@
         function nodeLabel(q) { return (q.nodes || []).map(function (code) {
             var name = names.get(code); return name && name !== code ? name + ' (' + code + ')' : code;
         }).join(', '); }
+        function semanticClarification(q) {
+            return typeof q?.error === 'string' && /^(ROOT|RELATION)_UNRESOLVED:/.test(q.error);
+        }
         function explanation(q) {
             if (!q) return '';
-            if (q.error?.startsWith('RELATION_UNRESOLVED:')) return q.error.substring('RELATION_UNRESOLVED:'.length).trim();
+            if (semanticClarification(q)) return q.error.replace(/^(ROOT|RELATION)_UNRESOLVED:/, '').trim();
             if (q.outcomeUncertain) return text('Der Ausgang dieser Anfrage ist unklar. Eine Wiederholung benötigt Ihre Entscheidung.',
                 'The outcome of this request is uncertain. Repeating it requires your decision.');
             return text('Diese Bewertung konnte nicht abgeschlossen werden. Andere verwertbare Ergebnisse bleiben erhalten.',
@@ -618,7 +621,9 @@
                 if (technical) technical.textContent = selected.error || '';
                 assessmentState.textContent = selected.skipped
                     ? text('Bewertung offengelassen – betroffener Bereich nicht bewertet.', 'Assessment left unassessed – affected area remains open.')
-                    : selected.error?.startsWith('RELATION_UNRESOLVED')
+                    : selected.error?.startsWith('ROOT_UNRESOLVED:')
+                        ? text('Bereichsrelevanz erfordert Klärung.', 'Area relevance needs clarification.')
+                    : selected.error?.startsWith('RELATION_UNRESOLVED:')
                         ? text('Beziehungsbewertung erfordert Klärung.', 'Relation assessment needs clarification.')
                         : text('LLM-Bewertung fehlgeschlagen.', 'LLM assessment failed.');
                 attempts.textContent = text('Versuche: ', 'Attempts: ') + selected.attempts;
@@ -626,7 +631,7 @@
                     'Der Anbieter könnte die letzte Anfrage bereits verarbeitet oder berechnet haben. Nach einer Worker-Unterbrechung ist eine explizite Entscheidung erforderlich: wiederholen oder offenlassen. Gespeicherte gültige Antworten werden ohne erneute Anbieteranfrage wiederverwendet.',
                     'The provider may already have processed or billed the last request. After a worker interruption, an explicit decision is required: retry or leave open. Saved validated answers are reused without another provider request.') : '';
                 uncertain.hidden = !selected.outcomeUncertain;
-                var semantic = selected.error?.startsWith('RELATION_UNRESOLVED:');
+                var semantic = semanticClarification(selected);
                 clarification.textContent = semantic ? text(
                     'Die fachliche Zuordnung ist offen. Du kannst den Bereich offenlassen und die übrige Analyse fortsetzen oder die Anforderung ergänzen und neu analysieren. Eine erneute KI-Bewertung kann ohne zusätzliche Informationen zur gleichen Unsicherheit führen.',
                     'The semantic assignment remains open. You can leave this area unassessed and continue the remaining analysis, or refine the requirement and start a new analysis. Another model assessment without additional information may lead to the same uncertainty.') : '';
@@ -713,6 +718,7 @@
     function renderCoverage() {
         var tree = document.getElementById('taxonomyTree');
         if (!tree) return;
+        window.TaxonomyBrowse?.refreshContainerSummaries?.(S.currentScores);
         var coverage = S.analysisCoverage;
         var warning = document.getElementById('analysisCoverageWarning');
         var isOpen = Boolean(coverage?.failedOrBlockedNodes);
