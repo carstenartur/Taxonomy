@@ -44,9 +44,13 @@ The `LlmService` is the central component for AI analysis. It supports eight run
 Embedding inference is disabled by default. To run `LOCAL_ONNX`, set
 `LLM_PROVIDER=LOCAL_ONNX` and `TAXONOMY_EMBEDDING_ENABLED=true`, then supply a
 readable pre-downloaded model directory or explicitly allow runtime download.
-The automatic node/relation vector-indexing startup path requires both the
-selected `LOCAL_ONNX` provider and enabled embeddings. It does not replace
-the need for a verified recovery plan for other Lucene indexes.
+Automatic node/relation vector indexing starts whenever embeddings are enabled,
+independently of `LLM_PROVIDER`; catalogue-only workers do not build a global
+embedding index. For a generative LLM together with local semantic search, keep
+`LLM_PROVIDER=CUSTOM_OPENAI` (or your other generative provider) and enable
+embeddings separately. `LOCAL_ONNX` remains the provider for local
+embedding-based similarity scoring. This startup path does not replace the need
+for a verified recovery plan for other Lucene indexes.
 
 The default embedding profile is `MULTILINGUAL_MINILM_L12`: 384 dimensions, normalized mean pooling, at most 128 tokens and no query or document prefix. Set `TAXONOMY_EMBEDDING_MODEL_PROFILE` to select the matching runtime contract and follow the [pinned provisioning guide](../testing/multilingual-model-provisioning.md). `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false` remains the default. The explicit `BGE_SMALL_EN` profile retains the legacy English model; switching profiles requires rebuilding the semantic index and discarding cached vectors.
 

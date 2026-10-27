@@ -5,7 +5,6 @@ import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Lazy;
@@ -20,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Builds local embedding indexes after the Spring context and taxonomy catalogue
- * are ready when the configured analysis provider is {@code LOCAL_ONNX}.
+ * are ready when local embeddings are enabled, independently of the analysis provider.
  *
  * <p>Node vectors form the user-facing semantic-search readiness boundary and are
  * therefore rebuilt before relation vectors. The former {@code Object.class}
@@ -58,7 +57,6 @@ public class LocalOnnxIndexInitializer {
     private final AppInitializationStateService initializationState;
     private final LocalEmbeddingIndexRebuilder indexRebuilder;
     private final EmbeddingIndexHealth indexHealth;
-    private final String provider;
 
     @Autowired
     private CatalogueRuntimePolicy catalogueRuntimePolicy = CatalogueRuntimePolicy.fullCatalogue();
@@ -73,13 +71,11 @@ public class LocalOnnxIndexInitializer {
             LocalEmbeddingService embeddingService,
             AppInitializationStateService initializationState,
             LocalEmbeddingIndexRebuilder indexRebuilder,
-            EmbeddingIndexHealth indexHealth,
-            @Value("${llm.provider:}") String provider) {
+            EmbeddingIndexHealth indexHealth) {
         this.embeddingService = embeddingService;
         this.initializationState = initializationState;
         this.indexRebuilder = indexRebuilder;
         this.indexHealth = indexHealth;
-        this.provider = provider;
     }
 
     @Async
@@ -91,11 +87,6 @@ public class LocalOnnxIndexInitializer {
         }
         if (!embeddingService.isEnabled()) {
             update(State.DISABLED, "Local embeddings are disabled");
-            return;
-        }
-        if (!"LOCAL_ONNX".equalsIgnoreCase(provider)) {
-            update(State.DISABLED,
-                    "Automatic local embedding indexing requires LLM_PROVIDER=LOCAL_ONNX");
             return;
         }
         if (!started.compareAndSet(false, true)) {

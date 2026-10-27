@@ -63,9 +63,16 @@ TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 
 Mit diesen Werten initialisieren oder laden Start, Taxonomieimport und Hibernate-Search-Indexierung das Modell `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` nicht. Dokumente werden ohne Vektorfeldwerte indexiert.
 
-Für ein eingehängtes lokales Modell ohne ausgehenden Download:
+Für ein generatives eigenes LLM zusammen mit lokaler semantischer ONNX-Suche
+behalten Sie den Chat-Provider bei und aktivieren Embeddings separat. Der
+Vektorindex für Knoten/Relationen wird beim Start unabhängig vom Chat-Provider
+initialisiert; ein reiner Katalog-Worker baut keinen globalen Index auf. Für ein
+eingehängtes Modell ohne ausgehende Downloads:
 
 ```bash
+export LLM_PROVIDER=CUSTOM_OPENAI
+export CUSTOM_LLM_URL=https://llm.example.com/v1/chat/completions
+export CUSTOM_LLM_MODEL=your-served-model-name
 export TAXONOMY_EMBEDDING_ENABLED=true
 export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 export TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12

@@ -45,9 +45,13 @@ Embedding-Inferenz ist standardmäßig deaktiviert. Für `LOCAL_ONNX` sind
 `LLM_PROVIDER=LOCAL_ONNX` und `TAXONOMY_EMBEDDING_ENABLED=true` zu setzen;
 ein lesbares vorab geladenes Modellverzeichnis oder ein ausdrücklich
 zugelassener Laufzeitdownload ist ebenfalls nötig. Die automatische
-Vektorindizierung von Knoten/Relationen beim Start benötigt sowohl die
-Anbieterauswahl als auch aktivierte Embeddings. Sie ersetzt kein geprüftes
-Wiederherstellungsverfahren für andere Lucene-Indizes.
+Vektorindizierung von Knoten/Relationen startet bei aktivierten Embeddings
+unabhängig von `LLM_PROVIDER`; reine Katalog-Worker bauen keinen globalen
+Embedding-Index auf. Für ein generatives LLM zusammen mit lokaler semantischer
+Suche behalten Sie `LLM_PROVIDER=CUSTOM_OPENAI` (oder Ihren anderen generativen
+Provider) bei und aktivieren Embeddings separat. `LOCAL_ONNX` bleibt der Provider
+für lokale embeddingbasierte Ähnlichkeitsbewertungen. Diese Startinitialisierung
+ersetzt kein geprüftes Wiederherstellungsverfahren für andere Lucene-Indizes.
 
 Das Standard-Embedding-Profil ist `MULTILINGUAL_MINILM_L12`: 384 Dimensionen, normalisiertes Mean-Pooling, höchstens 128 Tokens und kein Abfrage- oder Dokumentpräfix. `TAXONOMY_EMBEDDING_MODEL_PROFILE` wählt den passenden Laufzeitvertrag; die [gepinnte Bereitstellungsanleitung](../testing/multilingual-model-provisioning.md) beschreibt das Modellpaket. `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false` bleibt der Standard. Das explizite Profil `BGE_SMALL_EN` erhält das bisherige englische Modell; bei einem Profilwechsel müssen der semantische Index neu aufgebaut und zwischengespeicherte Vektoren verworfen werden.
 
