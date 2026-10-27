@@ -178,7 +178,8 @@ public final class ClusterAnalysisDiagnostics {
             });
         }
         @Override public void completed(long callId, LlmCallDetail detail, long durationMillis) {
-            finish(callId, detail, durationMillis, detail.getError() == null || detail.getError().isBlank() ? "COMPLETED" : "FAILED", detail.getError());
+            finish(callId, detail, durationMillis, RootAssessmentEvidence.isClarification(detail) ? "CLARIFICATION"
+                    : detail.getError() == null || detail.getError().isBlank() ? "COMPLETED" : "FAILED", detail.getError());
             // Ordinary scoring reports parsed evidence here; checkpoint replay also
             // invokes assessment(). Frozen identities deduplicate both paths.
             assessment(detail, false);

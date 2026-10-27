@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 public class PromptTemplateService {
 
     public static final String FUNCTIONAL_SCOPE_POLICY = "functional-necessity-v1";
+    public static final String ROOT_RELEVANCE_POLICY = "root-relevance-v2";
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{[A-Z_]+\\}\\}");
 
@@ -165,7 +166,24 @@ public class PromptTemplateService {
                 "{{NODE_LIST}}", nodeList,
                 "{{TAXONOMY_NAME}}", TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode),
                 "{{EXPECTED_KEYS}}", taxonomyCode)) + numericContract() + "This root is assessed independently, not normalized across taxonomy roots.\n"
-                + functionalScopeContract() + reasonContract() + AnalysisLanguageContext.promptContract();
+                + functionalScopeContract() + rootRelevanceContract() + reasonContract() + AnalysisLanguageContext.promptContract();
+    }
+
+    /** Root relevance has an explicit undecided outcome, unlike an allocated child budget. */
+    public static String rootRelevanceContract() {
+        return "\nMandatory root relevance policy (" + ROOT_RELEVANCE_POLICY + "): "
+                + "Assess whether this catalogue domain contributes to the requested function, including necessary enabling services. "
+                + "A contribution may be supplied by an existing, shared or externally operated service; relevance does not require building or owning a new service. "
+                + "Do not reject a needed dependency merely because the requirement does not ask to implement that dependency again. "
+                + "RELEVANT requires a supported functional contribution, with a finite score greater than 0 and at most 100. "
+                + "IRRELEVANT requires an evidenced mismatch or exclusion, with score 0. "
+                + "If missing facts or unresolved implementation alternatives prevent that decision, use UNRESOLVED with score null and one concrete clarification question. "
+                + "Not unconditionally necessary does not mean irrelevant. Do not turn missing detail into a zero, an invented positive score or a confidence percentage. "
+                + "A supported broad contribution may be relevant while its particular technology remains unspecified; do not invent that technology. "
+                + "For every typed root reply use exactly status, score, reason and question; give a nonempty reason (at most 2000 characters). "
+                + "For RELEVANT and IRRELEVANT set question to an empty string; for UNRESOLVED give a nonempty question (at most 1000 characters). "
+                + "The null score exception for UNRESOLVED overrides the numeric-only wording above. "
+                + "Do not infer a deployed relationship from a root score.\n";
     }
 
     /** Shared scope for relevance, source contributions and first-hop relation decisions. */

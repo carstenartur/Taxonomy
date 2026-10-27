@@ -15,7 +15,8 @@ public final class AnalysisStoppedException extends RuntimeException {
     public LlmCallDetail completedCallEvidence() { return completedCallEvidence; }
     public AnalysisStoppedException withCompletedCall(LlmCallDetail detail) {
         completedCallEvidence = detail;
-        return detail.getError() == null || detail.getError().isBlank() ? withPartial(detail) : this;
+        return detail.getError() == null || detail.getError().isBlank()
+                || RootAssessmentEvidence.isClarification(detail) ? withPartial(detail) : this;
     }
     private final Map<String, Double> partialScores = new LinkedHashMap<>();
     private final Map<String, String> partialReasons = new LinkedHashMap<>();

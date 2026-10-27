@@ -136,8 +136,8 @@ public class ProductDemoService {
     }
 
     /**
-     * Independent reference evaluation of the latest successful A0 and A1 analyses.
-     * Missing analyses are reported as NOT_EXECUTED, never as negative findings.
+     * Independent reference evaluation of the latest completed A0 and A1 analyses.
+     * Partial analyses retain their coverage so missing evidence is never treated as zero.
      */
     @Transactional(readOnly = true)
     public DemoComparison compare(String runId, String username, WorkspaceContext context) {
@@ -162,8 +162,8 @@ public class ProductDemoService {
         return snapshots.stream()
                 .filter(s -> s.requirementVersionNumber() == iteration + 1)
                 .filter(s -> provider.equalsIgnoreCase(s.provider()))
-                // An incomplete (PARTIAL) analysis is never evaluated as if it had completed.
-                .filter(s -> s.status() == AnalysisStatus.SUCCESS)
+                // A completed partial snapshot may contain explicit clarification evidence.
+                .filter(s -> s.status() == AnalysisStatus.SUCCESS || s.status() == AnalysisStatus.PARTIAL)
                 .max(Comparator.comparing(SnapshotSummary::createdAt));
     }
 
@@ -176,7 +176,12 @@ public class ProductDemoService {
         Set<String> relations = new LinkedHashSet<>();
         if (detail.relationMappings() != null)
             detail.relationMappings().forEach(r -> relations.add(r.sourceCode() + " " + r.relationType() + " " + r.targetCode()));
-        return new DemoReferenceEvaluator.Observation(texts.get(summary.get().requirementVersionNumber()), scores, relations);
+        boolean scoringComplete = summary.get().status() == AnalysisStatus.SUCCESS;
+        var search = detail.analysis() == null ? null : detail.analysis().getRelationSearchReport();
+        boolean relationsComplete = search == null ? scoringComplete : search.isSearchExhausted();
+        return new DemoReferenceEvaluator.Observation(texts.get(summary.get().requirementVersionNumber()), scores, relations,
+                detail.analysis() != null && detail.analysis().getAnalysisCoverage() != null
+                        ? detail.analysis().getAnalysisCoverage().nodes() : Map.of(), scoringComplete, relationsComplete);
     }
 
     private ProductDemoRun require(String runId, String username, WorkspaceContext context) {

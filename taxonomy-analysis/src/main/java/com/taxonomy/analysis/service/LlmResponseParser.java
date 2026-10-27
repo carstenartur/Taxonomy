@@ -8,6 +8,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.DeserializationFeature;
 import java.math.BigDecimal;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
+import com.taxonomy.dto.RootAssessment;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -162,6 +163,15 @@ public class LlmResponseParser {
         Map<String, Object> raw = parseChildAssessment(text,
                 nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -> value);
 
+        if (kind == ScoreAssessmentKind.ROOT_RELEVANCE) {
+            String code = nodes.getFirst().getCode();
+            Object value = raw.get(code);
+            if (value instanceof Map<?, ?> object && object.containsKey("status"))
+                return typedRootAssessment(code, object);
+            if (value instanceof Map<?, ?> object && !Set.of("score", "reason").containsAll(object.keySet()))
+                throw new IllegalArgumentException("Unsupported field in legacy root assessment for " + code);
+        }
+
         Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, String> reasons = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : raw.entrySet()) {
@@ -218,6 +228,21 @@ public class LlmResponseParser {
 
         log.info("LLM Scores parsed (target {}, raw sum {}): {}", parentScore, rawSum, finalScores);
         return new LlmService.ScoreParseResult(finalScores, reasons, discrepancy);
+    }
+
+    private LlmService.ScoreParseResult typedRootAssessment(String code, Map<?, ?> object) {
+        if (!object.keySet().equals(Set.of("status", "score", "reason", "question"))
+                || !(object.get("status") instanceof String status)
+                || !(object.get("reason") instanceof String reason)
+                || !(object.get("question") instanceof String question))
+            throw new IllegalArgumentException("A typed root assessment requires status, score, reason and question");
+        Object value = object.get("score");
+        if (value != null && !(value instanceof Number))
+            throw new IllegalArgumentException("A root assessment score must be a JSON number or null when unresolved");
+        Double score = value == null ? null : com.taxonomy.dto.AnalysisPercentages.require((Number) value);
+        var assessment = new RootAssessment(RootAssessment.Status.valueOf(status), score, reason, question);
+        return new LlmService.ScoreParseResult(assessment.unresolved() ? Map.of() : Map.of(code, score),
+                Map.of(code, assessment.reason()), null, Map.of(code, assessment));
     }
 
     /**

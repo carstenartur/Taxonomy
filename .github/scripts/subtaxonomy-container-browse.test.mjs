@@ -143,10 +143,11 @@ function tabStops(tree) {
         .map(item => item.dataset.code);
 }
 
-function harness({ view = 'list', data = catalogue(), scores = null, interactive = false, response } = {}) {
+function harness({ view = 'list', data = catalogue(), scores = null, interactive = false, response,
+    language = 'en', coverage = null, reasons = {} } = {}) {
     const document = { readyState: 'loading', activeElement: null, addEventListener() {}, dispatchEvent() {} };
     document.body = new Element('body', document); document.documentElement = new Element('html', document);
-    document.documentElement.lang = 'en';
+    document.documentElement.lang = language;
     document.createElement = tag => new Element(tag, document);
     document.createDocumentFragment = () => new Element('#fragment', document);
     document.createTextNode = text => { const node = new Element('#text', document); node.textContent = text; return node; };
@@ -158,10 +159,15 @@ function harness({ view = 'list', data = catalogue(), scores = null, interactive
     document.body.appendChild(input);
     const status = document.createElement('div'); status.id = 'statusArea'; document.body.appendChild(status);
     const state = { currentView: view, taxonomyData: data, currentScores: scores || {}, currentRawScores: scores || {},
-        currentReasons: {}, currentScoreDetails: {}, evaluatedNodes: new Set(), interactiveMode: interactive };
+        currentReasons: reasons, analysisCoverage: coverage, currentScoreDetails: {}, evaluatedNodes: new Set(), interactiveMode: interactive };
     const requests = [], errors = [];
-    const i18n = { getLocale: () => 'en', t: (key, ...args) => key === 'browse.container.relevance'
-        ? 'Area relevance: ' + args[0] + '%' : key === 'browse.container.empty' ? 'No catalogue entries' : key + (args.length ? ': ' + args.join(', ') : '') };
+    const messages = new Map(readFileSync(new URL('../../taxonomy-app/src/main/resources/i18n/messages'
+        + (language === 'de' ? '_de' : '') + '.properties', import.meta.url), 'utf8').split(/\r?\n/)
+        .filter(line => line.startsWith('browse.container.area.')).map(line => {
+            const separator = line.indexOf('='); return [line.slice(0, separator), line.slice(separator + 1)];
+        }));
+    const i18n = { getLocale: () => language, t: (key, ...args) => messages.get(key) || (key === 'browse.container.relevance'
+        ? 'Area relevance: ' + args[0] + '%' : key === 'browse.container.empty' ? 'No catalogue entries' : key + (args.length ? ': ' + args.join(', ') : '')) };
     const window = { TaxonomyState: state, TaxonomyI18n: i18n };
     const context = vm.createContext({ window, document, TaxonomyI18n: i18n, CSS: { escape: value => value },
         CustomEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
@@ -495,6 +501,68 @@ test('incremental scores update the area heading and original row without changi
     assert.deepEqual(h.state.currentRawScores, { BP: 72, 'BP-1000': 43 });
     assert.deepEqual(h.state.currentScores, { BP: 72, 'BP-1000': 43 });
     assert.equal(JSON.stringify(data), before);
+});
+
+for (const language of ['de', 'en']) {
+    test(`${language}: an unresolved root exposes its clarification without a score and retains assessed siblings`, () => {
+        // CO -> CO-1000 is the original workbook edge. The bounded fixture does
+        // not infer or synthesize assessments for the omitted CO descendants.
+        const data = freeze([...catalogue(), { code: 'CO', name: 'Communications Services', level: 0,
+            taxonomyRoot: 'CO', taxonomyContainer: true, children: [{ code: 'CO-1000', name: 'Communications Services',
+                level: 1, parentCode: 'CO', taxonomyRoot: 'CO', children: [] }] }]);
+        const reason = language === 'de' ? 'Die Erfassungskanäle sind offen. Soll das System vernetzt arbeiten?'
+            : 'The recording channels are unspecified. Should the system use a network?';
+        const scores = freeze({ BP: 72, 'BP-1000': 43 });
+        const h = harness({ language, data, scores, reasons: { BP: 'Retained evidence', CO: reason },
+            coverage: { failedOrBlockedNodes: 2, nodes: {
+                CO: { state: 'UNKNOWN', score: null, effectiveRelevance: null, descendants: 'UNASSESSED',
+                    reason: 'CLARIFICATION: ' + reason },
+                'CO-1000': { state: 'UNKNOWN', score: null, effectiveRelevance: null, descendants: 'UNASSESSED',
+                    reason: 'BLOCKED_BY:CO' }
+            } } });
+        const group = h.group('CO'), heading = group.querySelector('.tax-container-heading');
+        assert.match(heading.textContent, language === 'de' ? /Klärung erforderlich/ : /Clarification needed/);
+        assert.equal(group.querySelector('.tax-container-score'), null);
+        assert.doesNotMatch(group.textContent, /0%|null|undefined|CLARIFICATION:/);
+        const explanation = group.querySelector(':scope > .tax-container-clarification');
+        assert.equal(explanation?.textContent, reason, 'the actual clarification is visible, not only in a tooltip');
+        const toggle = heading.querySelector('button');
+        assert.equal(toggle.getAttribute('aria-describedby'), explanation.id);
+        assert.equal(group.getAttribute('aria-describedby'), explanation.id);
+        toggle.focus();
+        assert.equal(h.document.activeElement, toggle);
+        toggle.click();
+        assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+        assert.equal(explanation.hidden, false, 'collapsing descendants does not hide the open question');
+        assert.equal(h.group('BP').querySelector('.tax-container-score').textContent, 'Area relevance: 72%');
+        assert.equal(h.row('BP-1000').querySelector('.tax-pct').textContent, '43%');
+        assert.deepEqual(h.state.currentRawScores, { BP: 72, 'BP-1000': 43 });
+        assert.equal(h.requests.length, 0, 'reading the clarification does not invoke a model');
+    });
+}
+
+test('a root clarification replaces stale numeric evidence and is removed when that root is assessed', () => {
+    const h = harness({ scores: { BP: 72 } });
+    const group = h.group('BP'), toggle = group.querySelector('button');
+    h.state.currentScores = {};
+    h.state.currentRawScores = {};
+    h.state.analysisCoverage = { failedOrBlockedNodes: 4, nodes: { BP: { state: 'UNKNOWN', score: null,
+        effectiveRelevance: null, descendants: 'UNASSESSED', reason: 'CLARIFICATION: Which process is required?' } } };
+    h.window.TaxonomyScoring.syncVisibleScoreNodes();
+    assert.equal(group.querySelector('.tax-container-score'), null);
+    assert.equal(group.querySelector('.tax-container-clarification')?.textContent, 'Which process is required?');
+    assert.doesNotMatch(group.textContent, /72%|0%/);
+    h.state.currentScores = { BP: 0 };
+    h.state.currentRawScores = { BP: 0 };
+    h.state.currentReasons = { BP: 'Explicitly excluded by the clarified requirement.' };
+    h.state.analysisCoverage = { failedOrBlockedNodes: 0, nodes: { BP: { state: 'NOT_RELEVANT', score: 0,
+        effectiveRelevance: 0, descendants: 'COMPLETE', reason: null } } };
+    h.window.TaxonomyScoring.syncVisibleScoreNodes();
+    assert.equal(group.querySelector('.tax-container-score').textContent, 'Area relevance: 0%');
+    assert.equal(group.querySelector('.tax-container-clarification'), null);
+    assert.equal(toggle.getAttribute('aria-describedby'), null);
+    assert.equal(group.getAttribute('aria-describedby'), null);
+    assert.equal(h.group('BP'), group, 'assessment updates retain the current tree and focus targets');
 });
 
 test('scoring expansion opens an initially collapsed heading and original path with the native button expanded state', () => {

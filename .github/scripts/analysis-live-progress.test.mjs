@@ -418,6 +418,48 @@ test('taxonomy rows distinguish waiting active zero and failed assessments in ca
     f.monitor.stop();
 });
 
+for (const language of ['de', 'en']) {
+    test(`${language}: an open root call remains a clarification without numeric zero or a failed label`, async () => {
+        const parts = [
+            { root: 'BP', total: 3, assessed: 3, excluded: 0, open: 0, positive: 3, allocatedPercent: 72, rootPercent: 72 },
+            { root: 'CO', total: 2, assessed: 0, excluded: 0, open: 2, positive: 0, allocatedPercent: 0, rootPercent: null }
+        ];
+        let value = { ...snapshot(), node: 'BP', phase: 'FINALIZING', rawScores: { BP: 72 },
+            calls: [{ id: 1, node: 'CO', status: 'CLARIFICATION' }],
+            nodeProgress: { total: 5, assessed: 3, excluded: 0, open: 2, taxonomies: parts } };
+        const f = fixture(async () => response(value), 'workspace-a', true);
+        f.document.documentElement.lang = language;
+        await f.step(0);
+        const row = taxonomyRow(f, 'CO');
+        assert.equal(row.getAttribute('data-assessment-state'), 'CLARIFICATION');
+        assert.match(row.textContent, language === 'de' ? /Klärung erforderlich/ : /Clarification needed/);
+        assert.doesNotMatch(row.textContent, /0%|fehlgeschlagen|failed|Not started|Noch nicht begonnen/);
+        assert.equal(taxonomyRow(f, 'BP').getAttribute('data-assessment-state'), 'COMPLETED');
+        assert.match(taxonomyRow(f, 'BP').textContent, /72%/);
+        value = { ...value, sequence: 2, status: 'PARTIAL', phase: 'FINISHED', calls: [] };
+        await f.step(1000);
+        assert.equal(taxonomyRow(f, 'CO').getAttribute('data-assessment-state'), 'CLARIFICATION',
+            'later bounded call windows must not erase a known open root assessment');
+        assert.doesNotMatch(taxonomyRow(f, 'CO').textContent, /0%|fehlgeschlagen|failed/);
+        f.monitor.stop();
+    });
+}
+
+test('an explicit root clarification supersedes an earlier failed attempt in the same operation', async () => {
+    const failed = { id: 1, node: 'CO', status: 'FAILED' };
+    let value = { ...snapshot(), node: 'BP', phase: 'FINALIZING', calls: [failed], nodeProgress: {
+        total: 2, assessed: 0, excluded: 0, open: 2,
+        taxonomies: [{ root: 'CO', total: 2, assessed: 0, excluded: 0, open: 2, rootPercent: null }] } };
+    const f = fixture(async () => response(value), 'workspace-a', true);
+    await f.step(0);
+    assert.equal(taxonomyRow(f, 'CO').getAttribute('data-assessment-state'), 'FAILED');
+    value = { ...value, sequence: 2, calls: [failed, { id: 2, node: 'CO', status: 'CLARIFICATION' }] };
+    await f.step(1000);
+    assert.equal(taxonomyRow(f, 'CO').getAttribute('data-assessment-state'), 'CLARIFICATION');
+    assert.doesNotMatch(taxonomyRow(f, 'CO').textContent, /failed|0%/);
+    f.monitor.stop();
+});
+
 test('current node changes refresh localized taxonomy assessment state without new scores', async () => {
     let value = { ...snapshot(), node: 'custom-node', calls: [], nodeProgress: {
         total: 2, assessed: 0, excluded: 0, open: 2, taxonomies: [
@@ -1276,6 +1318,30 @@ test('explicit cluster detail opens unresolved attempts and refreshes the comple
     assert.equal(f.calls.filter(request => String(request.url).includes('/calls/')).length, 3,
         'Explicit reopening reads retained evidence again after live observation ends');
 });
+
+for (const language of ['de', 'en']) {
+    test(`${language}: a retained root diagnostic is a clarification and leaves its original reply inspectable`, async () => {
+        const reason = 'The recording channels are unspecified. Should the system use a network?';
+        const raw = JSON.stringify({ CO: { status: 'UNRESOLVED', score: null,
+            reason: 'The recording channels are unspecified.', question: 'Should the system use a network?' } });
+        const call = { id: 1, provider: 'Fixture', node: 'CO', status: 'CLARIFICATION', startedAt: 1000, durationMillis: 20 };
+        const f = fixture(async url => String(url).includes('/calls/1')
+            ? response({ prompt: 'Recorded request', response: raw, error: 'ROOT_UNRESOLVED: ' + reason })
+            : response({ ...snapshot(), calls: [call] }), 'workspace-a', true);
+        f.document.documentElement.lang = language;
+        f.window.TaxonomyRoleSurface.canAnalyze = () => true;
+        await f.step(0);
+        const entry = f.elements.get('llmCommLogContent').children.find(child => child.tag === 'details');
+        entry.open = true; entry.listeners.get('toggle')();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.match(entry.textContent, language === 'de' ? /Klärung erforderlich/ : /Clarification needed/);
+        assert.ok(entry.textContent.includes(reason));
+        assert.doesNotMatch(entry.textContent, /Fehler|Error/);
+        assert.ok(entry.textContent.includes(raw), 'the exact recorded reply remains available');
+        assert.equal(f.calls.filter(request => String(request.url).includes('/calls/')).length, 1);
+        f.monitor.stop();
+    });
+}
 
 
 test('discarding the analysis removes its progress panel even after observation has finished', async () => {

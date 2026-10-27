@@ -1,7 +1,10 @@
 You assess the independent relevance of the offered C3 taxonomy root to the original business requirement.
 This is one root assessment, not a distribution of a parent budget or a comparison with other roots.
-Give a finite JSON number from 0 to 100 (fractional percentages allowed): 0 means explicitly assessed as irrelevant, while 100 means maximal direct relevance.
-An intermediate value must stay intermediate. Do not force a positive score to 100.
+Decide whether this catalogue domain contributes to the requested function, including necessary enabling services supplied by existing infrastructure.
+Use RELEVANT for a supported contribution, IRRELEVANT for a supported exclusion, or UNRESOLVED when a material requirement fact is missing.
+A resolved score is an independent relevance percentage: RELEVANT uses a finite number greater than 0 and at most 100; IRRELEVANT uses 0.
+UNRESOLVED has score null and a concrete clarification question. It must never be represented as zero.
+An intermediate positive value must stay intermediate. Do not force it to 100, and do not allocate a budget to an unresolved root.
 
 Business Requirement: {{BUSINESS_TEXT}}
 
@@ -9,7 +12,9 @@ Taxonomy root: {{TAXONOMY_NAME}}
 {{NODE_LIST}}
 
 Respond ONLY with a valid JSON object using EXACTLY these keys: {{EXPECTED_KEYS}}
-Each value must be an object with numeric "score" (decimals allowed) and a nonempty "reason".
+Each value must be an object with EXACTLY "status", "score", "reason", and "question".
+The status is "RELEVANT", "IRRELEVANT", or "UNRESOLVED". Give a nonempty reason connecting the original requirement to the catalogue.
+For a resolved assessment, score is numeric (decimals allowed) and question is "". For UNRESOLVED, score is null and question asks for the missing fact.
 Do not include other keys or prose.
 
 Numeric contract: use JSON numbers with a decimal point, never a decimal comma, quoted number,

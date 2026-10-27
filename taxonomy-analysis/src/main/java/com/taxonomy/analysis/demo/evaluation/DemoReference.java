@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.demo.evaluation;
 
+import com.taxonomy.dto.RootAssessment;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -20,13 +21,14 @@ import java.util.function.Function;
  */
 public record DemoReference(String scenario, int version, List<Aspect> requiredAspects, List<Forbidden> forbiddenPhrases,
                             List<ExpectedNode> expectedNodes, List<ForbiddenNode> forbiddenNodes,
-                            List<ExpectedRelation> expectedRelations) {
+                            List<ExpectedRelation> expectedRelations, List<ExpectedRoot> expectedRootAssessments) {
     static final String SCHEMA = "taxonomy-product-demo-reference-v1";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     public record Aspect(String id, Map<String, String> label, List<String> anyOf) { }
     public record Forbidden(String id, Map<String, String> label, String phrase) { }
     public record ExpectedNode(String code, int minimumScore, List<String> iterations) { }
+    public record ExpectedRoot(String code, RootAssessment.Status status, List<String> iterations) { }
     public record ForbiddenNode(String code, Map<String, String> reason) { }
     public record ExpectedRelation(String source, String type, String target, List<String> iterations) {
         public String key() { return source + " " + type + " " + target; }
@@ -64,9 +66,13 @@ public record DemoReference(String scenario, int version, List<Aspect> requiredA
         for (JsonNode node : root.path("expectedRelations"))
             relations.add(new ExpectedRelation(node.path("source").asString(), node.path("type").asString(),
                     node.path("target").asString(), strings(node.path("iterations"))));
+        var rootAssessments = new ArrayList<ExpectedRoot>();
+        for (JsonNode node : root.path("expectedRootAssessments"))
+            rootAssessments.add(new ExpectedRoot(node.path("code").asString(),
+                    RootAssessment.Status.valueOf(node.path("status").asString()), strings(node.path("iterations"))));
         if (aspects.isEmpty() || nodes.isEmpty()) throw new IllegalStateException("Reference annotation is empty");
         return new DemoReference(scenarioId, root.path("version").asInt(), List.copyOf(aspects), List.copyOf(forbidden),
-                List.copyOf(nodes), List.copyOf(forbiddenNodes), List.copyOf(relations));
+                List.copyOf(nodes), List.copyOf(forbiddenNodes), List.copyOf(relations), List.copyOf(rootAssessments));
     }
 
     private static Map<String, String> labels(JsonNode node) {

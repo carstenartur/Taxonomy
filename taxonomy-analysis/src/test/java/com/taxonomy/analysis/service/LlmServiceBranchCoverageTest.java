@@ -250,7 +250,7 @@ class LlmServiceBranchCoverageTest {
         verify(callback).onError(eq("PARTIAL"), anyString(),
                 argThat(scores -> scores.containsKey("BP")),
                 argThat(reasons -> "retained evidence".equals(reasons.get("BP"))),
-                anyList(), anyList(), anyList());
+                anyList(), anyList(), anyList(), any(com.taxonomy.dto.AnalysisCoverage.class));
     }
 
     @Test
@@ -276,7 +276,8 @@ class LlmServiceBranchCoverageTest {
         verify(callback).onScores(eq(Map.of()), anyMap(), argThat(text -> !text.contains("0/100")),
                 argThat(detail -> detail.getError() != null && detail.getRawResponse().equals("{}")));
         verify(callback).onComplete(eq("PARTIAL"), eq(Map.of("BP", 100d)),
-                argThat(warnings -> warnings.stream().anyMatch(w -> w.contains("CP"))), anyList(), anyList());
+                argThat(warnings -> warnings.stream().anyMatch(w -> w.contains("CP"))), anyList(), anyList(),
+                any(com.taxonomy.dto.AnalysisCoverage.class));
     }
 
     @Test
@@ -496,14 +497,16 @@ class LlmServiceBranchCoverageTest {
         service.analyzeStreaming("requirement", callback);
         verify(callback).onPhase(anyString(), anyInt());
         verify(callback).onExpanding("R", List.of("C"));
-        verify(callback).onComplete(anyString(), any(), anyList(), anyList(), anyList());
+        verify(callback).onComplete(anyString(), any(), anyList(), anyList(), anyList(),
+                org.mockito.ArgumentMatchers.isNull());
         verify(callback, never()).onError(
-                anyString(), anyString(), any(), anyList(), anyList(), anyList());
+                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(), any());
 
         when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new IllegalStateException("stream failed"));
         service.analyzeStreaming("requirement", callback);
         verify(callback).onError(
-                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList());
+                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(),
+                any(com.taxonomy.dto.AnalysisCoverage.class));
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -604,9 +607,10 @@ class LlmServiceBranchCoverageTest {
                 argThat((List<String> warningList) -> warningList.stream()
                         .anyMatch(warning -> warning.contains("product provider timed out"))),
                 anyList(),
-                anyList());
+                anyList(), argThat(coverage -> coverage != null
+                        && coverage.nodes().get("IP-P1").state() == com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN));
         verify(callback, never()).onError(
-                anyString(), anyString(), any(), anyList(), anyList(), anyList());
+                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(), any());
     }
 
 

@@ -559,6 +559,32 @@ for (const language of ['de', 'en']) {
   assert(h.options().some(o=>o.id==='analysisRecoveryRetry'));
   assert(h.options().some(o=>o.id==='analysisRecoverySkip'));
  });
+ test(`${language} an unresolved root displays its actual question and keeps valid sibling evidence`, async () => {
+  const h=harness(language); h.recovery.startCopilot();
+  const result=h.complete('COMPLETED_WITH_GAPS');
+  const reason=language==='de' ? 'Die Erfassungskanäle sind offen. Soll das System vernetzt arbeiten?'
+   : 'The recording channels are unspecified. Should the system use a network?';
+  result.recovery.openQuestions=[{key:'root-co',nodes:['CO'],error:'ROOT_UNRESOLVED: '+reason,attempts:1,skipped:false}];
+  result.analysisCoverage={failedOrBlockedNodes:2,nodes:{CO:{state:'UNKNOWN',score:null,effectiveRelevance:null,
+   descendants:'UNASSESSED',reason:'CLARIFICATION: '+reason}}};
+  await settle(); h.recovery.open();
+  const body=renderedText(h.ui.body);
+  assert.match(body,language==='de' ? /Bereichsrelevanz erfordert Klärung/ : /Area relevance needs clarification/);
+  assert.ok(body.includes(reason),'the actual reason and question must be readable');
+  assert.doesNotMatch(body,/LLM-Bewertung fehlgeschlagen|LLM assessment failed/);
+  assert.match(body,language==='de' ? /gleichen? Unsicherheit/ : /same uncertainty/);
+  assert.equal(h.S.currentRawScores.CO,undefined);
+  assert.equal(h.S.currentRawScores.BP,100);
+  assert.equal(h.S.currentScores['BP-1000'],80);
+  assert.equal(h.S.currentReasons.BP,'Original reason');
+  assert.equal(h.analyses.length,1,'opening a valid clarification must not spend another model call');
+  h.act('analysisRecoverySkip');
+  assert.equal(h.analyses.length,2);
+  assert.equal(h.analyses[1].continuationAction,'SKIP');
+  assert.equal(h.analyses[1].continuationQuestion,'root-co');
+  assert.equal(h.S.currentRawScores.BP,100,'leaving one root open retains other evidence');
+  h.complete('COMPLETED_WITH_GAPS'); await settle();
+ });
  test(`${language} a single failed assessment labels the affected nodes`, async () => {
   const h=harness(language); h.recovery.startCopilot(); h.complete(); await settle();
   const body=renderedText(h.ui.body);

@@ -93,9 +93,14 @@ public final class DemoReplyBook {
     private String roots(List<String> keys) {
         var reply = new LinkedHashMap<String, Object>();
         for (String key : keys) {
-            var score = iteration.roots().get(key);
-            if (score == null) throw failure(DemoReplayException.Code.MISSING_REPLY, "no root reply for " + key);
-            reply.put(key, Map.of("score", score.score(), "reason", score.reason()));
+            var assessment = iteration.roots().get(key);
+            if (assessment == null) throw failure(DemoReplayException.Code.MISSING_REPLY, "no root reply for " + key);
+            var decision = new LinkedHashMap<String, Object>();
+            decision.put("status", assessment.status().name());
+            decision.put("score", assessment.score());
+            decision.put("reason", assessment.reason());
+            decision.put("question", assessment.question());
+            reply.put(key, decision);
         }
         return JSON.writeValueAsString(reply);
     }

@@ -1,7 +1,7 @@
 {
   "schema": "taxonomy-product-demo-reference-v1",
   "scenario": "time-tracking-v1",
-  "version": 1,
+  "version": 2,
   "note": "Independent reference annotation. Used only after an analysis for comparison; never read by prompt construction or reply selection.",
   "requiredAspects": [
     { "id": "channels", "label": { "de": "Erfassungskanäle", "en": "Capture channels" }, "anyOf": ["im Browser und an Online-Terminals"] },
@@ -14,11 +14,16 @@
     { "id": "gps", "label": { "de": "Abgelehnte GPS-Erfassung", "en": "Rejected GPS capture" }, "phrase": "GPS-Standort" }
   ],
   "expectedNodes": [
+    { "code": "CO", "minimumScore": 1, "iterations": ["R1"] },
+    { "code": "CO-1038", "minimumScore": 1, "iterations": ["R1"] },
     { "code": "UA-1605", "minimumScore": 50, "iterations": ["R0", "R1"] },
     { "code": "CR-1036", "minimumScore": 10, "iterations": ["R0", "R1"] },
     { "code": "CR-1006", "minimumScore": 5, "iterations": ["R1"] },
     { "code": "CR-1065", "minimumScore": 5, "iterations": ["R1"] },
     { "code": "BR-1101", "minimumScore": 10, "iterations": ["R1"] }
+  ],
+  "expectedRootAssessments": [
+    { "code": "CO", "status": "UNRESOLVED", "iterations": ["R0"] }
   ],
   "forbiddenNodes": [
     { "code": "CI-1121", "reason": { "de": "Keine Standort- oder Aufgabenverfolgung", "en": "No location or task tracking" } }

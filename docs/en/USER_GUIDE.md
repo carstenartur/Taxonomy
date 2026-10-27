@@ -314,6 +314,41 @@ If a provider question fails, the run pauses and shows the affected question in 
 
 A partial result marks failed, skipped and dependent nodes **Unassessed**. Unknown is not a measured zero or evidence that a capability is irrelevant. Gap, pattern and recommendation conclusions remain open until the missing areas are assessed. **Cancel run** preserves completed results; **New analysis** clears the working draft as described above. This recovery dialog belongs to the ad-hoc analysis workspace; persisted project analysis jobs have their own job-centre retry workflow.
 
+<a id="root-relevance-clarification"></a>
+
+### Relevant, excluded and unresolved roots
+
+Generative root assessment distinguishes three outcomes:
+
+| Outcome | Meaning | Display and next steps |
+|---|---|---|
+| **Relevant** | The requirement supports a functional contribution from this domain. A needed existing or shared service also qualifies. | Positive score; matching descendants are assessed next. |
+| **Not relevant** | The requirement and catalogue support exclusion or a functional mismatch. | Explicitly assessed zero; hierarchical assessment does not descend into this branch. |
+| **Clarification needed** | A material fact is missing, preventing a supported relevance or exclusion decision. | No numeric score. The root shows the reason and question; assessment continues in other domains. |
+
+For example, “time tracking” may leave communication between devices open.
+Explicitly required online terminals need a communications contribution even
+when an existing network already supplies it. That does not establish a particular
+IP version, a VPN or a new network procurement. A supported general service keeps
+its positive assessment when the requirement supports none of its more specific
+children.
+
+A requirement question is not a technical provider failure. Partial results
+remain usable without a completely successful analysis. Add a missing
+decision to the requirement and analyse the updated text or version. Repeating
+the same unchanged question does not automatically resolve the ambiguity. A root
+score also does not confirm an architecture relationship; relationship target
+search can inspect other taxonomy domains independently of that score.
+
+![CO marked “Clarification needed”, with its full question and other domains' retained scores](../images/root-relevance-clarification-en.png)
+
+*Running-application capture: the saved product-demo R0 partial result was exported
+and loaded unchanged through the normal file import. CO shows a question without
+a numeric score; BP 40%, CR 45% and UA 70% remain available. These are declared
+demo replies. The English interface preserves the original German explanation.
+[Open the screenshot directly](../images/root-relevance-clarification-en.png) ·
+[Source and capture evidence](../images/root-relevance-clarification-capture.json).*
+
 The fully expanded tree shows scores at every level, making it easy to identify which branches are most relevant:
 
 > **Detail view** — the image below shows the full BP tree expanded to all levels. Click any node to see its score and justification.

@@ -16,7 +16,62 @@ async function inside(selector) {
  assert(box.x>=box.view.x-1&&box.y>=box.view.y-1&&box.right<=box.view.x+box.view.width+1&&box.bottom<=box.view.y+box.view.height+1,JSON.stringify(box));
  return box;
 }
+async function verifyRootClarifications() {
+ // Use the real browse renderer for root containers: virtual roots are sections,
+ // not .tax-node rows. These remain bounded component fixtures, not app captures.
+ for(const language of ['de','en']) {
+  const roots=await browser.newPage({viewport:{width:960,height:720}});
+  roots.on('pageerror',error=>errors.push(error.message));
+  await roots.setContent(`<html lang="${language}"><head><style>body{margin:16px;font:16px system-ui}.d-none{display:none}</style></head><body><textarea id="businessText" hidden></textarea><div id="statusArea"></div><div id="taxonomyTree"></div></body></html>`);
+  for(const file of ['taxonomy.css','taxonomy-ergonomics.css'])
+   await roots.addStyleTag({content:await readFile(new URL('static/css/'+file,root),'utf8')});
+  const messages=Object.fromEntries((await readFile(new URL('i18n/messages'+(language==='de'?'_de':'')+'.properties',root),'utf8'))
+   .split(/\r?\n/).filter(line=>line.startsWith('browse.container.')).map(line=>{
+    const separator=line.indexOf('=');return[line.slice(0,separator),line.slice(separator+1)];
+   }));
+  const reason=language==='de'?'Die Erfassungskanäle sind offen. Soll das System vernetzt arbeiten?'
+   :'The recording channels are unspecified. Should the system use a network?';
+  await roots.evaluate(({language,messages,reason})=>{
+   window.TaxonomyI18n={getLocale:()=>language,t:(key,...args)=>(messages[key]||key).replace(/\{(\d+)\}/g,(_,index)=>String(args[index]??''))};
+   const taxonomyData=[
+    {code:'BP',name:'Business Processes',level:0,taxonomyRoot:'BP',taxonomyContainer:true,
+     children:[{code:'BP-1000',name:'Business Processes',level:1,parentCode:'BP',taxonomyRoot:'BP',children:[]}]},
+    {code:'CO',name:'Communications Services',level:0,taxonomyRoot:'CO',taxonomyContainer:true,
+     children:[{code:'CO-1000',name:'Communications Services',level:1,parentCode:'CO',taxonomyRoot:'CO',children:[]}]}
+   ];
+   window.TaxonomyState={taxonomyData,currentView:'list',currentScores:{BP:72,'BP-1000':43},currentRawScores:{BP:72,'BP-1000':43},
+    currentReasons:{BP:'Retained evidence',CO:reason},currentScoreDetails:{},evaluatedNodes:new Set(),analysisCoverage:{failedOrBlockedNodes:2,nodes:{
+     CO:{state:'UNKNOWN',score:null,effectiveRelevance:null,descendants:'UNASSESSED',reason:'CLARIFICATION: '+reason},
+     'CO-1000':{state:'UNKNOWN',score:null,effectiveRelevance:null,descendants:'UNASSESSED',reason:'BLOCKED_BY:CO'}}}};
+   window.__providerRequests=0;window.fetch=async()=>{window.__providerRequests++;throw Error('Reading root clarification must not send a request');};
+  },{language,messages,reason});
+  for(const file of ['shared/taxonomy-utils.js','core/taxonomy-browse.js','core/taxonomy-scoring.js'])
+   await roots.addScriptTag({content:await readFile(new URL('static/js/'+file,root),'utf8')});
+  await roots.evaluate(()=>window.TaxonomyBrowse.renderView(window.TaxonomyState.taxonomyData,window.TaxonomyState.currentScores));
+  const container=roots.locator('[data-taxonomy-container="CO"]'),question=container.locator('.tax-container-clarification');
+  assert.equal(await container.locator('.tax-container-area-clarification').innerText(),language==='de'?'Klärung erforderlich':'Clarification needed');
+  assert.equal(await question.innerText(),reason);
+  assert.doesNotMatch(await container.innerText(),/0%|null|undefined|CLARIFICATION:/);
+  assert.equal(await roots.locator('[data-taxonomy-container="BP"] .tax-container-score').innerText(),language==='de'?'Bereichsrelevanz: 72%':'Area relevance: 72%');
+  const toggle=container.locator('.tax-container-toggle');await toggle.focus();await roots.keyboard.press('Space');
+  assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+  assert.equal(await toggle.getAttribute('aria-describedby'),await question.getAttribute('id'));
+  assert(await question.isVisible(),'the question remains visible after keyboard collapse');
+  for(const width of [960,320]) {
+   await roots.setViewportSize({width,height:720});
+   const bounds=await question.evaluate(element=>{const box=element.getBoundingClientRect();return{x:box.x,right:box.right,
+    width:innerWidth,overflow:element.scrollWidth>element.clientWidth+1};});
+   assert(bounds.x>=0&&bounds.right<=bounds.width&&!bounds.overflow,JSON.stringify(bounds));
+   await container.screenshot({path:output+'/root-clarification-'+language+'-'+width+'.png'});
+   report.push({name:'root-clarification-'+language+'-'+width,keyboard:true,questionVisible:true,noSyntheticScore:true});
+  }
+  assert.deepEqual(await roots.evaluate(()=>window.TaxonomyState.currentRawScores),{BP:72,'BP-1000':43});
+  assert.equal(await roots.evaluate(()=>window.__providerRequests),0);
+  await roots.close();
+ }
+}
 try {
+ await verifyRootClarifications();
  await page.setContent(`<html lang="de"><head><style>body{margin:0;font:16px system-ui}.d-none{display:none}button,input,textarea{font:inherit}.btn{padding:.3em;border:1px solid}h3{font-size:1em}#taxonomyTree{height:4200px}</style></head><body>
  <label>Anforderung<textarea id="businessText">Hospital communications</textarea></label><input id="includeArchitectureView" type="checkbox" checked>
  <select id="providerSelect"><option>CUSTOM_OPENAI</option></select><button id="copilotBtn">Copilot</button><span id="copilotSpinner" class="d-none"></span><button id="analyzeBtn">Analyse</button>
@@ -117,6 +172,6 @@ try {
  console.log('Recovery DOM/scoring/component scenarios passed:',report.length);
 } catch(error){ console.error(error);process.exitCode=1;report.push({failure:error.stack}); }
 finally{
- await writeFile(output+'/result.json',JSON.stringify({report,errors,browser:browser.version(),transport:'offline component fixtures; production scoring, recovery, coordinator and viewport scripts'},null,2));
+ await writeFile(output+'/result.json',JSON.stringify({report,errors,browser:browser.version(),transport:'offline component fixtures; production browse, scoring, recovery, coordinator and viewport scripts'},null,2));
  await browser.close();
 }

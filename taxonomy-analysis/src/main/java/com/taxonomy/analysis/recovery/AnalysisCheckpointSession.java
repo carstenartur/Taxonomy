@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.recovery;
 
 import com.taxonomy.analysis.service.AnalysisStoppedException;
+import com.taxonomy.analysis.service.RootAssessmentEvidence;
 import com.taxonomy.dto.LlmCallDetail;
 import java.util.*;
 import java.util.function.Supplier;
@@ -187,6 +188,10 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         Checkpoint checkpoint = current.store.prepare(question);
         question = checkpoint.question();
         if ("SUCCESS".equals(checkpoint.state())) return copy(checkpoint.detail());
+        if ("CLARIFICATION".equals(checkpoint.state())) {
+            return rootClarification(kind, offered, checkpoint.detail())
+                    ? copy(checkpoint.detail()) : unassessed(checkpoint.detail());
+        }
         if ("UNASSESSED".equals(checkpoint.state())) return unassessed(checkpoint.detail());
         if ("SKIPPED".equals(checkpoint.state())) {
             var unknown = new LlmCallDetail();
@@ -203,7 +208,9 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
             // A response may have completed just before cancellation. Retain it exactly once,
             // but never turn an erroneous response's fallback zeros into completed evidence.
             var completed = stopped.completedCallEvidence();
-            if (completed != null && (completed.getError() == null || completed.getError().isBlank())
+            if (rootClarification(kind, offered, completed)) {
+                current.store.finish(question, "CLARIFICATION", copy(completed));
+            } else if (completed != null && (completed.getError() == null || completed.getError().isBlank())
                     && completed.getScores() != null
                     && completed.getScores().keySet().equals(new HashSet<>(offered))) {
                 current.store.finish(question, "SUCCESS", copy(completed));
@@ -215,6 +222,12 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
             result.setProvider(provider); result.setPrompt(input); result.setScores(Map.of());
             result.setError(failure.getClass().getSimpleName() + ": "
                     + Objects.toString(failure.getMessage(), "Provider call failed"));
+        }
+        if (rootClarification(kind, offered, result)) {
+            current.store.finish(question, "CLARIFICATION", copy(result));
+            try { current.store.checkActive(); }
+            catch (AnalysisStoppedException stopped) { throw stopped.withCompletedCall(result); }
+            return copy(result);
         }
         String problem = result.getError();
         Map<String, Double> scores = result.getScores();
@@ -236,10 +249,18 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         catch (AnalysisStoppedException stopped) { throw stopped.withPartial(result); }
         return copy(result);
     }
+
+    private static boolean rootClarification(String kind, List<String> offered, LlmCallDetail detail) {
+        return "ROOT_RELEVANCE".equals(kind) && RootAssessmentEvidence.isClarification(detail)
+                && detail.getRootAssessments().keySet().equals(new HashSet<>(offered))
+                && detail.getRawResponse() != null && !detail.getRawResponse().isBlank();
+    }
+
     /** Keep raw diagnostics, but never expose error fallback scores to traversal. */
     private static LlmCallDetail unassessed(LlmCallDetail detail) {
         var result = detail == null ? new LlmCallDetail() : copy(detail);
         result.setScores(Map.of()); result.setReasons(Map.of()); result.setDiscrepancy(null);
+        result.setRootAssessments(Map.of());
         if (result.getError() == null || result.getError().isBlank()) result.setError("UNASSESSED: no accepted assessment");
         return result;
     }
@@ -254,6 +275,7 @@ public final class AnalysisCheckpointSession implements AutoCloseable {
         var copy = new LlmCallDetail();
         copy.setScores(value.getScores() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(value.getScores()));
         copy.setReasons(value.getReasons() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(value.getReasons()));
+        copy.setRootAssessments(value.getRootAssessments());
         copy.setProvider(value.getProvider()); copy.setPrompt(value.getPrompt()); copy.setRawResponse(value.getRawResponse());
         copy.setError(value.getError()); copy.setDurationMs(value.getDurationMs()); copy.setDiscrepancy(value.getDiscrepancy());
         return copy;

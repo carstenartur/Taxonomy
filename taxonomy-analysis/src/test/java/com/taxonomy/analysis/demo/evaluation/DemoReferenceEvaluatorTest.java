@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.demo.evaluation;
 
+import com.taxonomy.dto.AnalysisCoverage;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -22,12 +23,16 @@ class DemoReferenceEvaluatorTest {
     private final DemoReference reference = DemoReference.load("time-tracking-v1");
 
     private static DemoReferenceEvaluator.Observation a0() {
-        return new DemoReferenceEvaluator.Observation(R0, Map.of("UA-1605", 60d, "CR-1036", 20d), Set.of("UA-1605 USES CR-1036"));
+        return new DemoReferenceEvaluator.Observation(R0, Map.of("UA-1605", 60d, "CR-1036", 20d),
+                Set.of("UA-1605 USES CR-1036"), Map.of("CO", new AnalysisCoverage.NodeAssessment(
+                AnalysisCoverage.State.UNKNOWN, null, null, AnalysisCoverage.Descendants.UNASSESSED,
+                "CLARIFICATION: Capture channels are not specified. Is any network communication required?")));
     }
 
     private static DemoReferenceEvaluator.Observation a1() {
         return new DemoReferenceEvaluator.Observation(R1,
-                Map.of("UA-1605", 70d, "CR-1036", 25d, "CR-1006", 12d, "CR-1065", 15d, "BR-1101", 25d),
+                Map.of("CO", 40d, "CO-1038", 40d, "UA-1605", 70d, "CR-1036", 25d,
+                        "CR-1006", 12d, "CR-1065", 15d, "BR-1101", 25d),
                 Set.of("UA-1605 USES CR-1036", "UA-1605 USES CR-1006", "UA-1605 USES CR-1065"));
     }
 
@@ -36,6 +41,34 @@ class DemoReferenceEvaluatorTest {
         assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.PASS);
         assertThat(report.improvements()).contains("aspect:channels", "aspect:privacy", "node:BR-1101",
                 "relation:UA-1605 USES CR-1006");
+    }
+
+    @Test void onlineConnectivityCannotPassTheReferenceAsZero() {
+        var scores = new HashMap<>(a1().scores());
+        scores.put("CO", 0d);
+        var report = DemoReferenceEvaluator.evaluate(reference, a0(),
+                new DemoReferenceEvaluator.Observation(R1, scores, a1().relations()));
+
+        assertThat(report.checks()).filteredOn(c -> "node:CO".equals(c.id()) && "R1".equals(c.iteration()))
+                .singleElement().satisfies(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.FAIL));
+    }
+
+    @Test void anExplicitZeroCannotPassAsTheExpectedOpenRoot() {
+        var scores = new HashMap<>(a0().scores());
+        scores.put("CO", 0d);
+        var report = DemoReferenceEvaluator.evaluate(reference,
+                new DemoReferenceEvaluator.Observation(R0, scores, a0().relations()), a1());
+
+        assertThat(report.checks()).filteredOn(c -> "root:CO".equals(c.id()) && "R0".equals(c.iteration()))
+                .singleElement().satisfies(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.FAIL));
+    }
+
+    @Test void missingRootEvidenceDoesNotMasqueradeAsAnExplicitClarification() {
+        var withoutCoverage = new DemoReferenceEvaluator.Observation(R0, a0().scores(), a0().relations());
+        var report = DemoReferenceEvaluator.evaluate(reference, withoutCoverage, a1());
+
+        assertThat(report.checks()).filteredOn(c -> "root:CO".equals(c.id()) && "R0".equals(c.iteration()))
+                .singleElement().satisfies(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.NOT_EXECUTED));
     }
 
     @Test void surveillanceMutationIsDetected() {
@@ -97,5 +130,38 @@ class DemoReferenceEvaluatorTest {
                 && "R1".equals(c.iteration()))
                 .isNotEmpty().allSatisfy(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.NOT_EXECUTED));
         assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.FAIL);
+    }
+
+    @Test void unfinishedRelationSearchRetainsKnownEdgesWithoutRejectingUnexaminedEdges() {
+        var partial = new DemoReferenceEvaluator.Observation(R1, a1().scores(),
+                Set.of("UA-1605 USES CR-1036"), Map.of(), true, false);
+        var report = DemoReferenceEvaluator.evaluate(reference, a0(), partial);
+        assertThat(report.checks()).filteredOn(c -> "EXPECTED_RELATION".equals(c.kind()) && "R1".equals(c.iteration()))
+                .allSatisfy(c -> assertThat(c.status()).isEqualTo(c.id().equals("relation:UA-1605 USES CR-1036")
+                        ? DemoReferenceEvaluator.Status.PASS : DemoReferenceEvaluator.Status.NOT_EXECUTED));
+        assertThat(report.overall()).isEqualTo(DemoReferenceEvaluator.Overall.INCOMPLETE);
+    }
+
+    @Test void anUnfinishedFirstSearchCannotClaimAQualityImprovementFromMissingEdges() {
+        var partial = new DemoReferenceEvaluator.Observation(R0, a0().scores(), Set.of(), a0().coverage(), true, false);
+        var report = DemoReferenceEvaluator.evaluate(reference, partial, a1());
+        assertThat(report.improvements()).noneMatch(value -> value.startsWith("relation:"));
+    }
+
+    @Test void partialScoringWithoutCoverageDoesNotTurnMissingNodesIntoZero() {
+        var partial = new DemoReferenceEvaluator.Observation(R1, Map.of("UA-1605", 70d),
+                a1().relations(), Map.of(), false, true);
+        var report = DemoReferenceEvaluator.evaluate(reference, a0(), partial);
+        assertThat(report.checks()).filteredOn(c -> "R1".equals(c.iteration()) && "node:UA-1605".equals(c.id()))
+                .singleElement().satisfies(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.PASS));
+        assertThat(report.checks()).filteredOn(c -> "R1".equals(c.iteration()) && "node:CO".equals(c.id()))
+                .singleElement().satisfies(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.NOT_EXECUTED));
+        assertThat(report.checks()).filteredOn(c -> "R1".equals(c.iteration()) && "forbidden-node:CI-1121".equals(c.id()))
+                .singleElement().satisfies(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.NOT_EXECUTED));
+        var knownFailure = new DemoReferenceEvaluator.Observation(R1, Map.of("UA-1605", 70d, "CI-1121", 10d),
+                a1().relations(), Map.of(), false, true);
+        assertThat(DemoReferenceEvaluator.evaluate(reference, a0(), knownFailure).checks())
+                .filteredOn(c -> "R1".equals(c.iteration()) && "forbidden-node:CI-1121".equals(c.id()))
+                .singleElement().satisfies(c -> assertThat(c.status()).isEqualTo(DemoReferenceEvaluator.Status.FAIL));
     }
 }

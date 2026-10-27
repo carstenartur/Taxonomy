@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-27T14:15:22.296Z",
+  "source": {
+    "baseCommit": "6ee7e17e5d2e319080b1009902c4afd1e4619254",
+    "baseTree": "bb1a4479dc8879e81618b95d4b1dae1bb16dbd7b",
+    "branch": "fix/root-relevance-uncertainty",
+    "workingSourceChanges": {
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/cluster/ClusterAnalysisBackupRestorer.java": "bc141f357d65209a42a3a293f1d9fbfe595aa96fa7a77a2d6c7b43b8d7842237",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/cluster/ClusterAnalysisDiagnostics.java": "637e78c9048025bca1a50280e207ca986ed11bde15952fc8ac6a6cc2389ae052",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java": "b36dbcda5111e3d86bcda3f9803ab5ad76cf659a42d5bc8431733e48066adc99",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisSseEventMapper.java": "749a041344a562c741b23241f3eeb7908628b06d7f7c900ee47855519acf7748",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/demo/DemoReplyBook.java": "733d1a9e53c69424e32c65a95f09ce63831fb1220b49fb684a46afc8563ff23e",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/demo/DemoScenario.java": "e26ded1f5557fee6cbe29d6129ffd26f151de5f55c1da706c963f482a4b9fe87",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/demo/evaluation/DemoReference.java": "5b71eef1e996a09d270f762cc95cf847e9dea4a03df7dd4818ea8bb39f0051a6",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/demo/evaluation/DemoReferenceEvaluator.java": "e32e66e3590c50f11d309ea70d08be50367a33aea5b5a420928769571cb7d5a8",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/recovery/AnalysisCheckpointSession.java": "b9fee7f62de165fb8a00a5ec48f3ed43605acfc0374c34a586c990e26e30ce7c",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/recovery/AnalysisContinuationStore.java": "e75858d02914d260be73e9eba105b4881ae58ccc26c2e72ee5026f84a4cb6441",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/reformulation/ReconcilePromptBuilder.java": "a6d7408ca312078871f5cda084fc7bfc1a7afe700b4151af07eb5838d2c51e23",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/reformulation/ReformulationPromptBuilder.java": "28a38407bc370c2909d9849d605c36c13f0acd09f890293d3b2f77b5a3c2ff0a",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/AnalysisEventCallback.java": "a56d90c8bc079be5d0ad53d2eb51d8fb2bbf1e4d642492f8f0ecfad71d77f96f",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java": "fc8aae5a57208ae2bc2505f693e8bae43b53b3728364aeb8aa20ebd27144e97e",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/AnalysisStoppedException.java": "7d6cf762a41dd87ced32e75d93c99695fe735545cb389b86ae7c91ba2a8768b3",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmDetailAccumulator.java": "876b36ebea70413fe16ecd6289f86c4811e60bf0ba170052a4bd3200c6a434eb",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmResponseParser.java": "b0fe105be69d21d8ec0843a3ec94386035268a725a812dc7f3d7432256c6bef0",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmService.java": "ca18e38192dfb3d4d624abada245de194661f51b0e902d344135fc56161aa353",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/PromptTemplateService.java": "08bd8cff95d22b66e6592d748b8dd654c3768e1dcc359a4bdf5273e47eab5326",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/RootAssessmentEvidence.java": "0070625ca60440062e95191c5fe4da4f73978ead761523fac148d69a4a404dd1",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalysisStreamEvent.java": "6a306018b6e7be43bf009cfb73bc2b0e78aedd7d867d0fa5d647a9a3c1cf7c54",
+      "taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCase.java": "917c73ee567bc78118f619cdda862adf534a12b6f0aa84fab61ec45036117d39",
+      "taxonomy-analysis/src/main/resources/demo-scenarios/time-tracking-v1/reference.json": "86f182d2f8f2b149e5e19cfce67d889bf5a7af1e2106f3abf1d332b3436dd299",
+      "taxonomy-analysis/src/main/resources/demo-scenarios/time-tracking-v1/replies.json": "10fe89098f891d5904197fa0e479f0c4b134c9e3b9643bca1199c08d405adda5",
+      "taxonomy-analysis/src/main/resources/demo-scenarios/time-tracking-v1/scenario.json": "0b94600365b94fd893983735fab959f58d80155e62d76d705e2bbcd49e93c6f5",
+      "taxonomy-analysis/src/main/resources/prompts/root-relevance.txt": "2b10dcd4df37c588e19bc1414b52c4546cfa255a20a5d0d9ff7ebd8fc52e033f",
+      "taxonomy-app/src/main/java/com/taxonomy/composition/demo/ProductDemoController.java": "9dd9bd70107c8270e9a4bfdfcff7b02db9bec80d8ebfce1b92b98102e23d00f7",
+      "taxonomy-app/src/main/java/com/taxonomy/composition/demo/ProductDemoService.java": "f4dbdc82d5cf83cc953ebc5f157c232c2257127b5f77dc3a8278a663faf96314",
+      "taxonomy-app/src/main/resources/i18n/messages.properties": "2df86d5cae36d3621e4ee3c9cb68669392c65a9ae7afd8839a749c05fe647acd",
+      "taxonomy-app/src/main/resources/i18n/messages_de.properties": "600deea032d04f3549150b333dc440c8777c61e87df53a35fc8a0fccda28a5dd",
+      "taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css": "e508eb38f65307fd86044e0e939c588b08322ae97d1ad40ab76b10421771412d",
+      "taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js": "d43f0834e02afd2500e1ea0b9fcd7ed1478eb8f602bec72ff6236e9e78391d3b",
+      "taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js": "dab436c3b7ec1a7e25c7c53cac6060adda30079d45512618ad3989585a175655",
+      "taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js": "94cbab3970e2b76bc04684caa3a7e3f07aecf818ed0b49bc209dc66ec4d20b1e",
+      "taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js": "b546293dd07c398bde90edc1c33ad45587ab2b0a2220ee874dd945404bfe797b",
+      "taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisCoverage.java": "eac79d1cd89cee85d36a98a3fd16b06eeac24ca3fd975b7b0e1e2df0b7da7e98",
+      "taxonomy-domain/src/main/java/com/taxonomy/dto/LlmCallDetail.java": "cf0641f63038a12add0450dfc87cb539f30138a04e2a94678122d27a7fa249d6",
+      "taxonomy-domain/src/main/java/com/taxonomy/dto/RootAssessment.java": "9cb759fef68bf41940571af45593b7c37d5f3d5b14a0ca021276c9346c6e8b2c",
+      "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/service/PortfolioAnalysisRecoveryService.java": "9c984e1d37cf93bdadff926f9849f9402074a170805352a902fe299835c1fd6f",
+      "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/service/ProjectRequirementAnalysisService.java": "de758a449b0785748b7ada7124b98b3a2ea291750032418eb7f357f7c636bdfb"
+    },
+    "sourceBoundary": "Fresh package from the working tree; uncommitted source changes are identified by hashes, not attributed to the base commit.",
+    "application": {
+      "name": "taxonomy-app-1.5.3-SNAPSHOT.jar",
+      "sha256": "90ddfb06968350877bc96da27606fc7dfac0aa608811d5fe4b7278918e86e76a",
+      "bytes": 359906496
+    },
+    "features": [
+      {
+        "name": "taxonomy-analysis-1.5.3-SNAPSHOT.jar",
+        "sha256": "c1ac3f696d29dee8043732aadcf8e6ee6e030781175d8ac9e5d943c7cc8376d5",
+        "bytes": 1234806
+      },
+      {
+        "name": "taxonomy-architecture-1.5.3-SNAPSHOT.jar",
+        "sha256": "b292b5d1a63783db75dd983fbd85a57016d6ca74780f3642bca57aba4186e4ff",
+        "bytes": 218562
+      },
+      {
+        "name": "taxonomy-interop-1.5.3-SNAPSHOT.jar",
+        "sha256": "f601293eb2c6d1597bd2b238ef0913e425bd61931c742ed10257a2924db6952f",
+        "bytes": 398352
+      },
+      {
+        "name": "taxonomy-portfolio-1.5.3-SNAPSHOT.jar",
+        "sha256": "6dbc3e4ac223a2065eb687784422fb08a7575d74661763c1fea4ecca3af5f2fa",
+        "bytes": 825749
+      },
+      {
+        "name": "taxonomy-reporting-1.5.3-SNAPSHOT.jar",
+        "sha256": "208de471c67d28697a2d39f1a8e95b86cbb17eec0ab8877e3ec73f4ce79e0b71",
+        "bytes": 252770
+      },
+      {
+        "name": "taxonomy-templates-1.5.3-SNAPSHOT.jar",
+        "sha256": "c747d317f4a5bb787144e366d8828879297786c5e64083d05e6ebc9dacd3f2a5",
+        "bytes": 118940
+      }
+    ],
+    "plugins": [
+      {
+        "name": "taxonomy-mermaid-plugin-1.5.3-SNAPSHOT.jar",
+        "sha256": "371a5c64f88730d4fbcd4fc909f24ff460d5e65c956b22f55ea58ccf78b86924",
+        "bytes": 5264
+      }
+    ],
+    "verifiedPackagedUiResources": {
+      "static/js/core/taxonomy-browse.js": "94cbab3970e2b76bc04684caa3a7e3f07aecf818ed0b49bc209dc66ec4d20b1e",
+      "static/js/core/taxonomy-scoring.js": "b546293dd07c398bde90edc1c33ad45587ab2b0a2220ee874dd945404bfe797b",
+      "static/js/core/taxonomy-analysis-recovery.js": "dab436c3b7ec1a7e25c7c53cac6060adda30079d45512618ad3989585a175655",
+      "static/js/core/taxonomy-analysis-progress.js": "d43f0834e02afd2500e1ea0b9fcd7ed1478eb8f602bec72ff6236e9e78391d3b",
+      "static/css/taxonomy-ergonomics.css": "e508eb38f65307fd86044e0e939c588b08322ae97d1ad40ab76b10421771412d",
+      "i18n/messages.properties": "2df86d5cae36d3621e4ee3c9cb68669392c65a9ae7afd8839a749c05fe647acd",
+      "i18n/messages_de.properties": "600deea032d04f3549150b333dc440c8777c61e87df53a35fc8a0fccda28a5dd",
+      "templates/index.html": "d91a81a4a78999347409a8dd1aec549abfbeaf69fd1bef6628d06186859f1264",
+      "static/js/portfolio/product-demo.js": "14cd87eeec8bf9c2cfb3ebe1842de059f060c025e1941051a7818307af97545c",
+      "static/js/portfolio/requirement-detail.js": "11e75be9766f5dffc3a13a02e1ac88e942c3c4fd1e8c3b83fd1a4cb7408f43a0",
+      "static/js/portfolio/requirement-reformulation.js": "d61aca938829ea3de39d5e0b7024578fd097418617a88554563f01813331c2c7"
+    },
+    "verifiedPackagedDemoResources": {
+      "demo-scenarios/time-tracking-v1/scenario.json": "0b94600365b94fd893983735fab959f58d80155e62d76d705e2bbcd49e93c6f5",
+      "demo-scenarios/time-tracking-v1/replies.json": "10fe89098f891d5904197fa0e479f0c4b134c9e3b9643bca1199c08d405adda5",
+      "demo-scenarios/time-tracking-v1/reference.json": "86f182d2f8f2b149e5e19cfce67d889bf5a7af1e2106f3abf1d332b3436dd299"
+    },
+    "rootAssessmentClassSha256": "30e7240e51a8dcd18dd3d40cc43c5b0bd4941a0a3bf15c54ae8cddcda2da4672"
+  },
+  "applicationBoundary": "Fresh packaged application and its staged feature/plugin JARs, without resource overlays or substituted DOM/API responses.",
+  "environment": {
+    "java": "openjdk 25.0.5 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)",
+    "browser": "149.0.7827.55",
+    "viewport": {
+      "width": 1680,
+      "height": 1280
+    },
+    "database": "isolated in-memory HSQLDB rootRelevanceCapture",
+    "llmMock": true,
+    "embeddingEnabled": false,
+    "embeddingDownloads": false
+  },
+  "scenario": {
+    "id": "time-tracking-v1",
+    "version": 2,
+    "fingerprint": "4dac58df1b08d5615ae0bba40d50cb6f157e2223bb881ab86a4ed8d6b8cc12c7",
+    "provider": "DEMO.TIME-TRACKING-V1.R0",
+    "evidence": "Authored product-demo replay; not live-model quality evidence.",
+    "requirement": "Wir benötigen unternehmensweit ein System zur Arbeitszeiterfassung der Mitarbeiter.",
+    "runId": "a52ecfb6-9eb8-40b8-9fd8-b5aaf7c2ee3d",
+    "projectId": 1,
+    "requirementId": 1,
+    "snapshotId": "6448bf6c-a4bf-4c6f-8137-75434e91b03b",
+    "status": "PARTIAL"
+  },
+  "journey": [
+    "Sign in with disposable local administrator",
+    "Dismiss the actual first-use welcome dialog with its Continue action",
+    "Enter produktdemo and use the normal Analyze button",
+    "Analyze R0 through the normal requirement-page action",
+    "Read the real persisted PARTIAL snapshot",
+    "Export the unchanged snapshot evidence through /api/scores/export",
+    "Load that saved file through the actual UI file chooser and /api/scores/import in DE and EN",
+    "Collapse the actual taxonomy roots and verify the CO question, keyboard control and retained sibling scores"
+  ],
+  "exportSha256": "8fbd8c608ab020b85b95d2bde5daa8a075c5905b5263be59212c916347ff0c11",
+  "images": [
+    {
+      "filename": "root-relevance-clarification-de.png",
+      "language": "de",
+      "evidenceLanguage": "de",
+      "selector": "#leftPanel > .card",
+      "width": 955,
+      "height": 1133,
+      "sha256": "46393dd9120ce5fad93474b75a839fb537cd705edc65f3d187d3f4c77455a63d",
+      "layout": {
+        "cardWidth": 953,
+        "cardHeight": 1130,
+        "contentOverflowX": false,
+        "contentOverflowY": false,
+        "questionOverflowX": false,
+        "questionVisible": true
+      },
+      "rootState": {
+        "state": "UNKNOWN",
+        "score": null,
+        "effectiveRelevance": null,
+        "descendants": "UNASSESSED",
+        "reason": "CLARIFICATION:Szenario-Antwort: Erfassungskanäle und notwendige Netzwerkverbindungen sind in R0 nicht festgelegt. Soll die Erfassung über vernetzte Anwendungen oder vollständig lokal ohne Netzwerk und spätere Synchronisierung erfolgen?"
+      },
+      "retainedSiblingScores": {
+        "BP": 40,
+        "CR": 45,
+        "UA": 70
+      },
+      "keyboardToggleVerified": true
+    },
+    {
+      "filename": "root-relevance-clarification-en.png",
+      "language": "en",
+      "evidenceLanguage": "de",
+      "selector": "#leftPanel > .card",
+      "width": 955,
+      "height": 1133,
+      "sha256": "0305263595577bf1589148dfbcbdda56f9a91c178802fc1dcde237d7adc67ba0",
+      "layout": {
+        "cardWidth": 953,
+        "cardHeight": 1130,
+        "contentOverflowX": false,
+        "contentOverflowY": false,
+        "questionOverflowX": false,
+        "questionVisible": true
+      },
+      "rootState": {
+        "state": "UNKNOWN",
+        "score": null,
+        "effectiveRelevance": null,
+        "descendants": "UNASSESSED",
+        "reason": "CLARIFICATION:Szenario-Antwort: Erfassungskanäle und notwendige Netzwerkverbindungen sind in R0 nicht festgelegt. Soll die Erfassung über vernetzte Anwendungen oder vollständig lokal ohne Netzwerk und spätere Synchronisierung erfolgen?"
+      },
+      "retainedSiblingScores": {
+        "BP": 40,
+        "CR": 45,
+        "UA": 70
+      },
+      "keyboardToggleVerified": true
+    }
+  ],
+  "observation": {
+    "pageErrors": [],
+    "httpErrors": [],
+    "browserExternalOrigins": [],
+    "analysisRequests": 1
+  },
+  "limits": [
+    "Selected documentation illustration, not the full screenshot profile or a new browser acceptance matrix.",
+    "The English interface preserves the original German authored explanation rather than translating stored evidence.",
+    "A separate R1 UI walkthrough is not represented by these R0 images."
+  ]
+}

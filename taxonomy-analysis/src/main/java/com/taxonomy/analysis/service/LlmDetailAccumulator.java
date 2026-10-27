@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.RootAssessment;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 
 import java.util.LinkedHashMap;
@@ -12,6 +13,7 @@ final class LlmDetailAccumulator {
     private static final String TRUNCATED = "\n[diagnostic transcript truncated]";
     private final Map<String, Double> scores = new LinkedHashMap<>();
     private final Map<String, String> reasons = new LinkedHashMap<>();
+    private final Map<String, RootAssessment> rootAssessments = new LinkedHashMap<>();
     private final StringBuilder prompts = new StringBuilder();
     private final StringBuilder responses = new StringBuilder();
     private final StringBuilder errors = new StringBuilder();
@@ -24,6 +26,7 @@ final class LlmDetailAccumulator {
         count++;
         if (detail.getScores() != null) scores.putAll(detail.getScores());
         if (detail.getReasons() != null) reasons.putAll(detail.getReasons());
+        rootAssessments.putAll(detail.getRootAssessments());
         if (provider == null) provider = detail.getProvider();
         if (discrepancy == null) discrepancy = detail.getDiscrepancy();
         duration += detail.getDurationMs();
@@ -47,6 +50,7 @@ final class LlmDetailAccumulator {
         LlmCallDetail result = new LlmCallDetail();
         result.setScores(scores);
         result.setReasons(reasons);
+        result.setRootAssessments(rootAssessments);
         result.setProvider(provider);
         result.setPrompt(prompts.toString());
         result.setRawResponse(responses.toString());

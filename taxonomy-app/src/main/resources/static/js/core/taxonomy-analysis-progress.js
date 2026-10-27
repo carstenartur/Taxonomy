@@ -455,6 +455,7 @@
             RUNNING: ['Wird bewertet', 'Assessing'],
             COMPLETED: ['Bewertung abgeschlossen', 'Assessment completed'],
             COMPLETED_ZERO: ['Abgeschlossen · 0% Relevanz', 'Completed · 0% relevance'],
+            CLARIFICATION: ['Klärung erforderlich', 'Clarification needed'],
             PARTIAL: ['Bewertung unvollständig', 'Incomplete assessment'],
             FAILED: ['Bewertung fehlgeschlagen', 'Assessment failed']
         };
@@ -598,8 +599,10 @@
     function renderDiagnostic(body, detail) {
         body.replaceChildren();
         if (detail.error) {
-            body.append(node('strong', text('Fehler', 'Error')),
-                node('div', detail.error, 'llm-log-error-detail mb-2'));
+            var clarification = typeof detail.error === 'string' && detail.error.startsWith('ROOT_UNRESOLVED:');
+            body.append(node('strong', clarification ? text('Klärung erforderlich', 'Clarification needed') : text('Fehler', 'Error')),
+                node('div', clarification ? detail.error.substring('ROOT_UNRESOLVED:'.length).trim() : detail.error,
+                    clarification ? 'mb-2' : 'llm-log-error-detail mb-2'));
         }
         if (detail.taskId) {
             body.append(node('div', text('Worker-Zustellung: ', 'Worker delivery: ') + detail.deliveryAttempt + ' · ' + detail.taskId, 'text-muted'));
@@ -653,7 +656,7 @@
         var lastWorkSignature = null;
         var taxonomyOrder = [];
         var lastNodeProgress = null;
-        var startedTaxonomies = new Set(), failedTaxonomies = new Set();
+        var startedTaxonomies = new Set(), failedTaxonomies = new Set(), clarificationTaxonomies = new Set();
         function assessmentState(part, snapshot) {
             var terminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
             var task = (snapshot.cluster?.tasks || []).find(function (entry) {
@@ -662,6 +665,14 @@
             });
             var calls = (snapshot.calls || []).filter(function (call) { return belongsToRoot(call.node, part.root); });
             if (task?.failed > 0 || calls.some(function (call) { return call.status === 'FAILED'; })) failedTaxonomies.add(part.root);
+            var rootCalls = calls.filter(function (call) { return call.node === part.root; });
+            var rootCall = rootCalls[rootCalls.length - 1];
+            if (rootCall?.status === 'CLARIFICATION') {
+                clarificationTaxonomies.add(part.root);
+                failedTaxonomies.delete(part.root);
+            } else if (rootCall?.status === 'FAILED') {
+                clarificationTaxonomies.delete(part.root);
+            }
             var active = !terminal && !snapshot.relationProgress && snapshot.phase !== 'RELATIONS' && snapshot.phase !== 'FINALIZING'
                 && (task ? task.running > 0 : calls.some(function (call) { return call.status === 'STARTED'; })
                     || belongsToRoot(snapshot.node, part.root) && snapshot.phase !== 'LLM_FAILED');
@@ -671,6 +682,7 @@
             if (part.total > 0 && part.open === 0) return part.rootPercent === 0 ? 'COMPLETED_ZERO' : 'COMPLETED';
             if (active) return 'RUNNING';
             if (failedTaxonomies.has(part.root)) return part.assessed + part.excluded > 0 ? 'PARTIAL' : 'FAILED';
+            if (clarificationTaxonomies.has(part.root) && part.rootPercent == null) return 'CLARIFICATION';
             if (part.assessed + part.excluded > 0 || startedTaxonomies.has(part.root)) return 'PARTIAL';
             return 'NOT_STARTED';
         }
@@ -1031,7 +1043,8 @@
                         } else {
                             entry.summary.append(node('span', text('Startzeit unbekannt', 'Start time unknown')));
                         }
-                        entry.summary.append(node('span', ' · ' + call.status + ' · '
+                        entry.summary.append(node('span', ' · ' + (call.status === 'CLARIFICATION'
+                            ? text('Klärung erforderlich', 'Clarification needed') : call.status) + ' · '
                             + (Number.isFinite(seconds) ? seconds + ' s' : '—')));
                         // An open pending row needs no second toggle when its response arrives.
                         if (changed || becameReady) loadDetail(entry, monitor);

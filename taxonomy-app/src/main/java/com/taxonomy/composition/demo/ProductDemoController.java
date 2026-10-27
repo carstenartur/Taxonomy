@@ -75,7 +75,7 @@ public class ProductDemoController {
 
     @GetMapping("/runs/{runId}/comparison")
     @Operation(summary = "Evaluate a product demo against its independent reference",
-            description = "Compares the latest successful A0 and A1 demo analyses with the separately versioned reference annotation. Analyses that have not run are reported as NOT_EXECUTED and never as negative findings.")
+            description = "Compares the latest completed A0 and A1 demo analyses, including partial evidence, with the separately versioned reference annotation. Unassessed work is reported as NOT_EXECUTED and never as negative findings.")
     public DemoComparison comparison(@PathVariable String runId) {
         return demos.compare(runId, workspaceResolver.resolveCurrentUsername(), workspaceResolver.resolveCurrentContext());
     }

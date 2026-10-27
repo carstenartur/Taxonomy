@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.dto.AnalysisCoverage;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -28,6 +29,13 @@ public interface AnalysisEventCallback {
                     List<TaxonomyDiscrepancy> discrepancies,
                     List<ProductCoverageGap> productCoverageGaps);
 
+    /** Terminal assessment coverage; older callbacks keep their existing completion contract. */
+    default void onComplete(String status, Map<String, Double> allScores, List<String> warnings,
+                            List<TaxonomyDiscrepancy> discrepancies,
+                            List<ProductCoverageGap> productCoverageGaps, AnalysisCoverage coverage) {
+        onComplete(status, allScores, warnings, discrepancies, productCoverageGaps);
+    }
+
     /** Analysis stopped due to an error (possibly with partial scores). */
     void onError(String status, String errorMessage,
                  Map<String, Double> partialScores, List<String> warnings,
@@ -40,5 +48,13 @@ public interface AnalysisEventCallback {
                          List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
                          List<ProductCoverageGap> productCoverageGaps) {
         onError(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps);
+    }
+
+    /** A stop preserves open assessments as well as the accepted numeric evidence. */
+    default void onError(String status, String errorMessage,
+                         Map<String, Double> partialScores, Map<String, String> partialReasons,
+                         List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                         List<ProductCoverageGap> productCoverageGaps, AnalysisCoverage coverage) {
+        onError(status, errorMessage, partialScores, partialReasons, warnings, discrepancies, productCoverageGaps);
     }
 }

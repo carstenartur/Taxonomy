@@ -24,6 +24,33 @@ class AnalysisSseEventMapperTest {
     private final AnalysisSseEventMapper mapper = new AnalysisSseEventMapper();
 
     @Test
+    void terminalEventsRetainRootClarificationCoverageWithoutANumericZero() {
+        var json = tools.jackson.databind.json.JsonMapper.builder()
+                .disable(tools.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+        String coverage = """
+                {"nodes":{"CO":{"state":"UNKNOWN","score":null,"effectiveRelevance":null,
+                "descendants":"UNASSESSED","reason":"CLARIFICATION:Must terminals connect online?"}},
+                "assessedNodes":0,"unknownNodes":1,"failedOrBlockedNodes":1}
+                """;
+        var complete = json.readValue("""
+                {"status":"PARTIAL","allScores":{"UA":20},"warnings":["Root clarification"],
+                "discrepancies":[],"productCoverageGaps":[],"analysisDurationMillis":12,"analysisCoverage":%s}
+                """.formatted(coverage), AnalysisStreamEvent.Complete.class);
+        var stopped = json.readValue("""
+                {"status":"PARTIAL","errorMessage":"CANCELLED","partialScores":{"UA":20},
+                "warnings":["Root clarification"],"discrepancies":[],"productCoverageGaps":[],
+                "partialReasons":{},"analysisDurationMillis":12,"analysisCoverage":%s}
+                """.formatted(coverage), AnalysisStreamEvent.Error.class);
+        for (var event : List.<AnalysisStreamEvent>of(complete, stopped)) {
+            var result = json.valueToTree(payload(mapper.map(event)));
+            assertThat(result.path("rawScores").has("CO")).isFalse();
+            assertThat(result.path("analysisCoverage").path("nodes").path("CO").path("state").asString()).isEqualTo("UNKNOWN");
+            assertThat(result.path("analysisCoverage").path("nodes").path("CO").path("score").isNull()).isTrue();
+            assertThat(result.path("analysisCoverage").path("failedOrBlockedNodes").asInt()).isEqualTo(1);
+        }
+    }
+
+    @Test
     void incrementalScoresStayRawUntilCompleteFamilyContextExists() {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setPrompt("prompt");

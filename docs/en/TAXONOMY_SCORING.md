@@ -57,6 +57,14 @@ Normalization allocates weights. It proves neither fulfilment, necessity, probab
 
 **Independent roots:** `analyzeWithBudget` and `analyzeStreaming` assess each root separately on a 0–100 scale, without a sum-to-100 prompt or child-budget normalization. A root response of `20` remains `20`; `0` and `100` remain distinct. The local ONNX path retains its root similarity score without allocation, and mock roots retain their bounded demonstration values. Positive root scores become budgets only for their *children*. A legitimate single-child category still follows the child-budget rule.
 
+The generative `root-relevance-v2` contract also distinguishes `RELEVANT`
+(positive score), `IRRELEVANT` (supported zero) and `UNRESOLVED` (no numeric
+score, with a reason and question). Needed existing services can be relevant.
+An unresolved domain remains visible as `UNKNOWN` in the partial result and
+receives no child budget; assessment continues elsewhere. Legacy numeric
+answers remain readable without inventing retrospective evidence.
+[Display and examples](USER_GUIDE.md#root-relevance-clarification).
+
 ## Current IP product arithmetic
 
 `analysisRole=PRODUCT` enables independent suitability against the original requirement. Candidates are code-sorted, assessed in configurable batches of at most ten, then filtered by the default threshold 50: `49, 80, 90` becomes structured `0, 80, 90`. This is not an allocation totalling 100.

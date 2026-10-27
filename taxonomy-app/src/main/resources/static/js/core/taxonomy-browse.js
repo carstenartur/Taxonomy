@@ -1388,11 +1388,39 @@
         const recorded = scores && Object.prototype.hasOwnProperty.call(scores, node.code)
             ? scores[node.code] : null;
         const assessedArea = Number.isFinite(recorded) && recorded >= 0 && recorded <= 100;
+        const rootAssessment = S.analysisCoverage && S.analysisCoverage.nodes && S.analysisCoverage.nodes[node.code];
+        const clarification = !assessedArea && rootAssessment && rootAssessment.state === 'UNKNOWN'
+            && typeof rootAssessment.reason === 'string' && rootAssessment.reason.startsWith('CLARIFICATION:')
+            ? rootAssessment.reason.substring('CLARIFICATION:'.length).trim() : '';
         area.className = assessedArea ? 'tax-container-score' : 'tax-container-area-state';
         area.classList.toggle('tax-container-score-positive', assessedArea && recorded > 0);
+        area.classList.toggle('tax-container-area-clarification', Boolean(clarification));
         area.textContent = assessedArea
-            ? t('browse.container.relevance', recorded) : t('browse.container.area.unassessed');
+            ? t('browse.container.relevance', recorded) : t(clarification
+                ? 'browse.container.area.clarification' : 'browse.container.area.unassessed');
         area.title = assessedArea ? ((S.currentReasons || {})[node.code] || '') : '';
+
+        const clarificationId = 'tax-container-clarification-' + node.code;
+        let explanation = wrapper.querySelector(':scope > .tax-container-clarification');
+        if (clarification) {
+            if (!explanation) {
+                explanation = document.createElement('p');
+                explanation.className = 'tax-container-clarification';
+                explanation.id = clarificationId;
+                wrapper.insertBefore(explanation, heading.nextSibling);
+            }
+            if (explanation.textContent !== clarification) explanation.textContent = clarification;
+        } else if (explanation) explanation.remove();
+        [wrapper, heading.querySelector('.tax-container-toggle')].forEach(function (element) {
+            if (!element) return;
+            const described = (element.getAttribute('aria-describedby') || '').split(/\s+/)
+                .filter(function (id) { return id && id !== clarificationId; });
+            if (clarification) described.push(clarificationId);
+            const next = described.join(' ');
+            if ((element.getAttribute('aria-describedby') || '') !== next) {
+                if (next) element.setAttribute('aria-describedby', next); else element.removeAttribute('aria-describedby');
+            }
+        });
 
         let summary = heading.querySelector('.tax-container-summary');
         if (!summary) {
