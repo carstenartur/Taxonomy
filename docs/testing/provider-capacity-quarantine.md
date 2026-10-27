@@ -125,7 +125,7 @@ replacement admission is blocked. Only this disposable fixture uses 1,000 ms
 connection TTL and 250 ms client-failure checks; no production timeout is changed.
 These tests require the normal existing JUnit/Artemis-server test dependencies.
 
-Run from a complete checkout with Java 21; no paid model, Docker or Kubernetes is
+Run from a complete checkout with Java 25; no paid model, Docker or Kubernetes is
 needed for this selected real-broker fixture:
 
 ```bash

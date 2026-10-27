@@ -31,8 +31,9 @@ final class ContainerTestUtils {
 
     /** Same immutable runtime manifest used by the production Dockerfile. */
     private static final String APP_RUNTIME_IMAGE =
+            // Temurin 25 JRE on Jammy; Testcontainers requires the digest-only form.
             "eclipse-temurin@sha256:"
-                    + "d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13";
+                    + "f7f4c9bc54b8c1b734ddf49e056b4d158c08a6a234a7604a4b08c36b0c5ad68c";
 
     private static final Future<String> SHARED_IMAGE = new ImageFromDockerfile(
             "taxonomy-app-it", false)

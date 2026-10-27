@@ -1,7 +1,10 @@
 # Native Taxonomy packages
 
-Builds wrap the **same repackaged Spring Boot JAR**, using JDK 21 `jpackage` and an
-included runtime. There is no second application or mutable installed configuration.
+Builds wrap the **same repackaged Spring Boot JAR**, using JDK 25 `jpackage` and an
+included runtime. The packaging JDK must include its matching JMOD files; the native
+workflow installs Temurin with `java-package: jdk+jmods`. For local Temurin builds,
+extract the JMOD archive for the same JDK version and platform into `$JAVA_HOME/jmods`.
+There is no second application or mutable installed configuration.
 Read [installation setup](../../docs/INSTALLATION_SETUP.md) before using the result.
 
 ```sh
@@ -12,8 +15,9 @@ java deploy/native/PackageTaxonomy.java taxonomy-app/target/taxonomy-app-1.4.1-S
 Pass the exact executable JAR and a numeric package version matching the intended
 release. The helper verifies the Boot Main-Class/Start-Class, preserves space-containing
 paths as individual process arguments and records the input JAR SHA-256. `app-image`
-requires only the JDK; DEB requires `fakeroot`/dpkg; RPM requires RPM build tools;
-MSI/EXE with JDK 21 require WiX 3 `candle.exe` and `light.exe` on Windows. Builds must
+requires the JDK with JMOD files; DEB requires `fakeroot`/dpkg; RPM requires RPM build tools;
+The Windows workflow uses WiX 3 `candle.exe` and `light.exe`, supported by JDK 25,
+for MSI/EXE packaging. Builds must
 run on the target OS. No signing keys, package manager downloads or releases are
 created by the helper. The GitHub workflow is explicitly/manual-dispatch only.
 

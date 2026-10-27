@@ -55,7 +55,7 @@ try {
   await mkdir(runtime, { recursive: true }); await mkdir(classes, { recursive: true });
   await run('jar', ['xf', jar, 'BOOT-INF/classes', 'BOOT-INF/lib'], runtime);
   const classpath = [classes, path.join(runtime, 'BOOT-INF/classes'), path.join(runtime, 'BOOT-INF/lib/*')].join(path.delimiter);
-  await run('javac', ['--release', '21', '-cp', classpath, '-d', classes, path.join(root, '.github/scripts/InteroperabilityProductProbe.java')]);
+  await run('javac', ['--release', '25', '-cp', classpath, '-d', classes, path.join(root, '.github/scripts/InteroperabilityProductProbe.java')]);
   const probe = (profile, action, source, target) => run('java', ['-cp', classpath, 'InteroperabilityProductProbe', profile, action, source, target]);
 
   // The verifier is Node/Java. pipx installs the independently versioned external product in an isolated application environment.

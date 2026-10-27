@@ -9,7 +9,7 @@
     <name>Taxonomy LeanIX Read Plugin</name>
     <licenses><license><name>MIT License</name><url>https://opensource.org/licenses/MIT</url></license></licenses>
     <properties>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <taxonomy.sdk.version>${project.version}</taxonomy.sdk.version>
     </properties>

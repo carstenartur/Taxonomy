@@ -12,7 +12,7 @@
     <properties>
         <!-- Browser/contract lanes produce commit-bound evidence and must execute. -->
         <maven.build.cache.enabled>false</maven.build.cache.enabled>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>4.1.1</spring-boot.version>
         <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>

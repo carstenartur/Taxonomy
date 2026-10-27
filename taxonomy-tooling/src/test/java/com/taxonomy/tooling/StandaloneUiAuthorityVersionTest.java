@@ -17,7 +17,7 @@ class StandaloneUiAuthorityVersionTest {
   assertNull(XmlSupport.child(ui,"parent"),"Application release/version bump must not break independently invoked UI/image/product owners");
   var reactor=XmlSupport.parse(root.resolve("pom.xml")).getDocumentElement();
   assertEquals(XmlSupport.childText(XmlSupport.child(reactor,"parent"),"version"),XmlSupport.childText(XmlSupport.child(ui,"properties"),"spring-boot.version"));
-  assertEquals("21",XmlSupport.childText(XmlSupport.child(ui,"properties"),"maven.compiler.release"));
+  assertEquals(XmlSupport.childText(XmlSupport.child(reactor,"properties"),"java.version"),XmlSupport.childText(XmlSupport.child(ui,"properties"),"maven.compiler.release"));
   assertEquals("1",XmlSupport.childText(ui,"version"));
  }
 }

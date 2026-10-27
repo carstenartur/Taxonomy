@@ -2,7 +2,7 @@
 
 # ---- build stage ----
 # Tag retained for readability and automated update discovery; digest is authoritative.
-FROM maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e AS build
+FROM maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 AS build
 WORKDIR /workspace
 ARG BUILD_DATE=unknown
 ARG VCS_REF=unknown
@@ -88,7 +88,7 @@ FROM otel/autoinstrumentation-java:2.28.1@sha256:41b92978e61d13d4f32c6eb20c6ae78
 # ---- optional pinned local model ----
 # This stage is independent of the application build, so unchanged model bytes
 # remain cacheable across application releases. The default target does not use it.
-FROM eclipse-temurin:21-jre-jammy@sha256:d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13 AS onnx-model
+FROM eclipse-temurin:25-jre-jammy@sha256:f7f4c9bc54b8c1b734ddf49e056b4d158c08a6a234a7604a4b08c36b0c5ad68c AS onnx-model
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -101,7 +101,7 @@ RUN MODEL_PROFILE=MULTILINGUAL_MINILM_L12 \
 
 # ---- runtime stage ----
 # Tag retained for readability; digest prevents mutable-tag supply-chain drift.
-FROM eclipse-temurin:21-jre-jammy@sha256:d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13 AS runtime
+FROM eclipse-temurin:25-jre-jammy@sha256:f7f4c9bc54b8c1b734ddf49e056b4d158c08a6a234a7604a4b08c36b0c5ad68c AS runtime
 # OCI Image Specification labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.description="Spring Boot web application that loads a C3-taxonomy catalogue and provides full-text search, KNN vector search, architecture-overlay DSL editing, and LLM-assisted analysis." \
@@ -110,7 +110,7 @@ LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.documentation="https://github.com/carstenartur/Taxonomy#readme" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Carsten Hammer" \
-      org.opencontainers.image.base.name="eclipse-temurin:21-jre-jammy@sha256:d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13"
+      org.opencontainers.image.base.name="eclipse-temurin:25-jre-jammy@sha256:f7f4c9bc54b8c1b734ddf49e056b4d158c08a6a234a7604a4b08c36b0c5ad68c"
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION

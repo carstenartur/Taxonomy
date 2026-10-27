@@ -102,12 +102,31 @@ class ExchangeStandardsTest {
         var orphan = new Placement("orphan", "unselected-view", null, model.placements().getFirst().artifactId(), 0, Map.of());
         assertThrows(ExchangeFormatException.class, () -> archimate.write(copy(model, model.source(), model.artifacts(), List.of(orphan))));
     }
+    @Test void largeEscapedEvidenceRoundTripsWithinTheExchangeByteLimit() {
+        String evidence = "<node name=\"A & B\">quoted evidence</node>".repeat(10_001);
+        var document = ExchangeXml.parse("<e/>".getBytes(StandardCharsets.UTF_8));
+        document.getDocumentElement().setAttribute("evidence", evidence);
+        byte[] bytes = ExchangeXml.write(document);
+        assertTrue(bytes.length < ExchangeXml.MAX_BYTES);
+        assertEquals(evidence, ExchangeXml.parse(bytes).getDocumentElement().getAttribute("evidence"));
+    }
     @Test void xxeUtf16DepthAndSizeAreRejectedBeforeAnyExternalAccess() {
         String entity = "<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY leak SYSTEM \"file:///etc/passwd\">]><x>&leak;</x>";
         assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(entity.getBytes(StandardCharsets.UTF_8)));
         assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(entity.replace("1.0\"", "1.0\" encoding=\"UTF-16\"").getBytes(StandardCharsets.UTF_16)));
         assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(("<x>".repeat(98) + "</x>".repeat(98)).getBytes(StandardCharsets.UTF_8)));
         assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(new byte[ExchangeXml.MAX_BYTES + 1]));
+        String internalEntity = "<!DOCTYPE x [<!ENTITY value \"expanded\">]><x>&value;</x>";
+        assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(internalEntity.getBytes(StandardCharsets.UTF_8)));
+    }
+    @Test void escapedEvidenceDoesNotRelaxElementAndAttributeBounds() {
+        StringBuilder attributes = new StringBuilder("<e");
+        for (int i = 0; i < 129; i++) attributes.append(" a").append(i).append("=\"&quot;\"");
+        attributes.append("/>");
+        assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(attributes.toString().getBytes(StandardCharsets.UTF_8)));
+        byte[] elements = ("<root>" + "<e value=\"&quot;\"/>".repeat(250_000) + "</root>").getBytes(StandardCharsets.UTF_8);
+        assertTrue(elements.length < ExchangeXml.MAX_BYTES);
+        assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(elements));
     }
     @Test void namespacesAndFormattingDoNotPretendToBeSemanticChanges() {
         assertEquals(ExchangeXml.semantic("<a:r xmlns:a=\"urn:test\"><a:p a:k=\"v\">text</a:p></a:r>"),

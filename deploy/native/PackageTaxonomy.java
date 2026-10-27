@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.jar.JarFile;
 
-/** Run with Java 21: java deploy/native/PackageTaxonomy.java app.jar 1.4.0 app-image output */
+/** Run with Java 25: java deploy/native/PackageTaxonomy.java app.jar 1.4.0 app-image output */
 public final class PackageTaxonomy {
     public static void main(String[] args) throws Exception {
         if (args.length != 4) {

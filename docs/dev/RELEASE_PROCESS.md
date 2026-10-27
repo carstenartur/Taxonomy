@@ -128,7 +128,7 @@ external Mermaid plugin and its checksum in `plugins/`. It also includes launch
 instructions, legal notices, the reviewed release notes and `SHA256SUMS` covering
 every delivered file. Individual JAR assets remain available for inspection.
 
-Use Java 21 and set `TAXONOMY_ADMIN_PASSWORD` to a unique secret in the environment
+Use Java 25 and set `TAXONOMY_ADMIN_PASSWORD` to a unique secret in the environment
 before the first startup. For a downloaded 1.5.0 distribution, run:
 
 ```bash

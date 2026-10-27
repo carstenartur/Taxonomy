@@ -169,7 +169,7 @@ checked before its parent directory is created or content is written. Report
 file and directory aliases whose targets remain in the checkout are permitted;
 an alias outside the checkout is rejected without writing its target.
 
-This pass uses Java 21 and the complete `surefire.test.class.path` (falling back
+This pass uses Java 25 and the complete `surefire.test.class.path` (falling back
 to `java.class.path` outside Surefire), plus reactor class directories. Annotation
 processing and implicit source compilation are disabled. The inventory uses the
 current `src/main/java` and `target/classes` module layout; generated source

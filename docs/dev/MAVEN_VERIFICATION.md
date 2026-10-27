@@ -83,7 +83,7 @@ approach recommended in [JUnit discussion 4570](https://github.com/junit-team/ju
 
 ## Toolchain
 
-- Java 21
+- Java 25
 - Maven 3.9.16 through Maven Wrapper 3.3.4
 - Docker for Testcontainers suites
 - Bash, `curl` and Python 3 for remaining legacy checks/model provisioning
@@ -175,7 +175,7 @@ mistaken for completion of the Java/Maven-only requirement.
 
 | Scope | Command | Additional requirement |
 |---|---|---|
-| Compile | `./mvnw compile` | Java 21 |
+| Compile | `./mvnw compile` | Java 25 |
 | Normal developer verification | `./mvnw verify` | Unit, Spring, contract, architecture and browser tests; browser sessions default to Docker unless local Chrome is explicitly configured |
 | Docker-free developer verification | `./mvnw verify -Ptest-local` | Maven provisions Node and the pinned local browser; browser OS libraries remain necessary. See [scope and prerequisites](../testing/docker-free-tests.md). Container, database, ONNX and external-LLM suites remain separate. |
 | Local combined CI-profile verification | `./mvnw -B verify -Pci -DrunOnnxTests=true` | Docker, browser/model prerequisites and POSIX tools; CI itself splits UI into shards |

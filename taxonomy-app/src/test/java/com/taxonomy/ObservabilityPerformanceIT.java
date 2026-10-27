@@ -52,8 +52,9 @@ class ObservabilityPerformanceIT {
             "otel/autoinstrumentation-java:2.28.1@sha256:"
                     + "41b92978e61d13d4f32c6eb20c6ae7821a73ffdec8539bc6a73858e884b411d8";
     private static final String RUNTIME_IMAGE =
-            "eclipse-temurin:21-jre-jammy@sha256:"
-                    + "d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13";
+            // Temurin 25 JRE on Jammy; Testcontainers requires the digest-only form.
+            "eclipse-temurin@sha256:"
+                    + "f7f4c9bc54b8c1b734ddf49e056b4d158c08a6a234a7604a4b08c36b0c5ad68c";
     private static final String COLLECTOR_IMAGE =
             "otel/opentelemetry-collector-contrib@sha256:"
                     + "f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6";

@@ -29,7 +29,7 @@ for any unrelated root and no global index files.
 
 ## Reproduce through Maven
 
-Use HotSpot JDK 21 with native-memory tracking and the repository's pinned model
+Use HotSpot JDK 25 with native-memory tracking and the repository's pinned model
 downloader. The existing `onnx` profile owns model provisioning and test selection; there is no
 additional CI lane or changed exclusion. Run from the repository root:
 

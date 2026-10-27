@@ -7,7 +7,7 @@
       "excludedGroups": "real-llm,onnx,db-postgres,db-mssql,db-oracle,docker-required",
       "systemProperty": "taxonomy.test.browser=local",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Node",
         "Matching Chrome and ChromeDriver (CHROME_BIN and CHROMEDRIVER)"
       ]
@@ -15,7 +15,7 @@
     "ci": {
       "purpose": "Required pull-request verification: unit tests, core, PostgreSQL and Keycloak integration tests, quality gates, browser matrix and accessibility audit",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Docker",
         "Python 3",
         "POSIX shell"
@@ -65,7 +65,7 @@
       "purpose": "Full standalone lifecycle for the independent SDK build, immutable host, authenticated HTTP and physically optional features; required by the existing CI workflow alongside canonical verification",
       "itTest": "ExternalPluginPackagedIT,OptionalFeaturePackagedIT",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Maven",
         "Maven repository access",
         "Docker",
@@ -83,7 +83,7 @@
       "itTest": "DocumentTemplateReportDownloadIT",
       "systemProperty": "documentTemplateE2E",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Docker",
         "Node 24",
         "Chromium",
@@ -95,7 +95,7 @@
       "purpose": "Scoped durable usage, recovery, encoding and repository-guard regression tests; supplements canonical CI",
       "test": "ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ReformulationEncodingTest,ArchitectureContextDependencyRatchetTest,WorkflowTestAuthorityPolicyTest,PythonSourceRatchetRepositoryTest,ReformulationVerificationProfileTest",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Node"
       ]
     },
@@ -105,7 +105,7 @@
       "groups": "real-llm",
       "excludedGroups": "onnx,db-postgres,db-mssql,db-oracle",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Configured generative provider",
         "Explicit network/cost opt-in"
       ]
@@ -115,7 +115,7 @@
       "test": "ScenarioArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationScenarioAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationScenarioBrowserTest,ReformulationBrowserTest",
       "systemProperty": "generateScreenshots",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Docker or test-local with matching Chrome and ChromeDriver"
       ]
     },
@@ -123,7 +123,7 @@
       "purpose": "Focused repository scan for immutable external GitHub Action commits and production image digests",
       "test": "SupplyChainPinPolicyRepositoryTest",
       "requires": [
-        "Java 21"
+        "Java 25"
       ]
     },
     "ui-tests": {
@@ -135,7 +135,7 @@
       "itTest": "JgitStoragePostgresMigrationIT,TaxonomyPostgresValidateStartupIT,TaxonomySchemaPostgresMigrationIT,ArchitectureCommitIndexTenantMigrationPostgresIT",
       "excludedGroups": "real-llm,onnx,db-mssql,db-oracle",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Docker",
         "Python 3",
         "Bash 4+"
@@ -147,7 +147,7 @@
       "command": "./mvnw -B verify -pl taxonomy-app -am -DskipITs=false -Dit.test=KeycloakSecurityContainerIT",
       "purpose": "Imported-realm browser OIDC, bearer JWT, CSRF, role, Swagger, logout and health verification",
       "requires": [
-        "Java 21",
+        "Java 25",
         "Docker"
       ]
     }

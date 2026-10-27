@@ -508,6 +508,11 @@
                     <systemPropertyVariables>
                         <taxonomy.plugins.directory>${project.build.directory}/plugins</taxonomy.plugins.directory>
                         <selenium.container.image>${selenium.container.image}</selenium.container.image>
+                        <!-- Embedded Artemis journals free JDK-allocated direct buffers
+                             (ARTEMIS-5790). Netty 4.2 disables that Unsafe cleaner on
+                             Java 25 by default. Enable it in the Surefire JVM only;
+                             the broker dependency is test-scoped. -->
+                        <io.netty.noUnsafe>false</io.netty.noUnsafe>
                         <!--
                             Different Spring test contexts rebuild the same in-memory
                             HSQLDB schema. Retaining only the current context prevents

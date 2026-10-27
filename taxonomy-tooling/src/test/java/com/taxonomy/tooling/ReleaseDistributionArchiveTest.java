@@ -63,7 +63,7 @@ class ReleaseDistributionArchiveTest {
         assertThat(Files.readString(distribution.resolve(
                 "plugins/taxonomy-mermaid-plugin-1.5.0.jar"))).isEqualTo("mermaid bytes\n");
         assertThat(Files.readString(distribution.resolve("README.md")))
-                .contains("Java 21", "cd taxonomy-1.5.0", "java -jar app.jar",
+                .contains("Java 25", "cd taxonomy-1.5.0", "java -jar app.jar",
                         "TAXONOMY_ADMIN_PASSWORD", "features/", "plugins/");
         Result contentsChecksum = run(distribution, Map.of(),
                 "sha256sum", "--check", "SHA256SUMS");

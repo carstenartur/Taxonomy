@@ -362,4 +362,4 @@ docker build -t taxonomy-analyzer .
 docker run --rm -p 8080:8080 taxonomy-analyzer
 ```
 
-Ein GitHub-Token oder eine Maven-`settings.xml` mit Zugangsdaten darf für diesen Build nicht erforderlich sein. Der mehrstufige Build verwendet Maven mit Eclipse Temurin 21 und ein Temurin-21-JRE-Laufzeit-Image.
+Ein GitHub-Token oder eine Maven-`settings.xml` mit Zugangsdaten darf für diesen Build nicht erforderlich sein. Der mehrstufige Build verwendet Maven mit Eclipse Temurin 25 und ein Temurin-25-JRE-Laufzeit-Image.

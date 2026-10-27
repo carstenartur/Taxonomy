@@ -23,7 +23,7 @@ acceptances guard their PNG writes with `Boolean.getBoolean("generateScreenshots
 Omit the screenshot profile/property when captures are not requested; setting the
 property to `false` does not disable `ScreenshotGeneratorIT`'s presence condition.
 
-These three owners require Java 21, the Maven Wrapper's dependencies and Docker.
+These three owners require Java 25, the Maven Wrapper's dependencies and Docker.
 `CompleteCopilotSessionIT` also starts PostgreSQL in Docker. The checked-in POMs,
 `ContainerTestUtils` and documentation workflow own the pinned runtime, Selenium
 and model assets; initial provisioning needs their download access. All three

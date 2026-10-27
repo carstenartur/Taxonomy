@@ -111,6 +111,6 @@ review discussions. In a complete checkout the prescribed full command is:
 ./mvnw verify -DexcludedGroups="real-llm"
 ```
 
-Use the repository-owned CI suites and documented Java 21 / Node 24 toolchain.
+Use the repository-owned CI suites and documented Java 25 / Node 24 toolchain.
 Do not remove tests, relax required checks, or treat schema-valid Taxonomy ReqIF
 round trips as certification of arbitrary vendor custom-field behavior.

@@ -288,7 +288,7 @@ class ArchitectureModuleExtractionTest {
                 String testClasspath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
                 String classpath = String.join(File.pathSeparator, outputs.stream().map(Path::toString).toList())
                         + File.pathSeparator + testClasspath;
-                List<String> options = List.of("--release", "21", "-proc:none", "-implicit:none", "-classpath", classpath);
+                List<String> options = List.of("--release", "25", "-proc:none", "-implicit:none", "-classpath", classpath);
                 boolean compiled = compiler.getTask(new StringWriter(), inventory, diagnostics, options, null,
                         standard.getJavaFileObjectsFromPaths(sources.keySet())).call();
                 if (!compiled) {

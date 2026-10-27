@@ -29,7 +29,7 @@ transport when the protocol, authentication or response decoding needs different
 | `LlmTransport` | One request attempt, response decoding and provider name |
 | `com.taxonomy.extension.api.plugin.TaxonomyPlugin` | ServiceLoader entry point returning contributions |
 
-Build an independent Java 21 JAR against the exact `taxonomy-extension-api` SDK
+Build an independent Java 25 JAR against the exact `taxonomy-extension-api` SDK
 version, with SDK dependencies in `provided` scope. Do not bundle host SDK classes,
 Spring, host registries or PF4J. The independent [Mermaid project](../../../plugins/taxonomy-mermaid-plugin/pom.xml)
 demonstrates the POM and service entry layout; a provider uses **STARTUP** mode,

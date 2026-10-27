@@ -74,7 +74,7 @@ results, exception rollback/retry, error rollback/retry, independent-key overlap
 preparation outside the result transaction with durable replay, and source fencing.
 They assert business-table contents as well as completion counts. Deterministic
 latches pause actual persistence reads; only observation is proxied, not database
-behavior. Their shared `*Cases` classes can also execute directly with Java 21.
+behavior. Their shared `*Cases` classes can also execute directly with Java 25.
 
 `ArtemisAnalysisTransportTest.simultaneousDuplicateDeliveriesCommitOneActualDatabaseEffect`
 adds two real worker/store instances, a persistent disposable TCP Artemis broker,

@@ -17,7 +17,7 @@ Record the exact source reference in publications, reports, and exported artefac
 
 Recommended environment:
 
-- Java 21 or newer;
+- Java 25 or newer;
 - Maven 3.9 or newer;
 - Docker for integration tests and production-like deployment;
 - optional LLM provider key, or `LLM_PROVIDER=LOCAL_ONNX` for offline/local analysis.

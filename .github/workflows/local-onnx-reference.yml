@@ -32,10 +32,10 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Set up Java 21
+      - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: temurin
           cache: maven
       - name: Install verified Helm 3.21.0

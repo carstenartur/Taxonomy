@@ -101,7 +101,7 @@ class FrontendPackagingLifecycleTest {
         Files.writeString(fixture.resolve("pom.xml"),"""
             <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
             <groupId>fixture</groupId><artifactId>frontend-root</artifactId><version>1</version><packaging>pom</packaging>
-            %s<properties><taxonomy.frontend.skip>false</taxonomy.frontend.skip><maven.compiler.release>21</maven.compiler.release></properties>
+            %s<properties><taxonomy.frontend.skip>false</taxonomy.frontend.skip><maven.compiler.release>25</maven.compiler.release></properties>
             <build><pluginManagement><plugins>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId><version>3.5.0</version></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.15.0</version></plugin>

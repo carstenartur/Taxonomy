@@ -112,6 +112,10 @@ public final class ExchangeXml {
             var reader = sax.newSAXParser().getXMLReader();
             reader.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
             reader.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+            // JDK 24+ counts predefined escapes in attribute evidence as entity text.
+            // DTDs stay forbidden; both counters use the same finite input-byte budget.
+            reader.setProperty("jdk.xml.maxGeneralEntitySizeLimit", Integer.toString(MAX_BYTES));
+            reader.setProperty("jdk.xml.totalEntitySizeLimit", Integer.toString(MAX_BYTES));
             var bounds = new DefaultHandler() {
                 int depth, elements;
                 @Override public void startElement(String uri, String local, String name, org.xml.sax.Attributes attributes) throws SAXException {
@@ -133,6 +137,9 @@ public final class ExchangeXml {
             factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
             factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
             factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+            // Match the SAX preflight budget for escaped attribute evidence.
+            factory.setAttribute("jdk.xml.maxGeneralEntitySizeLimit", Integer.toString(MAX_BYTES));
+            factory.setAttribute("jdk.xml.totalEntitySizeLimit", Integer.toString(MAX_BYTES));
             var builder = factory.newDocumentBuilder(); builder.setErrorHandler(bounds);
             Document document = builder.parse(new ByteArrayInputStream(content));
             passiveXhtml(document); return document;

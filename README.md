@@ -156,7 +156,7 @@ flowchart TD
 
 ### Requirements
 
-- Java 21
+- Java 25
 - Docker for integration and browser verification profiles
 - Git
 
@@ -348,7 +348,7 @@ and verification contracts.
 
 Important implementation choices:
 
-- Java 21 and Spring Boot
+- Java 25 and Spring Boot
 - Hibernate ORM and Hibernate Search
 - Lucene full-text and vector indexes
 - JGit-backed architecture history
