@@ -63,7 +63,7 @@ Schema dependencies are Maven-pinned Apache POI `5.5.1` (`poi-ooxml` and `poi-oo
 
 The synthetic [acceptance fixture](../../taxonomy-export/src/test/resources/visio-handoff-v2/README.md) contains duplicate Unicode labels, three elements, two directed relationships, typed selection/review values and three pages (overview, impact selection and complete evidence). Its all-zero authority commit is deliberately synthetic, not the Taxonomy source revision. The fixture regression test binds the committed bundle bytes to the generator at the tested source revision. CI's commit-bound reports identify that revision separately.
 
-With Java 21 and the repository's Maven dependencies available, the authoritative
+With Java 25 and the repository's Maven dependencies available, the authoritative
 verification is `./mvnw -B verify -Pci -DrunOnnxTests=true`. The following focused
 commands provide supplementary export evidence:
 

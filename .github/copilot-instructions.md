@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Java 21 / Spring Boot application. Taxonomy data comes from the actual Excel
+Java 25 / Spring Boot application. Taxonomy data comes from the actual Excel
 catalogue through Apache POI. Hibernate Search/Lucene provide search; the configured
 provider gateway supplies model capabilities. The web interface uses Thymeleaf and
 modular JavaScript. The checked-in POMs, profiles and workflows own dependency

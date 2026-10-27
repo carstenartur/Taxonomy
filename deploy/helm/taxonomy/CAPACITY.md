@@ -69,7 +69,7 @@ SOURCE_SHA="$(git rev-parse HEAD)" \
 kind delete cluster --name taxonomy-smoke
 ```
 
-Besides the original prerequisites, the additive case needs OpenSSL and JDK 21 `keytool`. It binds Kubernetes and Helm operations to `kind-${KIND_CLUSTER_NAME}` and rejects a pre-existing `taxonomy-artemis-smoke` namespace. Cleanup only deletes the namespace created by that invocation. `KEEP_RESOURCES=true` retains it for inspection; inspect and remove that fixture namespace before rerunning. Fresh random credentials and trust stores are temporary and excluded from the evidence archive.
+Besides the original prerequisites, the additive case needs OpenSSL and JDK 25 `keytool`. It binds Kubernetes and Helm operations to `kind-${KIND_CLUSTER_NAME}` and rejects a pre-existing `taxonomy-artemis-smoke` namespace. Cleanup only deletes the namespace created by that invocation. `KEEP_RESOURCES=true` retains it for inspection; inspect and remove that fixture namespace before rerunning. Fresh random credentials and trust stores are temporary and excluded from the evidence archive.
 
 For local chart validation without Docker or Kubernetes:
 

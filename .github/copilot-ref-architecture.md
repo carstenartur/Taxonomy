@@ -112,7 +112,7 @@ its recorded snapshot.
 
 ## Technology Stack
 
-- **Spring Boot** / Java 21 — exact dependencies and versions belong to the POMs
+- **Spring Boot** / Java 25 — exact dependencies and versions belong to the POMs
 - **Apache POI** — Excel workbook loading
 - **Hibernate Search + Lucene** — full-text and KNN search
 - **Thymeleaf + Bootstrap** — server-rendered application pages with modular JavaScript

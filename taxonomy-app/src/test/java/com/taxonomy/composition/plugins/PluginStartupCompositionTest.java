@@ -80,7 +80,7 @@ class PluginStartupCompositionTest {
         String sdk = Path.of(TaxonomyPlugin.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
         String domain = Path.of(com.taxonomy.dto.ArchitectureReport.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
         Path classes = Files.createDirectory(temporary.resolve("compiled"));
-        assertThat(ToolProvider.getSystemJavaCompiler().run(null, null, null, "--release", "21", "-proc:none", "-classpath",
+        assertThat(ToolProvider.getSystemJavaCompiler().run(null, null, null, "--release", "25", "-proc:none", "-classpath",
                 sdk + java.io.File.pathSeparator + domain, "-d", classes.toString(), source.toString())).isZero();
         Manifest manifest = new Manifest(); var attrs = manifest.getMainAttributes();
         attrs.putValue("Manifest-Version", "1.0"); attrs.putValue("Plugin-Id", "example.provider");

@@ -14,7 +14,7 @@
     "HTML",
     "CSS"
   ],
-  "runtimePlatform": "Java 21, Spring Boot 4",
+  "runtimePlatform": "Java 25, Spring Boot 4",
   "applicationCategory": "Enterprise Architecture, Architecture Analysis, Decision Support",
   "keywords": [
     "enterprise architecture",
@@ -48,7 +48,7 @@
   },
   "developmentStatus": "active",
   "softwareRequirements": [
-    "Java 21+",
+    "Java 25+",
     "Maven 3.9+",
     "Optional LLM API key or LOCAL_ONNX provider"
   ]

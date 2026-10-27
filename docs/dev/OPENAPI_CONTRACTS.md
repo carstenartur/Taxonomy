@@ -6,7 +6,7 @@ endpoint does not establish documentation completeness.
 
 ## Required checks
 
-Run from the repository root with Java 21:
+Run from the repository root with Java 25:
 
 ```sh
 ./mvnw -B -pl taxonomy-app -am test \

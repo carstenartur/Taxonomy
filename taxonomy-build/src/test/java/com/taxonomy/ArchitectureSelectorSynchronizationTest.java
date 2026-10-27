@@ -418,7 +418,7 @@ class ArchitectureSelectorSynchronizationTest {
         try (var files = compiler.getStandardFileManager(diagnostics, java.util.Locale.ROOT,
                 java.nio.charset.StandardCharsets.UTF_8)) {
             var task = (com.sun.source.util.JavacTask) compiler.getTask(new java.io.StringWriter(), files,
-                    diagnostics, List.of("--release", "21", "-proc:none"), null,
+                    diagnostics, List.of("--release", "25", "-proc:none"), null,
                     files.getJavaFileObjectsFromPaths(List.of(source)));
             List<String> declarations = new ArrayList<>();
             for (var unit : task.parse()) {

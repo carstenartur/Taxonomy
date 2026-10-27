@@ -44,7 +44,7 @@ final class PluginJarFixture {
         Path source = sources.resolve("ExamplePlugin.java"); Files.writeString(source, code);
         String sdk = Path.of(TaxonomyPlugin.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
         String domain = Path.of(ArchitectureReport.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
-        int result = ToolProvider.getSystemJavaCompiler().run(null, null, null, "--release", "21", "-classpath",
+        int result = ToolProvider.getSystemJavaCompiler().run(null, null, null, "--release", "25", "-classpath",
                 sdk + java.io.File.pathSeparator + domain, "-d", sources.toString(), source.toString());
         if (result != 0) throw new IllegalStateException("Independent fixture plugin did not compile");
         Manifest manifest = new Manifest(); var attrs = manifest.getMainAttributes();

@@ -299,7 +299,7 @@ def main() -> int:
 
     try:
         checkout = workflow.index("- name: Checkout authoritative release source")
-        setup_java = workflow.index("- name: Set up JDK 21")
+        setup_java = workflow.index("- name: Set up JDK 25")
         build_tooling = workflow.index("- name: Build Java release tooling")
         resolve = workflow.index("- name: Resolve release parameters")
         stage = workflow.index(

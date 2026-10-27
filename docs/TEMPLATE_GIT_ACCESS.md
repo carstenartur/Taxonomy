@@ -107,7 +107,7 @@ receive-pack and disabled dumb HTTP. `DocumentTemplateGitHttpConfigTest` checks
 every Core permission and the request-bound administrator requirement.
 
 These tests use the existing Maven/Failsafe discovery; no additional workflow is
-introduced. Run the complete repository verification command with Git, Java 21 and
+introduced. Run the complete repository verification command with Git, Java 25 and
 Docker available:
 
 ```bash

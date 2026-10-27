@@ -2,7 +2,7 @@
 
 ## Deterministic application gate
 
-Run the Maven-owned selection with Java 21 and Docker:
+Run the Maven-owned selection with Java 25 and Docker:
 
 ```sh
 ./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance

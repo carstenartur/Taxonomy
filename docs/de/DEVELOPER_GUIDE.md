@@ -251,7 +251,7 @@ Prüfen Sie zuerst, ob die vorhandene Konfiguration von `CUSTOM_OPENAI` den Endp
 bereits unterstützt. Für einen neuen Transport beschreibt die
 [Anbieteraufgabe](../dev/tasks/add-llm-provider.md) offene `ProviderId`-Kennungen,
 `LlmTransportExtension` und den beim Start gebundenen `TaxonomyPlugin`-ServiceLoader-
-Eintrag eines unabhängigen Java-21-JARs. Ein externer Anbieter erfordert keine
+Eintrag eines unabhängigen Java-25-JARs. Ein externer Anbieter erfordert keine
 Änderung des eingebauten `LlmProvider`-Enums.
 
 Der Host in `taxonomy-analysis` behält Auswahl, Zulassung, Wiederholungen, Abbruch,

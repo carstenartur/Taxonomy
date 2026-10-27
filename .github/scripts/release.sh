@@ -188,7 +188,7 @@ collect_release_artifacts() {
   cat > "$distribution/README.md" <<EOF
 # Taxonomy ${RELEASE_VERSION}
 
-This distribution requires Java 21. Keep app.jar, features/ and plugins/ together.
+This distribution requires Java 25. Keep app.jar, features/ and plugins/ together.
 The features/ directory contains the six standard startup features; plugins/
 contains the external Mermaid plugin and its build checksum.
 

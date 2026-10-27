@@ -21,7 +21,7 @@ Common extension metadata (`TaxonomyExtension`, `ExtensionKind`) is owned by `ta
 
 For a separately installable format, follow
 [`plugins/taxonomy-mermaid-plugin`](../../../plugins/taxonomy-mermaid-plugin/pom.xml):
-use Java 21, provided SDK dependencies and a `TaxonomyPlugin` ServiceLoader entry
+use Java 25, provided SDK dependencies and a `TaxonomyPlugin` ServiceLoader entry
 returning the `ExportFormatExtension`. Keep all implementation packages unique to
 that plugin. Do not package copies of host SDK classes or depend on app registries.
 Declare the stable plugin identity/version and SDK range in the manifest. DYNAMIC

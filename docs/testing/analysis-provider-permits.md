@@ -125,7 +125,7 @@ metrics adapter, so subsequent composition changes must review their own edges.
 
 ## Executable checks
 
-Run from the repository root with Java 21:
+Run from the repository root with Java 25:
 
 ```bash
 ./mvnw -B -pl taxonomy-app -am \

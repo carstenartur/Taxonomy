@@ -28,16 +28,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Set up Java 21
+      - name: Set up Java 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: temurin
           cache: maven
       - name: Compile dependency-free report verifier
         run: |
           mkdir -p taxonomy-tooling/target/classes
-          javac --release 21 -d taxonomy-tooling/target/classes taxonomy-tooling/src/main/java/com/taxonomy/tooling/*.java
+          javac --release 25 -d taxonomy-tooling/target/classes taxonomy-tooling/src/main/java/com/taxonomy/tooling/*.java
       - name: Run all analysis and upstream unit tests
         run: |
           set +e

@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 /** Executes the real workflow shell with only the external Maven process replaced.
  * The substitute models clean's deletion and verify's output/exit status, not Maven caching.
- * Kept dependency-free so the same regression can also run directly with Java 21.
+ * Kept dependency-free so the same regression can also run directly with Java 25.
  */
 final class CoreVerificationCleanlinessChecks {
     private static final String CLEAN = "Clean reactor before producing evidence";

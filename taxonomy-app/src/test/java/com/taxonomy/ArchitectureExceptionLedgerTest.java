@@ -172,7 +172,7 @@ class ArchitectureExceptionLedgerTest {
         java.util.List<String> declared = new java.util.ArrayList<>();
         try (var files = compiler.getStandardFileManager(diagnostics, null, java.nio.charset.StandardCharsets.UTF_8)) {
             var task = (com.sun.source.util.JavacTask) compiler.getTask(new java.io.StringWriter(), files,
-                    diagnostics, java.util.List.of("--release", "21", "-proc:none"), null,
+                    diagnostics, java.util.List.of("--release", "25", "-proc:none"), null,
                     files.getJavaFileObjectsFromPaths(java.util.List.of(source)));
             for (var unit : task.parse()) {
                 if (unit.getPackageName() == null || !unit.getPackageName().toString().equals("com.taxonomy")) continue;

@@ -7,7 +7,7 @@ Exportprüfungen wie mit dem Selenium-Container.
 
 ## Voraussetzungen und Start
 
-Java 21 und Maven 3.9.16 beziehungsweise der eingecheckte Maven Wrapper starten
+Java 25 und Maven 3.9.16 beziehungsweise der eingecheckte Maven Wrapper starten
 den lokalen Testweg. Maven installiert das festgelegte Node vor den ersten
 JavaScript-Vertragstests. Beim ersten lokalen Browserstart beschafft der
 vorhandene Selenium Manager die im Root-POM festgelegten Chrome-for-Testing- und

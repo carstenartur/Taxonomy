@@ -249,7 +249,7 @@ formats have different contracts; do not route every report through a diagram co
 First check whether the existing `CUSTOM_OPENAI` configuration supports the endpoint.
 For a new transport, follow [the provider task](../dev/tasks/add-llm-provider.md):
 use an open `ProviderId`, implement `LlmTransportExtension` and expose it through a
-startup-bound `TaxonomyPlugin` ServiceLoader entry in an independent Java 21 JAR.
+startup-bound `TaxonomyPlugin` ServiceLoader entry in an independent Java 25 JAR.
 Changing the built-in `LlmProvider` enum is not required for an external provider.
 
 The host in `taxonomy-analysis` retains selection, admission, retries, cancellation,

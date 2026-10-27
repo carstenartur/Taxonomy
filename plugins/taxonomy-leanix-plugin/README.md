@@ -1,6 +1,6 @@
 # SAP LeanIX: optional read-source plugin
 
-This independent Java 21 plugin prepares a bounded read path from SAP LeanIX into
+This independent Java 25 plugin prepares a bounded read path from SAP LeanIX into
 Taxonomy's framework-free `InventorySourceExtension`. It is **not** a complete
 portfolio comparison screen, a second inventory database or a synchronization engine.
 

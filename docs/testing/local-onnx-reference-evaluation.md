@@ -4,7 +4,7 @@ Run the existing Maven suite with `./mvnw -B verify -Ponnx`. The supplemental
 `local-onnx-reference.yml` workflow invokes that same command on affected pull
 requests (including a stacked PR) or explicit dispatch. The canonical CI command
 and existing suite selectors remain unchanged. No credentials or paid inference
-are requested. Java 21, Docker and the existing Maven model provisioning are needed.
+are requested. Java 25, Docker and the existing Maven model provisioning are needed.
 
 ## What runs
 
