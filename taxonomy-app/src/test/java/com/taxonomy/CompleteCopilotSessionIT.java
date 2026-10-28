@@ -239,7 +239,9 @@ class CompleteCopilotSessionIT {
         String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
         assertThat(visibleResult)
                 .contains("Copilot result overview")
-                .contains("Gap analysis")
+                .contains("Open compatibility checks")
+                .contains("Mean retained relevance")
+                .contains("Assessment matches")
                 .contains("Detected patterns")
                 .contains("Recommendation")
                 .doesNotContain("missingRelations")
