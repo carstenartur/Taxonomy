@@ -514,6 +514,33 @@ class TaxonomyBrowseDecisionUiIT {
         assertThat(diagramControl("views.back").isEnabled()).as("a new analysis starts at the overview").isFalse();
     }
 
+    @Test void sunburstResizesWithoutFeedingBackIntoItsObservedContainer() {
+        loadDiagramEvidenceScripts();
+        browser.executeScript("""
+            window.diagramResizeErrors=[];
+            window.addEventListener('error',event=>window.diagramResizeErrors.push(event.message));
+            const host=document.getElementById('taxonomyTree');
+            host.style.cssText='width:360px;max-height:none;height:auto;overflow:visible';
+            TaxonomyState.currentView='sunburst';
+            TaxonomyBrowse.renderView(TaxonomyState.taxonomyData,null);
+            """);
+        for (int width : new int[]{220, 470, 320}) {
+            browser.executeScript("document.getElementById('taxonomyTree').style.width=arguments[0]+'px'", width);
+            new WebDriverWait(browser, Duration.ofSeconds(10)).until(d -> Boolean.TRUE.equals(browser.executeScript("""
+                const host=document.getElementById('taxonomyTree'),svg=host.querySelector('svg');
+                return Number(svg.getAttribute('width'))===host.clientWidth
+                    && Number(svg.getAttribute('height'))===host.clientWidth;
+                """)));
+            browser.executeAsyncScript("""
+                const done=arguments[arguments.length-1];
+                requestAnimationFrame(()=>requestAnimationFrame(()=>done(null)));
+                """);
+        }
+        assertThat(browser.executeScript("return window.diagramResizeErrors"))
+                .as("resizing a mobile diagram must settle without browser layout errors")
+                .isEqualTo(java.util.List.of());
+    }
+
     private void loadDiagramEvidenceScripts() {
         var failure=browser.executeAsyncScript("""
             const done=arguments[arguments.length-1];

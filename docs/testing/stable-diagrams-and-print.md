@@ -163,6 +163,31 @@ permit the full Chrome profile's Unix socket. Before applying the CSS change,
 the four-case motion regression again failed only in its two reduced-motion
 cases; all four passed afterward. The existing CI browser selection is unchanged.
 
+## Sunburst resize follow-up (28 October 2026)
+
+The next exact-head CI run passed the previously failing primary Admin journey,
+but its `mobile-admin-webkit` profile reported
+`ResizeObserver loop completed with undelivered notifications.` The retained
+report from [job 122553146008](https://github.com/carstenartur/Taxonomy/actions/runs/40607738272/job/122553146008)
+shows successful functional and accessibility checks before the console-error
+gate failed. That gate remains unchanged.
+
+The Sunburst observer resized its square SVG during observer delivery, changing
+the observed container's own height. The new browser regression changes the
+container through three widths and checks both SVG dimensions and native browser
+error events. The original code produced the same resize error three times.
+The observer now coalesces the dimension update into the next animation frame,
+reads the latest width, avoids unchanged writes, and rejects callbacks for a
+replaced observer or detached SVG.
+
+The complete Maven-owned diagram browser selection passed **77 tests** after
+the correction: 32 tree-layout, 31 browse/decision and 14 decision-diagram cases,
+with no failures, errors or skips. The existing 14 browser-session tests and
+all 1,489 Maven-owned JavaScript contracts also passed. The local reproduction used pinned Chrome for Testing Headless Shell
+149.0.7827.55; hosted WebKit acceptance remains a separate exact-head CI result.
+Local WebKit execution was blocked by missing host libraries, so it is not
+reported as passed. Raw diagnostic logs remain under `target/pr1320-repair/`.
+
 ## Illustration provenance
 
 The [German](../images/diagram-print-controls-de.png) and

@@ -889,10 +889,19 @@
             return 'rotate(' + (x - 90) + ') translate(' + y + ',0) rotate(' + (x < 180 ? 0 : 180) + ')';
         }
 
-        // Responsive resize
+        // Changing the square SVG also changes its observed parent's height.
+        // Apply it in the next frame so ResizeObserver can finish this delivery.
+        var resizeFrame = null;
         var obs = new ResizeObserver(function () {
-            var newW = Math.min(container.clientWidth || 500, MAX_SUNBURST_SIZE);
-            svg.attr('width', newW).attr('height', newW);
+            if (resizeFrame !== null) return;
+            resizeFrame = window.requestAnimationFrame(function () {
+                resizeFrame = null;
+                if (container._taxObserver !== obs || svg.node().isConnected === false) return;
+                var newW = Math.min(container.clientWidth || 500, MAX_SUNBURST_SIZE);
+                if (Number(svg.attr('width')) !== newW || Number(svg.attr('height')) !== newW) {
+                    svg.attr('width', newW).attr('height', newW);
+                }
+            });
         });
         obs.observe(container);
         container._taxObserver = obs;
