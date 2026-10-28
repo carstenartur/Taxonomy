@@ -152,7 +152,9 @@ class PortfolioClientRoutingIT {
         }
         assertThat(text(contract.error())).as("The initializer completes without a hidden page error").isEmpty();
         assertThat(requests("GET", prefix + "/api/projects/42")).hasSize(1);
-        assertThat(href("portfolioBack")).isEqualTo(prefix + "/projects?lang=de");
+        String portfolioReturn = contract.template().equals("portfolio-import")
+                ? "/projects?projectId=42&lang=de" : "/projects?lang=de";
+        assertThat(href("portfolioBack")).isEqualTo(prefix + portfolioReturn);
         if (contract.template().equals("requirement-detail")) {
             assertThat(href("matrixLink")).isEqualTo(prefix + "/projects/42/matrices?lang=de");
         }
@@ -253,19 +255,27 @@ class PortfolioClientRoutingIT {
         assertThat(href("projectImportLink")).as("A stale selected-project target is removed").isNull();
     }
 
-    @ParameterizedTest(name = "import completion stores its job and returns to [{0}]")
-    @ValueSource(strings = {"", "/taxonomy", "/teams/blue/taxonomy"})
-    void importCompletionStoresAUsableAnalysisJobAndReturnsToContext(String prefix) {
+    @ParameterizedTest(name = "import completion retains project and workspace [{1}] under [{0}]")
+    @MethodSource("prefixesAndWorkspaces")
+    void importCompletionStoresAUsableAnalysisJobAndReturnsToContext(String prefix, String workspaceId) {
         installRoutes(prefix);
-        prepareImport(prefix, "/api/projects/42/analysis-jobs/job-7");
+        prepareImport(prefix, "/api/projects/42/analysis-jobs/job-7", workspaceId);
+        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
+        String portfolioReturn = prefix + "/projects?projectId=42&lang=de"
+                + (workspaceQuery == null ? "" : "&" + workspaceQuery);
+        assertThat(href("portfolioBack")).isEqualTo(portfolioReturn);
+        assertThat(requests("GET", prefix + "/api/projects/42")).singleElement()
+                .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
         click(By.id("confirmImport"));
         wait.until(ignored -> !hidden("importInfo") && hidden("importBusy"));
         assertThat(text("importError")).isEmpty();
+        assertThat(requests("POST", prefix + "/api/projects/42/requirements/import-review")).singleElement()
+                .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
         JsonNode stored = readJobs();
         assertThat(stored.size()).isEqualTo(1);
         assertThat(stored.get(0).path("url").asText()).isEqualTo(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
         assertThat(stored.get(0).path("projectId").asInt()).isEqualTo(42);
-        awaitImportReturn(prefix);
+        awaitImportReturn(portfolioReturn);
     }
 
     @ParameterizedTest(name = "analysis-job registration and real polling stay within [{0}]")
@@ -349,7 +359,7 @@ class PortfolioClientRoutingIT {
             wait.until(ignored -> !hidden("importInfo") && hidden("importBusy"));
             assertThat(readJobs().size()).as("An imported job must belong to this project and application: %s", location).isZero();
             // Keep this fixture's review saved before opening the next case.
-            // The redirect itself is verified separately by the three import cases.
+            // The redirect itself is verified separately across prefixes and workspaces.
             driver.executeScript("localStorage.setItem(arguments[0], arguments[1]);",
                     "taxonomy.portfolio.importDraft.42", PortfolioClientTestPage.json(importDraft()));
         }
@@ -745,6 +755,12 @@ class PortfolioClientRoutingIT {
         return PREFIXES.stream().flatMap(prefix -> PAGES.stream().map(contract -> Arguments.of(prefix, contract)));
     }
 
+    private static Stream<Arguments> prefixesAndWorkspaces() {
+        // No pin follows the current session; an empty pin explicitly selects shared scope.
+        return PREFIXES.stream().flatMap(prefix -> Stream.<String>of(null, "", "private-source")
+                .map(workspaceId -> Arguments.of(prefix, workspaceId)));
+    }
+
     private static void open(String template, String prefix, String path, String setup) {
         page.open(template, prefix, path, "de", "localStorage.clear();\n" + OBSERVE_FETCH + setup);
     }
@@ -765,9 +781,18 @@ class PortfolioClientRoutingIT {
     }
 
     private static void prepareImport(String prefix, String location) {
+        prepareImport(prefix, location, null);
+    }
+
+    private static void prepareImport(String prefix, String location, String workspaceId) {
         page.route("POST", prefix + "/api/projects/42/requirements/import-review", request ->
                 PortfolioClientTestPage.json(200, Map.of("analysisJob", JOB)).withHeader("Location", location));
-        open("portfolio-import", prefix, "/projects/42/import", "localStorage.setItem('taxonomy.portfolio.importDraft.42', "
+        String scopeSetup = workspaceId == null ? "" : """
+                const importUrl = new URL(window.location.href);
+                importUrl.searchParams.set('workspaceId', %s);
+                window.history.replaceState(null, '', importUrl);
+                """.formatted(PortfolioClientTestPage.json(workspaceId));
+        open("portfolio-import", prefix, "/projects/42/import", scopeSetup + "localStorage.setItem('taxonomy.portfolio.importDraft.42', "
                 + PortfolioClientTestPage.json(PortfolioClientTestPage.json(importDraft())) + ");");
         wait.until(ignored -> text("importProject").contains("P-42") && !hidden("restoreDraft"));
         click(By.id("restoreDraft"));
@@ -776,12 +801,12 @@ class PortfolioClientRoutingIT {
         wait.until(ignored -> !hidden("summaryStep"));
     }
 
-    private static void awaitImportReturn(String prefix) {
+    private static void awaitImportReturn(String expectedPath) {
         // An actual beforeunload dialog, if shown, belongs to the native browser;
         // accepting it allows the production 1200ms return navigation to finish.
         try { new WebDriverWait(driver, Duration.ofSeconds(3)).until(ExpectedConditions.alertIsPresent()).accept(); }
         catch (TimeoutException | NoAlertPresentException absent) { /* Navigation may complete without a dialog. */ }
-        wait.until(ignored -> driver.getCurrentUrl().equals(page.origin() + prefix + "/projects?lang=de"));
+        wait.until(ignored -> driver.getCurrentUrl().equals(page.origin() + expectedPath));
     }
 
     private static Map<String, Object> importDraft() {
