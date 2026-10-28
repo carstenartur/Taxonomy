@@ -137,6 +137,23 @@ scenario's own native indexer ran concurrently. The lifecycle correction alone
 also reproduces that timing failure locally (31,876 ms), so the shutdown fix is
 not evidence that this separate performance gate passes.
 
+JFR sampling identified repeated quote-aware comment scans in the DSL import
+path. When a line contains no `#`, the original scanner always returns the input
+unchanged. `TaxDslParser.withoutComment` now checks that condition with
+`String.indexOf` before scanning quotes and escapes. Lines containing a hash keep
+the existing parser behavior. No source evidence, command validation, ONNX
+concurrency or deadline is changed.
+
+The complete DSL suite passes all 412 tests, including malformed quoted values,
+Unicode, comment delimiters, source preservation and mixed newline forms. With
+the verified native model still indexing concurrently, the unchanged full
+`ScenarioArchiMateImportTest` passes: apply takes 19,415 ms, and all subsequent
+source, canonical relationship, retained evidence and Sparx round-trip assertions
+complete. That timing was collected without another heavy local verification
+running. An earlier attempt overlapping another verification measured 38,702 ms;
+neither measurement is a general performance guarantee. The full corrected CI
+run remains the acceptance boundary.
+
 Focused repository reproduction with a verified local model bundle, deliberately
 selecting the real Failsafe context transition:
 
