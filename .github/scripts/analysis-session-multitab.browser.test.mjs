@@ -80,7 +80,7 @@ test('two pages can open and observe the same running draft without writes or co
       return window.TaxonomyAnalysisSession.saveNow();
     }, continuation), true);
     const second = await openPage();
-    await second.waitForFunction(() => window.TaxonomyState.recoveryContext?.distributed === true);
+    await second.waitForFunction(() => window.TaxonomyState.recoveryContext?.distributed === true, null, { timeout: 5000 });
     await second.clock.runFor(2600); // Exercise the real change observer and autosave timer.
     assert.equal(await second.evaluate(() => window.TaxonomyAnalysisSession.saveNow()), true);
     assert.equal(writes.length, 1, 'opening and observing must not increment the shared draft version');
