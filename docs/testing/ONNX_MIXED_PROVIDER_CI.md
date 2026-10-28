@@ -82,6 +82,23 @@ child-context closure, late startup and executor-thread reuse. The unfixed
 initializer timed out at all four stages and also started work after closure;
 the corrected implementation passes all seven cases.
 
+## Native inference CPU budget
+
+The embedding service's two fair inference permits bound concurrent callers, but
+ONNX Runtime's default intra-operator pool can still use every physical CPU core.
+Its default worker spinning also consumes CPU between operator tasks. See the
+upstream [ONNX Runtime threading documentation](https://onnxruntime.ai/docs/performance/tune-performance/threading.html).
+That hidden pool competed with foreground imports while the newly enabled local
+indexer was running, even after old contexts were closed correctly.
+
+The shared DJL criteria now set `intraOpNumThreads` to `1`, keeping each model
+operator on its already bounded calling thread. Both concurrent inference permits
+and both index loaders remain available. Query, document and frozen inference use
+the same setting; model bytes, identity, token limits, pooling and normalization
+are unchanged. This deliberately limits native parallelism within each query
+for predictable coexistence with foreground work. It does not defer indexing or
+wait for the application to become idle.
+
 ## Verification boundaries
 
 The initial connection-budget scenario was executed directly using Java 21 and
@@ -153,6 +170,57 @@ complete. That timing was collected without another heavy local verification
 running. An earlier attempt overlapping another verification measured 38,702 ms;
 neither measurement is a general performance guarantee. The full corrected CI
 run remains the acceptance boundary.
+
+The subsequent [CI run 40612078270](https://github.com/carstenartur/Taxonomy/actions/runs/40612078270)
+on `abec9538d359e5f4bcc92dcc05def26b6d8e642e` contains no executor phase timeout or
+forced-fork-exit marker, independently confirming the shutdown correction. Its
+sole assertion failure remains the import deadline at 34,289 ms, showing that
+the parser fast path alone was insufficient under the hosted workload.
+
+An exclusive local A/B then changed only the native intra-operator setting and
+ran the same complete scenario with real pinned-model indexing active:
+
+| Measurement | Default native pool | One thread per operator |
+|---|---:|---:|
+| Complete import apply | 36,815 ms (fails 30,000 ms limit) | 15,408 ms (passes) |
+| Main-thread CPU during sampled apply | 14.91 s | 14.62 s |
+| Summed tracked-thread CPU during sampled apply | 279.20 s | 51.72 s |
+| Sampled wall interval | 35.92 s | 15.09 s |
+| Approximate average CPU cores occupied | 7.77 of the local 8-core quota | 3.43 |
+
+The baseline had eight hot native workers inheriting the initializer's thread
+name. Those extra workers disappeared with the explicit setting; both Hibernate
+loader threads continued performing inference. Comparable main-thread CPU with
+much lower wall time identifies contention independently of the timeout result.
+Every subsequent source, retained-evidence and Sparx-parity assertion passed.
+The CPU totals sum threads present at both ends of the sampled interval; they
+are not a complete accounting of threads created or retired during that interval.
+
+All 14 selected native quality tests also pass: `LocalEmbeddingModelCriteriaTest`
+(four, including real pooling), `FrozenLocalOnnxModelTest` (one),
+`OnnxEmbeddingServiceTest` (four), and `OnnxRestEndpointTest` (five). The latter
+builds all 2,572 node vectors in 25.128 seconds, all 37 relation vectors, and
+reaches READY 26.318 seconds after node indexing starts, within its unchanged
+five-minute readiness ceiling. These are local measurements, not a guarantee for
+every model, machine or request load. Full CI on the final source remains required.
+
+The packaged application also passes the existing original and multilingual
+native reference helpers over its HTTP API, with 2,572 indexed nodes, the pinned
+`MULTILINGUAL_MINILM_L12` model, no runtime model downloads and no remote provider
+calls. All six original English/German ONNX anchors rank first; the 12 original
+observations also retain their full-text comparators. All 16 multilingual cases
+were measured: all six anchors rank first, five of six paraphrases find their
+reference, and the payroll German paraphrase remains a miss. Both targeted
+distractors omit their specified references, and both ambiguous cases retain
+their incomplete-reference observations. These latter observations are reported
+as `MEASURED_WITH_REFERENCE_MISSES`, not a claim of universal retrieval accuracy.
+The helpers exit successfully and the application closes without forced cleanup.
+
+The local package's generated Git metadata resolves to the shared checkout's
+revision rather than the isolated worktree's revision. Its packaged embedding
+class is byte-for-byte identical to this worktree's compiled class and contains
+the new native setting; this is supplemental local evidence, not a clean,
+commit-attested release artifact. Full CI must attest the final published source.
 
 Focused repository reproduction with a verified local model bundle, deliberately
 selecting the real Failsafe context transition:
