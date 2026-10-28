@@ -22,7 +22,8 @@ function fixture(canvas = false) {
     function transform(x = 0, y = 0, k = 1) {
         return {x, y, k, translate: (dx, dy) => transform(x + dx * k, y + dy * k, k), scale: factor => transform(x, y, k * factor)};
     }
-    const context = {window: {}, document, TaxonomyI18n: {t: key => key}, d3: {zoomIdentity: transform()}};
+    const graphSelections = [];
+    const context = {window: {TaxonomyGraph:{selectNode:code=>graphSelections.push(code)}}, document, TaxonomyI18n: {t: key => key}, d3: {zoomIdentity: transform()}};
     // Access internal production helpers in this VM only; no test API ships to the browser.
     vm.runInNewContext(source.replace('window.TaxonomyViews = {',
         'window.testHelpers = {navigation: typeof createDiagramNavigation === "function" ? createDiagramNavigation : null, controls: typeof createDiagramControls === "function" ? createDiagramControls : null, zoom: typeof installDiagramZoomControls === "function" ? installDiagramZoomControls : null}; window.TaxonomyViews = {'), context);
@@ -42,7 +43,7 @@ function fixture(canvas = false) {
         surface.listeners.keydown({key, target, preventDefault() {prevented = true;}, stopPropagation() {stopped = true;}});
         return {prevented, stopped};
     }
-    return {document, container, surface, entries, nav, key, activations, changes, helpers: context.window.testHelpers};
+    return {document, container, surface, entries, nav, key, activations, changes, graphSelections, helpers: context.window.testHelpers};
 }
 
 test('SVG nodes form one tab stop and keyboard navigation reaches every visible node', () => {
@@ -154,4 +155,17 @@ test('fit includes a tall visible taxonomy instead of clipping it at the old ten
     f.container.children[0].children[2].listeners.click();
     assert.equal(calls[0][1].k, 0.046);
     assert.equal(calls[0][1].y + 8000 * calls[0][1].k, 384);
+});
+
+for (const canvas of [false, true]) test(`intentional ${canvas ? 'Canvas' : 'SVG'} selection reaches the graph without replay on render`, () => {
+    const f = fixture(canvas);
+    assert.deepEqual(f.graphSelections, [], 'Initial layout is not a user selection');
+    f.nav.selectNode(f.entries[1].node);
+    assert.equal(f.graphSelections.at(-1), 'BP-1000');
+    const count = f.graphSelections.length;
+    f.nav.update(f.entries);
+    assert.equal(f.graphSelections.length, count, 'Restoring layout must not issue graph work');
+    if (!canvas) f.entries[1].element.focus();
+    f.key('End');
+    assert.equal(f.graphSelections.at(-1), 'BR');
 });

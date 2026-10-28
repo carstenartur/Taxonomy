@@ -7,7 +7,9 @@ window.ArchitectureEditorApi = (function () {
         ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) {
             if (context && context[key]) params.set(key, context[key]);
         });
-        if (context && context.workspaceScopeKey && context.workspaceScopeKey !== '__shared__') params.set('workspaceId', context.workspaceScopeKey);
+        if (context && context.workspaceScopeKey) {
+            params.set('workspaceId', context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey);
+        }
         if (revision !== null && revision !== undefined) {
             params.set(/^[a-f0-9]{40}$/i.test(String(revision)) ? 'commit' : 'revision', revision);
         }

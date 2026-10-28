@@ -633,7 +633,7 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 - **Gerichtete Verbindungen** zeigen Quelle, Ziel und Beziehungstyp. Wenn Sie ein Element auswählen, werden dessen verbundene Pfade hervorgehoben und nicht zugehörige Elemente zurückgenommen.
 - Mit der **Suche** finden Sie Elemente anhand von Code, Bezeichnung oder Ebene. Drücken Sie die Eingabetaste, um zum ersten Treffer zu springen.
 - Der Schalter **Kontextknoten** blendet propagierte Elemente ein oder aus. Direkte Treffer bleiben sichtbar.
-- Wechseln Sie zwischen **Übersicht** und **Fokus**. Der Fokusmodus zeigt das ausgewählte Element mit seinen direkten Nachbarn; ein Doppelklick auf eine Karte aktiviert ihn ebenfalls.
+- Wechseln Sie zwischen **Übersicht** und **Fokus**. Der Fokusmodus zeigt das ausgewählte Element mit seinen direkten Nachbarn; ein Doppelklick auf eine Karte aktiviert ihn ebenfalls. **Fokus aufheben** in der Werkzeugleiste oder den Elementdetails stellt die Übersicht wieder her und erhält das ausgewählte Element sowie die übrigen Filter.
 - Nutzen Sie **Einpassen**, **Zoom**, Verschieben der Zeichenfläche und **Vollbild**, um kleine oder umfangreiche Ergebnisse zu untersuchen. Beim ersten Anzeigen wird der vollständige Graph in die Zeichenfläche eingepasst. Responsive Größenänderungen wiederholen dies, bis Sie manuell zoomen oder verschieben; mit **Einpassen** stellen Sie anschließend die vollständige Übersicht wieder her.
 - **Klicken** Sie auf eine Elementkarte oder Verbindung, um im Detailbereich Relevanz, Entfernung, Begründung und verbundene Elemente anzuzeigen. Von dort können Sie das Element im Graph Explorer öffnen.
 - Wechseln Sie zu **„🏗️ Layer View"** für die kompakte Swimlane-Darstellung nach Architekturebene.
@@ -657,8 +657,11 @@ Der Graph Explorer verfolgt gespeicherte Beziehungen im primären Katalog um ein
 Öffnen Sie **Graph** in der Hauptnavigation, um den Graph Explorer anzuzeigen.
 
 1. Öffnen Sie an einem Taxonomieknoten die Knotenaktionen und wählen Sie **Graph**, oder wählen Sie **Im Graph Explorer öffnen** in den Elementdetails der Architekturansicht. Die Anwendung wechselt zum Register **Graph**, füllt und fokussiert **Knoten-Code** und startet sofort eine **Vorgelagerte Elemente (Upstream)**-Abfrage für diesen Knoten. Das Ergebnis beziehungsweise die Lade-, Leer- oder Fehlermeldung erscheint im sichtbaren Panel.
+
 2. Alternativ geben Sie einen Code direkt in **Knoten-Code** ein und wählen **Vorgelagerte Elemente (Upstream)**, **Nachgelagerte Elemente (Downstream)**, **Ausfallauswirkung** oder **Erweiterte Auswirkung**. Bei leerem Code erscheint ein Hinweis. Lehnt der Server den Code ab, geben Sie einen gültigen Katalogcode ein und wiederholen Sie die Abfrage.
 3. Begrenzen Sie mit **Max. Sprünge** die Suchtiefe (1–5; Standard: 2) und starten Sie die gewünschte Abfrage erneut. Das Ändern des Werts allein aktualisiert das Ergebnis nicht.
+
+Die Knotenauswahl links in Liste, Reitern, Sunburst, Baum, Entscheidungsansicht oder Zusammenfassung aktualisiert auch den geöffneten Graph Explorer. Abfragerichtung (Upstream, Downstream, Ausfallauswirkung oder erweiterte Auswirkung) und Hop-Tiefe bleiben erhalten; der Tastaturfokus bleibt links. Ist Graph ausgeblendet, wird die Auswahl vorgemerkt und erst beim Öffnen abgefragt.
 
 Eine neue Abfrage ersetzt das vorherige Ergebnis. Eine verspätete Antwort auf eine ältere Abfrage überschreibt die aktuelle Auswahl nicht. Ein leeres Ergebnis bedeutet, dass innerhalb des gewählten Umfangs keine passenden gespeicherten Beziehungen zurückgegeben wurden. Ein Fehler wird getrennt angezeigt und belegt nicht, dass keine Abhängigkeiten bestehen.
 
@@ -2141,6 +2144,10 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 <a id="guide-section-27"></a>
 ## Gespeicherte Neuformulierungsangebote und Entscheidungsfragen
+
+Die Analyseseite zeigt **Nächste Schritte**, **Anforderung neu formulieren…** und **Architektur-Lupe**. Die Neuformulierung ist auch im Projektmenü erreichbar, die Lupe zusätzlich in der Architekturansicht. Bei Teilergebnissen erscheint **Offene Bewertungen klären**, bei geändertem Text **Aktuelle Formulierung analysieren**. Auch nach Laufende bleiben die Nachweise zu prüfen und Änderungen ausdrücklich zu übernehmen.
+
+Die Neuformulierung öffnet die gespeicherte Projektanforderung und erhält einen ausdrücklich gewählten Snapshot. Bei einer Ad-hoc-Analyse öffnet sie zunächst **Als Anforderung hinzufügen**; wählen oder erzeugen Sie danach in dieser Anforderung einen passenden Snapshot. Das Speichern des Textes ordnet die Ad-hoc-Analyse nicht automatisch zu. Ungespeicherte Änderungen auf der Analyseseite werden nicht in eine bestehende Anforderung kopiert. Die Lupe öffnet den Editor im gewählten Arbeitsbereich; aktivieren Sie dort die vorhandene Untersuchungsfunktion. Vor der Navigation wird der Analyseentwurf gespeichert. Scheitert das Speichern, bleiben Sie auf der Seite.
 
 Öffnen Sie eine gespeicherte Anforderung mit Analyse-Snapshot und erstellen Sie ein
 Neuformulierungsangebot für diese Quellversion. Original, Vorschlag und Fragen sind

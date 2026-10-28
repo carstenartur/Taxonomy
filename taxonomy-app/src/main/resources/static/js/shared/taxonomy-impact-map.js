@@ -116,6 +116,7 @@
             'impactmap.related': 'Connected relationships',
             'impactmap.open.graph': 'Open in Graph Explorer',
             'impactmap.focus.element': 'Focus this element',
+            'impactmap.unfocus': 'Unfocus',
             'impactmap.select.source': 'Select source',
             'impactmap.select.target': 'Select target',
             'impactmap.no.relationships': 'No displayed relationships are connected to this element.',
@@ -837,11 +838,13 @@
             state.selectedEdgeId = edgeId || null;
             updateInteractionStyles();
             renderDetails();
+            if (nodeId) window.TaxonomyGraph?.selectNode?.(nodeId);
             if (center && nodeId) centerOnNode(nodeId);
         }
 
         function renderAndCenterNode(nodeId) {
             renderDiagram(false);
+            window.TaxonomyGraph?.selectNode?.(nodeId);
             window.requestAnimationFrame(function () {
                 centerOnNode(nodeId);
             });
@@ -1087,8 +1090,7 @@
                 group.addEventListener('dblclick', function (event) {
                     event.preventDefault();
                     event.stopPropagation();
-                    state.selectedNodeId = node.id;
-                    state.selectedEdgeId = null;
+                    setSelection(node.id, null, false);
                     state.mode = 'focus';
                     renderDiagram(true);
                 });
@@ -1098,8 +1100,7 @@
                         setSelection(node.id, null, false);
                     } else if (event.key.toLowerCase() === 'f') {
                         event.preventDefault();
-                        state.selectedNodeId = node.id;
-                        state.selectedEdgeId = null;
+                        setSelection(node.id, null, false);
                         state.mode = 'focus';
                         renderDiagram(true);
                     }
@@ -1215,10 +1216,10 @@
                     window.TaxonomyGraph.openGraphExplorer(node.id);
                 }
             }));
-            actions.appendChild(detailsButton(t('impactmap.focus.element'), function () {
+            actions.appendChild(detailsButton(t(state.mode === 'focus' ? 'impactmap.unfocus' : 'impactmap.focus.element'), function () {
                 state.selectedNodeId = node.id;
                 state.selectedEdgeId = null;
-                state.mode = 'focus';
+                state.mode = state.mode === 'focus' ? 'overview' : 'focus';
                 renderDiagram(true);
             }));
             primary.appendChild(actions);
@@ -1318,6 +1319,10 @@
             overviewButton.setAttribute('aria-pressed', state.mode === 'overview' ? 'true' : 'false');
             focusButton.setAttribute('aria-pressed', state.mode === 'focus' ? 'true' : 'false');
             focusButton.disabled = !state.selectedNodeId;
+            var label = t(state.mode === 'focus' ? 'impactmap.unfocus' : 'impactmap.focus');
+            focusButton.querySelector('.impact-map-button-label').textContent = label;
+            focusButton.title = label;
+            focusButton.setAttribute('aria-label', label);
         }
 
         function renderDiagram(autoFit) {
@@ -1404,7 +1409,7 @@
                 status.textContent = t('impactmap.focus.empty');
                 return;
             }
-            state.mode = 'focus';
+            state.mode = state.mode === 'focus' ? 'overview' : 'focus';
             renderDiagram(true);
         });
         zoomInButton.addEventListener('click', function () {

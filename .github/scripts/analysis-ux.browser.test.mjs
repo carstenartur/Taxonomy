@@ -126,6 +126,7 @@ test('node Graph action reveals the Graph page and an initial result through the
         await page.evaluate(graph => {
             const right = document.createElement('div'); right.id = 'rightPanel'; right.innerHTML = graph;
             const left = document.createElement('div'); left.id = 'leftPanel';
+            left.append(document.getElementById('taxonomyTree'));
             document.body.append(left, right);
             window.graphQueries = [];
             window.AnalysisApi = { graphUpstream: async (code, hops) => {
@@ -145,6 +146,22 @@ test('node Graph action reveals the Graph page and an initial result through the
         assert.equal(await page.locator('#graphNodeInput').evaluate(el => el === document.activeElement), true);
         assert.equal(await page.locator('#graphResultsContent [role=status]').isVisible(), true);
         assert.equal(await page.locator('dialog[open]').count(), 0);
+        await page.evaluate(() => {
+            const nodes = [...TaxonomyState.taxonomyData, {code:'BP-1001', name:'Safety reporting', children:[]}];
+            TaxonomyState.taxonomyData = nodes;
+            TaxonomyBrowse.renderView(nodes, TaxonomyState.currentScores);
+        });
+        assert.equal(await page.evaluate(() => graphQueries.length), 1, 'Rendering does not query the graph');
+        const next = page.locator('.tax-node[data-code="BP-1001"]');
+        await next.locator(':scope > .tax-node-header').click();
+        assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1001');
+        assert.deepEqual(await page.evaluate(() => graphQueries), [
+            {code:'BP-1000',hops:2}, {code:'BP-1001',hops:2}]);
+        assert.equal(await page.locator('#graphNodeInput').evaluate(el => el === document.activeElement), false,
+            'Linked selection keeps keyboard focus on the left');
+        await next.focus();
+        await page.keyboard.press('Home');
+        assert.equal(await page.locator('#graphNodeInput').inputValue(), 'BP-1000');
     } finally { await finish(page); }
 });
 for (const width of [1100, 680, 390]) {
@@ -836,3 +853,79 @@ async function finish(page) {
     await page.close();
     assert.deepEqual(page.uiErrors, [], 'Unexpected browser script errors');
 }
+
+async function guidanceFixture(locale='de', search='') {
+    const page=await fixture(locale);
+    page.setDefaultTimeout(5000);
+    const template=await readFile(path.join(resources,'templates/index.html'),'utf8');
+    await page.route('http://taxonomy.test/**',route=>route.fulfill({contentType:'text/html',body:template
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link\b[^>]*>/g,'')}));
+    await page.goto('http://taxonomy.test/taxonomy/'+search);
+    const dict={};
+    for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])]){
+        for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){
+            const match=line.match(/^([^#!\s][^=]*)=(.*)$/);if(match)dict[match[1]]=match[2];
+        }
+    }
+    await page.evaluate(({locale,dict})=>{
+        document.documentElement.lang=locale;
+        window.TaxonomyI18n={getLocale:()=>locale,ready:()=>Promise.resolve(),resolveUrl:p=>'/taxonomy'+p,
+            t:(key,...args)=>(dict[key]||key).replace(/\{(\d+)\}/g,(_,n)=>String(args[n]??''))};
+        document.querySelectorAll('[th\\:text]').forEach(el=>{const m=el.getAttribute('th:text').match(/^#\{(.+)\}$/);if(m)el.textContent=TaxonomyI18n.t(m[1]);});
+        const bootstrap=document.createElement('script');bootstrap.dataset.taxonomyAnalysisSession='fixture';document.head.appendChild(bootstrap);
+        window.guideCalls=[];
+        window.TaxonomyAnalysisSession={state:()=>({ready:true}),saveNow:async()=>true,
+            addAsRequirement:()=>guideCalls.push('save-requirement')};
+        window.TaxonomyAnalysisRecovery={open:()=>guideCalls.push('clarify')};
+        document.getElementById('analyzeBtn').addEventListener('click',()=>guideCalls.push('analyze'));
+        document.getElementById('businessText').value='Arbeitsschutz';
+    },{locale,dict});
+    await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-state.js')});
+    assert.equal(await page.locator('#analysisNextSteps').count(),1,'Analysis needs visible actionable next steps');
+    await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-analysis-guidance.js')});
+    return page;
+}
+for(const locale of ['de','en']) test(`${locale}: partial results expose clarification, reformulation and a scoped architecture lens`,async()=>{
+    const page=await guidanceFixture(locale,'?workspaceScopeKey=private-alice&branch=feature');
+    try{
+        await page.evaluate(()=>{
+            Object.assign(TaxonomyState,{lastAnalyzedText:'Arbeitsschutz',lastAnalysisStatus:'PARTIAL',
+                analysisRecovery:{state:'COMPLETED_WITH_GAPS',openQuestions:[{key:'CI',error:'ROOT_UNRESOLVED: scope?'}]}});
+            document.dispatchEvent(new CustomEvent('taxonomy:view-rendered'));
+        });
+        assert.equal(await page.locator('#analysisClarifyAction').isVisible(),true);
+        assert.equal(await page.locator('#analysisReformulationAction').isVisible(),true);
+        assert.equal(await page.locator('#analysisLensAction').isVisible(),true);
+        assert.match(await page.locator('#analysisNextStepText').textContent(),locale==='de'?/offen|klären/i:/open|clarif/i);
+        assert.equal(await page.locator('#analysisLensAction').getAttribute('href'),'/taxonomy/architecture/editor?workspaceScopeKey=private-alice&branch=feature#editorLensTitle');
+        await page.locator('#analysisClarifyAction').click();
+        assert.deepEqual(await page.evaluate(()=>guideCalls),['clarify']);
+        await page.locator('#analysisReformulationAction').click();
+        assert.deepEqual(await page.evaluate(()=>guideCalls),['clarify','save-requirement']);
+        assert.match(await page.locator('#analysisReformulationHint').textContent(),locale==='de'?/Snapshot|Projekt/:/snapshot|project/);
+        assert.equal(await page.locator('#businessText').inputValue(),'Arbeitsschutz');
+    }finally{await finish(page);}
+});
+test('saved requirement link preserves exact context; a changed requirement is directed to reanalysis',async()=>{
+    const page=await guidanceFixture('en','?projectId=7&requirementId=9&snapshot=snapshot-4');
+    try{
+        await page.evaluate(()=>{Object.assign(TaxonomyState,{lastAnalyzedText:'Arbeitsschutz',lastAnalysisStatus:'SUCCESS'});document.dispatchEvent(new CustomEvent('taxonomy:view-rendered'));});
+        assert.equal(await page.locator('#analysisReformulationAction').getAttribute('href'),'/taxonomy/projects/7/requirements/9?snapshot=snapshot-4#reformulationOffers');
+        await page.locator('#businessText').fill('Changed requirement');
+        assert.equal(await page.locator('#analysisReformulationAction').getAttribute('aria-disabled'),'true');
+        assert.match(await page.locator('#analysisNextStepText').textContent(),/changed|current wording/i);
+        await page.locator('#analysisReanalyzeAction').click();
+        assert.deepEqual(await page.evaluate(()=>guideCalls),['analyze']);
+    }finally{await finish(page);}
+});
+test('running analysis leaves tools visible with an explanation and does not start another workflow',async()=>{
+    const page=await guidanceFixture();
+    try{
+        await page.evaluate(()=>{TaxonomyState.lastAnalysisStatus='IN_PROGRESS';document.dispatchEvent(new CustomEvent('taxonomy:analysis-running-changed'));});
+        assert.equal(await page.locator('#analysisReformulationAction').isVisible(),true);
+        assert.equal(await page.locator('#analysisReformulationAction').getAttribute('aria-disabled'),'true');
+        assert.match(await page.locator('#analysisNextStepText').textContent(),/läuft/i);
+        await page.locator('#analysisReformulationAction').dispatchEvent('click');
+        assert.deepEqual(await page.evaluate(()=>guideCalls),[]);
+    }finally{await finish(page);}
+});
