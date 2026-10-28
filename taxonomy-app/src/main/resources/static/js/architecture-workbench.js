@@ -728,6 +728,7 @@
     }
 
     function updateInteractionStyles() {
+        window.TaxonomyArchitectureWorkflow?.showSnapshot(projection, state.selectedNodeId);
         const selectedNode = state.selectedNodeId;
         const selectedEdge = state.selectedEdgeId;
         const connectedNodeIds = new Set();
@@ -921,6 +922,7 @@
 
         document.getElementById('architectureTitle').textContent = resolvePolicyTitle(data.policyTitleKey || scene.title);
         renderProvenance(data);
+        window.TaxonomyArchitectureWorkflow?.showSnapshot(data, state.selectedNodeId);
         const archiMateDownload = document.getElementById('downloadArchitectureArchiMate');
         if (archiMateDownload) archiMateDownload.disabled = false;
         document.getElementById('requirementText').textContent = data.requirementText || '';

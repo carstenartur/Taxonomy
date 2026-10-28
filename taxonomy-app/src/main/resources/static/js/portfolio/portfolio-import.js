@@ -80,6 +80,10 @@
 
     document.addEventListener('DOMContentLoaded', initialize);
     function l(key) { return labels[locale][key] || labels.en[key] || key; }
+    function portfolioUrl() {
+        return window.TaxonomyArchitectureWorkflow?.portfolioUrl(projectId)
+            || applicationUrl(`/projects?projectId=${projectId}&lang=${locale}`);
+    }
 
     async function initialize() {
         await window.TaxonomyI18n.ready();
@@ -92,7 +96,7 @@
                 api().getAccount()
             ]);
             document.getElementById('importProject').textContent = `${state.project.projectKey} — ${state.project.title}`;
-            document.getElementById('portfolioBack').href = applicationUrl(`/projects?lang=${locale}`);
+            document.getElementById('portfolioBack').href = portfolioUrl();
             const savedDraft = readDraft();
             if (savedDraft) {
                 const restore = document.getElementById('restoreDraft');
@@ -412,7 +416,7 @@
             if (result.analysisJob) registerAnalysisJob(response.headers.get('Location'), result.analysisJob);
             clearDraft();
             showInfo(result.analysisJob ? `${l('imported')} ${l('analyzeQueued')}` : l('imported'));
-            window.setTimeout(() => { window.location.href = applicationUrl(`/projects?lang=${locale}`); }, 1200);
+            window.setTimeout(() => { window.location.href = portfolioUrl(); }, 1200);
         } catch (error) { showError(error); }
         finally { setBusy(false); }
     }

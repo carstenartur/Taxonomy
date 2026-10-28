@@ -719,7 +719,10 @@
                 || state.selectedSnapshot.id === undefined) {
             return '#';
         }
-        const url = new URL('/architecture/workbench', window.location.origin);
+        if (window.TaxonomyArchitectureWorkflow) {
+            return window.TaxonomyArchitectureWorkflow.workbenchUrl(projectId, String(state.selectedSnapshot.id));
+        }
+        const url = new URL(applicationUrl('/architecture/workbench'), window.location.origin);
         url.searchParams.set('projectId', String(projectId));
         url.searchParams.set('snapshotId', String(state.selectedSnapshot.id));
         url.searchParams.set('lang', locale);

@@ -45,6 +45,10 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.DELETE, "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.POST, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
+        // Keep personal working-copy creation available to the same product roles
+        // as /api/repositories/*/workspaces; repository permission is checked inside.
+        auth.requestMatchers(HttpMethod.POST, "/api/architecture/editor/workspaces")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/architecture/editor/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.GET, "/api/integrations/**", "/integrations", "/oslc/**").authenticated();
         auth.requestMatchers(HttpMethod.HEAD, "/api/integrations/**", "/integrations", "/oslc/**").authenticated();

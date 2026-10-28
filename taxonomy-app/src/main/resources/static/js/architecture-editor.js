@@ -55,6 +55,7 @@
         var params = new URLSearchParams(location.search);
         var result = {};
         ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) { if (params.has(key)) result[key] = params.get(key); });
+        if (!result.workspaceScopeKey && params.has('workspaceId')) result.workspaceScopeKey = params.get('workspaceId') || '__shared__';
         return result;
     }
     function linkSelection(replace) {
@@ -62,6 +63,7 @@
         ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) {
             if (context()[key]) url.searchParams.set(key, context()[key]); else url.searchParams.delete(key);
         });
+        url.searchParams.set('workspaceId', context().workspaceScopeKey === '__shared__' ? '' : context().workspaceScopeKey);
         url.searchParams.delete('commit'); url.searchParams.delete('revision');
         if (view.document.source === 'GIT_CHECKPOINT') url.searchParams.set('commit', context().commit);
         else url.searchParams.set('revision', context().revision);
@@ -118,6 +120,7 @@
         renderPackages();
         planningPanel.render(view, preserveDraft);
         var c = context();
+        window.TaxonomyArchitectureWorkflow?.showEditor(c);
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;

@@ -27,6 +27,25 @@ The system evaluates the selected taxonomy scope hierarchically and preserves pa
 > 💡 **New users:** Start with the core workflow (Analyze → Architecture → Export).
 > Continue with [requirement clarification](#requirement-clarification-workflow) to turn questions into recorded decisions, and [analysis scope and progress](#analysis-scope-and-progress) to control the work.
 
+<a id="architecture-source-context"></a>
+## Keep the source while moving between architecture views
+
+The saved architecture workbench identifies the project, requirement and analysis.
+**Requirement and evidence** returns to that exact analysis; **Clarify requirement**
+opens its clarification area. **Project portfolio** selects the corresponding
+project. These links retain the explicitly selected workspace, including a shared
+workspace, instead of relying on another tab's active selection.
+
+**Open architecture working state** opens the recorded repository and branch's
+current editor state. It does not import the analysis result into the editor or
+edit the immutable snapshot. The editor retains **Return to source analysis**,
+even after a private workspace is created. If the source repository or branch
+is missing, the workbench explains why this editor action is unavailable.
+
+Accepted editor changes are durable operations with their own undo/redo history.
+Use **Create checkpoint/version** to record a Git version. The element and history
+lists scroll independently and can be focused with the keyboard.
+
 <a id="requirement-clarification-workflow"></a>
 ## Clarify a requirement through architecture and decisions
 

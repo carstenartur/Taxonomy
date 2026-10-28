@@ -33,10 +33,14 @@ window.ArchitectureWorkbenchApi = (function () {
         return encodeURIComponent(normalized);
     }
 
-    function base(projectId, snapshotId) {
+    function scoped(path) {
+        return window.TaxonomyArchitectureWorkflow?.scopeUrl(path) || path;
+    }
+
+    function base(projectId, snapshotId, suffix) {
         const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
-            + '/architecture-workbench/' + snapshot(snapshotId);
-        return window.TaxonomyI18n?.resolveUrl?.(path) || path;
+            + '/architecture-workbench/' + snapshot(snapshotId) + (suffix || '');
+        return scoped(window.TaxonomyI18n?.resolveUrl?.(path) || path);
     }
 
     function wordUrl(projectId, snapshotId, report) {
@@ -44,7 +48,7 @@ window.ArchitectureWorkbenchApi = (function () {
             + '/snapshots/' + snapshot(snapshotId) + '/' + report + '/docx';
         const url = window.TaxonomyI18n?.resolveUrl?.(path) || path;
         const language = window.TaxonomyContentLanguage?.documentLanguage(null);
-        return language ? url + '?language=' + encodeURIComponent(language) : url;
+        return scoped(language ? url + '?language=' + encodeURIComponent(language) : url);
     }
 
     return {
@@ -58,22 +62,22 @@ window.ArchitectureWorkbenchApi = (function () {
             return getJson(base(projectId, snapshotId));
         },
         svgUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId) + '.svg';
+            return base(projectId, snapshotId, '.svg');
         },
         pdfUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId) + '.pdf';
+            return base(projectId, snapshotId, '.pdf');
         },
         archiMateUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId) + '.archimate.xml';
+            return base(projectId, snapshotId, '.archimate.xml');
         },
         visioBundleUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId) + '.visio.zip';
+            return base(projectId, snapshotId, '.visio.zip');
         },
         archiMateBundleUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId) + '.archimate.zip';
+            return base(projectId, snapshotId, '.archimate.zip');
         },
         visioUrl: function (projectId, snapshotId) {
-            return base(projectId, snapshotId) + '.vsdx';
+            return base(projectId, snapshotId, '.vsdx');
         }
     };
 }());

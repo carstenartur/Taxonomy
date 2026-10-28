@@ -425,11 +425,18 @@
             renderProjectList();
             const stored = Number(window.localStorage.getItem('taxonomy.portfolio.projectId')) || null;
             const candidate = preferredProjectId || stored;
-            const selected = state.projects.find(function (project) { return project.id === candidate; })
+            const selected = window.TaxonomyArchitectureWorkflow
+                ? window.TaxonomyArchitectureWorkflow.preferredProject(state.projects, preferredProjectId, stored)
+                : state.projects.find(function (project) { return project.id === candidate; })
                 || state.projects[0]
                 || null;
             if (selected) await selectProject(selected.id);
-            else showNoProjectSelected();
+            else {
+                showNoProjectSelected();
+                if (new URLSearchParams(window.location.search).has('projectId')) {
+                    showError(new Error(window.TaxonomyI18n.t('workflow.projectUnavailable')));
+                }
+            }
         }).catch(function () {});
     }
 
