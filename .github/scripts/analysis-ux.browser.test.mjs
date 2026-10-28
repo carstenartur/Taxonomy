@@ -854,13 +854,40 @@ async function finish(page) {
     assert.deepEqual(page.uiErrors, [], 'Unexpected browser script errors');
 }
 
+async function mountComponentTemplate(page, markup) {
+    await page.evaluate(html => {
+        // Parse the trusted repository template without bootstrapping the app.
+        // The component fixtures load their controllers explicitly afterward.
+        const parsed = new DOMParser().parseFromString(html, 'text/html');
+        parsed.querySelectorAll('script, link').forEach(element => element.remove());
+        document.documentElement.replaceWith(document.adoptNode(parsed.documentElement));
+    }, markup);
+}
+
+test('component template parsing removes mixed-case scripts and links before mounting', async () => {
+    const page = await browser.newPage();
+    page.uiErrors = [];
+    page.on('pageerror', error => page.uiErrors.push(error.message));
+    try {
+        await mountComponentTemplate(page, '<!doctype html><html><head>'
+            + '<ScRiPt>window.unexpectedBootstrap = true;</ScRiPt>'
+            + '<LiNk rel="stylesheet" href="https://unexpected.invalid/style.css">'
+            + '</head><body><button id="fixtureAction">Continue</button>'
+            + '<script>window.secondBootstrap = true;</script></body></html>');
+        assert.equal(await page.locator('script, link').count(), 0);
+        assert.equal(await page.locator('#fixtureAction').textContent(), 'Continue');
+        assert.deepEqual(await page.evaluate(() => [Boolean(window.unexpectedBootstrap), Boolean(window.secondBootstrap)]), [false, false]);
+    } finally { await finish(page); }
+});
+
 async function guidanceFixture(locale='de', search='') {
     const page=await fixture(locale);
     page.setDefaultTimeout(5000);
     const template=await readFile(path.join(resources,'templates/index.html'),'utf8');
-    await page.route('http://taxonomy.test/**',route=>route.fulfill({contentType:'text/html',body:template
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link\b[^>]*>/g,'')}));
+    await page.route('http://taxonomy.test/**',route=>route.fulfill({
+        contentType:'text/html',body:'<!doctype html><html><head></head><body></body></html>'}));
     await page.goto('http://taxonomy.test/taxonomy/'+search);
+    await mountComponentTemplate(page, template);
     const dict={};
     for(const name of ['messages.properties',...(locale==='de'?['messages_de.properties']:[])]){
         for(const line of (await readFile(path.join(resources,'i18n',name),'utf8')).split('\n')){
