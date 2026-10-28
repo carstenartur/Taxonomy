@@ -4,13 +4,20 @@ This framework-free SDK owns common extension metadata and the neutral feature
 contracts used by operator-installed plugins. It does not depend on Spring,
 persistence, the executable host or interoperability implementation classes.
 
-## Inventory read-source boundary (host SPI 1.1.0)
+## Inventory read-source boundary (host SPI 1.2.0)
 
 `com.taxonomy.extension.api.inventory.InventorySourceExtension` contributes
 `INVENTORY_SOURCE` through the existing `TaxonomyPlugin` entry point. It returns a
 bounded source observation using `InventoryReadContracts`, not a canonical model
 or an approved suitability decision. Contributions are STARTUP-only in the current
 runtime; old hosts reject artifacts requiring SPI 1.1.0 before loading them.
+
+SPI 1.2 adds bounded, immutable non-secret `Request.sourceOptions` for versioned
+adapter configuration and optional source-bound `ReadAccess.principal()` for
+authentication modes requiring a username/client ID. The original Request
+constructor supplies empty options; credential-only ReadAccess lambdas remain
+compatible. Plugins using the new contract must require SPI >=1.2.0. Both
+credential and principal arrays are owned by the invocation and wiped by the consumer.
 
 The observation retains the exact source selection, immutable type/field projection,
 non-secret configuration revision, context, source identities and field states.
@@ -23,8 +30,9 @@ evidence persistence, comparison and reviewed local decisions. A caller must obt
 its request from the authorized context, not deserialize arbitrary browser authority.
 There is no added database, LLM call, scheduler, remote write or second plugin catalog.
 
-The optional [LeanIX plugin](../plugins/taxonomy-leanix-plugin/README.md) demonstrates
-an independent implementation. Its read-observation subset does not complete the
+The optional [LeanIX plugin](../plugins/taxonomy-leanix-plugin/README.md) and
+[Alfabet plugin](../plugins/taxonomy-alfabet-plugin/README.md) demonstrate independent
+implementations. Their read-observation subset does not complete the
 [full product-neutral comparison design](../docs/superpowers/specs/2026-10-18-inventory-planning-sources-design.md).
 See [extension module boundaries](../docs/dev/extension-module-boundaries.md) for
 physical ownership, artifact loading and existing Maven verification.

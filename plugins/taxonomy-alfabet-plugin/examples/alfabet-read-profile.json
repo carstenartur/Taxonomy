@@ -1,0 +1,52 @@
+{
+  "profile": "alfabet-read",
+  "profileVersion": "1",
+  "instanceId": "replace-with-stable-instance-identity",
+  "configurationRevision": "company-reports-1",
+  "origin": "https://alfabet.example.invalid/AlfabetAPIServer/",
+  "projections": [
+    {
+      "sourceType": "Application",
+      "defaultKind": "APPLICATION",
+      "subtypeField": null,
+      "subtypeKinds": {},
+      "textFields": {
+        "name": "Name",
+        "description": "Description",
+        "lifecycleStatus": "Status"
+      }
+    },
+    {
+      "sourceType": "Component",
+      "defaultKind": "OTHER",
+      "subtypeField": null,
+      "subtypeKinds": {},
+      "textFields": {
+        "name": "Name"
+      }
+    }
+  ],
+  "selectedIds": [],
+  "readUsageRelations": true,
+  "limits": {
+    "pageSize": 100,
+    "maxRequests": 100,
+    "maxObjects": 2000,
+    "maxRelations": 5000,
+    "maxResponseBytes": 1048576,
+    "maxTotalBytes": 8388608,
+    "timeoutSeconds": 60
+  },
+  "sourceOptions": {
+    "currentProfile": "REPLACE_WITH_APPROVED_READ_PROFILE",
+    "authentication": "BEARER",
+    "object.Application.report": "REPLACE_WITH_APPLICATION_REPORT",
+    "object.Component.report": "REPLACE_WITH_COMPONENT_REPORT",
+    "relation.usage.report": "REPLACE_WITH_USAGE_REPORT",
+    "relation.usage.className": "Application",
+    "relation.usage.sourceRef": "REPLACE_WITH_SOURCE_REF_COLUMN",
+    "relation.usage.targetRef": "REPLACE_WITH_TARGET_REF_COLUMN",
+    "relation.usage.activeFrom": "REPLACE_WITH_START_COLUMN",
+    "relation.usage.activeUntil": "REPLACE_WITH_END_COLUMN"
+  }
+}

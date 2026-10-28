@@ -57,7 +57,12 @@ public final class InventoryReadContracts {
     /** Trusted administrative request. It must not be deserialized from arbitrary browser input. */
     public record Request(IntegrationContext context, String instanceId, String configurationRevision, URI origin,
                           List<TypeProjection> projections, Set<String> selectedIds,
-                          boolean readUsageRelations, Limits limits) {
+                          boolean readUsageRelations, Limits limits, Map<String, String> sourceOptions) {
+        /** SPI 1.1 constructor retained for existing independently compiled plugins. */
+        public Request(IntegrationContext context, String instanceId, String configurationRevision, URI origin,
+                       List<TypeProjection> projections, Set<String> selectedIds, boolean readUsageRelations, Limits limits) {
+            this(context, instanceId, configurationRevision, origin, projections, selectedIds, readUsageRelations, limits, Map.of());
+        }
         public Request {
             Objects.requireNonNull(context); text(instanceId, 200); text(configurationRevision, 200); Objects.requireNonNull(origin); Objects.requireNonNull(limits);
             if (context.authority() != AuthorityMode.LINK_ONLY) throw new IllegalArgumentException("Inventory reads require LINK_ONLY");
@@ -66,12 +71,18 @@ public final class InventoryReadContracts {
             if (projections.stream().map(TypeProjection::sourceType).distinct().count() != projections.size())
                 throw new IllegalArgumentException("Duplicate source type");
             selectedIds.forEach(v -> text(v, 2048));
+            // Only non-secret profile settings; their interpretation belongs to the versioned source adapter.
+            sourceOptions = Map.copyOf(sourceOptions);
+            if (sourceOptions.size() > 128) throw new IllegalArgumentException("Source option limit");
+            sourceOptions.forEach((key, value) -> { text(key, 256); text(value, 256); });
         }
     }
     /** Host grants one already-authorized source credential, not arbitrary secret-store access.
      * The plugin wipes the returned owned array. TLS permits the host's enterprise CA configuration. */
     @FunctionalInterface public interface ReadAccess {
         char[] credential();
+        /** Optional bound username/client ID; owned array must be wiped just like credential(). */
+        default char[] principal() { return null; }
         default SSLContext tls() {
             try { return SSLContext.getDefault(); }
             catch (java.security.NoSuchAlgorithmException e) { throw new ReadFailure("TLS_UNAVAILABLE"); }

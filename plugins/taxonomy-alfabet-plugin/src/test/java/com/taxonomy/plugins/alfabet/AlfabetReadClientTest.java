@@ -1,10 +1,10 @@
-package com.taxonomy.interop.alfabet;
+package com.taxonomy.plugins.alfabet;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.taxonomy.extension.api.integration.IntegrationContracts.ExternalScope;
-import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.ReadFailure;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -71,7 +71,7 @@ class AlfabetReadClientTest {
 
     @Test void refusesRepeatedObjectIdentityAcrossPages() throws Exception {
         start((path, body) -> page(row("a-1", "Duplicate")));
-        assertThrows(IntegrationProblem.class, () -> read(profile(1, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        assertThrows(ReadFailure.class, () -> read(profile(1, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
         assertEquals(2, requests.size());
     }
 
@@ -89,36 +89,36 @@ class AlfabetReadClientTest {
 
     @Test void stopsAtTheAggregatePageBudgetWithoutReturningALeadingPartialSuccess() throws Exception {
         start((path, body) -> page(row("a-" + body.path("Offset").asInt(), "App")));
-        assertThrows(IntegrationProblem.class, () -> read(profile(1, 1, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        assertThrows(ReadFailure.class, () -> read(profile(1, 1, 10), Map.of("ALFABET_TOKEN", TOKEN)));
         assertEquals(1, requests.size());
     }
 
     @Test void stopsAtTheAggregateRowBudget() throws Exception {
         start((path, body) -> page(row("a-1", "App"), row("a-2", "App")));
-        assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 1), Map.of("ALFABET_TOKEN", TOKEN)));
+        assertThrows(ReadFailure.class, () -> read(profile(2, 10, 1), Map.of("ALFABET_TOKEN", TOKEN)));
         assertEquals(1, requests.size());
     }
 
     @Test void malformedSuccessfulResponseIsNotAnEmptyInventory() throws Exception {
         start((path, body) -> "{\"Error\":\"Access denied\"}");
-        assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        assertThrows(ReadFailure.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
     }
 
     @Test void unknownClassIsNotSilentlyTreatedAsAnApplication() throws Exception {
         start((path, body) -> page(row("a-1", "App").replace("Application", "Person")));
-        assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        assertThrows(ReadFailure.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
     }
 
     @Test void rejectsCredentialReflectionEvenAfterJsonEscapeDecoding() throws Exception {
         start((path, body) -> page(row("a-1", "prefix-" + TOKEN.replace("s", "\\u0073"))));
-        var failure = assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        var failure = assertThrows(ReadFailure.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
         assertFalse(failure.toString().contains(TOKEN));
         assertNull(failure.getCause());
     }
 
     @Test void missingCredentialDoesNotContactTheServer() throws Exception {
         start((path, body) -> page());
-        assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of()));
+        assertThrows(ReadFailure.class, () -> read(profile(2, 10, 10), Map.of()));
         assertTrue(requests.isEmpty());
     }
 
@@ -134,7 +134,7 @@ class AlfabetReadClientTest {
 
     @Test void doesNotExposeAnExceptionFromTheSecretResolver() throws Exception {
         start((path, body) -> page());
-        var failure = assertThrows(IntegrationProblem.class, () -> new AlfabetReadClient(reference -> {
+        var failure = assertThrows(ReadFailure.class, () -> new AlfabetReadClient(reference -> {
             throw new IllegalStateException("provider failure " + TOKEN);
         }).read(profile(2, 10, 10)));
         assertFalse(failure.toString().contains(TOKEN));
@@ -145,20 +145,20 @@ class AlfabetReadClientTest {
     @Test void rejectsPercentEncodedCredentialReflection() throws Exception {
         String encoded = TOKEN.chars().mapToObj(c -> String.format("%%%02x", c)).collect(java.util.stream.Collectors.joining());
         start((path, body) -> page(row("a-1", encoded)));
-        var failure = assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        var failure = assertThrows(ReadFailure.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
         assertEquals("ALFABET_CREDENTIAL_REFLECTION", failure.code());
     }
 
     @Test void rejectsEncodedCredentialReflectionBeforeLiteralPercentText() throws Exception {
         String encoded = TOKEN.chars().mapToObj(c -> String.format("%%%02x", c)).collect(java.util.stream.Collectors.joining());
         start((path, body) -> page(row("a-1", encoded + " (50% complete)")));
-        var failure = assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        var failure = assertThrows(ReadFailure.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
         assertEquals("ALFABET_CREDENTIAL_REFLECTION", failure.code());
     }
 
     @Test void doesNotSilentlyDiscardNonEmptyNestedObjects() throws Exception {
         start((path, body) -> page(row("a-1", "App").replace("\"Values\":", "\"NestedObjects\":[{\"RefStr\":\"hidden\"}],\"Values\":")));
-        var failure = assertThrows(IntegrationProblem.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
+        var failure = assertThrows(ReadFailure.class, () -> read(profile(2, 10, 10), Map.of("ALFABET_TOKEN", TOKEN)));
         assertEquals("ALFABET_UNSUPPORTED_NESTED_OBJECTS", failure.code());
     }
 
