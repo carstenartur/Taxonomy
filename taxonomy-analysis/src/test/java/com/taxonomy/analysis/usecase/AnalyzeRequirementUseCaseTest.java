@@ -6,6 +6,7 @@ import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.dto.AnalysisProvenance;
+import com.taxonomy.dto.AnalysisCopilotResult;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.RequirementArchitectureView;
@@ -81,6 +82,8 @@ class AnalyzeRequirementUseCaseTest {
         var sourceNode = node("BP", null, "Business Processes", 0);
         sourceNode.setAnalysisRole("CATEGORY"); sourceNode.setClassificationConfidence(1d);
         var original = new AnalysisResult(Map.of("BP", 20d), List.of(sourceNode)); original.setStatus("SUCCESS");
+        original.setCopilot(new AnalysisCopilotResult(1, "COMPLETED", null, null, null,
+                List.of("Reports for the earlier node-only result")));
         original.setReasons(Map.of("BP", "Original explanation.\nKeep it exactly."));
         var view = new ViewContext("commit", "draft", null, false, false, false);
         original.setViewContext(view);
@@ -116,6 +119,8 @@ class AnalyzeRequirementUseCaseTest {
             extended = useCase.analyze(command).analysisResult();
         }
         assertThat(extended.getRawScores()).containsExactlyEntriesOf(original.getRawScores());
+        assertThat(extended.getCopilot()).as("Earlier reports do not describe newly extended relation evidence").isNull();
+        assertThat(original.getCopilot()).as("The immutable source is preserved").isNotNull();
         assertThat(extended.getReasons()).containsExactlyEntriesOf(original.getReasons());
         verify(llmService, never()).analyzeWithBudget(any());
         verify(llmService, never()).analyzeWithBudget(any(), any());
@@ -145,6 +150,7 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(result.getArchitectureView().getIncludedRelationships()).isEmpty();
         assertThat(result.getRawScores()).containsExactlyEntriesOf(Map.of("BP-1017", 20d));
         assertThat(result.getViewContext()).isSameAs(viewContext);
+        assertThat(result.getCopilot().state()).isEqualTo("SKIPPED_SCOPE");
         verifyNoInteractions(requirementRelationSearchService, analysisRelationGenerator, hypothesisService,
                 architectureViewService);
         verify(llmService).requireProviderAdmissible(null, false);

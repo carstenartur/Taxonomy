@@ -61,6 +61,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
@@ -210,7 +211,7 @@ class PortfolioAnalysisCoverageRegressionTest {
     }
 
     @Test
-    void secondaryAnalysisFailuresProduceReviewableFallbacks() {
+    void historicalAnalysisUsesRetainedFallbackWithoutGlobalSecondaryRequests() {
         WorkspaceContext context = context("analysis-fallback");
         ProjectView project = createProject(context, "Fallback project");
         RequirementView requirement = createRequirement(
@@ -240,11 +241,13 @@ class PortfolioAnalysisCoverageRegressionTest {
                 project.id(), requirement.id(), context.username(), context).getFirst();
         var detail = analysisService.getSnapshot(
                 project.id(), snapshot.id(), context.username(), context);
-        assertThat(detail.analysis().getWarnings())
-                .hasSize(3)
-                .anyMatch(warning -> warning.contains("gap unavailable"))
-                .anyMatch(warning -> warning.contains("IllegalStateException"))
-                .anyMatch(warning -> warning.contains("IllegalArgumentException"));
+        // Even unavailable global report services must not replace this snapshot's evidence.
+        verifyNoInteractions(gapService, patternService, recommendationService);
+        assertThat(detail.analysis().getWarnings()).isEmpty();
+        assertThat(detail.analysis().getCopilot()).isNotNull();
+        assertThat(detail.analysis().getCopilot().state()).isEqualTo("PARTIAL");
+        assertThat(detail.analysis().getCopilot().notes())
+                .anyMatch(note -> note.contains("Retained catalogue or scoring evidence is unavailable"));
         assertThat(detail.gapAnalysis().getBusinessText())
                 .isEqualTo("Continue when secondary intelligence fails");
         assertThat(detail.gapAnalysis().getNotes()).isNotEmpty();
@@ -252,6 +255,7 @@ class PortfolioAnalysisCoverageRegressionTest {
         assertThat(detail.recommendation().getBusinessText())
                 .isEqualTo("Continue when secondary intelligence fails");
         assertThat(detail.recommendation().getNotes()).isNotEmpty();
+        assertThat(detail.recommendation().getConfirmedElements()).isEmpty();
     }
 
     @Test

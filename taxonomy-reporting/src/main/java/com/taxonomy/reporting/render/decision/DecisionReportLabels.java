@@ -163,6 +163,17 @@ public final class DecisionReportLabels {
     public String suggestedRelations() { return german ? "Vorgeschlagene Beziehungen" : "Suggested Relations"; }
     public String pendingRelationProposals() { return german ? "Offene Beziehungsvorschläge" : "Pending Relation Proposals"; }
     public String status() { return "Status"; }
+    public String expectedSteps() { return german ? "Erwartete Schritte" : "Expected steps"; }
+    public String retainedSteps() { return german ? "Gespeicherte Belege" : "Retained supporting evidence"; }
+    public String retainedCopilotStatus(String state) {
+        return switch (java.util.Objects.toString(state, "")) {
+            case "COMPLETED" -> german ? "Gespeicherter Bericht abgeschlossen" : "Saved report complete";
+            case "PARTIAL" -> german ? "Gespeicherter Bericht teilweise verfügbar" : "Saved report partial";
+            case "SKIPPED_PARTIAL" -> german ? "Nicht bewertet: Analyse unvollständig" : "Not assessed: analysis incomplete";
+            case "SKIPPED_SCOPE" -> german ? "Nicht bewertet: außerhalb des gewählten Umfangs" : "Not assessed: outside the selected scope";
+            default -> unknown();
+        };
+    }
     public String architectureDiagram() { return german ? "Architekturdiagramm" : "Architecture Diagram"; }
     public String explanation() { return german ? "Erläuterung" : "Explanation"; }
     public String recordedNodeReasons() { return german ? "Gespeicherte Knotenbegründungen" : "Recorded node reasons"; }

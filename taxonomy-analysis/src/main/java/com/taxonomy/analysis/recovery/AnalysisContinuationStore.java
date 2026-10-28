@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.recovery;
 
+import com.taxonomy.architecture.service.AnalysisCopilotService;
 import com.taxonomy.dto.*;
 import com.taxonomy.exchange.backup.PortableJsonPayloads;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -644,18 +645,19 @@ public class AnalysisContinuationStore {
         var run = em.find(AnalysisContinuationRun.class, claim.id(), LockModeType.PESSIMISTIC_WRITE);
         if (run == null || !Objects.equals(run.claimToken, claim.token())) throw conflict("Operation claim was superseded");
         var previous = readResult(run);
+        AnalysisRequest frozenRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
         if ("CANCELLED".equals(run.state) && previous != null && previous.getAnalysisCoverage() != null
                 && "CANCELLED".equals(previous.getStatus())) {
             // The local search returns its accepted partial report after observing cancellation.
             // Only that report may enrich the canonical cancelled result; node evidence is immutable.
             retainRelationReport(run, previous, result.getRelationSearchReport());
+            completeCopilot(frozenRequest, previous);
             writeResult(run, previous); em.flush();
             previous.setRecovery(view(run));
             return previous;
         }
         List<TaxonomyNodeDto> tree = previous != null && previous.getTree() != null
                 ? previous.getTree() : fallbackTree.get();
-        AnalysisRequest frozenRequest = mapper.readValue(run.requestJson, AnalysisRequest.class);
         boolean relationsOnly = frozenRequest.getRelationSourceContinuationId() != null;
         if (relationsOnly && previous != null && !sameNodeEvidence(previous, result))
             throw conflict("Relations work cannot replace retained node assessments or explanations");
@@ -750,10 +752,18 @@ public class AnalysisContinuationStore {
         }
         run.claimUntil = 0; run.updatedAt = System.currentTimeMillis(); em.flush();
         result.setRecovery(view(run));
+        // The journal can change scope, coverage and terminal status after the use case ran.
+        // Derive reports from this canonical result, including explicit skipped states.
+        completeCopilot(frozenRequest, result);
         // Tree is retained: restoring against a later catalogue must not relabel old evidence.
         writeResult(run, result); em.flush();
         result.setRecovery(view(run));
         return result;
+    }
+
+    private static void completeCopilot(AnalysisRequest request, AnalysisResult result) {
+        result.setCopilot(request.isIncludeArchitectureView()
+                ? new AnalysisCopilotService().analyze(result, request.getBusinessText()) : null);
     }
 
     private static boolean relationBudgetStopped(RelationSearchReport report) {

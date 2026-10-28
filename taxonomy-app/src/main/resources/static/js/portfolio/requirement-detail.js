@@ -56,6 +56,8 @@
             failed: 'The operation failed.', resultOverview: 'Copilot result overview',
             mappedElements: 'Mapped elements', mappedRelations: 'Mapped relationships',
             openGaps: 'Open gaps', patternCoverage: 'Pattern coverage',
+            compatibilityChecks: 'Open compatibility checks', meanRetainedRelevance: 'Mean retained relevance',
+            assessmentMatches: 'Assessment matches', notEvaluated: 'Not evaluated for this result',
             recommendationConfidence: 'Recommendation confidence', confirmedElements: 'Confirmed elements',
             gapAnalysis: 'Gap analysis', anchorsEvaluated: 'Anchors evaluated',
             missingRelations: 'Missing relationships', coverageGaps: 'Coverage gaps',
@@ -108,6 +110,8 @@
             failed: 'Die Operation ist fehlgeschlagen.', resultOverview: 'Copilot-Ergebnisübersicht',
             mappedElements: 'Zugeordnete Elemente', mappedRelations: 'Zugeordnete Beziehungen',
             openGaps: 'Offene Lücken', patternCoverage: 'Musterabdeckung',
+            compatibilityChecks: 'Offene Kompatibilitätsprüfungen', meanRetainedRelevance: 'Mittlere gespeicherte Relevanz',
+            assessmentMatches: 'Bewertungstreffer', notEvaluated: 'Für dieses Ergebnis nicht bewertet',
             recommendationConfidence: 'Konfidenz der Empfehlung', confirmedElements: 'Bestätigte Elemente',
             gapAnalysis: 'Lückenanalyse', anchorsEvaluated: 'Bewertete Anker',
             missingRelations: 'Fehlende Beziehungen', coverageGaps: 'Abdeckungslücken',
@@ -475,10 +479,13 @@
 
     function renderAnalysisSummary(detail) {
         const analysis = detail.analysis || {};
-        const warnings = asArray(analysis.warnings);
-        const gap = detail.gapAnalysis || {};
-        const patterns = detail.patternDetection || {};
-        const recommendation = detail.recommendation || {};
+        const copilot = analysis.copilot;
+        const retained = Boolean(copilot);
+        const skipped = copilot?.state === 'SKIPPED_PARTIAL' || copilot?.state === 'SKIPPED_SCOPE';
+        const warnings = asArray(analysis.warnings).concat(asArray(copilot?.notes));
+        const gap = retained ? copilot.gaps || {} : detail.gapAnalysis || {};
+        const patterns = retained ? copilot.patterns || {} : detail.patternDetection || {};
+        const recommendation = retained ? copilot.recommendation || {} : detail.recommendation || {};
         const mappings = asArray(detail.elementMappings);
         const relations = asArray(detail.relationMappings);
         const missing = asArray(gap.missingRelations);
@@ -501,14 +508,15 @@
             + resultMetric(t('mappedElements'), mappings.length,
                 mappings.filter(item => item.selectedForImpact).length + ' ' + t('direct'), 'primary')
             + resultMetric(t('mappedRelations'), relations.length, '', 'info')
-            + resultMetric(t('openGaps'), gapCount,
-                missing.length + ' ' + t('missingRelations'), gapCount > 0 ? 'warning' : 'success')
-            + resultMetric(t('patternCoverage'), patternPercent + '%',
-                matched.length + ' ' + t('matchedPatterns'), patternPercent >= 70 ? 'success' : 'warning')
-            + resultMetric(t('recommendationConfidence'), recommendationPercent + '%',
-                suggested.length + ' ' + t('suggestedRelations'), recommendationPercent >= 70 ? 'success' : 'warning')
-            + resultMetric(t('confirmedElements'), confirmed.length,
-                proposed.length + ' ' + t('proposedElements'), 'success')
+            + resultMetric(t(retained ? 'compatibilityChecks' : 'openGaps'), skipped ? '—' : gapCount,
+                skipped ? t('notEvaluated') : missing.length + ' ' + t(retained ? 'compatibilityChecks' : 'missingRelations'),
+                retained ? 'secondary' : gapCount > 0 ? 'warning' : 'success')
+            + resultMetric(t('patternCoverage'), skipped ? '—' : patternPercent + '%',
+                skipped ? t('notEvaluated') : matched.length + ' ' + t('matchedPatterns'), skipped ? 'secondary' : patternPercent >= 70 ? 'success' : 'warning')
+            + resultMetric(t(retained ? 'meanRetainedRelevance' : 'recommendationConfidence'), skipped ? '—' : recommendationPercent + '%',
+                skipped ? t('notEvaluated') : suggested.length + ' ' + t('suggestedRelations'), skipped ? 'secondary' : recommendationPercent >= 70 ? 'success' : 'warning')
+            + resultMetric(t(retained ? 'assessmentMatches' : 'confirmedElements'), skipped ? '—' : confirmed.length,
+                skipped ? t('notEvaluated') : proposed.length + ' ' + t('proposedElements'), retained ? 'secondary' : 'success')
             + `</div></section>`;
 
         const warningHtml = warnings.length
@@ -523,6 +531,7 @@
                 discrepancies: asArray(analysis.discrepancies),
                 productCoverageGaps: asArray(analysis.productCoverageGaps),
                 provisionalRelations: asArray(analysis.provisionalRelations),
+                copilot: copilot || null,
                 architectureView: compactArchitectureView(analysis.architectureView)
             },
             gapAnalysis: gap,
@@ -536,11 +545,11 @@
         const relationReport = Object.prototype.hasOwnProperty.call(analysis, 'relationSearchReport')
             ? analysis.relationSearchReport : analysis.architectureView?.relationSearchReport;
         return overview + renderRelationSearchSummary(relationReport) + warningHtml
-            + `<div class="portfolio-result-grid mt-3">`
-            + renderGapResult(gap, missing, coverage, incomplete)
-            + renderPatternResult(patterns, matched)
-            + renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning)
-            + `</div>` + technicalHtml;
+            + (skipped ? '' : `<div class="portfolio-result-grid mt-3">`
+                + renderGapResult(gap, missing, coverage, incomplete, retained)
+                + renderPatternResult(patterns, matched, retained)
+                + renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning, retained)
+                + `</div>`) + technicalHtml;
     }
 
     function renderRelationSearchSummary(report) {
@@ -568,7 +577,7 @@
             + `</article>`;
     }
 
-    function renderGapResult(gap, missing, coverage, incomplete) {
+    function renderGapResult(gap, missing, coverage, incomplete, retained) {
         const topMissing = missing.slice(0, 5);
         const findings = topMissing.length
             ? `<ol class="portfolio-finding-list">${topMissing.map(item => `<li><code>${escapeHtml(item.sourceNodeCode || '—')}</code> `
@@ -577,11 +586,11 @@
                 + `<small>${escapeHtml(item.description || '')}</small></li>`).join('')}</ol>`
             : `<p class="text-body-secondary mb-0">—</p>`;
         return `<section id="gapResultSection" class="portfolio-result-panel" aria-labelledby="gapResultTitle">`
-            + `<div class="portfolio-result-panel-header"><h3 id="gapResultTitle" class="h6 mb-0">${escapeHtml(t('gapAnalysis'))}</h3>`
+            + `<div class="portfolio-result-panel-header"><h3 id="gapResultTitle" class="h6 mb-0">${escapeHtml(t(retained ? 'compatibilityChecks' : 'gapAnalysis'))}</h3>`
             + `<div class="d-flex flex-wrap gap-1"><span class="badge text-bg-secondary">${safeNumber(gap.totalAnchors, 0)} ${escapeHtml(t('anchorsEvaluated'))}</span>`
-            + `<span class="badge ${safeNumber(gap.totalGaps, 0) > 0 ? 'text-bg-warning' : 'text-bg-success'}">${safeNumber(gap.totalGaps, 0)} ${escapeHtml(t('openGaps'))}</span></div></div>`
+            + `<span class="badge ${retained ? 'text-bg-secondary' : safeNumber(gap.totalGaps, 0) > 0 ? 'text-bg-warning' : 'text-bg-success'}">${safeNumber(gap.totalGaps, 0)} ${escapeHtml(t(retained ? 'compatibilityChecks' : 'openGaps'))}</span></div></div>`
             + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('highestPriority'))}</h4>${findings}`
-            + renderFindingDetails(t('missingRelations'), missing,
+            + renderFindingDetails(t(retained ? 'compatibilityChecks' : 'missingRelations'), missing,
                 ['sourceNodeCode', 'expectedRelationType', 'expectedTargetRoot', 'description'])
             + renderFindingDetails(t('coverageGaps'), coverage,
                 ['nodeCode', 'coverageScore', 'gapDescription'])
@@ -590,18 +599,23 @@
             + `</section>`;
     }
 
-    function renderPatternResult(patterns, matched) {
-        const cards = matched.length ? matched.map(pattern => {
+    function renderPatternResult(patterns, matched, retained) {
+        const displayed = retained ? matched.concat(asArray(patterns.incompletePatterns)) : matched;
+        const cards = displayed.length ? displayed.map(pattern => {
             const completeness = percentage(pattern.completeness);
             const expected = asArray(pattern.expectedSteps);
             const present = new Set(asArray(pattern.presentSteps));
+            const steps = retained
+                ? asArray(pattern.presentSteps).map(step => ({ step, present: true }))
+                    .concat(asArray(pattern.missingSteps).map(step => ({ step, present: false })))
+                : expected.map(step => ({ step, present: present.has(step) }));
             return `<article class="portfolio-pattern-card"><div class="d-flex justify-content-between gap-2 align-items-center">`
                 + `<strong>${escapeHtml(pattern.patternName || t('patternDetection'))}</strong>`
                 + `<span class="badge ${completeness >= 100 ? 'text-bg-success' : 'text-bg-warning'}">${completeness}%</span></div>`
                 + `<div class="progress mt-2" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${completeness}">`
                 + `<div class="progress-bar" style="width:${completeness}%"></div></div>`
-                + `<ul class="portfolio-step-list">${expected.map(step => `<li class="${present.has(step) ? 'is-present' : 'is-missing'}">`
-                    + `<span aria-hidden="true">${present.has(step) ? '✓' : '○'}</span>${escapeHtml(step)}</li>`).join('')}</ul></article>`;
+                + `<ul class="portfolio-step-list">${steps.map(item => `<li class="${item.present ? 'is-present' : 'is-missing'}">`
+                    + `<span aria-hidden="true">${item.present ? '✓' : '○'}</span>${escapeHtml(item.step)}</li>`).join('')}</ul></article>`;
         }).join('') : `<p class="text-body-secondary mb-0">—</p>`;
         return `<section id="patternResultSection" class="portfolio-result-panel" aria-labelledby="patternResultTitle">`
             + `<div class="portfolio-result-panel-header"><h3 id="patternResultTitle" class="h6 mb-0">${escapeHtml(t('patternDetection'))}</h3>`
@@ -609,7 +623,7 @@
             + `<div class="vstack gap-2 mt-3">${cards}</div></section>`;
     }
 
-    function renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning) {
+    function renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning, retained) {
         const reasoningHtml = reasoning.length
             ? `<ul class="portfolio-reasoning-list">${reasoning.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
             : `<p class="text-body-secondary mb-0">—</p>`;
@@ -627,7 +641,7 @@
             + `<div class="portfolio-result-panel-header"><h3 id="recommendationResultTitle" class="h6 mb-0">${escapeHtml(t('recommendation'))}</h3>`
             + `<span class="badge ${percentage(recommendation.confidence) >= 70 ? 'text-bg-success' : 'text-bg-warning'}">${percentage(recommendation.confidence)}%</span></div>`
             + `<div class="d-flex flex-wrap gap-2 mt-3">`
-            + `<span class="badge text-bg-success">${confirmed.length} ${escapeHtml(t('confirmedElements'))}</span>`
+            + `<span class="badge ${retained ? 'text-bg-secondary' : 'text-bg-success'}">${confirmed.length} ${escapeHtml(t(retained ? 'assessmentMatches' : 'confirmedElements'))}</span>`
             + `<span class="badge text-bg-warning">${proposed.length} ${escapeHtml(t('proposedElements'))}</span>`
             + `<span class="badge text-bg-info">${suggested.length} ${escapeHtml(t('suggestedRelations'))}</span></div>`
             + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('reasoning'))}</h4>${reasoningHtml}${relationDetails}</section>`;

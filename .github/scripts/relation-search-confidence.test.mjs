@@ -64,3 +64,33 @@ test('scoped explicit zero remains a known negative assessment', () => {
   h.renderMappings([{ nodeCode: 'source', directScore: 85, relevance: 0.85, confidence: 0 }]);
   assert.match(h.elements.get('mappingTable').innerHTML, /<td>0%<\/td><td>0%<\/td>/);
 });
+
+
+for (const state of ['SKIPPED_PARTIAL', 'SKIPPED_SCOPE']) test(`portfolio ${state} reports remain unavailable instead of zero-valued successes`, () => {
+  const h = harness(true);
+  const html = h.renderAnalysisSummary({ analysis: { copilot: { state, notes: ['Coverage remains open.'] } },
+    gapAnalysis: { totalGaps: 0 }, patternDetection: { patternCoverage: 0 }, recommendation: { confidence: 0 } }).split('<details id="technicalSnapshotData"')[0];
+  assert.match(html, /Coverage remains open/);
+  assert.match(html, />—</);
+  assert.doesNotMatch(html, /0%|id="gapResultSection"|id="patternResultSection"|id="recommendationResultSection"/);
+});
+test('retained portfolio reports use neutral compatibility labels and retain evidence caveats', () => {
+  const h = harness(true);
+  const copilot = { state: 'COMPLETED', gaps: { totalGaps: 0, totalAnchors: 0 },
+    patterns: { patternCoverage: 0 }, recommendation: { confidence: 85, confirmedElements: [{ nodeCode: 'fixture' }] },
+    notes: ['Search policy does not prove completeness.'] };
+  const html = h.renderAnalysisSummary({ analysis: { copilot } }).split('<details id="technicalSnapshotData"')[0];
+  assert.match(html, /Open compatibility checks/); assert.match(html, /Mean retained relevance/);
+  assert.match(html, /Assessment matches/); assert.match(html, /Search policy does not prove completeness/);
+  assert.doesNotMatch(html, /Open gaps|Confirmed elements/);
+});
+test('portfolio patterns preserve concrete evidence, conditional applicability and incomplete chains', () => {
+  const h = harness(true);
+  const copilot = { state: 'PARTIAL', gaps: {}, recommendation: {}, notes: [], patterns: { patternCoverage: 0,
+    incompletePatterns: [{ patternName: 'Retained chain', completeness: 75, expectedSteps: ['BP REALIZES CP'],
+      presentSteps: ['BP-fixture REALIZES CP-fixture [when approved]'], missingSteps: ['Applicability needs review.'] }] } };
+  const html = h.renderAnalysisSummary({ analysis: { copilot } }).split('<details id="technicalSnapshotData"')[0];
+  assert.match(html, /BP-fixture REALIZES CP-fixture \[when approved\]/);
+  assert.match(html, /Applicability needs review/);
+  assert.doesNotMatch(html, /is-missing[^>]*>[^<]*<span[^>]*>○<\/span>BP REALIZES CP/);
+});

@@ -34,7 +34,7 @@ public class ArchitectureRecommendationService {
 
     private static final Logger log = LoggerFactory.getLogger(ArchitectureRecommendationService.class);
 
-    private static final int HIGH_SCORE_THRESHOLD = 70;
+    static final int HIGH_SCORE_THRESHOLD = 70;
     private static final int DEFAULT_MIN_SCORE = 50;
     private static final int MAX_PROPOSALS_PER_GAP = 3;
 

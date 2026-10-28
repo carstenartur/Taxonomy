@@ -96,7 +96,8 @@ class AnalysisWorkflowRegressionTest {
                 .contains("taxonomy:operation-state")
                 .contains("if (!TERMINAL.has(detail.status)) return;")
                 .contains("if (terminal.status === 'SUCCEEDED')")
-                .contains("window.TaxonomyAnalysis.runCopilotFlow()")
+                .contains("window.TaxonomyAnalysis.renderCopilotResult(terminal.result?.copilot || C.S.currentCopilot || null)")
+                .doesNotContain("window.TaxonomyAnalysis.runCopilotFlow()")
                 .contains("var scores = C.S.currentScores;");
     }
 

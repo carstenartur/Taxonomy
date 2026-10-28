@@ -22,6 +22,8 @@ public class ArchitectureReport {
     private GapAnalysisView gapAnalysis;
     private PatternDetectionView patternDetection;
     private ArchitectureRecommendation recommendation;
+    /** Retained completion/partial/skipped semantics, absent for a legacy recomputed report. */
+    private AnalysisCopilotResult copilot;
     private List<RelationProposalDto> pendingProposals = new ArrayList<>();
     private String mermaidDiagram;
 
@@ -54,6 +56,9 @@ public class ArchitectureReport {
 
     public ArchitectureRecommendation getRecommendation() { return recommendation; }
     public void setRecommendation(ArchitectureRecommendation recommendation) { this.recommendation = recommendation; }
+
+    public AnalysisCopilotResult getCopilot() { return copilot; }
+    public void setCopilot(AnalysisCopilotResult copilot) { this.copilot = copilot; }
 
     public List<RelationProposalDto> getPendingProposals() { return pendingProposals; }
     public void setPendingProposals(List<RelationProposalDto> pendingProposals) { this.pendingProposals = pendingProposals; }

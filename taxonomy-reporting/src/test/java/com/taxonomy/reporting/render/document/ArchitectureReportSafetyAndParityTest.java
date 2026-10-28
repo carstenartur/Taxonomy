@@ -17,6 +17,57 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ArchitectureReportSafetyAndParityTest {
     @Test
+    void retainedMatchedAndIncompletePatternSupportSurvivesEveryReportFormat() throws Exception {
+        var report = fixture(); var patterns = new PatternDetectionView();
+        var matched = new DetectedPattern(); matched.setPatternName("Matched retained pattern"); matched.setCompleteness(100);
+        matched.setExpectedSteps(List.of("MATCHED-EXPECTED-STEP"));
+        matched.setPresentSteps(List.of("MATCHED-EDGE-EVIDENCE [only if authorized]"));
+        var incomplete = new DetectedPattern(); incomplete.setPatternName("Incomplete retained pattern"); incomplete.setCompleteness(50);
+        incomplete.setExpectedSteps(List.of("INCOMPLETE-EXPECTED-STEP"));
+        incomplete.setPresentSteps(List.of("INCOMPLETE-EDGE-EVIDENCE <retained qualifier>"));
+        incomplete.setMissingSteps(List.of("UNKNOWN-REMAINING-STEP"));
+        patterns.setMatchedPatterns(List.of(matched)); patterns.setIncompletePatterns(List.of(incomplete));
+        report.setPatternDetection(patterns);
+        String markdown = new ArchitectureReportTextRenderer().renderMarkdown(report);
+        String html = new ArchitectureReportTextRenderer().renderHtml(report);
+        byte[] bytes = new ArchitectureReportDocxRenderer().render(report);
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(bytes)); var extractor = new XWPFWordExtractor(doc)) {
+            for (String content : List.of("MATCHED-EDGE-EVIDENCE", "INCOMPLETE-EDGE-EVIDENCE", "only if authorized",
+                    "retained qualifier", "MATCHED-EXPECTED-STEP", "INCOMPLETE-EXPECTED-STEP", "UNKNOWN-REMAINING-STEP")) {
+                assertThat(markdown).contains(content); assertThat(html).contains(content); assertThat(extractor.getText()).contains(content);
+            }
+            assertThat(html).doesNotContain("<retained qualifier>");
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"COMPLETED", "PARTIAL", "SKIPPED_PARTIAL", "SKIPPED_SCOPE"})
+    void retainedCopilotStatusAndEvidenceNotesSurviveEveryReportFormat(String state) throws Exception {
+        var report = fixture();
+        var gaps = new GapAnalysisView(); gaps.getNotes().add("RETAINED-GAP-QUALIFICATION");
+        var patterns = new PatternDetectionView(); patterns.getNotes().add("RETAINED-PATTERN-QUALIFICATION");
+        report.setGapAnalysis(gaps); report.setPatternDetection(patterns);
+        report.setCopilot(new AnalysisCopilotResult(1, state, gaps, patterns, report.getRecommendation(),
+                List.of("RETAINED-REPORT-QUALIFICATION")));
+        String markdown = new ArchitectureReportTextRenderer().renderMarkdown(report);
+        String html = new ArchitectureReportTextRenderer().renderHtml(report);
+        byte[] bytes = new ArchitectureReportDocxRenderer().render(report);
+        String expected = switch (state) {
+            case "COMPLETED" -> "Saved report complete";
+            case "PARTIAL" -> "Saved report partial";
+            case "SKIPPED_PARTIAL" -> "Not assessed: analysis incomplete";
+            default -> "Not assessed: outside the selected scope";
+        };
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(bytes)); var extractor = new XWPFWordExtractor(doc)) {
+            for (String content : List.of(expected, "RETAINED-GAP-QUALIFICATION", "RETAINED-PATTERN-QUALIFICATION", "RETAINED-REPORT-QUALIFICATION")) {
+                assertThat(markdown).contains(content);
+                assertThat(html).contains(content);
+                assertThat(extractor.getText()).contains(content);
+            }
+        }
+    }
+
+    @Test
     void htmlEscapesRequirementAndTableValuesBeforeFormatting() {
         var report = fixture();
         report.setBusinessText("Literal <svg onload=\"window.__qa_marker=1\"></svg> & <requirement> **bold** `**literal** <code>`");

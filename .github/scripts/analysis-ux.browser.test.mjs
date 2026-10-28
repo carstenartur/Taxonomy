@@ -659,6 +659,68 @@ const importedArchitecture = {
     notes: ['IMPORTED ARCHITECTURE EVIDENCE'],
     includedElements: [], includedRelationships: [], anchors: []
 };
+test('portable Copilot import renders and re-exports retained evidence without granting a server reference', async () => {
+    const page = await reportFixture();
+    const copilot = {schemaVersion:1,state:'PARTIAL',gaps:{totalAnchors:0,totalGaps:0,notes:[],missingRelations:[]},
+        patterns:{matchedPatterns:[],incompletePatterns:[],patternCoverage:0,notes:[]},
+        recommendation:{confirmedElements:[],proposedElements:[],suggestedRelations:[],reasoning:[],notes:[],confidence:0},
+        notes:['PORTABLE COPILOT EVIDENCE']};
+    try {
+        await page.evaluate(() => {
+            for (const id of ['copilotPanel','copilotContent','gapAnalysisPanel','gapAnalysisContent',
+                'patternDetectionPanel','patternDetectionContent','recommendationPanel','recommendationContent']) {
+                const element=document.createElement('div');element.id=id;document.body.append(element);
+            }
+        });
+        await page.addScriptTag({path:path.join(resources,'static/js/core/taxonomy-analysis.js')});
+        await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-export.js')});
+        await bootScoreImport(page, {scores:{'BP-1000':42},requirement:'Imported requirement',copilot,
+            analysisOperationId:'untrusted-operation'});
+        await page.evaluate(() => {
+            __TaxonomyAnalysisSessionContext.runtime.analysisReference={workspaceId:'previous',operationId:'previous'};
+            __TaxonomyAnalysisSessionContext.runtime.analysisEvidence='previous';
+        });
+        await page.locator('#importJsonFile').setInputFiles({name:'retained.json',mimeType:'application/json',buffer:Buffer.from('{}')});
+        await page.waitForFunction(() => TaxonomyState.lastAnalysisProvider === 'IMPORTED');
+        assert.match(await page.locator('#copilotContent').textContent(),/PORTABLE COPILOT EVIDENCE/);
+        assert.deepEqual(await page.evaluate(() => TaxonomyState.currentCopilot),copilot);
+        assert.equal(await page.evaluate(() => __TaxonomyAnalysisSessionContext.runtime.analysisReference),null);
+        await page.evaluate(() => {
+            window.fetch=async (url,options)=>{window.portableExport={url,body:JSON.parse(options.body)};
+                return {ok:true,json:async()=>window.portableExport.body};};
+            TaxonomyExport.exportJson(TaxonomyState.currentScores,TaxonomyState.currentReasons,'Imported requirement','IMPORTED');
+        });
+        await page.waitForFunction(() => window.portableExport);
+        const exported=await page.evaluate(() => window.portableExport);
+        assert.equal(exported.url,'/api/scores/export');
+        assert.deepEqual(exported.body.copilot,copilot);assert.equal(exported.body.analysisReference,undefined);
+    } finally { await finish(page); }
+});
+
+for (const edited of [false,true]) test(`report export ${edited ? 'retains manually edited evidence' : 'uses only the owned saved reference'}`,async()=>{
+    const page=await reportFixture();
+    try {
+        await page.evaluate(()=>{const button=document.createElement('button');button.id='exportReportMd';button.textContent='Report';document.body.append(button);});
+        await bootScoreImport(page,{});
+        await page.evaluate(edited=>{
+            const C=__TaxonomyAnalysisSessionContext,S=TaxonomyState;
+            C.runtime.workspaceId='ws-owned';S.currentReasons={'BP-1000':'Retained rationale'};
+            S.currentCopilot={schemaVersion:1,state:'COMPLETED',notes:[]};
+            S.analysisOperationId='owned-operation';S.analysisRecovery=null;
+            C.runtime.analysisReference={workspaceId:'ws-owned',operationId:'owned-operation'};
+            C.runtime.analysisEvidence=C.currentAnalysisEvidence();
+            if(edited)S.currentReasons['BP-1000']='Manual rationale';
+            window.fetch=async(url,options)=>{window.reportRequest={url,headers:options.headers,body:JSON.parse(options.body)};
+                return {ok:true,blob:async()=>new Blob(['report'],{type:'text/markdown'})};};
+        },edited);
+        await page.locator('#exportReportMd').click();await page.waitForFunction(()=>window.reportRequest);
+        const request=await page.evaluate(()=>window.reportRequest);
+        assert.equal(request.url,'/api/report/markdown');
+        if(edited){assert.equal(request.body.analysisReference,undefined);assert.equal(request.body.reasons['BP-1000'],'Manual rationale');}
+        else {assert.equal(request.body.analysisReference.operationId,'owned-operation');
+            assert.equal(request.headers['X-Taxonomy-Workspace-Id'],'ws-owned');assert.equal(request.body.scores,undefined);}
+    } finally {await finish(page);}
+});
 for (const [label, architectureFields] of [
     ['absent architecture', {}],
     ['explicit-null architecture', {architectureView: null}],

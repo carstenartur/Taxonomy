@@ -7,6 +7,7 @@ import com.taxonomy.analysis.service.AnalysisRelationGenerator;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.architecture.service.AnalysisCopilotService;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.export.DiagramViewMetadata;
@@ -52,6 +53,7 @@ public class AnalyzeRequirementUseCase {
     private final HypothesisService hypothesisService;
     private final WorkspaceViewContextReadPort repositoryStateService;
     private final ArchitectureReportMetadataPort metadataPort;
+    private final AnalysisCopilotService copilot = new AnalysisCopilotService();
 
     public AnalyzeRequirementUseCase(
             LlmService llmService,
@@ -135,6 +137,8 @@ public class AnalyzeRequirementUseCase {
                     : command.analysisScope().legacyFull()
                     ? llmService.analyzeWithBudget(command.businessText())
                     : llmService.analyzeWithBudget(command.businessText(), command.analysisScope());
+            // Reports from an earlier retained result do not describe this new execution.
+            result.setCopilot(null);
             result.setAnalysisScope(command.analysisScope());
             result.setAnalysisReasonLength(command.analysisReasonLength());
             result.setAnalysisLanguage(command.analysisLanguage());
@@ -171,6 +175,8 @@ public class AnalyzeRequirementUseCase {
             // must not prevent the user from seeing already accepted node assessments.
             enrichWithArchitectureView(command, result);
             result.setViewContext(viewContext);
+            if (command.includeArchitectureView())
+                result.setCopilot(copilot.analyze(result, command.businessText()));
             result.setAnalysisDurationMillis(Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
             return new AnalyzeRequirementResult(result);
         } finally {

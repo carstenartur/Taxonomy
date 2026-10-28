@@ -21,6 +21,7 @@
     var inputEditRevision = 0;
     var statusRead = null;
     var loadEpoch = 0;
+    var referenceEpoch = 0;
     var DECISION_CONTROL_SELECTOR = [
         '#analyzeBtn',
         '#copilotBtn',
@@ -151,6 +152,8 @@
      * resurrecting the discarded requirement text.
      */
     function resetDraft() {
+        referenceEpoch += 1;
+        runtime.analysisReference = null; runtime.analysisEvidence = null;
         window.clearTimeout(runtime.saveTimer);
         runtime.saveTimer = null;
         runtime.saveQueued = false;
@@ -344,6 +347,8 @@
             input.classList.remove('stale-results');
         }
         S.currentScores = null;
+        S.currentCopilot = null;
+        runtime.analysisReference = null; runtime.analysisEvidence = null;
         S.analysisCoverage = null;
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;
@@ -378,12 +383,46 @@
     }
 
     function applyDraft(view) {
+        var epoch = ++referenceEpoch;
+        if (!view?.payload?.analysisReference || view.payload.draftState === 'EMPTY') return applyResolvedDraft(view);
+        var workspace = runtime.workspaceId, generation = runtime.analysisGeneration, editRevision = inputEditRevision;
+        var originalInput = businessTextElement()?.value;
+        var originalPayload = comparable(currentPayload(true));
+        runtime.restoring = true; setDraftDecisionPending(true);
+        function current() {
+            return epoch === referenceEpoch && workspace === runtime.workspaceId
+                && generation === runtime.analysisGeneration && !runtime.resetting && !runtime.invalidating;
+        }
+        return Promise.resolve().then(function () {
+            return C.resolveAnalysisReference(view.payload);
+        }).then(function (payload) {
+            if (!current()) return;
+            if (editRevision !== inputEditRevision || originalInput !== businessTextElement()?.value
+                    || originalPayload !== comparable(currentPayload(true))) {
+                runtime.restoring = false; setDraftDecisionPending(false);
+                // Preserve input, manual evidence and view edits made while the reference was read.
+                showResumeChoice(view); return;
+            }
+            applyResolvedDraft(Object.assign({}, view, { payload: payload }));
+            C.retainAnalysisReference?.(payload.canonicalAnalysisResult,
+                Object.assign({}, payload.canonicalAnalysisRequest, { durable: true }));
+            runtime.lastSavedComparable = comparable(currentPayload());
+            runtime.lastObservedComparable = runtime.lastSavedComparable;
+        }).catch(function (error) {
+            if (!current()) return;
+            runtime.restoring = false; setDraftDecisionPending(false);
+            serverUnavailable(error);
+        });
+    }
+    function applyResolvedDraft(view) {
         if (!view || !view.payload) {
             runtime.restoring = false;
             setDraftDecisionPending(false);
             return;
         }
         var payload = view.payload;
+        runtime.preserveRestoredEvidence = !payload.analysisReference && payload.draftState !== 'EMPTY';
+        runtime.analysisReference = null; runtime.analysisEvidence = null;
         confirmDraft(view);
         runtime.restorationPending = true;
         runtime.restoring = true;
@@ -399,6 +438,7 @@
         } else {
             var input = businessTextElement();
             if (input) input.value = payload.businessText || '';
+            if (Array.isArray(payload.taxonomyTree) && payload.taxonomyTree.length) S.taxonomyData = payload.taxonomyTree;
             S.currentRawScores = payload.rawScores || payload.scores || {};
             S.currentEffectiveScores = payload.effectiveScores || payload.scores || {};
             S.currentScoreDetails = payload.scoreDetails || {};
@@ -414,6 +454,7 @@
                 ? payload.activeAnalysisLanguage : S.lastAnalysisLanguage;
             S.analysisRecovery = payload.analysisRecovery || null;
             S.recoveryContext = payload.recoveryContext || null;
+            S.currentCopilot = payload.copilot || null;
             S.lastAnalysisProvider = payload.lastAnalysisProvider || null;
             S.analysisOperationId = payload.analysisOperationId || null;
             S.analysisProviderId = payload.analysisProviderId || null;
@@ -495,6 +536,7 @@
         window.TaxonomyScoring.renderArchitectureView(S.currentArchView);
         window.TaxonomyScoring.renderIndependentRelationSearchReport?.(S.currentRelationSearchReport);
         window.TaxonomyScoring.renderSuggestedRelations(payload.provisionalRelations || []);
+        window.TaxonomyAnalysis?.renderCopilotResult?.(S.currentCopilot);
 
         var summaryButton = document.getElementById('viewSummary');
         if (summaryButton) summaryButton.style.display = S.currentArchView ? '' : 'none';
@@ -519,6 +561,7 @@
     }
 
     function loadDraft(options) {
+        referenceEpoch += 1;
         options = options || {};
         var endpoint = draftEndpoint();
         if (!endpoint) return Promise.resolve(null);
@@ -588,11 +631,11 @@
                 // This transaction owns that invalidation. Its rendering failures
                 // must not be mistaken for a response superseded by another task.
                 generationAtStart = runtime.analysisGeneration;
-                if (inputUnchanged && reloadStillAuthorized && !preserveInput) applyDraft(view);
+                if (inputUnchanged && reloadStillAuthorized && !preserveInput) return Promise.resolve(applyDraft(view)).then(function () { return view; });
                 else showResumeChoice(view);
             } else if (inputUnchanged && reloadStillAuthorized
                     && (options.force || localStateIsPristine())) {
-                applyDraft(view);
+                return Promise.resolve(applyDraft(view)).then(function () { return view; });
             } else {
                 // Keep restoring=true until the user chooses the authoritative
                 // state; background polling and task actions remain blocked.
@@ -620,7 +663,7 @@
                 className: 'btn btn-sm btn-primary',
                 handler: function () {
                     if (runtime.serverUnconfirmed) return loadDraft({ force: true, reconcile: true, discardLocalInput: true });
-                    applyDraft(view);
+                    return applyDraft(view);
                 }
             },
             {

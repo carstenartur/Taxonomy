@@ -164,6 +164,8 @@ class RelationsExtensionClusterTest {
             request.setRelationSourceVersion(sourceSnapshot.recovery().version());
             request.setAnalysisScope(new AnalysisScope(original.analysisScope().taxonomyRoots(), AnalysisMode.FULL));
             var claim = saved.begin(request, original.workspaceContext(), "b".repeat(64), tree);
+            claim.retainedAnalysis().setCopilot(new AnalysisCopilotResult(1, "COMPLETED", null, null, null,
+                    List.of("Reports from the retained source")));
             var command = new AnalyzeRequirementCommand("requirement", false, 20, "MOCK", "alice", original.workspaceContext(), null,
                     request.getAnalysisScope(), null, new AnalysisContinuationBinding(claim.id(), claim.token(), "b".repeat(64),
                     "c".repeat(64), "d".repeat(64))).withRetainedAnalysis(claim.retainedAnalysis());
@@ -179,6 +181,9 @@ class RelationsExtensionClusterTest {
                     .allMatch(work -> work.state().equals("COMPLETED"));
             assertThat(store.rootResults(context).getRawScores()).containsExactlyEntriesOf(evidence.getRawScores());
             assertThat(store.rootResults(context).getReasons()).containsExactlyEntriesOf(evidence.getReasons());
+            assertThat(store.rootResults(context).getCopilot())
+                    .as("Aggregation for new relation work invalidates inherited completion reports").isNull();
+            assertThat(claim.retainedAnalysis().getCopilot()).isNotNull();
             assertThat(store.snapshot(context).tasks().stream().filter(task -> task.type().equals("SUBTAXONOMY_ANALYSIS")))
                     .allMatch(task -> task.attempts() == 0);
             var task = (RelationAnalysisTask) db.sent.getFirst();

@@ -66,7 +66,10 @@ public final class ArchitectureReportDocxRenderer {
             w.heading(labels.architectureTitle(), 0, null);
             w.heading(labels.requirement(), 1, null);
             w.paragraph(report.getBusinessText());
-            w.paragraph(labels.liveReportNotice());
+            if (report.getCopilot() != null) {
+                w.paragraph("Copilot: " + labels.retainedCopilotStatus(report.getCopilot().state()));
+                report.getCopilot().notes().forEach(w::paragraph);
+            } else w.paragraph(labels.liveReportNotice());
             w.heading(labels.score(), 1, null);
             w.table(
                     List.of(labels.node(), labels.score()),
@@ -173,6 +176,7 @@ public final class ArchitectureReportDocxRenderer {
             var patterns = report.getPatternDetection();
             if (patterns != null) {
                 w.heading(labels.detectedPatterns(), 1, null);
+                patterns.getNotes().forEach(w::paragraph);
                 w.paragraph(labels.patternCoverage() + ": " + String.format(Locale.ROOT, "%.1f%%",
                         boundedPatternPercentage(patterns.getPatternCoverage())));
                 var all = new ArrayList<DetectedPattern>(patterns.getMatchedPatterns());
@@ -190,6 +194,14 @@ public final class ArchitectureReportDocxRenderer {
                                                                 boundedPatternPercentage(e.getCompleteness())),
                                                         String.join(", ", e.getMissingSteps())))
                                 .toList());
+                for (var pattern : all) {
+                    if (pattern.getExpectedSteps().isEmpty() && pattern.getPresentSteps().isEmpty()) continue;
+                    w.heading(pattern.getPatternName(), 2, null);
+                    if (!pattern.getExpectedSteps().isEmpty()) w.paragraph(labels.expectedSteps() + ": "
+                            + String.join(", ", pattern.getExpectedSteps()));
+                    if (!pattern.getPresentSteps().isEmpty()) w.paragraph(labels.retainedSteps() + ": "
+                            + String.join(", ", pattern.getPresentSteps()));
+                }
             }
             var recommendation = report.getRecommendation();
             if (recommendation != null) {

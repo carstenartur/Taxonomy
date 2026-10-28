@@ -24,6 +24,41 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClusterAnalysisStoreTest {
     private static final TaxonomyShardRoot CP = TaxonomyShardRoot.of("CP"), IP = TaxonomyShardRoot.of("IP");
 
+    @Test void finalizedCopilotSurvivesDurableResultReadsAndDuplicateFinalization() {
+        try (var db = new Database()) {
+            var context = context("copilot-finalized");
+            var original = command("requirement");
+            var command = new AnalyzeRequirementCommand(original.businessText(), true, original.maxArchitectureNodes(),
+                    original.provider(), original.username(), original.workspaceContext(), null, original.analysisScope());
+            var targets = new LinkedHashMap<TaxonomyShardRoot, String>();
+            var mapper = new ObjectMapper();
+            for (var root : TaxonomyShardRoot.DEFAULT_ROOTS) targets.put(root, mapper.writeValueAsString(
+                    DurableClusterAnalysisExecutionTest.root(DurableClusterAnalysisExecutionTest.source(context), root.code())));
+            db.store.admit(context, command, null, Map.of(CP, targets.get(CP), IP, targets.get(IP)), targets);
+            assertTrue(db.store.accept(db.complete(db.task(CP), result("CP", 70))));
+            assertTrue(db.store.accept(db.complete(db.task(IP), result("IP", 60))));
+            assertEquals(ClusterAnalysisState.FINALIZING, db.store.snapshot(context).state());
+            var retained = db.store.snapshot(context).result();
+            var enriched = mapper.readValue(mapper.writeValueAsString(retained), AnalysisResult.class);
+            enriched.setCopilot(new AnalysisCopilotResult(1, "SKIPPED_SCOPE", null, null, null,
+                    List.of("Retained scoped computation")));
+
+            db.store.finalizeResult(context, enriched);
+
+            var saved = db.store.snapshot(context);
+            assertEquals(ClusterAnalysisState.COMPLETED, saved.state());
+            assertEquals("SKIPPED_SCOPE", saved.result().getCopilot().state());
+            assertEquals(retained.getRawScores(), saved.result().getRawScores());
+            long revision = saved.revision();
+            db.store.finalizeResult(context, enriched);
+            assertEquals(revision, db.store.snapshot(context).revision(), "Duplicate completion is a durable no-op");
+            try (var observed = new DurableClusterAnalysisObservation(db.store, new ClusterAnalysisSignals(), AnalysisEventPublisher.NONE)) {
+                assertEquals(List.of("Retained scoped computation"),
+                        observed.result(context.operationId(), command.username(), command.workspaceContext()).getCopilot().notes());
+            }
+        }
+    }
+
     @Test void dispatchesOneRootAtATimeInCatalogueOrderAfterDurableSettlement() {
         try (var db = new Database()) {
             var context = context("ordered-roots");
@@ -97,6 +132,8 @@ class ClusterAnalysisStoreTest {
             }
             var restored = db.store.snapshot(context).result();
             assertNotNull(restored.getArchitectureView());
+            assertNotNull(restored.getCopilot());
+            assertEquals("SKIPPED_PARTIAL", restored.getCopilot().state());
             assertEquals(source, restored.getArchitectureView().getOriginalRequirementText());
             assertTrue(db.store.snapshot(context).state().terminal());
             assertEquals(1, db.sent.size(), "No new provider task is dispatched after the cooperative stop");

@@ -18,7 +18,7 @@ function harness(language = 'en') {
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
-  const requests=[], analyses=[], saved=[], panels=[], derivedRequests=[], readResponses=[]; let openOptions=[], snapshot;
+  const requests=[], analyses=[], saved=[], panels=[], renderedReports=[], derivedRequests=[], readResponses=[]; let openOptions=[], snapshot;
   const ui = { update(message){ this.message=message; }, close(){ this.opened=false; }, error(message){ this.errorText=message; },
     isOpen(){return Boolean(this.opened);}, isDismissed(){return false;},
     open(title,message,build,options){
@@ -37,7 +37,7 @@ function harness(language = 'en') {
     }},
     TaxonomyScoring:{renderArchitectureView(){},renderSuggestedRelations(){},
       runAnalysis(options){analyses.push(options.continuation);return new Promise((resolve,reject)=>{pending=resolve;rejectPending=reject;});}},
-    TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderPartialCopilot:message=>panels.push(message)} };
+    TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderCopilotResult:value=>renderedReports.push(value),renderPartialCopilot:message=>panels.push(message)} };
   const document={getElementById:id=>fields[id]||null,addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}};
   const context={window,document,crypto:webcrypto,sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout:fn=>{timers.set(++timer,fn);return timer;},clearTimeout:id=>timers.delete(id), console};
@@ -63,11 +63,50 @@ function harness(language = 'en') {
   }
   return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,loadRelationsExtension,derivedRequests,readResponses,
     snapshot:()=>snapshot,
-    followups:()=>followups,options:()=>openOptions,
+    followups:()=>followups,renderedReports,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:(name,detail={})=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),
     reject: error=>rejectPending(error), recovery:window.TaxonomyAnalysisRecovery};
 }
 async function settle(){for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));}
+test('a changed server result requires an explicit load choice when retained draft evidence cannot be replaced', async () => {
+ const h=harness();h.recovery.startCopilot();h.complete();await settle();
+ const C=h.window.__TaxonomyAnalysisSessionContext;
+ C.canHydrateAnalysisResult=()=>false;
+ h.S.evaluatedNodes=new Set(['legacy']);h.S.currentArchView={notes:['Legacy local view']};
+ const saved=h.snapshot();
+ saved.recovery={...saved.recovery,version:8,state:'COMPLETED',openQuestions:[]};
+ saved.result={...saved.result,recovery:saved.recovery,status:'SUCCESS',reasons:{BP:'New server rationale'},
+   copilot:{schemaVersion:1,state:'COMPLETED',notes:['Saved server report']}};
+ await h.recovery.refresh();
+ assert.equal(h.S.currentReasons.BP,'Original reason');
+ assert.match(h.ui.message,/earlier evidence|local evidence/i);
+ assert.ok(h.options().some(option=>option.id==='analysisRecoveryLoadResult'));
+ await h.act('analysisRecoveryLoadResult');
+ assert.equal(h.S.currentReasons.BP,'New server rationale');
+ assert.equal(h.S.currentCopilot.state,'COMPLETED');
+ assert.equal(h.S.currentArchView,null);assert.equal(h.S.evaluatedNodes.size,0);
+ assert.equal(h.S.recoveryContext.evidenceConflict,false);
+ assert.equal(h.analyses.length,1);
+ assert(h.requests.every(request=>request.method==='GET'));
+});
+
+for(const change of ['manual edit','workspace']) test(`an explicit saved-result read cannot replace a later ${change}`,async()=>{
+ const h=harness();h.recovery.startCopilot();h.complete();await settle();
+ h.window.__TaxonomyAnalysisSessionContext.canHydrateAnalysisResult=()=>false;
+ const saved=h.snapshot();saved.recovery={...saved.recovery,version:8,state:'COMPLETED',openQuestions:[]};
+ saved.result={...saved.result,recovery:saved.recovery,reasons:{BP:'New server rationale'}};
+ await h.recovery.refresh();
+ let resolve;const read=new Promise(yes=>{resolve=yes;});
+ h.readResponses.push({ok:true,json:()=>read});
+ const loading=h.act('analysisRecoveryLoadResult');await settle();
+ if(change==='manual edit')h.S.currentReasons={BP:'New local edit'};
+ else h.runtime.workspaceId='different-workspace';
+ resolve(saved);await loading;
+ assert.equal(h.S.currentReasons.BP,change==='manual edit'?'New local edit':'Original reason');
+ assert.equal(h.S.recoveryContext.evidenceConflict,true);
+ assert.equal(h.analyses.length,1);assert(h.requests.every(request=>request.method==='GET'));
+});
+
 test('fresh Copilot opts into durable questions and prevents duplicate starts',async()=>{
  const h=harness();h.recovery.startCopilot();h.recovery.startCopilot();assert.equal(h.analyses.length,1);
  assert(h.analyses[0].resumable);assert.equal(h.analyses[0].continuationAction,'START');
@@ -101,7 +140,9 @@ test('rendered Retry continues the same operation and exact failed question revi
  const h=harness();h.recovery.startCopilot();h.complete();await settle();const id=h.analyses[0].continuationId;
  h.act('analysisRecoveryRetry');assert.equal(h.analyses.length,2);assert.equal(h.analyses[1].continuationId,id);
  assert.equal(h.analyses[1].continuationVersion,7);assert.equal(h.analyses[1].continuationQuestion,'question-a');
- assert.equal(h.analyses[1].continuationAction,'RETRY');h.complete('COMPLETED');await settle();assert.equal(h.followups(),1);
+ assert.equal(h.analyses[1].continuationAction,'RETRY');h.complete('COMPLETED');await settle();
+ assert.equal(h.followups(),0);assert.equal(h.renderedReports.length,1);
+ assert.equal(h.S.recoveryContext.followupState,'HISTORICAL');
 });
 test('leave-open continues other work without authorizing global gap or recommendation claims',async()=>{
  const h=harness();h.recovery.startCopilot();h.complete();await settle();h.act('analysisRecoverySkip');
@@ -775,14 +816,19 @@ for(const switchScope of ['workspace','generation']) {
 test('persisting accepted evidence does not duplicate a long provider explanation in the bounded draft',async()=>{
  const h=persistedRecovery();const explanation='Retained provider explanation. '.repeat(20000);
  h.shared.snapshot.result.reasons.CP=explanation;await h.restore();
- assert.equal(h.shared.draft.payload.reasons.CP,explanation);
- assert.ok(JSON.stringify(h.shared.draft).length<explanation.length+5000,'The baseline must have bounded persistence overhead');
+ assert.equal(h.shared.draft.payload.reasons,undefined);
+ assert.equal(h.shared.draft.payload.analysisReference.continuationId,h.shared.snapshot.recovery.id);
+ assert.ok(JSON.stringify(h.shared.draft).length<5000,'Canonical evidence belongs in the durable result, not the working draft');
+ const restored=persistedRecovery(h.shared);await restored.restore();
+ assert.equal(restored.S.currentReasons.CP,explanation);assert.equal(restored.analyses.length,0);
 });
 
 for(const variant of ['matching same revision','edited same revision','newer revision']) {
  test(`legacy recovery drafts without an accepted baseline conservatively handle ${variant}`,async()=>{
   const before=persistedRecovery();await before.restore();await before.save();
-  const payload=before.shared.draft.payload;
+  // Construct an actual legacy full draft; new autosaves intentionally store a reference.
+  const payload=JSON.parse(JSON.stringify(before.C.currentPayload(true)));
+  before.shared.draft.payload=payload;
   const {id,workspaceId,request,followups,noFollowups}=payload.recoveryContext;
   payload.recoveryContext={id,workspaceId,request,followups,noFollowups};
   if(variant==='edited same revision')payload.reasons.CP='Legacy user edit';

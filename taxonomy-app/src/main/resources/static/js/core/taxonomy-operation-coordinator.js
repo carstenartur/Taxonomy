@@ -381,8 +381,9 @@
         waitForMainAnalysis().then(function (terminal) {
             if (terminal.status === 'SUCCEEDED') {
                 if (window.TaxonomyAnalysis
-                        && typeof window.TaxonomyAnalysis.runCopilotFlow === 'function') {
-                    window.TaxonomyAnalysis.runCopilotFlow();
+                        && typeof window.TaxonomyAnalysis.renderCopilotResult === 'function') {
+                    setCopilotBusy(false);
+                    window.TaxonomyAnalysis.renderCopilotResult(terminal.result?.copilot || C.S.currentCopilot || null);
                     return;
                 }
                 setCopilotBusy(false);

@@ -4,6 +4,39 @@ Taxonomy unterscheidet zwischen einer ausdrücklich gestarteten **Copilot-Vollan
 
 Das kanonische Verzeichnis aller Anwendungseinstellungen steht in [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md). Diese Seite erklärt die AI-Automatisierung im Nutzungskontext.
 
+## Copilot in der allgemeinen Analyseansicht
+
+Auch die allgemeine Analyseansicht erhält Lückenanalyse, Muster und Empfehlungen
+als Bestandteil des serverseitigen Analyseergebnisses. Bei der dauerhaften
+Artemis-Ausführung bleibt die Operation bis zur Speicherung dieser Berichte im
+Abschlusszustand `FINALIZING`. Der Browser zeigt den gespeicherten Stand an und
+stößt keine zusätzliche Kette von Copilot-Berechnungen an. Die Berichte verwenden
+die bewahrten Knoten und Beziehungsnachweise; unbekannte oder nicht untersuchte
+Beziehungen gelten nicht als nachgewiesene Lücken. Teilanalysen und eingeschränkte
+Analyseumfänge werden entsprechend gekennzeichnet.
+
+Die Anzeige nennt diese offenen Punkte **offene Kompatibilitätsprüfungen**.
+Auch null offene Punkte beweisen keine vollständige Architektur. Bedingungen,
+optionale Schritte und Alternativen bleiben in den Mustern sichtbar und erfordern
+eine Prüfung ihrer Anwendbarkeit.
+
+Ein rekonstruierbarer Analyseentwurf speichert nur einen Verweis auf den eigenen
+serverseitigen Lauf sowie Eingabetext und Anzeigeoptionen. Dadurch muss der Browser
+große Bewertungen, Begründungen und Relationsberichte nicht erneut hochladen.
+Beim Wiederöffnen werden diese Daten berechtigt vom Server geladen; ein inzwischen
+bearbeiteter Anforderungstext bleibt erhalten. Manuelle Änderungen und ältere
+Entwürfe behalten ihre vollständige Darstellung, wenn sie nicht aus einem Lauf
+rekonstruiert werden können. Für historische Ergebnisse ohne Copilot-Berichte
+wird keine neue LLM-Analyse automatisch gestartet.
+
+Die bestehende Entwurfsgrößengrenze gilt weiterhin für vollständige manuelle oder
+historische Entwürfe; diese werden nicht verlustbehaftet gekürzt.
+
+Die optionalen Artemis-Worker müssen weiterhin ausdrücklich konfiguriert sein.
+Der Standardmodus `local` erhält dieselbe serverseitige Berichtserstellung, wird
+dadurch aber nicht zu einer verteilten, restartfesten JMS-Installation. Siehe
+[Analyseausführung](../dev/CLUSTER_ANALYSIS_EXECUTION.md).
+
 ## Manuelle Copilot-Vollanalyse
 
 Eine gespeicherte unveränderliche Anforderungsversion durchläuft einen oder mehrere begrenzte Prüfdurchläufe. Eine abgeschlossene Operation erzeugt Taxonomiebewertungen mit Begründungen, eine relationsbezogene Architektursicht, Lücken- und Musteranalyse, eine Architekturempfehlung, unveränderliche Snapshots und—wenn aktiviert—deterministische Lösungs- und Produktvorschläge.

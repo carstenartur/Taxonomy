@@ -4,6 +4,36 @@ Taxonomy distinguishes an explicitly requested **Copilot full analysis** from un
 
 The canonical inventory for all application settings is [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md). This page explains the AI-automation settings in their workflow context.
 
+## Copilot on the general analysis page
+
+The general analysis page also receives gap, pattern and recommendation reports
+as part of the server-owned analysis result. Durable Artemis execution remains in
+`FINALIZING` until these reports have been stored. The browser renders the saved
+state instead of initiating another chain of Copilot calculation requests. Reports
+use retained nodes and relationship evidence; unknown or unsearched relationships
+are not proven architectural gaps. Partial input and restricted analysis scopes
+are identified explicitly.
+
+The UI labels these items **open compatibility checks**. Zero open items do not
+prove architectural completeness. Conditions, optional steps and alternatives
+remain visible in patterns and require applicability review.
+
+A reconstructible working draft stores a reference to its owned server run plus
+editable input and view options. The browser therefore need not upload another
+large copy of scores, reasons and relationship reports. Reopening loads the result
+through authorized server APIs while preserving subsequently edited requirement
+text. Manual changes and legacy drafts retain their complete representation when
+a run cannot reconstruct them. Historical results without Copilot reports do not
+silently start a new LLM analysis.
+
+The existing draft size limit still applies to complete manual or historical
+drafts; those are not truncated to fit it.
+
+Optional Artemis workers still require explicit configuration. The default `local`
+mode uses the same server-side report computation but does not thereby become a
+distributed, restart-safe JMS deployment. See
+[analysis execution](../dev/CLUSTER_ANALYSIS_EXECUTION.md).
+
 ## Manual Copilot full analysis
 
 A saved immutable requirement version is processed through one or more bounded verification passes. A completed operation produces taxonomy scoring and reasons, a relation-aware architecture view, gap and pattern analysis, an architecture recommendation, immutable snapshots, and—when enabled—deterministic solution and product proposals.

@@ -111,7 +111,12 @@
         });
     }
 
-    function renderGapAnalysis(data) {
+    function retainedChecksLabel(count) {
+        return String(count) + ((document.documentElement?.lang || 'en').startsWith('de')
+            ? ' offene Kompatibilitätsprüfungen' : ' open compatibility checks');
+    }
+    function renderGapAnalysis(data, options) {
+        var retained = options?.retained === true;
         var el = document.getElementById('gapAnalysisContent');
         if (!el) return;
         var html = '';
@@ -119,12 +124,12 @@
         // Summary
         html += '<div class="d-flex gap-3 mb-2 flex-wrap">';
         html += '<span class="badge bg-primary">' + t('analyze.gap.anchors', data.totalAnchors) + '</span>';
-        html += '<span class="badge ' + (data.totalGaps > 0 ? 'bg-danger' : 'bg-success') + '">' + t('analyze.gap.gaps', data.totalGaps) + '</span>';
+        html += '<span class="badge ' + (retained ? 'bg-secondary' : data.totalGaps > 0 ? 'bg-danger' : 'bg-success') + '">' + (retained ? retainedChecksLabel(data.totalGaps || 0) : t('analyze.gap.gaps', data.totalGaps)) + '</span>';
         html += '</div>';
 
         // Missing Relations
         if (data.missingRelations && data.missingRelations.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.gap.missing.relations') + ' <span class="badge bg-danger">' + data.missingRelations.length + '</span></h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + (retained ? retainedChecksLabel(data.missingRelations.length) : t('analyze.gap.missing.relations')) + ' <span class="badge ' + (retained ? 'bg-secondary' : 'bg-danger') + '">' + data.missingRelations.length + '</span></h6>';
             html += '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
             html += '<thead><tr><th>' + t('analyze.table.source.node') + '</th><th>' + t('analyze.table.source.root') + '</th><th>' + t('analyze.table.expected.relation') + '</th><th>' + t('analyze.table.expected.target') + '</th><th>' + t('analyze.table.description') + '</th></tr></thead><tbody>';
             data.missingRelations.forEach(function (mr) {
@@ -179,7 +184,11 @@
         }
 
         if (data.totalGaps === 0) {
-            html += '<div class="alert alert-success py-1 px-2 small mb-0 mt-2">' + t('analyze.gap.no.gaps') + '</div>';
+            html += '<div class="alert ' + (retained ? 'alert-secondary' : 'alert-success') + ' py-1 px-2 small mb-0 mt-2">'
+                + (retained ? ((document.documentElement?.lang || 'en').startsWith('de')
+                    ? 'Keine Kompatibilitätsprüfungen angezeigt. Dies belegt keine vollständige Architektur.'
+                    : 'No compatibility checks are displayed. This does not establish architectural completeness.')
+                    : t('analyze.gap.no.gaps')) + '</div>';
         }
 
         el.innerHTML = html;
@@ -217,7 +226,7 @@
         });
     }
 
-    function renderPatternDetection(data) {
+    function renderPatternDetection(data, options) {
         var el = document.getElementById('patternDetectionContent');
         if (!el) return;
         var html = '';
@@ -233,7 +242,7 @@
         if (data.matchedPatterns && data.matchedPatterns.length > 0) {
             html += '<h6 class="small fw-semibold mt-2">' + t('analyze.patterns.complete.heading') + '</h6>';
             data.matchedPatterns.forEach(function (p) {
-                html += renderPatternCard(p, 'success');
+                html += renderPatternCard(p, 'success', options);
             });
         }
 
@@ -241,7 +250,7 @@
         if (data.incompletePatterns && data.incompletePatterns.length > 0) {
             html += '<h6 class="small fw-semibold mt-2">' + t('analyze.patterns.incomplete.heading') + '</h6>';
             data.incompletePatterns.forEach(function (p) {
-                html += renderPatternCard(p, 'warning');
+                html += renderPatternCard(p, 'warning', options);
             });
         }
 
@@ -260,7 +269,7 @@
         el.innerHTML = html;
     }
 
-    function renderPatternCard(pattern, color) {
+    function renderPatternCard(pattern, color, options) {
         var pct = displayPercent(pattern.completeness);
         var html = '<div class="card mb-2 border-' + color + '">';
         html += '<div class="card-body py-2 px-3">';
@@ -275,7 +284,18 @@
         html += '</div>';
 
         // Steps
-        if (pattern.expectedSteps && pattern.expectedSteps.length > 0) {
+        if (options?.retained) {
+            // Retained steps name concrete endpoints and preserve applicability qualifiers.
+            // Their strings cannot be compared with the root-level pattern template.
+            html += '<ul class="small mt-2 mb-0">';
+            (pattern.presentSteps || []).forEach(function (step) {
+                html += '<li>' + escapeHtml(step) + '</li>';
+            });
+            (pattern.missingSteps || []).forEach(function (step) {
+                html += '<li class="text-warning-emphasis">' + escapeHtml(step) + '</li>';
+            });
+            html += '</ul>';
+        } else if (pattern.expectedSteps && pattern.expectedSteps.length > 0) {
             html += '<div class="mt-1" style="font-size:0.78em;">';
             pattern.expectedSteps.forEach(function (step) {
                 var isPresent = pattern.presentSteps && pattern.presentSteps.indexOf(step) >= 0;
@@ -565,7 +585,55 @@
 
     // ── Copilot One-Click Flow ────────────────────────────────────────────────
 
+    function renderCopilotResult(copilot) {
+        var panel = document.getElementById('copilotPanel'); if (panel) panel.style.display = '';
+        if (!copilot) {
+            var legacy = window.TaxonomyState?.recoveryContext?.followups || {};
+            var retained = {};
+            [['gap', 'gaps'], ['patterns', 'patterns'], ['recommendation', 'recommendation']].forEach(function (entry) {
+                if (legacy[entry[0]]?.state === 'SUCCESS') retained[entry[1]] = legacy[entry[0]].result;
+            });
+            if (Object.keys(retained).length) copilot = Object.assign(retained, { state: 'PARTIAL', notes: [
+                (document.documentElement?.lang || 'en').startsWith('de')
+                    ? 'Gespeicherte historische Teilberichte. Ein vollständiges serverseitiges Copilot-Ergebnis liegt nicht vor.'
+                    : 'Retained historical partial reports. A complete server-owned Copilot result is unavailable.'
+            ] });
+        }
+        if (!copilot) {
+            renderPartialCopilot((document.documentElement?.lang || 'en').startsWith('de')
+                ? 'Für dieses historische Ergebnis sind keine gespeicherten Copilot-Berichte vorhanden.'
+                : 'This historical result has no saved Copilot reports.');
+            return;
+        }
+        if (copilot.state === 'SKIPPED_PARTIAL' || copilot.state === 'SKIPPED_SCOPE') {
+            renderPartialCopilot((copilot.notes || []).join(' ') || ((document.documentElement?.lang || 'en').startsWith('de')
+                ? 'Für diesen Analyseumfang sind globale Copilot-Aussagen offen.'
+                : 'Global Copilot findings remain open for this analysis scope.'));
+            return;
+        }
+        [['gaps', renderGapAnalysis, 'gapAnalysisPanel'], ['patterns', renderPatternDetection, 'patternDetectionPanel'],
+            ['recommendation', renderRecommendation, 'recommendationPanel']].forEach(function (entry) {
+            if (copilot[entry[0]]) {
+                entry[1](copilot[entry[0]], { retained: true });
+                var section = document.getElementById(entry[2]); if (section) section.open = true;
+            } else {
+                showPanelError({ gaps: 'gapAnalysisContent', patterns: 'patternDetectionContent',
+                    recommendation: 'recommendationContent' }[entry[0]], (copilot.notes || []).join(' '));
+            }
+        });
+        if (copilot.state === 'COMPLETED') renderCopilotSummary(copilot, { retained: true });
+        else showCopilotStatus('warning', (copilot.notes || []).join(' ') || ((document.documentElement?.lang || 'en').startsWith('de')
+            ? 'Copilot-Teilergebnis: Offene Beziehungen bleiben ungeklärt.'
+            : 'Partial Copilot result: open relationships remain unresolved.'));
+        resetCopilotBtn();
+    }
     function runCopilotFlow() {
+        var state = window.TaxonomyState || {};
+        if (state.analysisOperationId || state.analysisRecovery || window.TaxonomyAnalysisRecovery?.isManaged?.()) {
+            if (!state.currentCopilot && warnAboutOpenAssessments('copilotContent')) return Promise.resolve();
+            renderCopilotResult(state.currentCopilot || null);
+            return Promise.resolve(state.currentCopilot || null);
+        }
         if (warnAboutOpenAssessments('copilotContent')) return;
         var bt = getBusinessText();
         if (!bt) {
@@ -665,7 +733,8 @@
         if (copilotSpinner) copilotSpinner.classList.add('d-none');
     }
 
-    function renderCopilotSummary(results) {
+    function renderCopilotSummary(results, options) {
+        var retained = options?.retained === true;
         var el = document.getElementById('copilotContent');
         if (!el) return;
         var html = '';
@@ -679,10 +748,10 @@
         // Gaps summary card
         var gapCount = results.gaps ? results.gaps.totalGaps : 0;
         html += '<div class="col-4">';
-        html += '<div class="card text-center ' + (gapCount > 0 ? 'border-danger' : 'border-success') + '">';
+        html += '<div class="card text-center ' + (retained ? 'border-secondary' : gapCount > 0 ? 'border-danger' : 'border-success') + '">';
         html += '<div class="card-body py-2">';
-        html += '<div class="fs-4">' + (gapCount > 0 ? '\u274C' : '\u2705') + '</div>';
-        html += '<div class="fw-bold">' + t('analyze.copilot.gaps', gapCount) + '</div>';
+        html += '<div class="fs-4">' + (retained ? '\uD83D\uDD0E' : gapCount > 0 ? '\u274C' : '\u2705') + '</div>';
+        html += '<div class="fw-bold">' + (retained ? retainedChecksLabel(gapCount || 0) : t('analyze.copilot.gaps', gapCount)) + '</div>';
         html += '<div class="small text-muted">' + t('analyze.copilot.anchors.analyzed', (results.gaps ? results.gaps.totalAnchors : 0)) + '</div>';
         html += '</div></div></div>';
 
@@ -711,6 +780,10 @@
 
         html += '</div>';
 
+        if (retained && results.notes?.length) {
+            html += '<div class="alert alert-info py-1 px-2 small mt-2">'
+                + results.notes.map(escapeHtml).join('<br>') + '</div>';
+        }
         html += '<div class="small text-muted mt-2">' + t('analyze.copilot.scroll.hint') + '</div>';
 
         el.innerHTML = html;
@@ -719,6 +792,7 @@
     // ── Event binding ─────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', function () {
+        if (window.TaxonomyState?.currentCopilot) renderCopilotResult(window.TaxonomyState.currentCopilot);
         var gapBtn = document.getElementById('gapAnalyzeBtn');
         if (gapBtn) gapBtn.addEventListener('click', runGapAnalysis);
 
@@ -748,6 +822,7 @@
         runRecommendation: runRecommendation,
         runEnrichedFailureImpact: runEnrichedFailureImpact,
         runCopilotFlow: runCopilotFlow,
+        renderCopilotResult: renderCopilotResult,
         renderPartialCopilot: renderPartialCopilot,
         runArchiMateImport: runArchiMateImport
     };

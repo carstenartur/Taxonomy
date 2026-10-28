@@ -31,7 +31,8 @@ class CopilotTerminalStateRegressionTest {
                 .contains("waitForMainAnalysis()")
                 .contains("taxonomy:operation-state")
                 .contains("terminal.status === 'SUCCEEDED'")
-                .contains("window.TaxonomyAnalysis.runCopilotFlow()");
+                .contains("window.TaxonomyAnalysis.renderCopilotResult(terminal.result?.copilot || C.S.currentCopilot || null)")
+                .doesNotContain("window.TaxonomyAnalysis.runCopilotFlow()");
     }
 
     private static String resource(String path) throws IOException {

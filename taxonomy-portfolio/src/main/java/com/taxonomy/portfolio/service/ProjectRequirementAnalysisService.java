@@ -3,10 +3,12 @@ package com.taxonomy.portfolio.service;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
+import com.taxonomy.architecture.service.AnalysisCopilotService;
 import com.taxonomy.architecture.service.ArchitectureGapService;
 import com.taxonomy.architecture.service.ArchitecturePatternService;
 import com.taxonomy.architecture.service.ArchitectureRecommendationService;
 import com.taxonomy.dto.AnalysisProvenance;
+import com.taxonomy.dto.AnalysisCopilotResult;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
@@ -32,6 +34,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 /** Orchestrates independent analyses while keeping LLM calls outside persistence transactions. */
@@ -40,7 +43,6 @@ public class ProjectRequirementAnalysisService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProjectRequirementAnalysisService.class);
     private static final int DEFAULT_ARCHITECTURE_NODES = 25;
-    private static final int INTELLIGENCE_MIN_SCORE = 50;
 
     private final ProjectPortfolioService projectService;
     private final PortfolioAnalysisPersistenceService persistenceService;
@@ -48,9 +50,7 @@ public class ProjectRequirementAnalysisService {
     private final PortfolioAnalysisWorkQueue workQueue;
     private final PortfolioAnalysisRecoveryService recoveryService;
     private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
-    private final ArchitectureGapService gapService;
-    private final ArchitecturePatternService patternService;
-    private final ArchitectureRecommendationService recommendationService;
+    private final AnalysisCopilotService copilotService;
     private final PortfolioFingerprintService fingerprintService;
     private final LlmService llmService;
     private final AsyncTaskExecutor analysisExecutor;
@@ -84,15 +84,37 @@ public class ProjectRequirementAnalysisService {
             int maximumBatchRequirements,
             @Value("${taxonomy.portfolio.analysis-claim-timeout-seconds:900}")
             long claimTimeoutSeconds) {
+        this(projectService, persistenceService, claimPersistenceService, workQueue, recoveryService,
+                analyzeRequirementUseCase, new AnalysisCopilotService(), fingerprintService, llmService,
+                analysisExecutor, maximumArchitectureNodes, maximumBatchRequirements, claimTimeoutSeconds);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ProjectRequirementAnalysisService(
+            ProjectPortfolioService projectService,
+            PortfolioAnalysisPersistenceService persistenceService,
+            PortfolioAnalysisClaimPersistenceService claimPersistenceService,
+            PortfolioAnalysisWorkQueue workQueue,
+            PortfolioAnalysisRecoveryService recoveryService,
+            AnalyzeRequirementUseCase analyzeRequirementUseCase,
+            AnalysisCopilotService copilotService,
+            PortfolioFingerprintService fingerprintService,
+            LlmService llmService,
+            @Qualifier("portfolioAnalysisExecutor")
+            AsyncTaskExecutor analysisExecutor,
+            @Value("${taxonomy.limits.max-architecture-nodes:100}")
+            int maximumArchitectureNodes,
+            @Value("${taxonomy.portfolio.max-analysis-batch:100}")
+            int maximumBatchRequirements,
+            @Value("${taxonomy.portfolio.analysis-claim-timeout-seconds:900}")
+            long claimTimeoutSeconds) {
         this.projectService = projectService;
         this.persistenceService = persistenceService;
         this.claimPersistenceService = claimPersistenceService;
         this.workQueue = workQueue;
         this.recoveryService = recoveryService;
         this.analyzeRequirementUseCase = analyzeRequirementUseCase;
-        this.gapService = gapService;
-        this.patternService = patternService;
-        this.recommendationService = recommendationService;
+        this.copilotService = Objects.requireNonNull(copilotService);
         this.fingerprintService = fingerprintService;
         this.llmService = llmService;
         this.analysisExecutor = analysisExecutor;
@@ -376,10 +398,16 @@ public class ProjectRequirementAnalysisService {
                             ? analysis.getErrorMessage() : "Analysis produced no usable scores");
                 }
 
-                GapAnalysisView gaps = safeGapAnalysis(analysis, workItem.requirementText());
-                PatternDetectionView patterns = safePatternAnalysis(analysis);
-                ArchitectureRecommendation recommendation = safeRecommendation(
-                        analysis, workItem.requirementText());
+                AnalysisCopilotResult copilot = analysis.getCopilot();
+                if (copilot == null) {
+                    // Historical/local producers may not have a report yet. Use their
+                    // retained evidence, never a newer global catalogue or model call.
+                    copilot = copilotService.analyze(analysis, workItem.requirementText());
+                    analysis.setCopilot(copilot);
+                }
+                GapAnalysisView gaps = copilot.gaps();
+                PatternDetectionView patterns = copilot.patterns();
+                ArchitectureRecommendation recommendation = copilot.recommendation();
                 long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
                 claimPersistenceService.persistSnapshot(
                         workItem,
@@ -437,42 +465,6 @@ public class ProjectRequirementAnalysisService {
                 || status == AnalysisStatus.CANCELLED;
     }
 
-    private GapAnalysisView safeGapAnalysis(AnalysisResult analysis, String requirementText) {
-        try {
-            return gapService.analyze(analysis.getScores(), requirementText, INTELLIGENCE_MIN_SCORE);
-        } catch (RuntimeException failure) {
-            analysis.getWarnings().add("Gap analysis failed: " + safeMessage(failure));
-            GapAnalysisView fallback = new GapAnalysisView();
-            fallback.setBusinessText(requirementText);
-            fallback.getNotes().add("Gap analysis unavailable for this snapshot: " + safeMessage(failure));
-            return fallback;
-        }
-    }
-
-    private PatternDetectionView safePatternAnalysis(AnalysisResult analysis) {
-        try {
-            return patternService.detectForScores(analysis.getScores(), INTELLIGENCE_MIN_SCORE);
-        } catch (RuntimeException failure) {
-            analysis.getWarnings().add("Pattern detection failed: " + safeMessage(failure));
-            PatternDetectionView fallback = new PatternDetectionView();
-            fallback.getNotes().add("Pattern detection unavailable for this snapshot: " + safeMessage(failure));
-            return fallback;
-        }
-    }
-
-    private ArchitectureRecommendation safeRecommendation(AnalysisResult analysis, String requirementText) {
-        try {
-            return recommendationService.recommend(
-                    analysis.getScores(), requirementText, INTELLIGENCE_MIN_SCORE);
-        } catch (RuntimeException failure) {
-            analysis.getWarnings().add("Architecture recommendation failed: " + safeMessage(failure));
-            ArchitectureRecommendation fallback = new ArchitectureRecommendation();
-            fallback.setBusinessText(requirementText);
-            fallback.getNotes().add("Recommendation unavailable for this snapshot: " + safeMessage(failure));
-            return fallback;
-        }
-    }
-
     private List<Long> selectRequirementIds(Long projectId,
                                             AnalyzeProjectRequest request,
                                             String username,
@@ -520,9 +512,4 @@ public class ProjectRequirementAnalysisService {
         return provider.strip().toUpperCase(Locale.ROOT);
     }
 
-    private static String safeMessage(Throwable failure) {
-        String message = failure.getMessage();
-        return message != null && !message.isBlank()
-                ? message : failure.getClass().getSimpleName();
-    }
 }

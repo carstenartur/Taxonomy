@@ -19,7 +19,7 @@ function harness(language='en') {
  let pending,snapshot,options=[],followups=0,opens=0,requestHandler,realScoring=false;
  const S={},runtime={workspaceId:'work',analysisGeneration:0};
  const fields={businessText:Object.assign(element('textarea'),{value:'Record status'}),copilotBtn:element('button'),analyzeBtn:element('button'),copilotSpinner:element(),providerSelect:Object.assign(element('select'),{value:'CUSTOM_OPENAI'})};
- const writes=[],reads=[],panels=[],views=[],timers=new Map(),listeners=new Map(),storage=new Map();let timer=0;
+ const writes=[],reads=[],panels=[],renderedReports=[],views=[],timers=new Map(),listeners=new Map(),storage=new Map();let timer=0;
  const ui={body:element(),message:'',opened:false,update(message,busy,canCancel){Object.assign(this,{message,busy,canCancel});},close(){this.opened=false;},error(message){this.errorText=message;},
   open(title,message,build,actions){opens++;this.opened=true;this.message=message;this.body=element();options=actions;build(this.body,element);
    for(const option of actions)fields[option.id]=Object.assign(element('button',option.label),{disabled:!!option.disabled});}};
@@ -29,7 +29,7 @@ function harness(language='en') {
   TaxonomyAnalysisSession:{state:()=>({ready:true,workspaceId:runtime.workspaceId}),saveNow:async()=>true},
   TaxonomyAnalysisSessionApi:{request:async(url,init,workspace)=>{reads.push({url,init,workspace});return requestHandler?requestHandler(url,init):{ok:true,json:async()=>snapshot};}},
   TaxonomyScoring:{runAnalysis({continuation}){writes.push(continuation);return new Promise(resolve=>{pending=resolve;});},renderArchitectureView:view=>views.push(view),renderSuggestedRelations(){}},
-  TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderPartialCopilot:message=>panels.push(message)}};
+  TaxonomyAnalysis:{runCopilotFlow:async()=>{followups++;},renderCopilotResult:value=>renderedReports.push(value),renderPartialCopilot:message=>panels.push(message)}};
  const context={window,document,crypto:webcrypto,console,setTimeout:fn=>{timers.set(++timer,fn);return timer;},clearTimeout:id=>timers.delete(id),
   sessionStorage:{getItem:key=>storage.get(key)||null,setItem:(key,v)=>storage.set(key,v),removeItem:key=>storage.delete(key)}};
  vm.runInNewContext(source,context);
@@ -63,7 +63,7 @@ function harness(language='en') {
  function loadAnalysis(){for(const id of ['copilotContent','copilotPanel','gapAnalysisContent','gapAnalysisPanel','patternDetectionContent','patternDetectionPanel','recommendationContent','recommendationPanel'])fields[id]=element();
   context.TaxonomyI18n={t:key=>key};context.TaxonomyUtils={escapeHtml:v=>String(v??'')};context.fetch=async()=>{throw Error('unexpected global analysis request');};vm.runInNewContext(analysisSource,context);}
  return{S,runtime,fields,window,ui,document,writes,reads,views,panels,timers,result,complete,loadAnalysis,loadScoring,
-  options:()=>options,followups:()=>followups,opens:()=>opens,act:id=>options.find(o=>o.id===id)?.handler(),
+  options:()=>options,followups:()=>followups,renderedReports,opens:()=>opens,act:id=>options.find(o=>o.id===id)?.handler(),
   request:fn=>{requestHandler=fn;},snapshot:r=>{snapshot={request:S.recoveryContext.request,recovery:r.recovery,result:r};},
   emit:(name,detail)=>(listeners.get(name)||[]).forEach(fn=>fn({detail})),recovery:window.TaxonomyAnalysisRecovery};
 }
@@ -83,7 +83,8 @@ for(const lang of ['de','en']) {
  test(`${lang}: one explicit retry is bound to the same operation and revision`,async()=>{
   const h=harness(lang);h.recovery.startCopilot();h.complete(h.result());await settle();const view=h.S.currentArchView;h.recovery.open();h.act('analysisRecoveryRetry');
   assert.equal(h.writes.length,2);assert.equal(h.writes[1].continuationId,h.writes[0].continuationId);assert.equal(h.writes[1].continuationVersion,7);
-  assert.equal(h.writes[1].continuationQuestion,'a');assert.equal(h.S.currentArchView,view);h.complete(h.result('COMPLETED',[]));await settle();assert.equal(h.followups(),1);
+  assert.equal(h.writes[1].continuationQuestion,'a');assert.equal(h.S.currentArchView,view);h.complete(h.result('COMPLETED',[]));await settle();assert.equal(h.followups(),0);
+  assert.equal(h.renderedReports.length,1);assert.equal(h.S.recoveryContext.followupState,'HISTORICAL');
  });
  test(`${lang}: selected retries do not authorize all open questions`,async()=>{
   const h=harness(lang);h.recovery.startCopilot();h.complete(h.result('COMPLETED_WITH_GAPS',[question('a'),question('b'),question('c')]));await settle();h.recovery.open();

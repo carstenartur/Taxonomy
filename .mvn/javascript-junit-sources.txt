@@ -46,6 +46,7 @@
 .github/scripts/relation-search-confidence.test.mjs
 .github/scripts/relation-search-report.test.mjs
 .github/scripts/search-mode-readiness.test.mjs
+.github/scripts/server-owned-copilot.test.mjs
 .github/scripts/subtaxonomy-container-browse.test.mjs
 .github/scripts/subtaxonomy-container-metadata.test.mjs
 .github/scripts/subtaxonomy-container-onboarding.test.mjs

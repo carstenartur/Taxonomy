@@ -70,15 +70,14 @@ class ProjectAnalysisBudgetContinuationTest {
             var recommendation = new ArchitectureRecommendation();
             recommendation.setBusinessText(Fixture.TEXT);
             recommendation.setNotes(List.of("RECOMMENDATION " + note));
-            // The ordinary producer persists these results; no immutable snapshot is rewritten.
-            when(((ArchitectureGapService) ReflectionTestUtils.getField(f.service, "gapService"))
-                    .analyze(anyMap(), anyString(), anyInt())).thenReturn(gap);
-            when(((ArchitecturePatternService) ReflectionTestUtils.getField(f.service, "patternService"))
-                    .detectForScores(anyMap(), anyInt())).thenReturn(pattern);
-            when(((ArchitectureRecommendationService) ReflectionTestUtils.getField(f.service, "recommendationService"))
-                    .recommend(anyMap(), anyString(), anyInt())).thenReturn(recommendation);
-
-            var job = f.start("continuation-payload-read");
+            // The canonical completion producer persists these large reports; the
+            // read-path test must not rewrite an immutable snapshot after creation.
+            AnalysisJobView job;
+            try (var reports = mockConstruction(AnalysisCopilotService.class, (service, context) ->
+                    when(service.analyze(any(), anyString())).thenReturn(new AnalysisCopilotResult(
+                            1, "SKIPPED_PARTIAL", gap, pattern, recommendation, List.of())))) {
+                job = f.start("continuation-payload-read");
+            }
             var item = job.items().getFirst();
             assertThat(job.status()).isEqualTo(AnalysisStatus.PARTIAL);
             assertThat(item.status()).isEqualTo(AnalysisStatus.PARTIAL);

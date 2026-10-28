@@ -49,6 +49,30 @@ class SavedScopeExchangeTest {
         return controller;
     }
 
+    @Test
+    void retainedCopilotSurvivesPortableExportImportAndReExportWithoutCreatingAuthority() throws Exception {
+        var copilot = Map.of("schemaVersion", 1, "state", "PARTIAL",
+                "gaps", Map.of("totalAnchors", 1, "totalGaps", 2,
+                        "notes", List.of("Retained compatibility checks, not confirmed gaps")),
+                "patterns", Map.of("patternCoverage", 0),
+                "recommendation", Map.of("confidence", 70),
+                "notes", List.of("Retained report fixture"));
+        var body = Map.<String, Object>of("requirement", "Retained requirement",
+                "scores", Map.of("BP", 70d), "provider", "MOCK", "copilot", copilot);
+        var exported = controller().exportScores(body);
+        assertThat(exported.getStatusCode().value()).isEqualTo(200);
+        var imported = controller().importScores(mapper.writeValueAsString(exported.getBody()));
+        assertThat(imported.getStatusCode().value()).isEqualTo(200);
+        var reExported = controller().exportScores(imported.getBody());
+        for (var value : List.of(exported.getBody(), imported.getBody(), reExported.getBody())) {
+            var json = mapper.valueToTree(value);
+            assertThat(json.path("copilot").path("state").asString()).isEqualTo("PARTIAL");
+            assertThat(json.path("copilot").path("notes").get(0).asString()).isEqualTo("Retained report fixture");
+            assertThat(json.path("copilot").path("gaps").path("totalGaps").asInt()).isEqualTo(2);
+            assertThat(json.hasNonNull("analysisReference")).isFalse();
+        }
+    }
+
     @org.junit.jupiter.api.Test
     void followUpIdentitySurvivesScoreExportAndImportWithoutGrantingAuthority() throws Exception {
         String operation = "10000000-0000-4000-8000-000000000001";

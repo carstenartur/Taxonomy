@@ -163,6 +163,8 @@
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
         S.currentArchView = null;
+        S.currentCopilot = null;
+        runtime.analysisReference = null; runtime.analysisEvidence = null;
         S.currentRelationSearchReport = null;
         S.storedBusinessText = null;
         S.evaluatedNodes = new Set();
