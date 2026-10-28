@@ -1,5 +1,7 @@
 # Betriebshandbuch
 
+Ersteinrichtung: [Taxonomy mit Artemis in Kubernetes einrichten](ARTEMIS_SETUP.md) — persistenter Broker, TLS/Secrets, ein Coordinator und ein Worker.
+
 Verteilte Analyse mit externem Artemis: [Bereitstellung, TLS/Secrets, Worker-Skalierung, HA und Administration](#betrieb-mit-externem-artemis-broker).
 
 Dieses Dokument beschreibt die betrieblichen Verfahren für den Betrieb des Taxonomy Architecture Analyzer in Produktionsumgebungen.
@@ -18,6 +20,7 @@ Dieses Dokument beschreibt die betrieblichen Verfahren für den Betrieb des Taxo
 8. [JGit-Repository-Wartung](#jgit-repository-wartung)
 9. [Skalierungsaspekte](#skalierungsaspekte)
 10. [Fehlerbehebung](#fehlerbehebung)
+11. [Betrieb mit externem Artemis-Broker](#betrieb-mit-externem-artemis-broker)
 
 ---
 
@@ -312,7 +315,11 @@ Wenn `TAXONOMY_DSL_REMOTE_URL` konfiguriert ist, werden DSL-Commits an ein Remot
 
 ### Einzelinstanz
 
-Die Anwendung ist für den Betrieb als Einzelinstanz konzipiert. Die Mehrbenutzerfähigkeit wird durch Workspace-Isolierung innerhalb derselben JVM realisiert.
+Im standardmäßigen Transportmodus `local` laufen Web und Analyse in einer Instanz.
+Die Workspace-Isolierung unterstützt mehrere Benutzer in derselben Anwendung.
+Für getrennte Analyse-Worker ist der optionale Artemis-Modus vorgesehen; die
+[Einrichtungsanleitung](ARTEMIS_SETUP.md) beginnt mit einem Coordinator und einem
+Worker. Mehrere Web-Replikate bleiben eine gesondert zu prüfende Konfiguration.
 
 ### Leistungsoptimierung
 
@@ -393,6 +400,10 @@ server {
 ---
 
 ## Betrieb mit externem Artemis-Broker
+
+Für die erste Installation einschließlich Broker, PVC und Zertifikaten die
+[Schritt-für-Schritt-Anleitung](ARTEMIS_SETUP.md) verwenden. Dieser Abschnitt
+vertieft den Betrieb und die Erweiterung einer eingerichteten Installation.
 
 Standard bleibt der Transport `local` mit Laufzeitrolle `all`. Verteilte Analysen
 verwenden dasselbe Taxonomy-Image für Web-Pods mit Rolle `coordinator` und separat

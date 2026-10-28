@@ -1,5 +1,7 @@
 # Deployment-Leitfaden
 
+Artemis erstmals einrichten: [Schritt für Schritt vom persistenten Broker zur laufenden Coordinator-/Worker-Installation](ARTEMIS_SETUP.md).
+
 Verteilte Analyse mit externem Artemis: [Bereitstellung, TLS/Secrets, Worker-Skalierung, HA und Administration](OPERATIONS_GUIDE.md#betrieb-mit-externem-artemis-broker).
 
 Dieses Dokument beschreibt die sicherheits- und persistenzrelevanten Mindestanforderungen. Die vollständigen, technisch maßgeblichen Details stehen im [englischen Deployment Guide](../en/DEPLOYMENT_GUIDE.md).
