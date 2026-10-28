@@ -8,7 +8,7 @@ import java.util.Objects;
 /** SemVer ranges refer to the host SPI, independently of the product release version. */
 public record PluginDescriptor(PluginIdentity identity, String hostApiRange,
         List<PluginRequirement> requires, Set<String> capabilities, PluginMode mode) implements Serializable {
-    public static final String HOST_API_VERSION = "1.1.0";
+    public static final String HOST_API_VERSION = "1.2.0";
     public PluginDescriptor {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(mode, "mode");

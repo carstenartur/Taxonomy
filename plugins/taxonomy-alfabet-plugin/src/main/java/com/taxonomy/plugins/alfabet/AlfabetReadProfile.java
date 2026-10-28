@@ -1,4 +1,4 @@
-package com.taxonomy.interop.alfabet;
+package com.taxonomy.plugins.alfabet;
 
 import com.taxonomy.extension.api.integration.IntegrationContracts.ExternalScope;
 
@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /** Administrator-supplied, versioned read contract. Contains secret references, never secret values. */
-public record AlfabetReadProfile(ExternalScope scope, String mappingVersion, URI baseUri,
+record AlfabetReadProfile(ExternalScope scope, String mappingVersion, URI baseUri,
                                  String currentProfile, Authentication authentication,
                                  List<Report> reports, Limits limits,
                                  boolean allowPrivateNetworks, boolean allowInsecureHttp) {
@@ -40,7 +40,7 @@ public record AlfabetReadProfile(ExternalScope scope, String mappingVersion, URI
     /** Budgets apply across all reports; neither pagination nor token acquisition resets the deadline. */
     public record Limits(int pageSize, int maxPages, int maxRows, int maxResponseBytes, int maxTotalBytes, int timeoutSeconds) {
         public Limits {
-            bound(pageSize, 1, 1000); bound(maxPages, 1, 200); bound(maxRows, 1, 10000);
+            bound(pageSize, 1, 1000); bound(maxPages, 1, 500); bound(maxRows, 1, 30000);
             bound(maxResponseBytes, 1024, 2 * 1024 * 1024);
             bound(maxTotalBytes, maxResponseBytes, 16 * 1024 * 1024); bound(timeoutSeconds, 1, 120);
         }
@@ -48,7 +48,7 @@ public record AlfabetReadProfile(ExternalScope scope, String mappingVersion, URI
     }
 
     public AlfabetReadProfile {
-        Objects.requireNonNull(scope, "scope"); text(mappingVersion, 64); text(currentProfile, 200);
+        Objects.requireNonNull(scope, "scope"); text(mappingVersion, 200); text(currentProfile, 200);
         Objects.requireNonNull(authentication, "authentication"); Objects.requireNonNull(limits, "limits");
         reports = List.copyOf(reports);
         if (reports.isEmpty() || reports.size() > 16) throw new IllegalArgumentException("Configure 1 to 16 read reports");

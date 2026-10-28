@@ -1,4 +1,4 @@
-package com.taxonomy.interop.alfabet;
+package com.taxonomy.plugins.alfabet;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.taxonomy.extension.api.integration.IntegrationContracts.ExternalScope;
@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 /** Bounded external observation, NOT a canonical architecture or an authoritative inventory. */
-public record AlfabetSnapshot(ExternalScope source, String mappingVersion, Instant startedAt, Instant finishedAt,
+record AlfabetSnapshot(ExternalScope source, String mappingVersion, Instant startedAt, Instant finishedAt,
                               int pageCount, long responseBytes, List<ReportData> reports) {
     public AlfabetSnapshot { reports = List.copyOf(reports); }
     @JsonProperty public boolean authoritativeInventory() { return false; }

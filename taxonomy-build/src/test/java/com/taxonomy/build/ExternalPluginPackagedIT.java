@@ -44,6 +44,38 @@ class ExternalPluginPackagedIT {
         assertThat(PackagedPluginSupport.sha256(host)).isEqualTo(original);
     }
 
+    @Test void externalAlfabetJarLoadsWithoutCredentialsAndWithoutBundledHostClasses() throws Exception {
+        Path root = PackagedPluginSupport.repository();
+        Path host = PackagedPluginSupport.application(root);
+        String original = PackagedPluginSupport.sha256(host);
+        Path plugin = PackagedPluginSupport.buildIndependentPlugin(root, temporary,
+                "taxonomy-alfabet-plugin", 42, "alfabet-sdk-verification.txt");
+        try (var jar = new JarFile(plugin.toFile())) {
+            assertThat(jar.getManifest().getMainAttributes().getValue("Taxonomy-Plugin-Mode")).isEqualTo("STARTUP");
+            assertThat(jar.getManifest().getMainAttributes().getValue("Plugin-Requires")).contains("1.2.0");
+            assertThat(jar.getJarEntry("META-INF/services/com.taxonomy.extension.api.plugin.TaxonomyPlugin")).isNotNull();
+            assertThat(jar.stream().map(e -> e.getName())).noneMatch(n -> n.startsWith("com/taxonomy/extension/")
+                    || n.startsWith("com/taxonomy/interop/") || n.startsWith("com/fasterxml/jackson/")
+                    || n.startsWith("org/apache/hc/") || n.endsWith(".jar"));
+            assertThat(jar.getJarEntry("com/taxonomy/plugins/alfabet/internal/jackson/databind/ObjectMapper.class")).isNotNull();
+        }
+        Path installed = Files.createDirectory(temporary.resolve("alfabet-installed"));
+        Files.copy(plugin, installed.resolve("alfabet.jar"));
+        try (var app = PackagedPluginSupport.start(host, installed, host.getParent().resolve("features"),
+                temporary.resolve("alfabet-state"), List.of("--taxonomy.plugins.dynamic.enabled=true"))) {
+            var metadata = app.request("GET", "/api/extensions", null);
+            assertThat(metadata.statusCode()).as(metadata.body()).isEqualTo(200);
+            assertThat(metadata.body()).contains("alfabet", "INVENTORY_SOURCE");
+            assertThat(app.request("POST", "/api/admin/plugins/taxonomy.alfabet/deactivate", null).statusCode()).isEqualTo(409);
+        }
+        Path absent = Files.createDirectory(temporary.resolve("alfabet-absent"));
+        try (var app = PackagedPluginSupport.start(host, absent, temporary.resolve("alfabet-without-plugin"))) {
+            assertThat(app.request("GET", "/api/extensions", null).body()).doesNotContain("alfabet");
+            assertThat(app.request("GET", "/actuator/health/readiness", null).statusCode()).isEqualTo(200);
+        }
+        assertThat(PackagedPluginSupport.sha256(host)).isEqualTo(original);
+    }
+
     @Test void externalMermaidJarIsOptionalAndDoesNotRequireRebuildingTheHost() throws Exception {
         Path root = PackagedPluginSupport.repository();
         Path host = PackagedPluginSupport.application(root);
@@ -88,7 +120,7 @@ class ExternalPluginPackagedIT {
         }
         Path absent = Files.createDirectory(temporary.resolve("no plugins"));
         try (var app = PackagedPluginSupport.start(host, absent, temporary.resolve("without-plugin"))) {
-            assertThat(app.request("GET", "/api/extensions", null).body()).doesNotContain("mermaid", "leanix");
+            assertThat(app.request("GET", "/api/extensions", null).body()).doesNotContain("mermaid", "leanix", "alfabet");
             assertThat(app.request("GET", "/actuator/health/readiness", null).statusCode()).isEqualTo(200);
             for (String route : List.of("/api/diagram/export/mermaid", "/api/diagram/mermaid")) {
                 assertThat(app.request("POST", route, "{\"businessText\":\"Offline export\"}").statusCode()).isEqualTo(404);

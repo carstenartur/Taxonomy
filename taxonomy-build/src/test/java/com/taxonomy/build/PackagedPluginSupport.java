@@ -43,7 +43,7 @@ final class PackagedPluginSupport {
     }
     static Path buildIndependentPlugin(Path root, Path temporary, String artifactId,
                                        int minimumTests, String evidenceFile) throws Exception {
-        if (!Set.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin").contains(artifactId))
+        if (!Set.of("taxonomy-mermaid-plugin", "taxonomy-leanix-plugin", "taxonomy-alfabet-plugin").contains(artifactId))
             throw new IllegalArgumentException("Unsupported packaged test fixture");
         Path localRepository = Files.createDirectory(temporary.resolve("empty-maven-repository"));
         try (var contents = Files.list(localRepository)) { assertThat(contents).isEmpty(); }

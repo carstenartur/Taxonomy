@@ -1,8 +1,8 @@
-package com.taxonomy.interop.alfabet;
+package com.taxonomy.plugins.alfabet;
 
 import com.sun.net.httpserver.HttpServer;
 import com.taxonomy.extension.api.integration.IntegrationContracts.ExternalScope;
-import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.ReadFailure;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +15,9 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.Executors;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,22 +29,71 @@ class AlfabetTransportTest {
 
     @AfterEach void stop() { if (server != null) server.stop(0); }
 
+    @Test void networkPolicyKeepsMetadataAndSpecialAddressesForbiddenWithPrivateAccess() throws Exception {
+        for (String address : List.of("0.0.0.0", "169.254.169.254", "100.100.100.200", "224.0.0.1",
+                "240.0.0.1", "::", "fe80::1", "ff02::1", "fd00:ec2::254")) {
+            assertFalse(AlfabetHttpTransport.allowedAddress(InetAddress.getByName(address), true), address);
+        }
+        for (String address : List.of("127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "::1", "fd01::1")) {
+            assertFalse(AlfabetHttpTransport.allowedAddress(InetAddress.getByName(address), false), address);
+            assertTrue(AlfabetHttpTransport.allowedAddress(InetAddress.getByName(address), true), address);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"oversized", "unauthorized", "media-type"})
+    void rejectedResponsesAreAbortedBeforeClosingCanDrainTheBody(String mode) throws Exception {
+        var release = new CountDownLatch(1);
+        var sent = new CountDownLatch(1);
+        var handlers = Executors.newCachedThreadPool();
+        var reader = Executors.newSingleThreadExecutor();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.setExecutor(handlers);
+        server.createContext("/", exchange -> {
+            try {
+                exchange.getRequestBody().readAllBytes();
+                exchange.getResponseHeaders().set("Content-Type", mode.equals("media-type") ? "text/plain" : "application/json");
+                exchange.sendResponseHeaders(mode.equals("unauthorized") ? 403 : 200, 0);
+                exchange.getResponseBody().write(" ".repeat(2048).getBytes(StandardCharsets.UTF_8));
+                exchange.getResponseBody().flush(); sent.countDown();
+                release.await(8, TimeUnit.SECONDS);
+            } catch (java.io.IOException cancelled) { /* The tested client deliberately cancels rejected responses. */ }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            finally { sent.countDown(); exchange.close(); }
+        });
+        server.start();
+        try {
+            var result = reader.submit(() -> assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 10))));
+            assertTrue(sent.await(2, TimeUnit.SECONDS));
+            var failure = result.get(2, TimeUnit.SECONDS);
+            assertEquals(switch (mode) {
+                case "oversized" -> "ALFABET_READ_LIMIT";
+                case "unauthorized" -> "ALFABET_UNAUTHORIZED";
+                default -> "ALFABET_MEDIA_TYPE";
+            }, failure.code());
+        } finally {
+            release.countDown(); reader.shutdownNow(); handlers.shutdownNow();
+            assertTrue(reader.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(handlers.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
     @Test void refusesPrivateAddressesUnlessExplicitlyEnabled() throws Exception {
         serve(200, "application/json", "{\"Name\":\"Applications\",\"Objects\":[]}", false);
-        assertThrows(IntegrationProblem.class, () -> client().read(profile(false, 1024, 2)));
+        assertThrows(ReadFailure.class, () -> client().read(profile(false, 1024, 2)));
         assertEquals(0, calls.get());
     }
 
     @Test void doesNotFollowRedirectsOrRetryAndNeverHitsUpdateEndpoint() throws Exception {
         serve(307, "application/json", "{}", true);
-        assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 2)));
+        assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 2)));
         assertEquals(1, calls.get());
         assertEquals(0, redirected.get());
     }
 
     @Test void permissionFailureIsAnErrorNotAnEmptySnapshot() throws Exception {
         serve(403, "application/json", "{\"error\":\"" + TOKEN + "\"}", false);
-        var failure = assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 2)));
+        var failure = assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 2)));
         assertFalse(failure.toString().contains(TOKEN));
         assertNull(failure.getCause());
         assertEquals(1, calls.get());
@@ -49,26 +101,26 @@ class AlfabetTransportTest {
 
     @Test void doesNotRetryRateLimits() throws Exception {
         serve(429, "application/json", "{}", false);
-        assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 2)));
+        assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 2)));
         assertEquals(1, calls.get());
     }
 
     @Test void refusesAnOversizedBody() throws Exception {
         serve(200, "application/json", " ".repeat(2048), false);
-        assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 2)));
+        assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 2)));
     }
 
     @Test void rejectsAnHtmlLoginPage() throws Exception {
         serve(200, "text/html", "<html>Login</html>", false);
-        assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 2)));
+        assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 2)));
     }
 
     @Test void rejectsDuplicateJsonKeysAndTrailingDocuments() throws Exception {
         serve(200, "application/json", "{\"Name\":\"Applications\",\"Objects\":[],\"Objects\":[{}]}", false);
-        assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 2)));
+        assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 2)));
         server.stop(0);
         serve(200, "application/json", "{\"Name\":\"Applications\",\"Objects\":[]} {}", false);
-        assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 2)));
+        assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 2)));
     }
 
     @Test void enforcesADeadlineOnAResponseThatNeverFinishes() throws Exception {
@@ -89,7 +141,7 @@ class AlfabetTransportTest {
         });
         server.start();
         long start = System.nanoTime();
-        assertThrows(IntegrationProblem.class, () -> client().read(profile(true, 1024, 1)));
+        assertThrows(ReadFailure.class, () -> client().read(profile(true, 1024, 1)));
         assertTrue(java.time.Duration.ofNanos(System.nanoTime() - start).toSeconds() < 4);
     }
 
@@ -110,7 +162,7 @@ class AlfabetTransportTest {
         })) {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
             long started = System.nanoTime();
-            var failure = assertThrows(IntegrationProblem.class,
+            var failure = assertThrows(ReadFailure.class,
                     () -> transport.post(AlfabetHttpTransport.Endpoint.OBJECTS, "{}", null, 1024, deadline));
             assertEquals("ALFABET_READ_TIMEOUT", failure.code());
             assertTrue(resolverStarted.await(1, TimeUnit.SECONDS));
