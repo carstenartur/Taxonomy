@@ -96,6 +96,73 @@ Neither a Docker executable nor a Docker socket was available here, so that full
 gate was not run locally. The focused results above do not replace the existing
 CI browser matrix, container/database, interoperability or coverage gates.
 
+## CI follow-up regressions
+
+The first complete [PR #1320 CI run](https://github.com/carstenartur/Taxonomy/actions/runs/40540591150)
+at `6601e1f8` exposed two gaps in the initial focused verification:
+
+- `DecisionDiagramReadingTest` still called a removed private single-sheet
+  helper. The same build-policy failure stopped the core, plugin, document and
+  three database workflows. Its contract now uses the actual print entry point
+  with explicit A1/A0 options. It checks physical and printable dimensions,
+  transformed content containment, all 101 selected nodes and 100 continuous
+  edges, complete saved reasons, and the larger usable scale on A0. The former
+  balance check for an arrangement of A4 fragments is replaced by checks for
+  the requested complete hierarchy.
+- The full Admin browser journey revealed that the reduced-motion CSS rule
+  introduced a `0.01ms` transition on SVG transforms. D3's saved zoom could
+  already reflect the new transform while the browser still rendered its old
+  position. Disabling those transitions with `0s` keeps both states synchronous;
+  the existing animation rules remain unchanged. The browser regression checks
+  the actual rendered transform and selected-node position for Tree and
+  Decision, with both reduced motion and ordinary motion enabled.
+
+The print failure and the full Admin journey were reproduced before the fixes.
+The print contract remains owned by `DecisionDiagramReadingTest`; the motion
+regression is part of `TaxonomyTreeLayoutIT`. No workflow, timeout or existing
+position tolerance is relaxed.
+
+Final focused verification of the corrections:
+
+| Maven owner | Passed | Failures / errors / skips |
+|---|---:|---|
+| `DecisionDiagramReadingTest` | 1 | 0 / 0 / 0 |
+| Complete `JavascriptContractTest` inventory | 1,489 | 0 / 0 / 0 |
+| `BrowserSessionTest` | 14 | 0 / 0 / 0 |
+| `TaxonomyTreeLayoutIT` | 32 | 0 / 0 / 0 |
+| `TaxonomyBrowseDecisionUiIT` | 30 | 0 / 0 / 0 |
+| `TaxonomyDecisionDiagramUiIT` | 14 | 0 / 0 / 0 |
+| `UiScenarioIT`, primary Admin scenario and driver completion | 2 | 0 / 0 / 0 |
+
+The full Admin journey completed 74 workflow checks and 21 accessibility states,
+including the exact previously failing growth assertion. The test used the
+application packaged from the corrected working tree and pinned Chromium 149.
+The new four-case motion regression first failed for both reduced-motion cases
+with the old CSS and passed for both ordinary-motion controls; all four then
+passed with the corrected CSS.
+
+The focused print and JavaScript owners were invoked through
+`test-compile surefire:test` with their named `-Dtest` selectors after the pinned
+Node dependencies were provisioned. The browser suites used the existing
+`-pl taxonomy-app -am verify -Ptest-local` lifecycle. The full Admin journey used
+`TAXONOMY_UI_SUITE=primary` and
+`TAXONOMY_UI_PROFILE_FILTER=primary-admin-chromium` with the already prepared
+`.github/ui-verification-pom.xml -Pshard failsafe:integration-test failsafe:verify`
+owner and the packaged application.
+
+An additional build-policy run during diagnosis passed 445 of its 455 cases;
+the ten existing Helm prerequisite checks were skipped because Helm was absent.
+The final strengthened print contract was rerun afterward. These local results
+remain distinct from the required complete CI run.
+
+A fresh repeat on 28 October 2026 confirmed the print contract, all 1,489
+JavaScript contracts, 14 browser-session tests and all 76 diagram browser tests
+through Maven with Java 25. Chrome for Testing Headless Shell 149.0.7827.55 was
+used with the matching ChromeDriver because this execution environment does not
+permit the full Chrome profile's Unix socket. Before applying the CSS change,
+the four-case motion regression again failed only in its two reduced-motion
+cases; all four passed afterward. The existing CI browser selection is unchanged.
+
 ## Illustration provenance
 
 The [German](../images/diagram-print-controls-de.png) and

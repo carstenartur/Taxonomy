@@ -532,7 +532,9 @@
         scroll-behavior: auto !important;
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
+        /* A nonzero duration also creates transitions on otherwise immediate
+           SVG transforms, leaving rendered zoom behind the diagram state. */
+        transition-duration: 0s !important;
     }
 }
 

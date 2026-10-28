@@ -57,6 +57,8 @@ class TaxonomyTreeLayoutIT {
                 String resource = switch (path) {
                     case "/d3.js" -> "/META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js";
                     case "/views.js" -> "/static/js/core/taxonomy-views.js";
+                    case "/taxonomy.css" -> "/static/css/taxonomy.css";
+                    case "/taxonomy-ergonomics.css" -> "/static/css/taxonomy-ergonomics.css";
                     default -> null;
                 };
                 if (resource == null) { exchange.sendResponseHeaders(404, -1); exchange.close(); return; }
@@ -64,7 +66,7 @@ class TaxonomyTreeLayoutIT {
                     if (input == null) throw new IllegalStateException("Missing browser resource " + resource);
                     body = input.readAllBytes();
                 }
-                exchange.getResponseHeaders().set("Content-Type", "application/javascript");
+                exchange.getResponseHeaders().set("Content-Type", path.endsWith(".css") ? "text/css" : "application/javascript");
             }
             exchange.sendResponseHeaders(200, body.length);
             try (var output = exchange.getResponseBody()) { output.write(body); }
@@ -95,6 +97,78 @@ class TaxonomyTreeLayoutIT {
                 if(window.originalCanvasPaintMethods)
                     Object.assign(CanvasRenderingContext2D.prototype,window.originalCanvasPaintMethods);
                 """);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "renderTreeDiagram, reduce", "renderTreeDiagram, no-preference",
+        "renderDecisionMap, reduce", "renderDecisionMap, no-preference"
+    })
+    void renderedZoomAndGrowthStayInSyncWithMotionPreference(String renderer, String motion) {
+        var cdp = (HasCdp) new Augmenter().augment(driver);
+        cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features",
+            java.util.List.of(Map.of("name", "prefers-reduced-motion", "value", motion))));
+        try {
+            assertThat(driver.executeAsyncScript("""
+                    const done=arguments[arguments.length-1];
+                    Promise.all(['/taxonomy.css','/taxonomy-ergonomics.css'].map(href=>new Promise((resolve,reject)=>{
+                        const link=document.createElement('link');link.rel='stylesheet';link.href=href;
+                        link.onload=resolve;link.onerror=()=>reject(new Error('Stylesheet failed: '+href));
+                        document.head.appendChild(link);
+                    }))).then(()=>done(''),error=>done(String(error)));
+                    """)).isEqualTo("");
+            driver.executeScript("""
+                    window.readingData=[{code:'fixture-root',name:'Original root',children:[
+                        {code:'fixture-branch',name:'Original branch',children:[
+                            {code:'fixture-selected',name:'Selected first leaf',children:[]},
+                            {code:'fixture-sibling',name:'Second leaf',children:[]}]},
+                        {code:'fixture-other',name:'Another branch',children:[
+                            {code:'fixture-other-leaf',name:'Third leaf',children:[]}]}]}];
+                    window.readingScores={'fixture-root':95,'fixture-branch':90,'fixture-selected':80,
+                        'fixture-sibling':75,'fixture-other':85,'fixture-other-leaf':70};
+                    window.readingRenderer=arguments[0];
+                    window.readingContext={analysisKey:'motion-growth',
+                        view:readingRenderer==='renderDecisionMap'?'decision':'tree',treeRoot:'fixture-root'};
+                    window.drawReadingFixture=()=>{
+                        const host=document.getElementById('tree');
+                        TaxonomyViews.prepareDiagramContext(host,readingContext);
+                        TaxonomyViews[readingRenderer](host,readingData,readingScores);
+                    };
+                    drawReadingFixture();
+                    """, renderer);
+            settled();
+            assertThat(driver.executeScript("""
+                    const host=document.getElementById('tree'),surface=host.querySelector('svg');
+                    host.querySelector('[data-diagram-node="fixture-selected"]').focus();
+                    // Check the rendered matrix in the same task as the native control action.
+                    // A tiny CSS transition must not leave the visible transform behind D3 state.
+                    host.querySelector('.tax-diagram-controls button').click();
+                    const actual=surface.querySelector('g').getCTM().a;
+                    return Math.abs(actual-1.25)<0.00001?'':'Zoom is not rendered immediately: '+actual;
+                    """)).as(renderer + " rendered zoom with " + motion).isEqualTo("");
+            driver.executeScript("""
+                    const host=document.getElementById('tree');
+                    host.querySelectorAll('.tax-diagram-controls button')[2].click();
+                    const node=host.querySelector('[data-diagram-node="fixture-selected"]'),matrix=node.getScreenCTM();
+                    window.readingBefore={x:matrix.e,y:matrix.f,k:matrix.a};
+                    readingData=structuredClone(readingData);
+                    readingData[0].children[0].children.unshift({code:'fixture-growth',
+                        name:'Additional deterministic presentation fixture',children:[]});
+                    readingScores['fixture-growth']=82;
+                    drawReadingFixture();
+                    """);
+            settled();
+            assertThat(driver.executeScript("""
+                    const host=document.getElementById('tree');
+                    const node=host.querySelector('[data-diagram-node="fixture-selected"]'),matrix=node.getScreenCTM();
+                    const after={x:matrix.e,y:matrix.f,k:matrix.a};
+                    if(host.dataset.activeNode!=='fixture-selected')return 'Selected node changed';
+                    return Math.abs(after.x-readingBefore.x)<1 && Math.abs(after.y-readingBefore.y)<1
+                        && Math.abs(after.k-readingBefore.k)<0.00001?'':JSON.stringify({before:readingBefore,after});
+                    """)).as(renderer + " rendered reading anchor with " + motion).isEqualTo("");
+        } finally {
+            cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features", java.util.List.of()));
+        }
     }
 
     @ParameterizedTest
