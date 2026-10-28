@@ -436,9 +436,9 @@
             // satisfy the same invariant as a freshly started analysis session.
             clearRestoredAnalysisState();
         } else {
+            if (Array.isArray(payload.taxonomyTree) && payload.taxonomyTree.length) S.taxonomyData = payload.taxonomyTree;
             var input = businessTextElement();
             if (input) input.value = payload.businessText || '';
-            if (Array.isArray(payload.taxonomyTree) && payload.taxonomyTree.length) S.taxonomyData = payload.taxonomyTree;
             S.currentRawScores = payload.rawScores || payload.scores || {};
             S.currentEffectiveScores = payload.effectiveScores || payload.scores || {};
             S.currentScoreDetails = payload.scoreDetails || {};
