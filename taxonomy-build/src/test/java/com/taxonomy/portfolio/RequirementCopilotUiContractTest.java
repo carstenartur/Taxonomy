@@ -50,7 +50,7 @@ class RequirementCopilotUiContractTest {
     }
 
     @Test
-    void adHocCopilotUsesTypedAnalysisLifecycleInsteadOfScoreTimeout() throws IOException {
+    void adHocCopilotRendersRetainedReportsAfterTypedAnalysisLifecycle() throws IOException {
         String loader = Files.readString(ROOT.resolve(
                 "taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session.js"),
                 StandardCharsets.UTF_8);
@@ -76,7 +76,8 @@ class RequirementCopilotUiContractTest {
                 .contains("status: cancelled ? 'CANCELLED' : 'FAILED'")
                 .contains("waitForMainAnalysis()")
                 .contains("terminal.status === 'SUCCEEDED'")
-                .contains("window.TaxonomyAnalysis.runCopilotFlow()")
+                .contains("window.TaxonomyAnalysis.renderCopilotResult(terminal.result?.copilot || C.S.currentCopilot || null)")
+                .doesNotContain("runCopilotFlow")
                 .contains("progress-bar-striped progress-bar-animated");
         assertThat(adHocCopilot)
                 .contains("window.TaxonomyState && window.TaxonomyState.currentScores")

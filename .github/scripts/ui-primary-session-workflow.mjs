@@ -143,11 +143,65 @@ async function waitForCopilotComplete(page, expectedText) {
       && state?.lastAnalysisStatus === 'SUCCESS'
       && scores && Object.keys(scores).length > 0
       && Boolean(state.currentArchView)
+      && state.currentCopilot?.schemaVersion === 1
+      && state.currentCopilot.state === 'COMPLETED'
+      && Boolean(state.currentCopilot.gaps)
+      && Boolean(state.currentCopilot.patterns)
+      && Boolean(state.currentCopilot.recommendation)
       && input && !input.classList.contains('stale-results')
       && button && !button.disabled
       && spinner?.classList.contains('d-none')
       && Boolean(summary);
   }, expectedText, { timeout: 180_000 });
+}
+
+async function assertPersistedCopilot(page, expectedText, assert) {
+  const retained = await page.evaluate(async text => {
+    const state = window.TaxonomyState;
+    const workspace = window.TaxonomyAnalysisSession.state().workspaceId;
+    const api = window.TaxonomyAnalysisSessionApi;
+    const response = await api.request(`/api/analysis-drafts/${encodeURIComponent(workspace)}`,
+      { method: 'GET', cache: 'no-store' }, workspace);
+    if (!response.ok) throw new Error(`Saved Copilot draft read returned ${response.status}`);
+    const draft = (await response.json()).payload;
+    const reference = draft?.analysisReference;
+    if (draft?.businessText !== text || reference?.workspaceId !== workspace
+        || reference.operationId !== state.analysisOperationId) {
+      throw new Error('Completed Copilot draft did not retain its owned analysis reference');
+    }
+    let result;
+    if (reference.continuationId) {
+      const saved = await api.request(
+        `/api/analysis-continuations/${encodeURIComponent(reference.continuationId)}`,
+        { method: 'GET', cache: 'no-store' }, workspace);
+      if (!saved.ok) throw new Error(`Saved Copilot result read returned ${saved.status}`);
+      const snapshot = await saved.json();
+      if (snapshot.recovery?.id !== reference.continuationId
+          || snapshot.request?.businessText !== text) {
+        throw new Error('Saved Copilot continuation belongs to a different analysis');
+      }
+      result = snapshot.result;
+    } else {
+      const input = await api.getRunInput(reference.operationId, { workspaceId: workspace });
+      const request = await input.json();
+      if (request.operationId !== reference.operationId || request.scope?.workspaceId !== workspace
+          || request.businessText !== text) {
+        throw new Error('Saved Copilot run belongs to a different analysis');
+      }
+      const saved = await api.getRunResult(reference.operationId, { workspaceId: workspace });
+      if (saved.status !== 200) throw new Error(`Saved Copilot result read returned ${saved.status}`);
+      result = await saved.json();
+    }
+    return { status: result?.status,
+      operationMatches: !result?.analysisOperationId || result.analysisOperationId === reference.operationId,
+      copilot: result?.copilot,
+      matchesRendered: JSON.stringify(result?.copilot) === JSON.stringify(state.currentCopilot) };
+  }, expectedText);
+  assert(retained.status === 'SUCCESS' && retained.operationMatches
+      && retained.copilot?.schemaVersion === 1 && retained.copilot.state === 'COMPLETED'
+      && retained.copilot.gaps && retained.copilot.patterns && retained.copilot.recommendation
+      && retained.matchesRendered,
+  'Displayed Copilot results do not match the completed authoritative server result');
 }
 
 function endpointCounts(requests) {
@@ -282,8 +336,9 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   await waitForCopilotComplete(page, firstRequirement);
   let counts = endpointCounts(requests);
   for (const endpoint of COPILOT_ENDPOINTS) {
-    assert(counts[endpoint] === 1,
-      `First Copilot run called ${endpoint} ${counts[endpoint]} times`);
+    const expected = endpoint === '/api/analyze' ? 1 : 0;
+    assert(counts[endpoint] === expected,
+      `First server-owned Copilot run called ${endpoint} ${counts[endpoint]} times; expected ${expected}`);
   }
   assert(await page.evaluate(() => {
     const ids = ['gapAnalysisContent', 'patternDetectionContent', 'recommendationContent'];
@@ -295,6 +350,7 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   }), 'Copilot completed without populated gap, pattern and recommendation results');
   assert(await page.evaluate(() => window.TaxonomyAnalysisSession.saveNow()),
     'Completed Copilot state was not persisted to the analysis draft');
+  await assertPersistedCopilot(page, firstRequirement, assert);
   await axeState('session-copilot-complete', '#tab-analyze');
   await page.locator('#copilotPanel').scrollIntoViewIfNeeded();
   await saveRequiredViewportState('session-copilot-complete');
@@ -322,9 +378,13 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
 
   counts = endpointCounts(requests);
   for (const endpoint of COPILOT_ENDPOINTS) {
-    assert(counts[endpoint] === 2,
-      `Changed Copilot run left ${endpoint} at ${counts[endpoint]} calls`);
+    const expected = endpoint === '/api/analyze' ? 2 : 0;
+    assert(counts[endpoint] === expected,
+      `Changed server-owned Copilot run left ${endpoint} at ${counts[endpoint]} calls; expected ${expected}`);
   }
+  assert(await page.evaluate(() => window.TaxonomyAnalysisSession.saveNow()),
+    'Updated Copilot state was not persisted to the analysis draft');
+  await assertPersistedCopilot(page, changedRequirement, assert);
   const analyzeBodies = requests
     .filter(request => request.path === '/api/analyze')
     .map(request => request.body);
