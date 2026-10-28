@@ -4,6 +4,12 @@ This chart deploys the same Taxonomy image on Rancher/RKE2, K3s, OpenShift and g
 
 ## External Artemis and independent workers
 
+For a first installation, follow the [end-to-end Kubernetes guide (German)](../../../docs/de/ARTEMIS_SETUP.md).
+It supplies a persistent single-broker example separately from this chart and
+[values-artemis-single-worker.yaml](values-artemis-single-worker.yaml) for one
+coordinator and one worker covering all eight roots. The chart itself does not
+provision the broker or database.
+
 The default `analysis.transportMode=local` / `analysis.runtimeRole=all` keeps one
 combined workload. Apply [values-artemis.yaml](values-artemis.yaml) for an external
 TLS broker, a coordinator web Deployment, and independently sized `workerSets`.

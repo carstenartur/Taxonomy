@@ -1,0 +1,35 @@
+# Small external-Artemis topology; see docs/de/ARTEMIS_SETUP.md.
+# Apply on the chart defaults and your existing site configuration, NOT on
+# values-artemis.yaml. Review site egress/DB/provider settings before installing.
+replicaCount: 1
+analysis:
+  transportMode: artemis
+  runtimeRole: coordinator
+  artemis:
+    brokerUrl: ""
+    brokerUrlSecretKey: ARTEMIS_BROKER_URL
+    existingSecret: taxonomy-artemis
+    requireTls: true
+    tlsSecret: taxonomy-artemis-client-tls
+    egress:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: messaging
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: taxonomy-artemis
+        ports:
+          - port: 61617
+            protocol: TCP
+  workerSets:
+    - name: all
+      replicas: 1
+      shards: [BP, BR, CP, CI, CO, CR, IP, UA]
+      consumersPerShard: 1
+
+networkPolicy:
+  egressMode: restricted
+  allowSameNamespaceEgress: false
+  # Preserve the complete networkPolicy.egress list from your site values.
+  # Broker egress is added separately through analysis.artemis.egress above.

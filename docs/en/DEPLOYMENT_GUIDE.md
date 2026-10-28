@@ -1,5 +1,7 @@
 # Taxonomy Architecture Analyzer — Deployment Guide
 
+First-time Artemis installation: [end-to-end Kubernetes setup (German)](../de/ARTEMIS_SETUP.md), including a persistent external broker and a single all-root worker.
+
 Clustered analysis with external Artemis: [deployment, TLS/Secrets, worker scaling, HA and administration](OPERATIONS_GUIDE.md#external-artemis-analysis-operations).
 
 This guide describes supported deployment modes and their persistence, security and network characteristics. Commands labelled **local only** must not be used as internet-facing production deployments.
