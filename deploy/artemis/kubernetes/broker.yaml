@@ -1,6 +1,8 @@
 # Persistent single-broker example. Read docs/de/ARTEMIS_SETUP.md first.
 # Create the messaging namespace and both Secrets before applying this file.
 # Keep one replica. Recreate and a PVC provide persistence, not broker HA.
+# Namespace quotas/LimitRanges are operator-owned: see guide section 2.1.
+# Upstream image/UID/GID choices and stricter site policies: see section 2.2.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

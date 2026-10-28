@@ -104,6 +104,57 @@ halten, kein `set -x` verwenden und keine Inhalte in Tickets oder Logs kopieren.
 Vorhandene Secrets werden hier nicht automatisch erneuert; diese Schritte sind
 für die Ersteinrichtung. Rotation steht in [Abschnitt 8](#8-neustart-rotation-und-sicherung).
 
+### 2.1 Ressourcenbudget des Namespaces
+
+Vor dem Anlegen der Broker-Ressourcen die geltenden
+[ResourceQuotas](https://kubernetes.io/docs/concepts/policy/resource-quotas/) und
+[LimitRanges](https://kubernetes.io/docs/concepts/policy/limit-range/) prüfen:
+
+```bash
+kubectl -n messaging get resourcequotas,limitranges
+kubectl -n messaging describe resourcequotas
+kubectl -n messaging describe limitranges
+```
+
+Diese Policies werden vom Namespace- beziehungsweise Cluster-Betrieb verwaltet.
+Für einen neuen Namespace die zum Standort passenden Quotas und LimitRanges vor
+dem Broker-Deployment einrichten lassen. Bei einem vorhandenen Namespace dessen
+Policies und bereits belegtes Budget berücksichtigen. `broker.yaml` ersetzt keine
+Namespace-Policy und setzt bewusst keine pauschalen Grenzen für andere Dienste in
+`messaging`.
+
+Der Broker-Container fordert `100m` CPU und `256Mi` RAM an; seine Limits sind
+`1` CPU und `1Gi` RAM. Die LimitRange muss diese expliziten Werte zulassen, und die
+ResourceQuota muss dafür noch genügend freies Budget bieten. Zusätzlich benötigt
+das Beispiel einen Broker-Pod, ein PVC mit `10Gi`, einen ClusterIP-Service und zwei
+Broker-Secrets. Bei Quotas für Objektzahlen auch Deployment, ReplicaSets und
+NetworkPolicy berücksichtigen. Weitere Workloads und Wartungsvorgänge benötigen
+zusätzliche Reserve. Diese Werte beschreiben das Beispiel und sind keine
+Kapazitätsplanung für den gesamten Namespace.
+
+### 2.2 Image und Benutzerkennung
+
+Das Manifest verwendet das
+[offizielle Apache-Artemis-Image von Docker Hub](https://github.com/apache/artemis/blob/2.53.0/docs/user-manual/docker.adoc)
+für Version `2.53.0-alpine`, festgelegt über seinen Digest. Vor der Installation
+prüfen, ob die Registry-Vorgaben des Clusters diese Quelle zulassen. Ist eine
+interne oder andere freigegebene Registry vorgeschrieben, das freigegebene Image
+dorthin spiegeln, den Digest am Ziel prüfen und die vollständige Zielreferenz im
+Manifest eintragen. Die Herkunft vom Hersteller ersetzt keine
+standortspezifische Registry-Freigabe.
+
+UID, GID und `fsGroup` sind im Beispiel `1001`. Das entspricht dem Benutzer und
+der Gruppe `artemis` im
+[offiziellen Dockerfile dieser Version](https://github.com/apache/artemis/blob/2.53.0/artemis-docker/Dockerfile-alpine-25)
+und den Besitzrechten des Instanzverzeichnisses. Der Container läuft ohne Root,
+mit schreibgeschütztem Root-Dateisystem, ohne zusätzliche Linux-Capabilities und
+ohne Privilegienerweiterung. Eine betriebliche Vorgabe für IDs über `10000` erfüllt
+dieses unveränderte Beispiel jedoch nicht. In einem solchen Cluster vorab Image,
+`runAsUser`, `runAsGroup`, `fsGroup`, Secret-Zugriff und PVC-Dateirechte gemeinsam
+anpassen und testen. Vorhandene Broker-Daten bei einer Änderung der Kennungen in
+einem geplanten Wartungsfenster mit Sicherung und geprüftem Berechtigungswechsel
+übernehmen; nicht nur die Zahlen am laufenden Deployment austauschen.
+
 ## 3. Benutzer und TLS einrichten
 
 ### 3.1 Geschützte Konfiguration erzeugen
