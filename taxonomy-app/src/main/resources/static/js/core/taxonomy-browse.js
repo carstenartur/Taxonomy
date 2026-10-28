@@ -1090,7 +1090,14 @@
         syncTreeTabStops(tree);
         if (tree._taxonomyKeyboardBound) return;
         tree._taxonomyKeyboardBound = true;
-        tree.addEventListener('focusin', function () { syncTreeTabStops(tree); });
+        function selectGraphNode(event) {
+            var item = event.target.closest?.('.tax-node, .tax-container');
+            if (item && tree.contains(item)) {
+                window.TaxonomyGraph?.selectNode?.(item.dataset.code || item.dataset.taxonomyContainer);
+            }
+        }
+        tree.addEventListener('click', selectGraphNode);
+        tree.addEventListener('focusin', function (event) { syncTreeTabStops(tree); selectGraphNode(event); });
         tree.addEventListener('shown.bs.tab', function () { syncTreeTabStops(tree); });
         tree.addEventListener('keydown', function (e) {
             var current = document.activeElement;

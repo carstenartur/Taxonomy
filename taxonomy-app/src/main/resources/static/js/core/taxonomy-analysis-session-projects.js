@@ -26,7 +26,7 @@
     var queueStaleActions = C.queueStaleActions;
     var queueSave = C.queueSave;
     var resetDraft = C.resetDraft;
-    var saveDraft = C.saveDraft;
+    var saveDraft = C.saveCurrentDraft || C.saveDraft;
     var loadDraft = C.loadDraft;
     var setDraftDecisionPending = C.setDraftDecisionPending;
 
@@ -167,6 +167,21 @@
         });
     }
 
+    function saveBeforePromotion(options) {
+        if (!options?.preserveDraft) return Promise.resolve();
+        return saveDraft().then(function (saved) {
+            if (saved !== true) throw new Error(text('draftSaveFailed'));
+        });
+    }
+
+    function navigateAfterPromotion(url, options) {
+        if (options?.preserveDraft) {
+            window.location.assign(applicationUrl(url));
+            return;
+        }
+        return discardDraftAndNavigate(url);
+    }
+
     function startNewAnalysis() {
         var payload = currentPayload();
         if (meaningful(payload) && !window.confirm(text('newAnalysisConfirm'))) {
@@ -269,11 +284,11 @@
         }
     }
 
-    function openRequirementDialog(requirementText) {
+    function openRequirementDialog(requirementText, options) {
         showActionAlert('info', text('loadingProjects'), '', [], 'loading-projects');
         jsonRequest('/api/projects', { method: 'GET' }).then(function (projects) {
             if (!projects || projects.length === 0) {
-                openNewProjectDialog({ seedRequirementText: requirementText });
+                openNewProjectDialog({ seedRequirementText: requirementText, preserveDraft: options?.preserveDraft });
                 return;
             }
 
@@ -327,14 +342,14 @@
                 event.preventDefault();
                 if (!parts.form.reportValidity()) return;
                 setDialogBusy(parts, true);
-                createRequirement(projectSelect.value, {
+                saveBeforePromotion(options).then(function () { return createRequirement(projectSelect.value, {
                     requirementKey: keyInput.value.trim(),
                     title: titleInput.value.trim(),
                     text: textInput.value
-                }).then(function (requirement) {
+                }); }).then(function (requirement) {
                     parts.dialog.close();
-                    return discardDraftAndNavigate('/projects/' + encodeURIComponent(projectSelect.value)
-                        + '/requirements/' + encodeURIComponent(requirement.id));
+                    return navigateAfterPromotion('/projects/' + encodeURIComponent(projectSelect.value)
+                        + '/requirements/' + encodeURIComponent(requirement.id), options);
                 }).catch(function (error) {
                     setDialogBusy(parts, false);
                     showDialogError(parts, error);
@@ -395,7 +410,7 @@
             event.preventDefault();
             if (!parts.form.reportValidity()) return;
             setDialogBusy(parts, true);
-            jsonRequest('/api/projects', {
+            saveBeforePromotion(options).then(function () { return jsonRequest('/api/projects', {
                 method: 'POST',
                 body: JSON.stringify({
                     projectKey: keyInput.value.trim(),
@@ -407,7 +422,7 @@
                     budgetAmount: null,
                     budgetCurrency: null
                 })
-            }).then(function (project) {
+            }); }).then(function (project) {
                 if (seed && createRequirementCheck && createRequirementCheck.checked) {
                     return createRequirement(project.id, {
                         requirementKey: 'REQ-001',
@@ -421,7 +436,7 @@
                 return '/projects';
             }).then(function (url) {
                 parts.dialog.close();
-                return discardDraftAndNavigate(url);
+                return navigateAfterPromotion(url, options);
             }).catch(function (error) {
                 setDialogBusy(parts, false);
                 showDialogError(parts, error);
@@ -604,9 +619,9 @@
         startNewAnalysis: startNewAnalysis,
         cancelCurrentAnalysis: function () { return C.cancelCurrentAnalysis(); },
         reload: function () { runtime.conflict = false; return loadDraft({ force: true }); },
-        addAsRequirement: function () {
+        addAsRequirement: function (options) {
             var input = businessTextElement();
-            openRequirementDialog(input ? input.value : '');
+            openRequirementDialog(input ? input.value : '', options);
         },
         startNewProject: function () { openNewProjectDialog({ seedRequirementText: null }); },
         state: function () {

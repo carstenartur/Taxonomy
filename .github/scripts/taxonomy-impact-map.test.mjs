@@ -379,3 +379,34 @@ test('keeps English and German impact-map message keys aligned', () => {
   assert.ok(english.has('impactmap.details.hint'));
   assert.ok(english.has('impactmap.aria.relationship'));
 });
+
+test('focused element exposes Unfocus and restores the complete filtered graph without losing selection', () => {
+  const {api} = loadApi();
+  const nodes = ['A', 'B', 'C'].map(id => ({id, title:id, sheet:'BP', sheetLabel:'Processes', layerOrder:1, relevance:1, anchor:true}));
+  const state = {allNodes:nodes, allEdges:[{id:'AB',source:'A',target:'B',type:'SUPPORTS'}],
+    nodeById:new Map(nodes.map(node=>[node.id,node])), selectedNodeId:'A', selectedEdgeId:null,
+    showContext:true, mode:'overview', searchQuery:''};
+  const original = JSON.stringify([state.allNodes,state.allEdges]);
+  const actions = [];
+  const element = () => ({children:[],classList:{remove(){}},appendChild(child){this.children.push(child);},
+    replaceChildren(){this.children=[];},addEventListener(){}});
+  const context = vm.createContext({state, details:element(), window:{}, t:key=>key,
+    createElement:element, appendDetailPair(){}, selectRelatedNode(){},
+    detailsButton:(label,click)=>{const action={label,click};actions.push(action);return action;},
+    renderDiagram(){state.visible=api.visibleModel(state);}});
+  const start = graphSource.indexOf('        function renderNodeDetails(');
+  const end = graphSource.indexOf('        function renderEdgeDetails(',start);
+  vm.runInContext(graphSource.slice(start,end),context);
+  function render() {actions.length=0;state.visible=api.visibleModel(state);context.renderNodeDetails(nodes[0]);}
+  render();actions.find(action=>action.label==='impactmap.focus.element').click();
+  assert.deepEqual(Array.from(state.visible.nodes,node=>node.id),['A','B']);
+  render();
+  const unfocus=actions.find(action=>action.label==='impactmap.unfocus');
+  assert.ok(unfocus,'The focused element must offer a direct Unfocus action');
+  unfocus.click();
+  assert.equal(state.mode,'overview');
+  assert.equal(state.selectedNodeId,'A');
+  assert.deepEqual(Array.from(state.visible.nodes,node=>node.id),['A','B','C']);
+  assert.equal(JSON.stringify([state.allNodes,state.allEdges]),original);
+  render();assert.ok(actions.find(action=>action.label==='impactmap.focus.element'));
+});

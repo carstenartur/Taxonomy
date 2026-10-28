@@ -2429,7 +2429,10 @@
             details.appendChild(navigate);
         }
         container.querySelectorAll('.summary-layer-element').forEach(function (button) {
-            button.addEventListener('click', function () { select(this.dataset.code); });
+            button.addEventListener('click', function () {
+                select(this.dataset.code);
+                window.TaxonomyGraph?.selectNode?.(this.dataset.code);
+            });
         });
         if (summarySelection && summarySelection.view === view) select(summarySelection.code);
     }

@@ -428,7 +428,7 @@
         var input = document.getElementById('graphNodeInput');
         var code = input ? input.value.trim() : '';
         var graph = window.TaxonomyGraph;
-        var sequence = graph.beginResult('node', code);
+        var sequence = graph.beginResult('node', code, 'enriched');
         if (!code) {
             var content = document.getElementById('graphResultsContent');
             if (content) {

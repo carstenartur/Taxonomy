@@ -257,6 +257,9 @@
         if (typeof C.cancelDerivedRequests === 'function') {
             C.cancelDerivedRequests('user-cancelled');
         }
+        if (['IN_PROGRESS', 'RUNNING', 'QUEUED'].includes(S.lastAnalysisStatus)) {
+            S.lastAnalysisStatus = 'CANCELLED';
+        }
         showActionAlert('warning', text('analysisCancelledTitle'),
             text('analysisCancelledBody'), [], 'analysis-cancelled');
         document.dispatchEvent(new CustomEvent('taxonomy:analysis-cancelled'));
