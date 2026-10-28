@@ -20,7 +20,7 @@
       "fromPackage": "com.taxonomy.analysis.cluster",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 4
     },
     {
       "fromContext": "analysis",
@@ -84,6 +84,13 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 3
+    },
+    {
+      "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.recovery",
+      "toContext": "architecture",
+      "toPackage": "com.taxonomy.architecture.service",
+      "classDependencyCount": 1
     },
     {
       "fromContext": "analysis",
@@ -195,7 +202,7 @@
       "fromPackage": "com.taxonomy.analysis.usecase",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",
@@ -342,7 +349,7 @@
       "fromPackage": "com.taxonomy.composition.analysis.artemis",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
@@ -788,6 +795,20 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.report",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.cluster",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.report",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.recovery",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.decision",
       "classDependencyCount": 3
@@ -1007,7 +1028,7 @@
       "fromPackage": "com.taxonomy.architecture.service",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "architecture",
@@ -1413,7 +1434,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
     },
     {
       "fromContext": "portfolio",

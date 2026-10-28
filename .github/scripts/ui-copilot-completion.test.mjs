@@ -11,7 +11,8 @@ assert.ok(start >= 0 && end > start, 'The real completion wait must remain testa
 const waitSource = source.slice(start, end);
 
 function harness({ status = 'SUCCESS', lastText = 'requirement', busy = false, summary = true,
-  recovery = 'COMPLETED', followup = 'COMPLETED', scores = { BP: 70 }, architecture = {} } = {}) {
+  recovery = 'COMPLETED', followup = 'COMPLETED', scores = { BP: 70 }, architecture = {},
+  copilot = { schemaVersion: 1, state: 'COMPLETED', gaps: {}, patterns: {}, recommendation: {} } } = {}) {
   const elements = {
     businessText: { value: 'requirement', classList: { contains: () => false } },
     copilotBtn: { disabled: busy },
@@ -20,7 +21,7 @@ function harness({ status = 'SUCCESS', lastText = 'requirement', busy = false, s
   };
   const context = vm.createContext({ window: { TaxonomyState: {
     lastAnalyzedText: lastText, lastAnalysisStatus: status, currentScores: scores,
-    currentArchView: architecture, analysisRecovery: { state: recovery },
+    currentArchView: architecture, currentCopilot: copilot, analysisRecovery: { state: recovery },
     recoveryContext: { followupState: followup, followupError: 'Could not persist the completed stage' }
   } }, document: { getElementById: id => elements[id] || null, querySelector: () => summary ? {} : null } });
   vm.runInContext(waitSource, context);
@@ -47,7 +48,9 @@ test('a failed follow-up reports its durable stage failure', async () => {
 });
 test('only a populated complete SUCCESS with ready controls satisfies the wait', async () => {
   await harness().wait();
-  for (const incomplete of [{ busy: true }, { summary: false }, { scores: {} }, { architecture: null }]) {
+  for (const incomplete of [{ busy: true }, { summary: false }, { scores: {} }, { architecture: null },
+    { copilot: null }, { copilot: { schemaVersion: 1, state: 'PARTIAL' } },
+    { copilot: { schemaVersion: 1, state: 'COMPLETED', gaps: {}, patterns: {} } }]) {
     await assert.rejects(harness(incomplete).wait(), /STILL_WAITING/);
   }
 });

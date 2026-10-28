@@ -6,6 +6,7 @@ import com.taxonomy.analysis.dispatch.AnalysisDispatchService;
 import com.taxonomy.analysis.relations.RequirementRelationSearchService;
 import com.taxonomy.analysis.service.*;
 import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
+import com.taxonomy.architecture.service.AnalysisCopilotService;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
@@ -99,7 +100,7 @@ public class ArtemisClusterExecutionConfiguration {
     @Bean FrozenClusterAnalysisFinalizer frozenClusterAnalysisFinalizer(ClusterAnalysisStore store,
             CatalogueSnapshotService catalogue, RequirementArchitectureViewService architecture,
             ArchitectureReportMetadataPort metadata, ObjectMapper mapper) {
-        return new FrozenClusterAnalysisFinalizer(store, catalogue, architecture, metadata, mapper);
+        return new FrozenClusterAnalysisFinalizer(store, catalogue, architecture, metadata, mapper, new AnalysisCopilotService());
     }
 
     @Bean(destroyMethod = "close") DurableClusterAnalysisObservation durableClusterAnalysisObservation(

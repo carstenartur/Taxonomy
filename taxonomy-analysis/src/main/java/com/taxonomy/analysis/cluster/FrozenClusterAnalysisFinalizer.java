@@ -4,6 +4,7 @@ import com.taxonomy.analysis.dag.AnalysisOperationContext;
 import com.taxonomy.analysis.dag.TaxonomyShardRoot;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.analysis.usecase.PartialArchitectureProjection;
+import com.taxonomy.architecture.service.AnalysisCopilotService;
 import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.catalog.snapshot.CatalogueSnapshotService;
@@ -28,12 +29,20 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
     private final RequirementArchitectureViewService architecture;
     private final ArchitectureReportMetadataPort metadata;
     private final ObjectMapper mapper;
+    private final AnalysisCopilotService copilot;
 
     public FrozenClusterAnalysisFinalizer(ClusterAnalysisStore store, CatalogueSnapshotService snapshots,
             RequirementArchitectureViewService architecture, ArchitectureReportMetadataPort metadata, ObjectMapper mapper) {
+        this(store, snapshots, architecture, metadata, mapper, new AnalysisCopilotService());
+    }
+
+    public FrozenClusterAnalysisFinalizer(ClusterAnalysisStore store, CatalogueSnapshotService snapshots,
+            RequirementArchitectureViewService architecture, ArchitectureReportMetadataPort metadata, ObjectMapper mapper,
+            AnalysisCopilotService copilot) {
         this.store = Objects.requireNonNull(store); this.snapshots = Objects.requireNonNull(snapshots);
         this.architecture = Objects.requireNonNull(architecture); this.metadata = Objects.requireNonNull(metadata);
         this.mapper = Objects.requireNonNull(mapper);
+        this.copilot = Objects.requireNonNull(copilot);
     }
 
     @Override public void accept(AnalysisOperationContext context) {
@@ -77,6 +86,7 @@ public final class FrozenClusterAnalysisFinalizer implements Consumer<AnalysisOp
         }
         if (result.getArchitectureView() != null && command.businessText() != null)
             result.getArchitectureView().setOriginalRequirementText(command.businessText());
+        result.setCopilot(copilot.analyze(result, command.businessText()));
         // The store rechecks authority, FINALIZING state and cancellation under its short lock.
         store.finalizeResult(context, result);
     }

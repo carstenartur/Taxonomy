@@ -40,7 +40,7 @@ public class ArchitecturePatternService {
                                        TaxonomyRelationRepository relationRepository) {
         this.nodeRepository = nodeRepository;
         this.relationRepository = relationRepository;
-        this.patterns = initPatterns();
+        this.patterns = patternTemplates();
     }
 
     // ── Pattern Templates ──────────────────────────────────────────────────
@@ -60,7 +60,8 @@ public class ArchitecturePatternService {
      */
     record PatternTemplate(String name, List<PatternStep> steps) {}
 
-    private List<PatternTemplate> initPatterns() {
+    /** Shared definitions; evaluation may use live or retained evidence. */
+    static List<PatternTemplate> patternTemplates() {
         return List.of(
                 new PatternTemplate("Full Stack", List.of(
                         new PatternStep("CP", "REALIZES", "CR"),

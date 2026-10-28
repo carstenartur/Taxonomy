@@ -7,6 +7,7 @@ import com.taxonomy.architecture.service.ArchitectureGapService;
 import com.taxonomy.architecture.service.ArchitecturePatternService;
 import com.taxonomy.architecture.service.ArchitectureRecommendationService;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisCopilotResult;
 import com.taxonomy.dto.AnalysisReasonLength;
 import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
@@ -53,6 +54,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
@@ -102,6 +104,33 @@ class ProjectRequirementAnalysisServiceTest {
                 .thenAnswer(invocation -> new PatternDetectionView());
         when(recommendationService.recommend(anyMap(), anyString(), anyInt()))
                 .thenAnswer(invocation -> new ArchitectureRecommendation());
+    }
+
+    @Test
+    void immutableSnapshotKeepsCanonicalCopilotReportsWithoutGlobalRecalculation() {
+        var context = context("canonical-copilot");
+        var project = createProject(context);
+        var requirement = createRequirement(project.id(), context, "REQ-001", "Canonical requirement");
+        when(analyzeRequirementUseCase.analyze(any(AnalyzeRequirementCommand.class))).thenAnswer(invocation -> {
+            var result = successfulAnalysis(invocation.getArgument(0));
+            var gaps = new GapAnalysisView(); gaps.setBusinessText("Canonical requirement");
+            gaps.setNotes(List.of("Retained gap evidence"));
+            var patterns = new PatternDetectionView(); patterns.setNotes(List.of("Retained pattern evidence"));
+            var recommendation = new ArchitectureRecommendation(); recommendation.setBusinessText("Canonical requirement");
+            recommendation.setNotes(List.of("Retained recommendation evidence"));
+            result.setCopilot(new AnalysisCopilotResult(1, "COMPLETED", gaps, patterns, recommendation, List.of()));
+            return new AnalyzeRequirementResult(result);
+        });
+
+        var job = analysisService.analyzeRequirement(project.id(), requirement.id(), "MOCK", 25,
+                "canonical-copilot", context.username(), context);
+
+        assertThat(job.status()).isEqualTo(AnalysisStatus.SUCCESS);
+        var detail = analysisService.getSnapshot(project.id(), job.items().getFirst().snapshotId(), context.username(), context);
+        assertThat(detail.gapAnalysis().getNotes()).containsExactly("Retained gap evidence");
+        assertThat(detail.patternDetection().getNotes()).containsExactly("Retained pattern evidence");
+        assertThat(detail.recommendation().getNotes()).containsExactly("Retained recommendation evidence");
+        verifyNoInteractions(gapService, patternService, recommendationService);
     }
 
     @Test

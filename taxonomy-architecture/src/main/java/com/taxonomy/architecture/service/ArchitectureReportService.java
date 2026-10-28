@@ -129,4 +129,25 @@ public class ArchitectureReportService {
         return report;
     }
 
+    /** Render owned retained evidence without re-reading catalogues, proposals or providers. */
+    public ArchitectureReport generateRetainedReport(AnalysisResult result, String businessText) {
+        Objects.requireNonNull(result.getCopilot(), "Retained Copilot report is required");
+        ArchitectureReport report = new ArchitectureReport();
+        report.setBusinessText(businessText);
+        report.setScores(result.getEffectiveScores() != null ? result.getEffectiveScores() : result.getScores());
+        report.setViewContext(result.getViewContext());
+        report.setArchitectureView(result.getArchitectureView());
+        report.setCopilot(result.getCopilot());
+        report.setGapAnalysis(result.getCopilot().gaps());
+        report.setPatternDetection(result.getCopilot().patterns());
+        report.setRecommendation(result.getCopilot().recommendation());
+        if (result.getArchitectureView() != null) {
+            String title = businessText == null ? "Report" : businessText.length() > 60
+                    ? businessText.substring(0, 57) + "..." : businessText;
+            report.setMermaidDiagram(mermaidExportService.export(
+                    diagramProjectionService.projectRaw(result.getArchitectureView(), title)));
+        }
+        return report;
+    }
+
 }

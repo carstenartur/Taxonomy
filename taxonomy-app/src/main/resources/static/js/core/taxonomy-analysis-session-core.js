@@ -345,7 +345,121 @@
             && input.value !== S.lastAnalyzedText);
     }
 
-    function currentPayload() {
+    // Only accepted canonical evidence can be replaced by a durable reference. Compare
+    // every persisted result field; manual edits and legacy unsaved checkpoints stay full.
+    var evidenceFields = ['lastAnalyzedText', 'lastAnalysisProvider', 'analysisOperationId',
+        'analysisProviderId', 'lastAnalysisStatus', 'analysisDurationMillis', 'analysisCoverage',
+        'analysisScope', 'analysisReasonLength', 'analysisLanguage', 'scores', 'rawScores',
+        'effectiveScores', 'scoreDetails', 'productSuitabilityScores', 'scoreSemanticsVersion',
+        'scoreSemanticsWarnings', 'reasons', 'discrepancies', 'productCoverageGaps',
+        'architectureView', 'relationSearchReport', 'provisionalRelations', 'evaluatedNodes', 'copilot'];
+    function evidencePayload(payload) {
+        return JSON.stringify(evidenceFields.map(function (key) { return [key, payload[key]]; }));
+    }
+    function retainAnalysisReference(result, request) {
+        var continuationId = result.recovery?.id || null;
+        var operationId = result.analysisOperationId || S.analysisOperationId || null;
+        if (!runtime.workspaceId || (!continuationId && !(operationId && request?.durable))
+                || Object.keys(S.recoveryContext?.followups || {}).length) return;
+        var canonical = {
+            lastAnalyzedText: request?.businessText ?? S.lastAnalyzedText,
+            lastAnalysisProvider: result.provider || request?.provider || null,
+            analysisOperationId: operationId, analysisProviderId: result.analysisProviderId || request?.provider || null,
+            lastAnalysisStatus: result.status || 'UNKNOWN', analysisDurationMillis: result.analysisDurationMillis ?? null,
+            analysisCoverage: result.analysisCoverage || null, analysisScope: result.analysisScope || request?.analysisScope || null,
+            analysisReasonLength: result.analysisReasonLength || null, analysisLanguage: result.analysisLanguage || request?.analysisLanguage || null,
+            scores: result.effectiveScores || result.scores || {}, rawScores: result.rawScores || result.scores || {},
+            effectiveScores: result.effectiveScores || result.scores || {}, scoreDetails: result.scoreDetails || {},
+            productSuitabilityScores: result.productSuitabilityScores || {}, scoreSemanticsVersion: result.scoreSemanticsVersion || 0,
+            scoreSemanticsWarnings: result.scoreSemanticsWarnings || [], reasons: result.reasons || {},
+            discrepancies: result.discrepancies || [], productCoverageGaps: result.productCoverageGaps || [],
+            architectureView: result.architectureView || null,
+            relationSearchReport: result.relationSearchReport || result.architectureView?.relationSearchReport || null,
+            provisionalRelations: result.provisionalRelations || [], evaluatedNodes: [], copilot: result.copilot || null
+        };
+        // A same-scope view retained from an earlier response is useful, but cannot
+        // be reconstructed from this result. Never compact it or other extra evidence.
+        if (evidencePayload(currentPayload(true)) !== evidencePayload(canonical)) return;
+        runtime.analysisReference = { operationId: operationId, continuationId: continuationId,
+            workspaceId: runtime.workspaceId };
+        runtime.analysisEvidence = evidencePayload(currentPayload(true));
+    }
+    function matchesAnalysisReference() {
+        var ref = runtime.analysisReference;
+        return Boolean(ref && ref.workspaceId === runtime.workspaceId
+            && (!ref.continuationId || ref.continuationId === S.analysisRecovery?.id)
+            && (!ref.operationId || ref.operationId === S.analysisOperationId)
+            && !Object.keys(S.recoveryContext?.followups || {}).length
+            && runtime.analysisEvidence === evidencePayload(currentPayload(true)));
+    }
+    function canHydrateAnalysisResult(result) {
+        if (runtime.analysisReference) return matchesAnalysisReference();
+        if (!runtime.preserveRestoredEvidence) return true;
+        // A legacy full draft may contain edits whose provenance predates references.
+        // Read-only status refresh must not replace them with a different server view.
+        var current = [S.currentRawScores || {}, S.currentEffectiveScores || S.currentScores || {},
+            S.currentScores || {}, S.currentReasons || {}, S.currentDiscrepancies || [],
+            S.currentProductCoverageGaps || [], S.currentArchView || null,
+            S.currentRelationSearchReport || null, window._currentProvisionalRelations || [], S.currentCopilot || null];
+        var canonical = [result.rawScores || result.scores || {}, result.effectiveScores || result.scores || {},
+            result.effectiveScores || result.scores || {}, result.reasons || {}, result.discrepancies || [],
+            result.productCoverageGaps || [], result.architectureView || null,
+            result.relationSearchReport || result.architectureView?.relationSearchReport || null,
+            result.provisionalRelations || [], result.copilot || null];
+        return JSON.stringify(current) === JSON.stringify(canonical);
+    }
+    async function resolveAnalysisReference(payload) {
+        var ref = payload.analysisReference, workspace = runtime.workspaceId;
+        if (!ref || ref.workspaceId !== workspace || (!ref.continuationId && !ref.operationId)) {
+            throw new Error('The saved analysis reference does not belong to this workspace.');
+        }
+        var api = window.TaxonomyAnalysisSessionApi, result, request;
+        if (ref.continuationId) {
+            var response = await api.request('/api/analysis-continuations/' + encodeURIComponent(ref.continuationId),
+                { method: 'GET', cache: 'no-store' }, workspace);
+            if (!response.ok) throw new Error('The saved analysis could not be loaded (HTTP ' + response.status + ').');
+            var snapshot = await response.json();
+            if (snapshot.recovery?.id !== ref.continuationId || typeof snapshot.request?.businessText !== 'string') {
+                throw new Error('The saved analysis reference could not be confirmed.');
+            }
+            if (!snapshot.result || typeof snapshot.result !== 'object') throw new Error('The saved analysis result is not available yet. Refresh its status.');
+            result = snapshot.result; request = snapshot.request;
+            result = Object.assign({}, result, { recovery: snapshot.recovery });
+        } else {
+            var inputResponse = await api.getRunInput(ref.operationId, { workspaceId: workspace });
+            request = await inputResponse.json();
+            if (request.operationId !== ref.operationId || request.scope?.workspaceId !== workspace
+                    || typeof request.businessText !== 'string') throw new Error('The saved analysis scope could not be confirmed.');
+            var resultResponse = await api.getRunResult(ref.operationId, { workspaceId: workspace });
+            if (resultResponse.status === 202) throw new Error('The saved analysis is still running. Refresh its status to retrieve the result.');
+            result = await resultResponse.json();
+            if (result.analysisOperationId && result.analysisOperationId !== ref.operationId) throw new Error('The saved analysis identity changed.');
+        }
+        return Object.assign({}, payload, {
+            canonicalAnalysisResult: result, canonicalAnalysisRequest: request,
+            taxonomyTree: result.tree || null,
+            lastAnalyzedText: request.businessText, storedBusinessText: request.businessText,
+            lastAnalysisProvider: result.provider || request.provider || null,
+            analysisOperationId: result.analysisOperationId || ref.operationId || null,
+            analysisProviderId: result.analysisProviderId || request.provider || null,
+            lastAnalysisStatus: result.status || 'IN_PROGRESS', analysisDurationMillis: result.analysisDurationMillis ?? null,
+            analysisCoverage: result.analysisCoverage || null, analysisScope: result.analysisScope || request.analysisScope || null,
+            analysisReasonLength: result.analysisReasonLength || null, analysisLanguage: result.analysisLanguage || request.analysisLanguage || null,
+            analysisRecovery: result.recovery || null,
+            recoveryContext: ref.continuationId ? { id: ref.continuationId, workspaceId: workspace,
+                request: request, confirmed: true, noFollowups: true, followups: {},
+                nodeEvidenceBaseline: payload.nodeEvidenceBaseline || null } : null,
+            scores: result.effectiveScores || result.scores || {}, rawScores: result.rawScores || result.scores || {},
+            effectiveScores: result.effectiveScores || result.scores || {}, scoreDetails: result.scoreDetails || {},
+            productSuitabilityScores: result.productSuitabilityScores || {}, scoreSemanticsVersion: result.scoreSemanticsVersion || 0,
+            scoreSemanticsWarnings: result.scoreSemanticsWarnings || [], reasons: result.reasons || {},
+            discrepancies: result.discrepancies || [], productCoverageGaps: result.productCoverageGaps || [],
+            architectureView: result.architectureView || null,
+            relationSearchReport: result.relationSearchReport || result.architectureView?.relationSearchReport || null,
+            provisionalRelations: result.provisionalRelations || [], evaluatedNodes: [], copilot: result.copilot || null
+        });
+    }
+    function currentPayload(fullEvidence) {
         var input = businessTextElement();
         var payload = {
             schemaVersion: SCHEMA_VERSION,
@@ -363,6 +477,7 @@
             activeAnalysisLanguage: S.activeAnalysisLanguage || null,
             analysisRecovery: S.analysisRecovery || null,
             recoveryContext: S.recoveryContext || null,
+            copilot: S.currentCopilot || null,
             storedBusinessText: S.storedBusinessText,
             scores: S.currentScores,
             rawScores: S.currentRawScores || {},
@@ -384,6 +499,14 @@
             savedAt: new Date().toISOString()
         };
         payload.draftState = meaningful(payload) ? 'ACTIVE' : 'EMPTY';
+        if (!fullEvidence && matchesAnalysisReference()) {
+            evidenceFields.concat(['analysisRecovery', 'recoveryContext', 'storedBusinessText']).forEach(function (key) {
+                // These options are editable presentation metadata, rather than copied evidence.
+                if (!['analysisScope', 'analysisReasonLength', 'analysisLanguage'].includes(key)) delete payload[key];
+            });
+            payload.analysisReference = Object.assign({}, runtime.analysisReference);
+            if (S.recoveryContext?.nodeEvidenceBaseline) payload.nodeEvidenceBaseline = S.recoveryContext.nodeEvidenceBaseline;
+        }
         return payload;
     }
 
@@ -396,6 +519,7 @@
     function meaningful(payload) {
         return Boolean(payload && (
             String(payload.businessText || '').trim()
+            || payload.analysisReference
             || (payload.scores && Object.keys(payload.scores).length > 0)
             || payload.relationSearchReport
             || payload.architectureView
@@ -533,6 +657,11 @@
         hasDerivedAnalysis: hasDerivedAnalysis,
         isStale: isStale,
         currentPayload: currentPayload,
+        retainAnalysisReference: retainAnalysisReference,
+        matchesAnalysisReference: matchesAnalysisReference,
+        canHydrateAnalysisResult: canHydrateAnalysisResult,
+        currentAnalysisEvidence: function () { return evidencePayload(currentPayload(true)); },
+        resolveAnalysisReference: resolveAnalysisReference,
         comparable: comparable,
         meaningful: meaningful,
         statusArea: statusArea,

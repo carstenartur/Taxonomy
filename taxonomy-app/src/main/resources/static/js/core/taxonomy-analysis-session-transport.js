@@ -475,8 +475,8 @@
     function installPayloadOptions() {
         if (C.nativeCurrentPayload) return;
         C.nativeCurrentPayload = C.currentPayload;
-        C.currentPayload = function () {
-            var payload = C.nativeCurrentPayload();
+        C.currentPayload = function (fullEvidence) {
+            var payload = C.nativeCurrentPayload(fullEvidence);
             payload.analysisOptions = analysisOptions();
             return payload;
         };

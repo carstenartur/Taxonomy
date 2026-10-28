@@ -475,12 +475,14 @@
         var text = settings.text, requestedScope = settings.requestedScope, provider = settings.provider;
         var options = settings.options || {}, analysisStart = settings.analysisStart || new Date();
         setAnalyzing(false);
+        if (window.__TaxonomyAnalysisSessionContext) window.__TaxonomyAnalysisSessionContext.runtime.preserveRestoredEvidence = false;
         if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
         applyScoreEnvelope(result);
         S.analysisCoverage = result.analysisCoverage || null;
         S.lastAnalysisScope = result.analysisScope || requestedScope || null;
         window.TaxonomyAnalysisScope?.acceptResult?.(S.lastAnalysisScope);
         S.analysisRecovery = result.recovery || null;
+        S.currentCopilot = result.copilot || null;
         acceptAnalysisReasonLength(result, true);
         S.currentReasons = result.reasons || {};
         S.currentDiscrepancies = result.discrepancies || [];
@@ -599,6 +601,8 @@
                 statusArea.appendChild(archLink);
             }
         }
+        window.TaxonomyAnalysis?.renderCopilotResult?.(S.currentCopilot);
+        window.__TaxonomyAnalysisSessionContext?.retainAnalysisReference?.(result, { businessText: text, durable: settings.durable === true });
         return result;
     }
 
@@ -704,7 +708,7 @@
             }
             if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
             acceptedResult = applyAnalysisResult(result, { text: text, requestedScope: requestedScope, provider: provider,
-                options: options, analysisStart: analysisStart, operationId: operationId });
+                options: options, analysisStart: analysisStart, operationId: operationId, durable: clusterObserved });
             resultHandled = true;
             return acceptedResult;
         }
@@ -735,6 +739,7 @@
                     B().renderView(S.taxonomyData, S.currentScores);
                 }
             }, function (result) {
+                clusterObserved = true; // Result delivery by the durable run monitor.
                 var accepted = acceptResult(result);
                 if (accepted) resolveRecovered(accepted);
             });
@@ -873,7 +878,7 @@
             resultHandled = true;
             monitor.finish(result.status, false, result.analysisDurationMillis);
             applyAnalysisResult(result, { text: saved.businessText, provider: saved.provider,
-                requestedScope: saved.analysisScope, options: { recoveryManaged: true }, operationId: operationId });
+                requestedScope: saved.analysisScope, options: { recoveryManaged: true }, operationId: operationId, durable: true });
         }, saved.scope);
         return monitor;
     }
@@ -1587,6 +1592,7 @@
     }
 
     function clearDerivedAnalysisView() {
+        S.currentCopilot = null;
         acceptRelationSearchReport(null);
         S.currentArchView = null;
         // Only the derived summary requires a fallback when its evidence is cleared.

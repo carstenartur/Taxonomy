@@ -35,6 +35,11 @@ public class AnalysisResult {
     public AnalysisRecoveryView getRecovery() { return recovery; }
     public void setRecovery(AnalysisRecoveryView value) { recovery = value; }
 
+    /** Reports computed before server completion; null for historical results. */
+    private AnalysisCopilotResult copilot;
+    public AnalysisCopilotResult getCopilot() { return copilot; }
+    public void setCopilot(AnalysisCopilotResult value) { copilot = value; }
+
     /** Server-measured scoring, relation and architecture work; null for older/unmeasured results. */
     private Long analysisDurationMillis;
     public Long getAnalysisDurationMillis() { return analysisDurationMillis; }

@@ -312,6 +312,8 @@ A working draft is shared by the same user and workspace across browser tabs or 
 
 If a provider question fails, the run pauses and shows the affected question in the **Copilot** recovery dialog. Already completed answers and valid scores remain saved. Choose **Retry question and continue** to ask that question again, or **Leave area unassessed and continue** to keep its nodes open and proceed with the other work. A retry may cause another provider request; when the outcome is uncertain, the dialog warns that the provider may already have processed or billed the previous request. **Refresh status** reads the saved operation without repeating the question. After a reload, reopen the saved run in the same workspace and review its status before deciding.
 
+If an older draft contains different local evidence, the dialog identifies that difference and offers **Load saved server result**. This replaces the local result with the saved server result without another AI request. Until you choose it, your local evidence remains visible. Portable JSON exports retain the Copilot findings; report exports for unchanged saved analyses use those saved findings, including partial or skipped assessments.
+
 A partial result marks failed, skipped and dependent nodes **Unassessed**. Unknown is not a measured zero or evidence that a capability is irrelevant. Gap, pattern and recommendation conclusions remain open until the missing areas are assessed. **Cancel run** preserves completed results; **New analysis** clears the working draft as described above. This recovery dialog belongs to the ad-hoc analysis workspace; persisted project analysis jobs have their own job-centre retry workflow.
 
 <a id="root-relevance-clarification"></a>

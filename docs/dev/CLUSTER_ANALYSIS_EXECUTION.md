@@ -33,7 +33,8 @@ cancellation remains a separate authorized operation. SSE serializes the stored
 result and revision directly, including frozen score semantics and architecture,
 without using the local mapper's current-catalogue cache.
 
-Architecture requests remain in `FINALIZING` until their view is persisted. The
+Architecture requests remain in `FINALIZING` until their view and server-owned
+Copilot reports are persisted. The
 completion consumer may redeliver this stage safely. Existing relation evidence
 uses the evidence projector. With hierarchical relation search disabled, the
 existing score-only generator uses effective scores and compatibility rules,
@@ -42,6 +43,42 @@ unverified and render as `SUGGESTED_CANDIDATE` edges between selected frozen nod
 Results without relationship evidence use a bounded hierarchy-only view. Global
 relation propagation is never used. Deterministic rendering failures finish with explicit
 `ARCHITECTURE_VIEW_INCOMPLETE` partial evidence; database failures remain retryable.
+
+## Server-owned Copilot reports and browser drafts
+
+The finalizer derives `AnalysisResult.copilot` from the retained result before
+publishing terminal completion. The local resumable POST and portfolio snapshots
+use the same report computation. It performs no additional provider requests and
+does not read a newer global catalogue or embedding index. A report's processing
+state is distinct from architectural completeness: unsearched or pruned relation
+evidence cannot prove a missing relationship. Restricted scopes and partial input
+have explicit skipped/partial states. Historical results may have no Copilot field.
+
+Verified pattern paths preserve source and decision conditions, necessity and
+alternative groups. Conditional paths are not unconditional completeness evidence.
+Continuation completion reconciles the report after canonical result, coverage and
+scope reconciliation, including cancellation fallback. Relation-extension assembly
+clears an inherited report until the extended result has been finalized.
+
+The managed browser flow renders this stored payload instead of chaining separate
+gap, pattern and recommendation POSTs. The existing completion redelivery and
+cancellation fences cover the reports together with the architecture. A failed
+database write remains retryable; no successful browser draft PUT is required to
+finish a server operation.
+
+Working drafts with reconstructible server evidence store an `analysisReference`
+and editable input/view/options instead of serializing another complete copy of
+scores, reasons, architecture and relation reports. Restoration reads the owned
+continuation or durable operation through the existing scoped APIs. It retains
+edited draft text, observes load/reset/workspace guards and reports unavailable
+references explicitly. Legacy and manually changed results retain their full
+draft representation; an arbitrary local operation ID is not durable authority.
+Late reads also fence manual score, reason and view edits. The unchanged draft
+size limit can still reject large manual or historical full representations.
+
+Artemis remains opt-in (`TAXONOMY_ANALYSIS_TRANSPORT_MODE=artemis`). This integration
+does not turn the local process registry or legacy SSE endpoint into a restart-safe
+distributed queue, and does not claim a new production HA verification result.
 
 The #808 question-continuation protocol now has an explicit distributed binding.
 `AnalysisContinuationService.beginDistributed` freezes request, catalogue, provider

@@ -131,6 +131,8 @@ class FrozenClusterContinuationTest {
             saved.freezeRelationSourceCohort(first, 16);
             var priorResult = new AnalysisResult(Map.of("CP", 75, "IP", 65), tree);
             priorResult.setStatus("PARTIAL"); priorResult.setRelationSearchReport(previous);
+            priorResult.setCopilot(new AnalysisCopilotResult(1, "COMPLETED", new GapAnalysisView(),
+                    new PatternDetectionView(), new ArchitectureRecommendation(), List.of("Earlier assessment reports")));
             saved.complete(first, priorResult, tree);
             var stopped = saved.read(first.id(), original.workspaceContext());
             assertThat(stopped.recovery().state()).isEqualTo("STOPPED");
@@ -150,6 +152,8 @@ class FrozenClusterContinuationTest {
             assertThat(beforePreparation.budget()).isEqualTo(admitted);
             assertThat(store.cancel(context)).isTrue();
             var cancelled = store.snapshot(context); assertThat(cancelled.state()).isEqualTo(ClusterAnalysisState.CANCELLED);
+            assertThat(cancelled.result().getCopilot())
+                    .as("A new cancelled operation cannot reuse reports from earlier relation evidence").isNull();
             var retained = cancelled.result().getRelationSearchReport();
             assertThat(retained.sources()).isEqualTo(previous.sources());
             assertThat(retained.tasks()).isEqualTo(previous.tasks());

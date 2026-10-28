@@ -33,7 +33,7 @@ public class ArchitectureGapService {
 
     private static final Logger log = LoggerFactory.getLogger(ArchitectureGapService.class);
 
-    private static final int DEFAULT_MIN_SCORE = 50;
+    static final int DEFAULT_MIN_SCORE = 50;
 
     private final RelationCompatibilityMatrix compatibilityMatrix;
     private final TaxonomyNodeRepository nodeRepository;

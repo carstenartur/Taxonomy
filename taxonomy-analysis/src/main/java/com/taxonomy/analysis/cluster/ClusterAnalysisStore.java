@@ -5,6 +5,7 @@ import com.taxonomy.analysis.dag.json.AnalysisMessageCodec;
 import com.taxonomy.analysis.dispatch.AnalysisDispatchService;
 import com.taxonomy.analysis.relations.RelationSearchDistribution;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.architecture.service.AnalysisCopilotService;
 import com.taxonomy.catalog.snapshot.RootCatalogueSnapshot;
 import com.taxonomy.dto.*;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -446,6 +447,8 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
         }
         if (result.getArchitectureView() != null && command.businessText() != null)
             result.getArchitectureView().setOriginalRequirementText(command.businessText());
+        if (command.includeArchitectureView() && result.getCopilot() == null)
+            result.setCopilot(new AnalysisCopilotService().analyze(result, command.businessText()));
         var binding = command.continuationBinding();
         if (binding == null) return result;
         var claim = new com.taxonomy.analysis.recovery.AnalysisContinuationStore.Claim(binding.id(), binding.token(), null);
@@ -700,6 +703,7 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                     || !Objects.equals(result.getRelationSearchReport(), enriched.getRelationSearchReport()))
                 throw new IllegalArgumentException("Enrichment cannot replace committed assessment evidence");
             result.setArchitectureView(enriched.getArchitectureView());
+            result.setCopilot(enriched.getCopilot());
             result.setWarnings(enriched.getWarnings()); result.setErrorMessage(enriched.getErrorMessage());
             result.setStatus(enriched.getStatus()); run.resultJson = json(result);
             result.setAnalysisDurationMillis(Math.max(0, System.currentTimeMillis() - run.createdAt));
@@ -843,6 +847,8 @@ public final class ClusterAnalysisStore implements ClusterRelationService.Store 
                     + Objects.toString(result.getErrorMessage(), "partial assessment"));
         }
         var result = retained == null ? new AnalysisResult(scores, tree) : read(json(retained), AnalysisResult.class);
+        // Aggregate new work before computing reports; never reuse an earlier completion claim.
+        result.setCopilot(null);
         if (retained == null) { result.setReasons(reasons); result.setScoreSemanticsContext(contexts); }
         var context = read(run.contextJson, AnalysisOperationContext.class);
         if (retained == null) result.setAnalysisCoverage(coverage.combine(context.authority(),

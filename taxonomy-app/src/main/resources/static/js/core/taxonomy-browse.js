@@ -181,6 +181,11 @@
                             window.TaxonomyScoring.applyLocalRawScores(data.rawScores || data.scores || {}, true);
                         } else S.currentScores = data.scores || {};
                         S.currentReasons = data.reasons || {};
+                        // Portable reports remain display evidence, not an owned execution reference.
+                        S.currentCopilot = data.copilot || null;
+                        const sessionRuntime = window.__TaxonomyAnalysisSessionContext?.runtime;
+                        if (sessionRuntime) { sessionRuntime.analysisReference = null; sessionRuntime.analysisEvidence = null; }
+                        window.TaxonomyAnalysis?.renderCopilotResult?.(S.currentCopilot);
                         S.lastAnalysisProvider = data.provider || 'IMPORTED';
                         S.analysisProviderId = data.analysisProviderId || null;
                         S.analysisOperationId = data.analysisOperationId || null;
@@ -920,16 +925,24 @@
             var ext = extMap[btnId];
             var bt = document.getElementById('businessText');
             var businessText = bt ? bt.value : '';
+            var session = window.__TaxonomyAnalysisSessionContext;
+            var reference = session?.matchesAnalysisReference?.() ? session.runtime.analysisReference : null;
+            var reportRequest = reference ? { analysisReference: reference } : {
+                scores: S.currentScores, businessText: businessText, minScore: 20,
+                reasons: S.currentReasons || {}, analysisLanguage: S.lastAnalysisLanguage || null
+            };
+            reportRequest.language = window.TaxonomyContentLanguage?.documentLanguage(S.lastAnalysisLanguage);
+            var reportHeaders = { 'Content-Type': 'application/json' };
+            if (reference?.workspaceId) reportHeaders['X-Taxonomy-Workspace-Id'] = reference.workspaceId;
             fetch('/api/report/' + format, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ scores: S.currentScores, businessText: businessText, minScore: 20,
-                    reasons: S.currentReasons || {},
-                    analysisLanguage: S.lastAnalysisLanguage || null,
-                    language: window.TaxonomyContentLanguage?.documentLanguage(S.lastAnalysisLanguage) })
+                headers: reportHeaders,
+                body: JSON.stringify(reportRequest)
             })
             .then(function (resp) {
-                if (!resp.ok) throw new Error('Report generation failed');
+                if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (problem) {
+                    throw new Error(problem.detail || problem.message || 'Report generation failed (HTTP ' + resp.status + ')');
+                });
                 return resp.blob();
             })
             .then(function (blob) {

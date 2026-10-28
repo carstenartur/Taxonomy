@@ -22,6 +22,11 @@ import java.util.Map;
  */
 public class SavedAnalysis {
 
+    /** Portable evidence for display/export, never proof of an owned server operation. */
+    private AnalysisCopilotResult copilot;
+    public AnalysisCopilotResult getCopilot() { return copilot; }
+    public void setCopilot(AnalysisCopilotResult value) { copilot = value; }
+
     /** Recorded content language; absent historical values stay unknown. */
     private AnalysisLanguage analysisLanguage;
     public AnalysisLanguage getAnalysisLanguage() { return analysisLanguage; }

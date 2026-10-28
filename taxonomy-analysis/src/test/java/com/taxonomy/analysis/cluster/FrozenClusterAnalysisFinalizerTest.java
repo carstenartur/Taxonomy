@@ -75,10 +75,27 @@ class FrozenClusterAnalysisFinalizerTest {
             assertThat(result.getRawScores()).containsExactlyInAnyOrderEntriesOf(
                     Map.of("CP-1023", 55.0, "IP-1136", 80.0));
             assertThat(result.getViewContext().basedOnCommit()).isEqualTo("commit");
+            assertThat(result.getCopilot()).isNotNull();
             return true;
         }));
         assertThat(FrozenCatalogueContext.current()).isNull();
         verifyNoInteractions(nodes, architecture);
+    }
+
+    @Test
+    void completedCopilotIsIncludedInTheResultPassedToDurableStorage() {
+        var context = prepare("Frozen original requirement");
+        finalizer.accept(context);
+        verify(store).finalizeResult(eq(context), argThat(result -> {
+            var persisted = mapper.readTree(mapper.writeValueAsString(result));
+            assertThat(persisted.path("copilot").path("schemaVersion").asInt()).isEqualTo(1);
+            assertThat(persisted.path("copilot").path("gaps").path("businessText").asString())
+                    .isEqualTo("Frozen original requirement");
+            assertThat(persisted.path("copilot").path("recommendation").path("confirmedElements").size()).isEqualTo(1);
+            assertThat(persisted.path("copilot").path("patterns").path("matchedPatterns").isEmpty()).isTrue();
+            return true;
+        }));
+        verifyNoInteractions(nodes);
     }
 
     @Test

@@ -32,6 +32,10 @@ public final class ArchitectureReportTextRenderer {
         md.append("**").append(labels.generatedAt()).append(":** ").append(formatTimestamp(report.getGeneratedAt())).append("  \n");
         md.append("**").append(labels.requirement()).append(":** ").append(
                 report.getBusinessText() != null ? report.getBusinessText() : labels.unknown()).append("\n\n");
+        if (report.getCopilot() != null) {
+            md.append("**Copilot:** ").append(labels.retainedCopilotStatus(report.getCopilot().state())).append("\n\n");
+            report.getCopilot().notes().forEach(note -> md.append(note).append("\n\n"));
+        }
 
         // Architecture Summary
         md.append("## 1. ").append(labels.architectureSummary()).append("\n\n");
@@ -91,6 +95,7 @@ public final class ArchitectureReportTextRenderer {
         md.append("## 2. ").append(labels.gapAnalysis()).append("\n\n");
         GapAnalysisView gaps = report.getGapAnalysis();
         if (gaps != null) {
+            gaps.getNotes().forEach(note -> md.append(note).append("\n\n"));
             md.append("**").append(labels.totalGaps()).append(":** ").append(gaps.getTotalGaps()).append("\n\n");
 
             if (!gaps.getMissingRelations().isEmpty()) {
@@ -121,6 +126,7 @@ public final class ArchitectureReportTextRenderer {
         md.append("## 3. ").append(labels.detectedPatterns()).append("\n\n");
         PatternDetectionView patterns = report.getPatternDetection();
         if (patterns != null) {
+            patterns.getNotes().forEach(note -> md.append(note).append("\n\n"));
             md.append("**").append(labels.patternCoverage()).append(":** ").append(
                     formatBoundedPercentage(patterns.getPatternCoverage(), 1)).append("\n\n");
 
@@ -129,10 +135,8 @@ public final class ArchitectureReportTextRenderer {
                 for (DetectedPattern dp : patterns.getMatchedPatterns()) {
                     md.append("- **").append(dp.getPatternName()).append("** — ");
                     md.append(formatBoundedPercentage(dp.getCompleteness(), 0)).append(" ").append(labels.complete());
-                    if (!dp.getPresentSteps().isEmpty()) {
-                        md.append(" (").append(String.join(", ", dp.getPresentSteps())).append(")");
-                    }
                     md.append("\n");
+                    appendPatternEvidence(md, dp, labels);
                 }
                 md.append("\n");
             }
@@ -144,6 +148,7 @@ public final class ArchitectureReportTextRenderer {
                     md.append(formatBoundedPercentage(dp.getCompleteness(), 0)).append(" ").append(labels.completeMissing());
                     md.append(String.join(", ", dp.getMissingSteps()));
                     md.append("\n");
+                    appendPatternEvidence(md, dp, labels);
                 }
                 md.append("\n");
             }
@@ -588,6 +593,13 @@ public final class ArchitectureReportTextRenderer {
             i += run - 1;
         }
         return -1;
+    }
+
+    private static void appendPatternEvidence(StringBuilder md, DetectedPattern pattern, DecisionReportLabels labels) {
+        if (!pattern.getExpectedSteps().isEmpty()) md.append("\n").append(labels.expectedSteps()).append(": ")
+                .append(String.join(", ", pattern.getExpectedSteps())).append("\n\n");
+        if (!pattern.getPresentSteps().isEmpty()) md.append("\n").append(labels.retainedSteps()).append(": ")
+                .append(String.join(", ", pattern.getPresentSteps())).append("\n\n");
     }
 
     private String escapeHtml(String text) {

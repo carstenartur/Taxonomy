@@ -15,6 +15,7 @@ function fixture({ status = null, scores = null, start = 'request', provider = '
   const requests = [];
   const operations = [];
   let enrichments = 0;
+  const renderings = [];
   let starts = 0;
   function node(id = '') {
     const classes = new Set();
@@ -81,7 +82,7 @@ function fixture({ status = null, scores = null, start = 'request', provider = '
       return new Promise((resolve, reject) => requests.push({ input, options, resolve, reject }));
     },
     setTimeout(callback) { timers.push(callback); return timers.length; },
-    TaxonomyAnalysis: { runCopilotFlow() { enrichments++; } },
+    TaxonomyAnalysis: { runCopilotFlow() { enrichments++; }, renderCopilotResult(result) { renderings.push(result); } },
     TaxonomyScoring: {
       runAnalysis() {
         starts++;
@@ -115,7 +116,7 @@ function fixture({ status = null, scores = null, start = 'request', provider = '
   }
   return {
     C, window, elements, requests, operations, flush,
-    starts: () => starts, enrichments: () => enrichments,
+    starts: () => starts, enrichments: () => enrichments, renderings,
     listeners: () => (listeners.get('taxonomy:operation-state') || []).length,
     click: () => click(elements.copilotBtn),
     async respond(result) {
@@ -132,12 +133,13 @@ function fixture({ status = null, scores = null, start = 'request', provider = '
   };
 }
 
-test('complete analysis gates enrichment and releases its listener', async () => {
+test('complete analysis gates retained report rendering and releases its listener', async () => {
   const f = fixture(); f.click();
   assert.equal(f.requests.length, 1);
   assert.equal(f.enrichments(), 0);
   await f.respond({ status: 'SUCCESS', scores: { BP: 80 } });
-  assert.equal(f.enrichments(), 1);
+  assert.equal(f.enrichments(), 0);
+  assert.equal(f.renderings.length, 1);
   assert.equal(f.listeners(), 0);
 });
 
@@ -150,7 +152,8 @@ for (const status of ['PARTIAL', 'ERROR', 'CANCELLED']) {
     assert.equal(f.requests.length, 2, 'Retry must reach the coordinator, not be blocked by the earlier guard');
     assert.equal(f.enrichments(), 0);
     await f.respond({ status: 'SUCCESS', scores: { BP: 80 } });
-    assert.equal(f.enrichments(), 1);
+    assert.equal(f.enrichments(), 0);
+    assert.equal(f.renderings.length, 1);
     assert.equal(f.listeners(), 0);
   });
 }
@@ -216,3 +219,14 @@ for (const status of [null, '', 'UNKNOWN']) {
     assert.equal(f.requests.length, 0);
   });
 }
+
+
+test('coordinator success renders retained server reports without invoking a browser follow-up', async () => {
+  const f = fixture(); const copilot = { schemaVersion: 1, state: 'COMPLETED', notes: ['Retained evidence'] };
+  f.click(); await f.respond({ status: 'SUCCESS', scores: { BP: 80 }, copilot });
+  assert.equal(f.enrichments(), 0);
+  assert.equal(f.renderings.length, 1);
+  assert.equal(f.renderings[0], copilot);
+  assert.equal(f.elements.copilotBtn.disabled, false);
+  assert.equal(f.listeners(), 0);
+});
