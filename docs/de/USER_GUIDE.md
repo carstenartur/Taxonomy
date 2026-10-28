@@ -484,7 +484,9 @@ Nach Durchführung einer Analyse zeigt das Sunburst-Diagramm Heatmap-Farbverläu
 
 ![Bewertete Sunburst-Ansicht](../images/39-scored-sunburst.png)
 
-Sunburst, Baum und Entscheidungskarte haben eine gemeinsame Relevanzauswahl. **Alle Knoten** zeigt die verfügbare Ansicht; **0-Relevanz ausblenden** entfernt gemessene Nullwerte und erhält unbekannte oder ausstehende Bewertungen; **Nur > 0** zeigt positive Treffer mit ihren übergeordneten Pfaden. Die Auswahl gilt für Diagramm und Druck. Ein zur Orientierung erhaltener Elternknoten ist kein zusätzlicher positiver Treffer.
+Liste, Registerkarten, Sunburst, Baum, Entscheidungskarte und Zusammenfassung verwenden dieselbe Relevanzauswahl. **Alle Knoten** zeigt die verfügbare Ansicht; **0-Relevanz ausblenden** entfernt gemessene Nullwerte und erhält unbekannte oder ausstehende Bewertungen; **Nur > 0** zeigt positive Treffer mit ihren übergeordneten Pfaden. Die Auswahl gilt auch für den Diagrammdruck. Ein zur Orientierung erhaltener Elternknoten ist kein zusätzlicher positiver Treffer. Die gespeicherten Bewertungen und der vollständige Katalog bleiben erhalten. Bei der ausdrücklichen Auswahl eines ausgeblendeten Suchtreffers wechselt die Ansicht zu **Alle Knoten**, damit das Suchziel erreichbar ist. Eine neue manuelle Bewertung beginnt ebenfalls mit allen Knoten.
+
+Während einer laufenden Analyse behalten Sunburst, Baum und Entscheidungskarte ihren Ausschnitt: Zoom, Verschiebung, Scrollposition und manuell geöffnete oder geschlossene Zweige werden bei neuen Ergebnissen wiederhergestellt. Sunburst merkt sich den geöffneten Teilbaum. Jede Ansicht und jede im Baum ausgewählte Teiltaxonomie hat ihren eigenen Zustand; auch ein Wechsel zwischen SVG- und Canvas-Darstellung erhält ihn. Wenn ein Filter den ausgewählten Knoten entfernt, wird ein noch sichtbarer Elternknoten verwendet. **Diagramm einpassen** und **Zoom zurücksetzen** ändern den Ausschnitt ausdrücklich. Eine neue Analyse oder ein neu geladener Anforderungsentwurf beginnt mit einem neuen Ansichtszustand.
 
 ### Baumansicht
 
@@ -492,7 +494,7 @@ Sunburst, Baum und Entscheidungskarte haben eine gemeinsame Relevanzauswahl. **A
 
 Die Baumansicht stellt die Taxonomie als interaktives Knoten-Verbindungs-Diagramm dar. Verwenden Sie das **Taxonomy root selector**-Dropdown, um auszuwählen, welcher Stamm angezeigt werden soll, wenn es mehrere Taxonomiestämme gibt.
 
-**Alles ausklappen** öffnet sämtliche Zweige der ausgewählten Teiltaxonomie auf einmal. **Begründung** zeigt den vollständigen gespeicherten Text des ausgewählten Knotens. **Diagramm drucken** enthält die vollständige ausgewählte Teiltaxonomie mit dem aktuellen Relevanzfilter, einschließlich zugeklappter und außerhalb des Bildschirms liegender Zweige. Prozentzahlen bleiben sichtbar; nummerierte Verweise führen zu den vollständigen Begründungen im Druck. Unter **Drucklayout** stehen **A4-Seiten** und **Ein großes Blatt** zur Wahl. Auch große, als Canvas dargestellte Bäume werden als vollständige Vektorgrafiken gedruckt.
+Baum und Entscheidungskarte bieten **Alles ausklappen** und **Alles zuklappen**. **Begründung** zeigt den vollständigen gespeicherten Text des ausgewählten Knotens. **Diagramm drucken** enthält die vollständige ausgewählte Teiltaxonomie mit dem aktuellen Relevanzfilter, einschließlich zugeklappter und außerhalb des Bildschirms liegender Zweige. Prozentzahlen bleiben sichtbar; nummerierte Verweise führen zu den vollständigen Begründungen im Druck. **Drucklayout** und **Papierformat** sind getrennte Einstellungen, wie im folgenden Abschnitt beschrieben. Auch große, als Canvas dargestellte Bäume werden als vollständige Vektorgrafiken gedruckt.
 
 ![Baumansicht](../images/07-tree-view.png)
 
@@ -502,7 +504,21 @@ Die Entscheidungskarten-Ansicht zeigt die Taxonomie als Entscheidungsbaum-Layout
 
 Die Teiltaxonomien stehen in getrennten Bereichen. Der Abstand berücksichtigt die vollständigen umgebrochenen Knotenbezeichnungen und bleibt beim Auf- und Zuklappen erhalten. Über **Begründung** am Knoten öffnen Sie die gespeicherte Analysebegründung und die getrennt beschriftete Katalogbeschreibung. Die Aktion funktioniert auch per Tastatur und auf Touchscreens; **Schließen** oder Escape führt zum Knoten zurück.
 
-Mit **Diagramm drucken** öffnen Sie eine eigene Druckansicht. Sie enthält alle relevanten Zweige mit dem gewählten Relevanzfilter, unabhängig von Zoom und zugeklappten Bildschirmzweigen. **A4-Seiten** verteilt große Bereiche auf Seiten im Querformat; Überschriften und Verweise auf fortgesetzte Verbindungen erhalten die Orientierung. **Ein großes Blatt** ordnet zusammengehörige, nummerierte Abschnitte ausgewogen auf einem Blatt an. Dadurch wird ein hoher, schmaler Baum nicht zu einem dünnen Druckstreifen verkleinert. Übergeordnete Knoten und Fortsetzungen bleiben über Abschnittsverweise zugeordnet. Beide Drucklayouts enthalten Prozentwerte und die vollständigen gespeicherten Begründungen. Wählen Sie im Browser einen Drucker oder **Als PDF speichern**. Falls der Browser das Druckfenster blockiert, erlauben Sie Pop-ups für diese Anwendung und wählen Sie **Diagramm drucken** erneut.
+Bereits vorhandene Analysebegründungen werden zusammen mit den laufenden Bewertungen übertragen. Eine später eintreffende Begründung aktualisiert die Ansicht auch dann, wenn der Zahlenwert gleich bleibt. Wenn im laufenden Ergebnis noch keine Begründung enthalten ist, sagt der Dialog dies ausdrücklich. **Für diese Bewertung wurde keine Begründung gespeichert** bezeichnet fehlende Begründungen in abgeschlossenen oder importierten Ergebnissen. Das Öffnen des Dialogs erzeugt keine neue KI-Abfrage und ergänzt keine erfundenen Texte.
+
+Mit **Diagramm drucken** öffnen Sie eine eigene Druckansicht. Sie enthält die mit dem Relevanzfilter ausgewählten Zweige, unabhängig von Zoom und zugeklappten Bildschirmzweigen. Es gibt drei Drucklayouts:
+
+- **A4-Seiten** verteilt umfangreiche Bäume auf lesbare A4-Seiten im Querformat. Überschriften und Verweise auf fortgesetzte Verbindungen erhalten die Orientierung.
+- **Ein großes Blatt** setzt alle ausgewählten Teiltaxonomien mit durchgehenden Eltern-Kind-Verbindungen auf ein Blatt.
+- **Ein Blatt je Teiltaxonomie** erzeugt für jeden ausgewählten Bereich ein eigenes Blatt. Ausgefilterte Bereiche erhalten keine leere Seite.
+
+Für die beiden Ganzblattlayouts wählen Sie unter **Papierformat** A4, A3, A2, **A1** oder **A0**. Beim ersten Wechsel von A4-Teilseiten zu einem Ganzblatt ist A1 voreingestellt. Ausrichtung und Skalierung richten sich nach dem vollständigen Inhalt; die Einstellung bleibt bei Ergebnisaktualisierungen erhalten. Große Blätter enthalten zusammenhängende Bäume statt zusammengesetzter A4-Ausschnitte. Alle Layouts enthalten Prozentwerte und vollständige gespeicherte Begründungen der ausgewählten Knoten. Ein sehr umfangreicher Baum wird auf das gewählte Blatt skaliert; für größere Schrift helfen ein größeres Papierformat, ein Blatt je Teiltaxonomie oder A4-Teilseiten.
+
+![Diagrammoptionen mit positivem Relevanzfilter, einem Blatt je Teiltaxonomie und Papierformat A0](../images/diagram-print-controls-de.png)
+
+*Bedienelemente der produktiven Diagrammkomponente mit einer deterministischen Testvorgabe. [Aufnahmequelle](../images/diagram-print-controls-2026-10-27.json); [Prüfumfang](../testing/stable-diagrams-and-print.md).*
+
+Wählen Sie im Browser einen Drucker mit passendem Papierformat oder **Als PDF speichern**. Die Druckansicht legt die tatsächlichen Blattabmessungen fest, beispielsweise 594 × 841 mm für A1 und 841 × 1189 mm für A0; der Druckdialog darf diese Vorgabe nicht auf A4 überschreiben. Die Bildschirmansicht und gespeicherten Ergebnisse werden durch den Druck nicht verändert. Falls der Browser das Druckfenster blockiert, erlauben Sie Pop-ups für diese Anwendung und wählen Sie **Diagramm drucken** erneut.
 
 ![Entscheidungskarten-Ansicht (bewertet)](../images/69-decision-map-scored.png)
 

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
@@ -56,6 +57,8 @@ class TaxonomyTreeLayoutIT {
                 String resource = switch (path) {
                     case "/d3.js" -> "/META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js";
                     case "/views.js" -> "/static/js/core/taxonomy-views.js";
+                    case "/taxonomy.css" -> "/static/css/taxonomy.css";
+                    case "/taxonomy-ergonomics.css" -> "/static/css/taxonomy-ergonomics.css";
                     default -> null;
                 };
                 if (resource == null) { exchange.sendResponseHeaders(404, -1); exchange.close(); return; }
@@ -63,7 +66,7 @@ class TaxonomyTreeLayoutIT {
                     if (input == null) throw new IllegalStateException("Missing browser resource " + resource);
                     body = input.readAllBytes();
                 }
-                exchange.getResponseHeaders().set("Content-Type", "application/javascript");
+                exchange.getResponseHeaders().set("Content-Type", path.endsWith(".css") ? "text/css" : "application/javascript");
             }
             exchange.sendResponseHeaders(200, body.length);
             try (var output = exchange.getResponseBody()) { output.write(body); }
@@ -94,6 +97,78 @@ class TaxonomyTreeLayoutIT {
                 if(window.originalCanvasPaintMethods)
                     Object.assign(CanvasRenderingContext2D.prototype,window.originalCanvasPaintMethods);
                 """);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "renderTreeDiagram, reduce", "renderTreeDiagram, no-preference",
+        "renderDecisionMap, reduce", "renderDecisionMap, no-preference"
+    })
+    void renderedZoomAndGrowthStayInSyncWithMotionPreference(String renderer, String motion) {
+        var cdp = (HasCdp) new Augmenter().augment(driver);
+        cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features",
+            java.util.List.of(Map.of("name", "prefers-reduced-motion", "value", motion))));
+        try {
+            assertThat(driver.executeAsyncScript("""
+                    const done=arguments[arguments.length-1];
+                    Promise.all(['/taxonomy.css','/taxonomy-ergonomics.css'].map(href=>new Promise((resolve,reject)=>{
+                        const link=document.createElement('link');link.rel='stylesheet';link.href=href;
+                        link.onload=resolve;link.onerror=()=>reject(new Error('Stylesheet failed: '+href));
+                        document.head.appendChild(link);
+                    }))).then(()=>done(''),error=>done(String(error)));
+                    """)).isEqualTo("");
+            driver.executeScript("""
+                    window.readingData=[{code:'fixture-root',name:'Original root',children:[
+                        {code:'fixture-branch',name:'Original branch',children:[
+                            {code:'fixture-selected',name:'Selected first leaf',children:[]},
+                            {code:'fixture-sibling',name:'Second leaf',children:[]}]},
+                        {code:'fixture-other',name:'Another branch',children:[
+                            {code:'fixture-other-leaf',name:'Third leaf',children:[]}]}]}];
+                    window.readingScores={'fixture-root':95,'fixture-branch':90,'fixture-selected':80,
+                        'fixture-sibling':75,'fixture-other':85,'fixture-other-leaf':70};
+                    window.readingRenderer=arguments[0];
+                    window.readingContext={analysisKey:'motion-growth',
+                        view:readingRenderer==='renderDecisionMap'?'decision':'tree',treeRoot:'fixture-root'};
+                    window.drawReadingFixture=()=>{
+                        const host=document.getElementById('tree');
+                        TaxonomyViews.prepareDiagramContext(host,readingContext);
+                        TaxonomyViews[readingRenderer](host,readingData,readingScores);
+                    };
+                    drawReadingFixture();
+                    """, renderer);
+            settled();
+            assertThat(driver.executeScript("""
+                    const host=document.getElementById('tree'),surface=host.querySelector('svg');
+                    host.querySelector('[data-diagram-node="fixture-selected"]').focus();
+                    // Check the rendered matrix in the same task as the native control action.
+                    // A tiny CSS transition must not leave the visible transform behind D3 state.
+                    host.querySelector('.tax-diagram-controls button').click();
+                    const actual=surface.querySelector('g').getCTM().a;
+                    return Math.abs(actual-1.25)<0.00001?'':'Zoom is not rendered immediately: '+actual;
+                    """)).as(renderer + " rendered zoom with " + motion).isEqualTo("");
+            driver.executeScript("""
+                    const host=document.getElementById('tree');
+                    host.querySelectorAll('.tax-diagram-controls button')[2].click();
+                    const node=host.querySelector('[data-diagram-node="fixture-selected"]'),matrix=node.getScreenCTM();
+                    window.readingBefore={x:matrix.e,y:matrix.f,k:matrix.a};
+                    readingData=structuredClone(readingData);
+                    readingData[0].children[0].children.unshift({code:'fixture-growth',
+                        name:'Additional deterministic presentation fixture',children:[]});
+                    readingScores['fixture-growth']=82;
+                    drawReadingFixture();
+                    """);
+            settled();
+            assertThat(driver.executeScript("""
+                    const host=document.getElementById('tree');
+                    const node=host.querySelector('[data-diagram-node="fixture-selected"]'),matrix=node.getScreenCTM();
+                    const after={x:matrix.e,y:matrix.f,k:matrix.a};
+                    if(host.dataset.activeNode!=='fixture-selected')return 'Selected node changed';
+                    return Math.abs(after.x-readingBefore.x)<1 && Math.abs(after.y-readingBefore.y)<1
+                        && Math.abs(after.k-readingBefore.k)<0.00001?'':JSON.stringify({before:readingBefore,after});
+                    """)).as(renderer + " rendered reading anchor with " + motion).isEqualTo("");
+        } finally {
+            cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features", java.util.List.of()));
+        }
     }
 
     @ParameterizedTest
@@ -249,6 +324,9 @@ class TaxonomyTreeLayoutIT {
                 """);
         for (String mode : new String[]{"pages", "single"}) {
             new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue(mode);
+            // The paper control changes availability with the selected layout; capture
+            // the live diagram after that deliberate user preference change.
+            driver.executeScript("window.screenBefore=document.querySelector('#tree').innerHTML");
             driver.findElement(By.cssSelector(".tax-diagram-print-button")).click();
             assertThat(driver.executeScript("""
                     const doc=printFrame.contentDocument;
@@ -313,6 +391,117 @@ class TaxonomyTreeLayoutIT {
         driver.executeScript("window.open=()=>null");
         driver.findElement(By.cssSelector(".tax-diagram-print-button")).click();
         assertThat(driver.findElement(By.cssSelector(".decision-print-status")).getText()).contains("views.diagram.printBlocked");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "renderTreeDiagram,A1,single", "renderTreeDiagram,A0,single",
+        "renderTreeCanvas,A1,single", "renderTreeCanvas,A0,single",
+        "renderDecisionMap,A1,single", "renderDecisionMap,A0,single",
+        "renderTreeDiagram,A1,taxonomy", "renderTreeDiagram,A0,taxonomy",
+        "renderTreeCanvas,A1,taxonomy", "renderTreeCanvas,A0,taxonomy",
+        "renderDecisionMap,A1,taxonomy", "renderDecisionMap,A0,taxonomy"
+    })
+    void fixedPaperPrintKeepsConnectedPositiveSubtaxonomiesOnTheRequestedSheets(String renderer, String paper, String mode) throws Exception {
+        driver.executeScript("""
+                window.TaxonomyUtils={isTaxonomyContainer:n=>!!n.taxonomyContainer,
+                    contentRoots:items=>items.flatMap(n=>n.taxonomyContainer?n.children:[n])};
+                window.data=['BP','BR'].map((area,index)=>({code:area,name:'Area '+area,taxonomyContainer:true,children:[
+                    {code:'fixture-context-'+index,name:'Context ancestor',children:[
+                        {code:'fixture-mid-'+index,name:'Intermediate context',children:[
+                            {code:'fixture-positive-'+index,name:'Selected positive leaf'}]},
+                        {code:'fixture-zero-'+index,name:'Excluded zero'},
+                        {code:'fixture-missing-'+index,name:'Excluded unknown'},
+                        {code:'fixture-pending-'+index,name:'Excluded pending product'}]}]}));
+                window.scores={};window.details={};window.reasons={};
+                for(let i=0;i<2;i++){
+                    scores['fixture-context-'+i]=0;scores['fixture-mid-'+i]=0;
+                    scores['fixture-positive-'+i]=0.75;scores['fixture-zero-'+i]=0;scores['fixture-pending-'+i]=75;
+                    details['fixture-pending-'+i]={kind:'PRODUCT_SUITABILITY'};
+                    reasons['fixture-positive-'+i]='SELECTED REASON '+i+' complete final sentence.';
+                    reasons['fixture-zero-'+i]='EXCLUDED ZERO REASON';
+                    reasons['fixture-missing-'+i]='EXCLUDED UNKNOWN REASON';
+                    reasons['fixture-pending-'+i]='EXCLUDED PENDING REASON';
+                }
+                window.TaxonomyState={currentReasons:reasons,currentScoreDetails:details};
+                window.savedBefore=JSON.stringify({data,scores,reasons,details});
+                window.selected=TaxonomyViews.filterRelevance(data,scores,details,'positive');
+                TaxonomyViews[arguments[0]](document.getElementById('tree'),selected,scores);
+                """, renderer);
+        if (renderer.equals("renderTreeDiagram")) settled();
+        if (renderer.equals("renderDecisionMap")) {
+            wait.until(d -> Boolean.TRUE.equals(driver.executeScript("return document.getElementById('tree').dataset.transitionsComplete==='true'")));
+        }
+        new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(".tax-diagram-print-mode"))).selectByValue(mode);
+        new org.openqa.selenium.support.ui.Select(driver.findElement(By.cssSelector(".tax-diagram-print-paper"))).selectByValue(paper);
+        driver.executeScript("""
+                window.screenBefore=document.getElementById('tree').innerHTML;
+                window.canvasBefore=document.querySelector('canvas')?.toDataURL();
+                window.printFrame=document.createElement('iframe');document.body.append(printFrame);
+                window.open=()=>({document:printFrame.contentDocument,closed:false,focus(){},addEventListener(){},requestAnimationFrame(fn){fn()},print(){}});
+                """);
+        driver.findElement(By.cssSelector(".tax-diagram-print-button")).click();
+        int expectedPages = mode.equals("taxonomy") ? 2 : 1;
+        assertThat(driver.executeScript("return printFrame.contentDocument.querySelectorAll('.diagram-print-page').length")).isEqualTo((long) expectedPages);
+        assertThat(driver.executeScript("""
+                const doc=printFrame.contentDocument,errors=[];
+                for(let i=0;i<2;i++)for(const kind of ['context','mid','positive']){
+                    const code='fixture-'+kind+'-'+i;
+                    if(doc.querySelectorAll('[data-print-node="'+code+'"]').length!==1)errors.push('missing or repeated '+code);
+                }
+                if(doc.querySelectorAll('path').length!==4)errors.push('missing hierarchy edges');
+                if(doc.querySelector('[data-parent-page]'))errors.push('hierarchy fragmented into continuation stubs');
+                if(doc.querySelector('[data-print-section]'))errors.push('sheet tiled from A4 fragments');
+                for(const reference of doc.querySelectorAll('a[href^="#diagram-evidence-"]')){
+                    const target=doc.querySelector(reference.getAttribute('href'));
+                    if(!target||target.dataset.evidenceCode!==reference.closest('[data-print-node]').dataset.printNode)
+                        errors.push('explanation reference points outside its node');
+                }
+                for(const page of doc.querySelectorAll('.diagram-print-page')){
+                    const svg=page.querySelector(':scope > svg'),bounds=svg.getBoundingClientRect();
+                    for(const node of svg.querySelectorAll('[data-print-node]')){
+                        const box=node.getBoundingClientRect();
+                        if(box.left<bounds.left-0.5||box.top<bounds.top-0.5||box.right>bounds.right+0.5||box.bottom>bounds.bottom+0.5)
+                            errors.push('clipped '+node.dataset.printNode);
+                    }
+                }
+                if(doc.body.textContent.includes('EXCLUDED')||doc.body.textContent.includes('fixture-zero')
+                    ||doc.body.textContent.includes('fixture-missing')||doc.body.textContent.includes('fixture-pending'))errors.push('filter escaped');
+                if(document.getElementById('tree').innerHTML!==screenBefore||document.querySelector('canvas')?.toDataURL()!==canvasBefore
+                    ||JSON.stringify({data,scores,reasons,details})!==savedBefore)errors.push('live state changed');
+                return errors;
+                """)).isEqualTo(java.util.List.of());
+        String html = (String) driver.executeScript("return printFrame.contentDocument.documentElement.outerHTML");
+        String source = driver.getWindowHandle(); driver.switchTo().newWindow(WindowType.TAB);
+        try {
+            driver.get("data:text/html;charset=UTF-8;base64," + Base64.getEncoder().encodeToString(html.getBytes(StandardCharsets.UTF_8)));
+            var result = ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Page.printToPDF", Map.of("preferCSSPageSize", true, "printBackground", true));
+            byte[] bytes = Base64.getDecoder().decode((String) result.get("data"));
+            Path directory = Path.of("target/decision-diagram-evidence"); Files.createDirectories(directory);
+            Files.write(directory.resolve(renderer + "-" + paper + "-" + mode + ".pdf"), bytes);
+            try (var pdf = Loader.loadPDF(bytes)) {
+                assertThat(pdf.getNumberOfPages()).as(renderer + " " + paper + " " + mode + " physical PDF sheets").isEqualTo(expectedPages);
+                float shortSide = (paper.equals("A0") ? 841 : 594) * 72f / 25.4f;
+                float longSide = (paper.equals("A0") ? 1189 : 841) * 72f / 25.4f;
+                for (int index = 0; index < expectedPages; index++) {
+                    var box = pdf.getPage(index).getMediaBox();
+                    assertThat(Math.min(box.getWidth(), box.getHeight())).isCloseTo(shortSide, org.assertj.core.data.Offset.offset(1f));
+                    assertThat(Math.max(box.getWidth(), box.getHeight())).isCloseTo(longSide, org.assertj.core.data.Offset.offset(1f));
+                    var stripper = new PDFTextStripper(); stripper.setStartPage(index + 1); stripper.setEndPage(index + 1);
+                    String text = stripper.getText(pdf);
+                    assertThat(text).contains("0.75%", "complete final sentence.").doesNotContain("EXCLUDED", "fixture-zero", "fixture-missing", "fixture-pending");
+                    if (mode.equals("taxonomy")) {
+                        assertThat(text).contains("fixture-positive-" + index, "SELECTED REASON " + index)
+                            .doesNotContain("fixture-positive-" + (1 - index), "SELECTED REASON " + (1 - index));
+                    } else {
+                        assertThat(text).contains("fixture-positive-0", "fixture-positive-1", "SELECTED REASON 0", "SELECTED REASON 1");
+                    }
+                }
+            }
+        } finally { driver.close(); driver.switchTo().window(source); }
+        driver.executeScript("TaxonomyViews[arguments[0]](document.getElementById('tree'),selected,scores)", renderer);
+        assertThat(driver.findElement(By.cssSelector(".tax-diagram-print-mode")).getDomProperty("value")).isEqualTo(mode);
+        assertThat(driver.findElement(By.cssSelector(".tax-diagram-print-paper")).getDomProperty("value")).isEqualTo(paper);
     }
 
     @ParameterizedTest

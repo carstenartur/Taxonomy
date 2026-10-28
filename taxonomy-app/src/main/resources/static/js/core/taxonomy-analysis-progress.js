@@ -1054,7 +1054,9 @@
                 omitted.textContent = (snapshot.omittedCalls
                     ? snapshot.omittedCalls + text(' ältere Diagnoseeinträge in dieser Ansicht ausgeblendet.', ' older diagnostic entries omitted from this view.') : '')
                     + (snapshot.scoresTruncated ? text(' Live-Bewertungen gekürzt; das Endergebnis bleibt vollständig.',
-                        ' Live score preview truncated; the final result remains complete.') : '');
+                        ' Live score preview truncated; the final result remains complete.') : '')
+                    + (snapshot.reasonsTruncated ? text(' Weitere gespeicherte Begründungen sind im Endergebnis enthalten.',
+                        ' Additional saved explanations are included in the final result.') : '');
             }
         };
     }

@@ -532,7 +532,9 @@
         scroll-behavior: auto !important;
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
+        /* A nonzero duration also creates transitions on otherwise immediate
+           SVG transforms, leaving rendered zoom behind the diagram state. */
+        transition-duration: 0s !important;
     }
 }
 
@@ -713,9 +715,8 @@ dialog.onboarding-overlay .onboarding-card {
 .taxonomy-view-selector { display: flex; flex-wrap: wrap; justify-content: flex-start; width: fit-content; max-width: 100%; }
 .taxonomy-view-selector > .btn { flex: 0 0 auto; }
 .taxonomy-view-tools { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; min-height: 2.25rem; margin-top: .5rem; }
-#diagramRelevanceFilterGroup { display: none; align-items: center; gap: .35rem; }
-#leftPanel:has(#taxonomyTree:is([data-view-rendered="sunburst"], [data-view-rendered="tree"], [data-view-rendered="tree-canvas"], [data-view-rendered="decision"])) #diagramRelevanceFilterGroup { display: flex; }
-#diagramRelevanceFilter, .tax-diagram-print-mode { width: auto; }
+#diagramRelevanceFilterGroup { display: flex; align-items: center; gap: .35rem; }
+#diagramRelevanceFilter, .tax-diagram-print-mode, .tax-diagram-print-paper { width: auto; }
 button.summary-layer-element { font: inherit; text-align: left; }
 button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
 #summarySelectionDetails { margin-top: 1rem; padding: .75rem; border: 1px solid var(--bs-border-color); border-radius: .375rem; overflow-wrap: anywhere; }

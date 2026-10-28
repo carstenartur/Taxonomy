@@ -339,6 +339,36 @@ for (const view of ['list', 'tabs', 'tree', 'sunburst', 'graph']) {
     });
 }
 
+for (const transport of ['POST', 'resume']) {
+    test(`${transport} progress marks locally derived product relevance as pending until its family is evaluated`, async () => {
+        const f = fixture(); f.progress();
+        f.state.taxonomyData = [liveFamily, liveProduct];
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        if (transport === 'POST') {
+            f.window.TaxonomyScoring.runAnalysis();
+            assert.equal(f.calls[0][0], '/api/analyze');
+        } else {
+            f.window.TaxonomyAnalysisSessionApi = { getRunInput: async () => ({ json: async () => ({
+                operationId: 'saved-operation', businessText: 'communications', scope: { workspaceId: 'workspace-a' }
+            }) }) };
+            await f.window.TaxonomyScoring.resumeAnalysis('saved-operation');
+            assert.equal(f.calls.length, 0, 'Resuming observes the saved run without a new analysis request');
+        }
+        const receive = f.observations[0][1];
+        receive({ rawScores: { [liveProduct.code]: 80 } });
+        assert.equal(f.state.currentRawScores[liveProduct.code], 80);
+        assert.equal(f.state.currentScores[liveProduct.code], 0);
+        assert.equal(f.state.currentScoreDetails[liveProduct.code].effectiveRelevance, null);
+        assert.match(f.window.TaxonomyScoring.describeScore(liveProduct.code, 0).label, /pending/);
+        receive({ rawScores: { [liveProduct.code]: 80, [liveFamily.code]: 40 } });
+        assert.equal(f.state.currentScores[liveProduct.code], 32);
+        assert.equal(f.state.currentScoreDetails[liveProduct.code].effectiveRelevance, 32);
+        receive({ rawScores: { [liveProduct.code]: 80, [liveFamily.code]: 0 } });
+        assert.equal(f.state.currentScoreDetails[liveProduct.code].effectiveRelevance, 0);
+        assert.doesNotMatch(f.window.TaxonomyScoring.describeScore(liveProduct.code, 0).label, /pending/);
+    });
+}
+
 test('unresolved-provider diagnostics are bounded without dropping typed score evidence', () => {
     const f = fixture(); f.progress();
     f.state.taxonomyData = [liveFamily, liveProduct];
@@ -386,6 +416,65 @@ function readyFixture() {
 }
 const flushResults = () => new Promise(resolve => setImmediate(resolve));
 const completedResult = (scores = {}) => ({ status: 'SUCCESS', scores, reasons: {}, warnings: [] });
+
+test('live analysis exposes whole reasons and refreshes a reason-only update before completion', () => {
+    const f = readyFixture();
+    f.state.currentView = 'decision';
+    f.window.TaxonomyScoring.runAnalysis();
+    const receive = f.observations[0][1];
+    receive({ rawScores: { CP: 80 }, reasons: { CP: 'Saved root reason\nComplete final line.' } });
+    assert.equal(f.state.currentReasons.CP, 'Saved root reason\nComplete final line.');
+    const count = f.renders.length;
+    receive({ rawScores: { CP: 80 }, reasons: { CP: 'Updated saved root reason' } });
+    assert.equal(f.state.currentReasons.CP, 'Updated saved root reason');
+    assert.equal(f.renders.length, count + 1, 'A reason-only update must refresh its diagram evidence reference');
+    for (const reasons of [undefined, {}, { CP: null }, { CP: '   ' }]) {
+        receive({ rawScores: { CP: 80 }, reasons });
+        assert.equal(f.state.currentReasons.CP, 'Updated saved root reason');
+    }
+    assert.equal(f.state.lastAnalysisStatus, 'IN_PROGRESS');
+    assert.equal(f.calls.length, 1, 'Showing existing reasons does not request another assessment');
+});
+
+test('authoritative terminal reasons replace the live preview and reject late progress', async () => {
+    const f = readyFixture();
+    f.state.currentView = 'decision';
+    f.window.TaxonomyScoring.runAnalysis();
+    const receive = f.observations[0][1];
+    receive({ rawScores: { CP: 80, BP: 10 }, reasons: { CP: 'Preview reason', BP: 'Preview only' } });
+    assert.equal(f.state.currentReasons.BP, 'Preview only');
+    f.requests[0].resolve({ ok: true, json: async () => ({ ...completedResult({ CP: 80 }),
+        reasons: { CP: 'Authoritative saved reason' } }) });
+    await flushResults();
+    assert.equal(f.state.currentReasons.CP, 'Authoritative saved reason');
+    assert.equal(f.state.currentReasons.BP, undefined);
+    receive({ rawScores: { CP: 80 }, reasons: { CP: 'Late preview reason' } });
+    assert.equal(f.state.currentReasons.CP, 'Authoritative saved reason');
+    assert.equal(f.state.lastAnalysisStatus, 'SUCCESS');
+});
+
+test('a superseded analysis cannot publish its reasons into the next analysis', () => {
+    const f = readyFixture();
+    f.window.TaxonomyScoring.runAnalysis();
+    const oldReceive = f.observations[0][1];
+    f.window.TaxonomyScoring.runAnalysis();
+    f.observations[1][1]({ rawScores: { CP: 50 }, reasons: { CP: 'Current run reason' } });
+    oldReceive({ rawScores: { CP: 80 }, reasons: { CP: 'Superseded run reason' } });
+    assert.equal(f.state.currentReasons.CP, 'Current run reason');
+    assert.equal(f.state.currentScores.CP, 50);
+});
+
+for (const view of ['list', 'tabs']) {
+    test(`live ${view} updates recompute an active relevance filter`, () => {
+        const f = readyFixture();
+        f.state.currentView = view;
+        f.window.TaxonomyBrowse.isRelevanceFilterActive = () => true;
+        f.window.TaxonomyScoring.runAnalysis();
+        const before = f.renders.length;
+        f.observations[0][1]({ rawScores: { CP: 80 }, reasons: { CP: 'Recorded reason' } });
+        assert.equal(f.renders.length, before + 1, 'Newly relevant nodes must enter the filtered result');
+    });
+}
 
 for (const ending of ['success', 'network failure', 'HTTP rejection']) {
     test(`superseded full-analysis ${ending} cannot overwrite a newer run`, async () => {

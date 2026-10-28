@@ -275,7 +275,7 @@ class LlmServiceBranchCoverageTest {
         service.analyzeStreaming("requirement", callback);
         verify(callback).onScores(eq(Map.of()), anyMap(), argThat(text -> !text.contains("0/100")),
                 argThat(detail -> detail.getError() != null && detail.getRawResponse().equals("{}")));
-        verify(callback).onComplete(eq("PARTIAL"), eq(Map.of("BP", 100d)),
+        verify(callback).onComplete(eq("PARTIAL"), eq(Map.of("BP", 100d)), anyMap(),
                 argThat(warnings -> warnings.stream().anyMatch(w -> w.contains("CP"))), anyList(), anyList(),
                 any(com.taxonomy.dto.AnalysisCoverage.class));
     }
@@ -497,7 +497,7 @@ class LlmServiceBranchCoverageTest {
         service.analyzeStreaming("requirement", callback);
         verify(callback).onPhase(anyString(), anyInt());
         verify(callback).onExpanding("R", List.of("C"));
-        verify(callback).onComplete(anyString(), any(), anyList(), anyList(), anyList(),
+        verify(callback).onComplete(anyString(), any(), anyMap(), anyList(), anyList(), anyList(),
                 org.mockito.ArgumentMatchers.isNull());
         verify(callback, never()).onError(
                 anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList(), any());
@@ -604,6 +604,7 @@ class LlmServiceBranchCoverageTest {
         verify(callback).onComplete(
                 eq("PARTIAL"),
                 any(),
+                anyMap(),
                 argThat((List<String> warningList) -> warningList.stream()
                         .anyMatch(warning -> warning.contains("product provider timed out"))),
                 anyList(),

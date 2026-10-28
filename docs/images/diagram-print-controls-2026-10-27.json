@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-10-27T16:16:18.126Z",
+  "browser": "149.0.7827.55",
+  "source": "Authored deterministic component fixture using the working-tree production taxonomy-views.js, production Bootstrap/taxonomy CSS and English/German message bundles. No application session or model calls.",
+  "scope": "Fresh English and German Decision toolbar crops with strict positive filter, per-subtaxonomy print mode and A0 format. The settled production source includes read-state helpers. No print matrix was rerun for this capture.",
+  "boundary": "Authored component fixture with a hidden native relevance selector supplying the toolbar checkbox state. Full-page global view-header filter visibility is outside these crops.",
+  "artifacts": [
+    "diagram-print-controls-en.png",
+    "diagram-print-controls-de.png"
+  ],
+  "sources": {
+    "static/js/core/taxonomy-views.js": "66e0241534495cab72a2ffdfb38f8d44b4965473a6e93c32ab682c888bc4b2a8",
+    "static/css/taxonomy.css": "33807ab7f4706624ad57b7724dabd04fca1fad91eaf11be8f997b18915047827",
+    "static/css/taxonomy-ergonomics.css": "2872973e60aa63dd71690692a8cfffa7d5da178c1fe22c5893f7e179fe02576d",
+    "i18n/messages.properties": "86d6172403c265bcda3a18fe2ae1cd98b9f1db1cb4b10a03904f542e2741368b",
+    "i18n/messages_de.properties": "867dcb15ceb982b39818fa97aee6ca0b62d01701682708afd2478f605bcccec4"
+  },
+  "repository_base": "908b5aee022cb93377d01fa01fb534842ff95aad",
+  "imageSha256": {
+    "diagram-print-controls-de.png": "802452f0ce37476a014cfa4c50ad59bcc7bb17a0f95c268ebe1c3283f8e16298",
+    "diagram-print-controls-en.png": "f3950edd457bb270da7ae7db0001438d1172b1f0bf735b0bd041b503bee6558d"
+  }
+}

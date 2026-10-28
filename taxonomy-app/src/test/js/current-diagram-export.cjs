@@ -68,8 +68,10 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
         // Run the actual import event registration with UI rendering isolated from the evidence behavior.
         const registration = browse.slice(browse.indexOf('// Import JSON button'), browse.indexOf('// Dark mode toggle'));
         const statuses = [];
+        let diagramContextResets = 0;
         vm.runInNewContext(registration, {window: f.window, document: f.document, S: f.state,
             SC: () => f.window.TaxonomyScoring,
+            resetDiagramContext() { diagramContextResets++; },
             switchView(view) { f.state.currentView = view; },
             FileReader: class {readAsText(value) {this.onload({target: {result: value.text}});}},
             CustomEvent: class {constructor(type) {this.type = type;}},
@@ -80,6 +82,7 @@ for (const scopeKind of ['missing', 'null', 'selected']) {
         await new Promise(resolve => setImmediate(resolve));
         assert.equal(f.requests[0].url, '/api/scores/import');
         assert.equal(statuses[0]?.[0], 'success', statuses[0]?.[1]);
+        assert.equal(diagramContextResets, 1, 'An imported result starts a fresh diagram context');
         assert.equal(f.state.recoveryContext, null);
         assert.equal(f.state.analysisRecovery, null);
         assert.deepEqual(f.state.lastAnalysisScope, scopeKind === 'selected' ? selected : null);

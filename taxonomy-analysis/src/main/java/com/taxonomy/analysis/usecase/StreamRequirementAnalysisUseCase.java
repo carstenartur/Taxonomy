@@ -72,7 +72,7 @@ public class StreamRequirementAnalysisUseCase {
                                        List<String> warnings,
                                        List<TaxonomyDiscrepancy> discrepancies,
                                        List<ProductCoverageGap> productCoverageGaps) {
-                    onComplete(status, allScores, warnings, discrepancies, productCoverageGaps, null);
+                    onComplete(status, allScores, Map.of(), warnings, discrepancies, productCoverageGaps, null);
                 }
 
                 @Override
@@ -81,8 +81,17 @@ public class StreamRequirementAnalysisUseCase {
                                        List<TaxonomyDiscrepancy> discrepancies,
                                        List<ProductCoverageGap> productCoverageGaps,
                                        com.taxonomy.dto.AnalysisCoverage coverage) {
+                    onComplete(status, allScores, Map.of(), warnings, discrepancies, productCoverageGaps, coverage);
+                }
+
+                @Override
+                public void onComplete(String status, Map<String, Double> allScores, Map<String, String> allReasons,
+                                       List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                                       List<ProductCoverageGap> productCoverageGaps,
+                                       com.taxonomy.dto.AnalysisCoverage coverage) {
                     handler.handle(new AnalysisStreamEvent.Complete(
-                            status, allScores, warnings, discrepancies, productCoverageGaps, elapsedMillis(startedNanos), coverage));
+                            status, allScores, warnings, discrepancies, productCoverageGaps, allReasons,
+                            elapsedMillis(startedNanos), coverage));
                 }
 
                 @Override

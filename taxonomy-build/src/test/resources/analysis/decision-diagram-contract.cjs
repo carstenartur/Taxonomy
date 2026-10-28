@@ -6,12 +6,13 @@ const source = fs.readFileSync(process.argv[2], 'utf8');
 const document = makeDocument();
 const state = {currentReasons: {'BP-1000': 'Saved explanation\n' + 'Detailed reason. '.repeat(100)}, currentScores: {'BP-1000': 75}};
 const window = {TaxonomyState: state};
-const context = {window, document, TaxonomyI18n: {t: (key, ...args) => key + (args.length ? ': ' + args.join(' / ') : '')}};
+const context = {window, document, d3: {hierarchy}, TaxonomyI18n: {t: (key, ...args) => key + (args.length ? ': ' + args.join(' / ') : '')}};
 vm.runInNewContext(source.replace('window.TaxonomyViews = {',
-    'window.diagramTest = {layout: typeof layoutDecisionPanels === "function" ? layoutDecisionPanels : null, pages: typeof buildDecisionPrintPages === "function" ? buildDecisionPrintPages : null, sheet: typeof buildDecisionPrintSheet === "function" ? buildDecisionPrintSheet : null, print: typeof printDecisionDiagram === "function" ? printDecisionDiagram : null, evidence: typeof buildDiagramEvidencePages === "function" ? buildDiagramEvidencePages : null, reason: typeof showDecisionReason === "function" ? showDecisionReason : null}; window.TaxonomyViews = {'), context);
+    'window.diagramTest = {layout: typeof layoutDecisionPanels === "function" ? layoutDecisionPanels : null, pages: typeof buildDecisionPrintPages === "function" ? buildDecisionPrintPages : null, print: typeof printDecisionDiagram === "function" ? printDecisionDiagram : null, evidence: typeof buildDiagramEvidencePages === "function" ? buildDiagramEvidencePages : null, reason: typeof showDecisionReason === "function" ? showDecisionReason : null}; window.TaxonomyViews = {'), context);
 const api = window.diagramTest;
 assert.equal(typeof api.layout, 'function', 'Decision groups need occupied-bounds layout');
 assert.equal(typeof api.pages, 'function', 'Printing needs paginated complete diagram content');
+assert.equal(typeof api.print, 'function', 'Decision diagrams need the complete print entry point');
 assert.equal(typeof api.reason, 'function', 'Evaluated nodes need explicit full saved rationale');
 function makeDocument() {
     const doc = {activeElement: null, getElementById(id) { return find(doc.body, e => e.id === id); },
@@ -146,15 +147,50 @@ assert.ok(text(dialog).includes('views.diagram.analysisReason'));assert.ok(text(
 dialog.close();assert.equal(document.activeElement,trigger);
 api.reason({code:'BR-1000',name:'Roles'},scores,trigger);dialog=document.getElementById('decisionReasonDialog');assert.ok(text(dialog).includes('views.diagram.reasonMissing'));
 assert.equal(state.currentReasons['BR-1000'],undefined);
-// A narrow hierarchy with hundreds of siblings must retain legible type on a
-// balanced sheet, rather than becoming a long vertical stripe in PDF viewers.
+// A complete hierarchy fits the selected physical sheet without splitting its
+// edges. Larger paper gives this tall sibling list more usable text scale.
 const tallData={code:'__root__',children:[{code:'fixture-tall-root',name:'Root',children:Array.from({length:100},(_,i)=>({code:'fixture-tall-'+i,name:'Assessed leaf '+i}))}]};
 const tall=api.layout(hierarchy(tallData),{'fixture-tall-root':87.5},{'fixture-tall-root':{code:'fixture-area',name:'Area'}},measure,undefined,{textWidth:174,cardWidth:210,columnPitch:240,columnsPerPage:4});
-const tallDoc=makeDocument(),sheet=api.sheet(tall,tallDoc);
-assert.ok(sheet.width/sheet.height>=0.5 && sheet.width/sheet.height<=2.5,'Long single sheets must arrange readable sections at a balanced aspect ratio');
-assert.equal(all(tallDoc.body,e=>e.getAttribute?.('data-print-node')).length,101,'Reflow preserves every selected node exactly once');
-assert.equal(all(tallDoc.body,e=>e.tagName==='path').length,100,'Continuation connections preserve every original relationship');
-assert.ok(text(tallDoc.body).includes('87.5%'),'Fractional percentages are not multiplied by 100');
+const printScales={};
+// Printable portrait dimensions at 96dpi after the two 10mm margins.
+for(const [paper,width,height,physicalSize] of [['A1',2169,3102,'594mm 841mm'],['A0',3102,4418,'841mm 1189mm']]){
+    const tallDoc=makeDocument();let printCalls=0;
+    window.open=()=>({document:tallDoc,addEventListener(){},focus(){},requestAnimationFrame(callback){callback();},print(){printCalls++;},close(){}});
+    api.print(tall,{querySelector(){return null;}},{mode:'single',paper});
+    assert.equal(printCalls,1,'The selected complete sheet reaches the print dialog');
+    assert.equal(tallDoc.body.children.length,1,'The complete hierarchy occupies one printed sheet');
+    const page=tallDoc.body.children[0],svg=find(page,e=>e.tagName==='svg');
+    assert.equal(page.getAttribute('data-paper-format'),paper,'The chosen large paper format is retained');
+    assert.equal(Number(svg.getAttribute('width')),width,'The selected portrait paper determines the printable width');
+    assert.equal(Number(svg.getAttribute('height')),height,'The selected portrait paper determines the printable height');
+    assert.ok(text(tallDoc.head).includes('size:'+physicalSize+';margin:10mm'),'The print stylesheet uses the selected physical paper and orientation');
+    const scale=Number(page.getAttribute('data-print-scale'));
+    assert.ok(Number.isFinite(scale) && scale>0 && scale<=1,'The complete drawing uses a positive finite print scale');
+    printScales[paper]=scale;
+    const content=svg.children[0],transform=content.getAttribute('transform').match(/^translate\(([^,]+),([^)]+)\) scale\(([^)]+)\)$/);
+    assert.ok(transform,'The complete sheet exposes its content placement');
+    assert.equal(Number(transform[3]),scale,'Reported print scale is applied to the complete drawing');
+    const printedPanels=all(content,e=>e.tagName==='svg');
+    assert.equal(printedPanels.length,1,'This taxonomy remains one intact hierarchy panel');
+    for(const panel of printedPanels){
+        const position=panel.parentNode.getAttribute('transform').match(/^translate\(([^,]+),([^)]+)\)$/);
+        assert.ok(position,'Each intact hierarchy panel has a sheet position');
+        const left=Number(transform[1])+scale*(Number(position[1])+Number(panel.getAttribute('x')));
+        const top=Number(transform[2])+scale*(Number(position[2])+Number(panel.getAttribute('y')));
+        const panelWidth=Number(panel.getAttribute('width')),panelHeight=Number(panel.getAttribute('height'));
+        const right=left+scale*panelWidth,bottom=top+scale*panelHeight;
+        assert.ok(left>=-1e-6 && top>=-1e-6 && right<=width+1e-6 && bottom<=height+1e-6,'All scaled hierarchy content fits the printable paper bounds');
+        for(const node of all(panel,e=>e.getAttribute?.('data-print-node'))){
+            const bounds=JSON.parse(node.getAttribute('data-occupied-bounds'));
+            assert.ok(bounds.left>=0 && bounds.top>=0 && bounds.right<=panelWidth && bounds.bottom<=panelHeight,'No complete node label is clipped inside its hierarchy panel');
+        }
+    }
+    assert.equal(all(tallDoc.body,e=>e.getAttribute?.('data-print-node')).length,101,'Reflow preserves every selected node exactly once');
+    assert.equal(all(tallDoc.body,e=>e.tagName==='path').length,100,'Continuous connections preserve every original relationship');
+    assert.equal(all(tallDoc.body,e=>e.getAttribute?.('data-parent-page') || e.getAttribute?.('data-print-section')).length,0,'A complete sheet keeps continuous hierarchy edges instead of A4 continuation fragments');
+    assert.ok(text(tallDoc.body).includes('87.5%'),'Fractional percentages are not multiplied by 100');
+}
+assert.ok(printScales.A0>printScales.A1,'A0 gives the same complete large hierarchy a larger usable text scale than A1');
 assert.equal(typeof api.evidence,'function','Print needs complete saved explanations, not tooltip-only text');
 const reasonEnding='FINAL SAVED REASON — <not markup> & retained.';
 state.currentReasons={'fixture-tall-root':'A saved explanation. '.repeat(400)+'\n'+reasonEnding,'excluded-node':'MUST NOT LEAK INTO SELECTED OUTPUT'};

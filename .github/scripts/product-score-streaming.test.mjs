@@ -49,7 +49,7 @@ function element(className = '') {
     replaceChildren(...children) { this.children = children; children.forEach(child => { child.parent = this; }); },
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); },
     addEventListener(name, listener) { (listeners.get(name) || listeners.set(name, []).get(name)).push(listener); },
-    emit(name) { (listeners.get(name) || []).forEach(listener => listener({ target: this })); },
+    emit(name) { (listeners.get(name) || []).forEach(listener => listener.call(this, { target: this })); },
     querySelector(selector) { return this.querySelectorAll(selector)[0] || null; },
     querySelectorAll(selector) {
       const classes = selector.split(',').map(value => value.trim()).filter(value => value.startsWith('.'))
@@ -116,9 +116,10 @@ function harness(locale = 'en') {
   };
   const context = vm.createContext({
     window, document, console,
-    TaxonomyI18n: { t: (key, value) => key === 'browse.container.relevance' ? `Area relevance: ${value}%`
+    TaxonomyI18n: { t: (key, ...values) => key === 'browse.container.relevance' ? `Area relevance: ${values[0]}%`
       : key === 'browse.container.area.clarification' ? locale === 'de' ? 'Klärung erforderlich' : 'Clarification needed'
-      : key === 'browse.container.area.unassessed' ? locale === 'de' ? 'Bereichsrelevanz nicht bewertet' : 'Area relevance not assessed' : key }, TaxonomyUtils: sharedUtils,
+      : key === 'browse.container.area.unassessed' ? locale === 'de' ? 'Bereichsrelevanz nicht bewertet' : 'Area relevance not assessed'
+      : key === 'scoring.ui.stats' ? values.join('/') : key }, TaxonomyUtils: sharedUtils,
     CSS: { escape: value => value },
     EventSource: class {
       constructor() { transport = this; }
@@ -136,7 +137,7 @@ function harness(locale = 'en') {
   vm.runInContext(viewsSource, context);
   window.TaxonomyScoring.runStreamingAnalysis();
   return {
-    state, nodes, statuses, controls, document, focused, copiedDiagnostics,
+    state, nodes, statuses, controls, document, focused, copiedDiagnostics, browse,
     renders: () => renders, api: window.TaxonomyScoring, views: window.TaxonomyViews,
     send(type, data) {
       const event = { data: JSON.stringify(data) };
@@ -148,10 +149,182 @@ function harness(locale = 'en') {
       handlers.get('error')(event);
       if (transport.onerror) transport.onerror(event);
     },
+    startPolling() {
+      let receive;
+      window.TaxonomyAnalysisSession = { state: () => ({ ready: true, workspaceId: 'workspace-a' }) };
+      window.TaxonomyAnalysisProgress = { start(operationId, onSnapshot) {
+        receive = onSnapshot;
+        return { acceptsResult: () => true };
+      } };
+      controls.includeArchitectureView = { checked: false };
+      context.crypto = { randomUUID: () => 'cb2a3d71-e849-4a50-9855-1f9cb8f81402' };
+      context.fetch = url => {
+        assert.equal(url, '/api/analyze');
+        return new Promise(() => {});
+      };
+      window.TaxonomyScoring.runAnalysis();
+      assert.equal(typeof receive, 'function');
+      return receive;
+    },
     score(scores, details = {}) { this.send('scores', { scores, rawScores: scores, scoreDetails: details }); },
     badge(code = product) { return nodes.get(code).header.querySelector('.tax-pct'); },
     aria(code = product) { return nodes.get(code).getAttribute('aria-label'); }
   };
+}
+
+function summaryHarness() {
+  const h = harness();
+  const container = element();
+  let markup = '';
+  Object.defineProperty(container, 'innerHTML', {
+    get() { return markup; },
+    set(html) {
+      markup = html;
+      container.replaceChildren();
+      const summary = element('summary-view');
+      container.appendChild(summary);
+      for (const match of html.matchAll(/<button class="summary-layer-element"[^>]*>|<button type="button" class="summary-layer-element"[^>]*>/g)) {
+        const button = element('summary-layer-element');
+        for (const attribute of match[0].matchAll(/([\w-]+)="([^"]*)"/g)) button.setAttribute(attribute[1], attribute[2]);
+        summary.appendChild(button);
+      }
+    }
+  });
+  h.controls.taxonomyTree = container;
+  let mode = 'all';
+  h.browse.isRelevanceFilterActive = () => mode !== 'all';
+  const zero = 'IP-1018';
+  const unknown = 'IP-1021';
+  // An explicitly external legacy element is evidence, not a claimed catalogue identity.
+  const external = 'legacy:external-evidence';
+  const data = [{ code: 'CP', children: [] }, { code: 'IP', children: [
+    { code: family, children: [{ code: product, children: [] }] },
+    { code: zero, children: [] }, { code: unknown, children: [] }
+  ] }];
+  const scores = { CP: 60, [family]: 0, [product]: 80, [zero]: 0 };
+  const view = {
+    includedElements: ['CP', family, product, zero, unknown, external].map(nodeCode => ({
+      nodeCode, title: nodeCode, taxonomySheet: nodeCode === 'CP' ? 'CP' : nodeCode === external ? 'Legacy' : 'IP',
+      relevance: (scores[nodeCode] || 0) / 100, anchor: nodeCode !== family,
+      hierarchyPath: nodeCode === product ? `IP > ${family} > ${product}` : nodeCode
+    })),
+    includedRelationships: [
+      { sourceCode: 'CP', targetCode: product, relationType: 'REALIZES' },
+      { sourceCode: family, targetCode: product, relationType: 'HIERARCHY' },
+      { sourceCode: zero, targetCode: 'CP', relationType: 'EXCLUDED_ZERO_RELATION' },
+      { sourceCode: unknown, targetCode: 'CP', relationType: 'EXCLUDED_UNKNOWN_RELATION' },
+      { sourceCode: external, targetCode: 'CP', relationType: 'EXTERNAL_LINK' }
+    ],
+    anchors: ['CP', product, zero, unknown, external].map(nodeCode => ({ nodeCode }))
+  };
+  h.state.currentArchView = view;
+  h.state.currentReasons = { [product]: 'The saved explanation' };
+  const saved = JSON.stringify(view);
+  return { ...h, container, view, saved, external,
+    render(filter = 'all', tree = data) {
+      mode = filter;
+      h.api.renderSummaryView(h.views.filterRelevance(tree, scores, {}, mode), scores);
+    },
+    buttons() { return container.querySelectorAll('.summary-layer-element'); },
+    codes() { return this.buttons().map(button => button.dataset.code).sort(); },
+    select(code) { this.buttons().find(button => button.dataset.code === code).emit('click'); },
+    details() { return container.querySelector('.summary-view').children.find(child => child.id === 'summarySelectionDetails'); }
+  };
+}
+
+test('Summary positive filter projects saved elements, relationships and anchor counts without losing a surviving selection', () => {
+  const h = summaryHarness();
+  h.render();
+  h.select(product);
+  h.render('positive');
+  assert.deepEqual(h.codes(), ['CP', family, product].sort(), 'Retain the zero-scored context ancestor of the positive descendant');
+  assert.match(h.container.innerHTML, /class="summary-stats">2\/3\/2\/2</);
+  assert.match(h.container.innerHTML, /class="arrow-label">REALIZES</);
+  assert.doesNotMatch(h.container.innerHTML, /EXCLUDED_ZERO_RELATION|EXCLUDED_UNKNOWN_RELATION|EXTERNAL_LINK/);
+  assert.equal(h.buttons().find(button => button.dataset.code === product).getAttribute('aria-pressed'), 'true');
+  assert.equal(h.details().hidden, false);
+  assert.ok(h.details().children.some(child => child.textContent === 'The saved explanation'));
+  assert.equal(h.state.currentArchView, h.view);
+  assert.equal(JSON.stringify(h.state.currentArchView), h.saved, 'Filtering must not rewrite saved architecture/export evidence');
+});
+
+test('Summary all mode preserves external legacy evidence and a filtered-away selection leaves no stale details', () => {
+  const h = summaryHarness();
+  h.render();
+  assert.equal(h.codes().length, 6);
+  assert.ok(h.codes().includes(h.external));
+  assert.match(h.container.innerHTML, /class="summary-stats">5\/6\/5\/3</);
+  h.select(h.external);
+  h.render('positive');
+  assert.equal(h.details().hidden, true);
+  assert.ok(h.buttons().every(button => button.getAttribute('aria-pressed') === 'false'));
+  h.render();
+  assert.ok(h.codes().includes(h.external));
+  assert.equal(JSON.stringify(h.state.currentArchView), h.saved);
+});
+
+test('Summary displays the shared empty-filter state when retained taxonomy nodes have no saved elements', () => {
+  const h = summaryHarness();
+  h.render('hide-zero', [{ code: 'BR', children: [] }]);
+  assert.deepEqual(h.codes(), []);
+  assert.match(h.container.innerHTML, /view\.relevance\.empty/);
+  assert.equal(JSON.stringify(h.state.currentArchView), h.saved);
+});
+
+for (const order of ['family-first', 'product-first']) {
+  test(`${order}: shared filters follow resolved and pending product relevance during streaming`, () => {
+    const h = harness();
+    const data = [{ code: 'IP', children: [{ code: family, children: [{ code: product, children: [] }] }] }];
+    const containsProduct = mode => {
+      const projected = h.views.filterRelevance(data, h.state.currentScores, h.state.currentScoreDetails, mode);
+      return projected.some(root => root.children.some(parent => parent.children.some(child => child.code === product)));
+    };
+    if (order === 'family-first') h.score({ [family]: 40 });
+    h.score({ [product]: 80 }, { [product]: hint });
+    if (order === 'product-first') {
+      assert.equal(h.state.currentScores[product], 0);
+      assert.equal(containsProduct('hide-zero'), true, 'Unresolved suitability is not measured zero relevance');
+      assert.equal(containsProduct('positive'), false);
+      h.score({ [family]: 40 });
+    }
+    assert.equal(h.state.currentScores[product], 32);
+    assert.equal(containsProduct('positive'), true, 'The streamed family score resolves positive effective relevance');
+    h.score({ [family]: 0 });
+    assert.equal(h.state.currentScores[product], 0);
+    assert.equal(containsProduct('hide-zero'), false, 'Resolved zero effective relevance must be filtered');
+    assert.equal(containsProduct('positive'), false);
+  });
+}
+
+test('streaming reason previews preserve a recorded explanation when a later batch has no reason', () => {
+  const h = harness();
+  h.send('scores', { scores: { IP: 80 }, reasons: { IP: 'Saved explanation\nFINAL LINE' } });
+  for (const reason of [null, '', '   ']) {
+    h.send('scores', { scores: { IP: 80 }, reasons: { IP: reason } });
+    assert.equal(h.state.currentReasons.IP, 'Saved explanation\nFINAL LINE');
+  }
+});
+
+for (const terminal of ['complete', 'error']) {
+  test(`${terminal}: finalized stream rejects late score and reason callbacks`, () => {
+    const h = harness();
+    const finalScores = { IP: 60 };
+    const terminalPayload = { totalScores: finalScores, partialScores: finalScores, rawScores: finalScores,
+      status: terminal === 'complete' ? 'SUCCESS' : 'PARTIAL', reasons: { IP: 'Final saved explanation' },
+      errorMessage: 'controlled partial result', analysisDurationMillis: 5000 };
+    h.send(terminal, terminalPayload);
+    const accepted = JSON.stringify({ scores: h.state.currentScores, rawScores: h.state.currentRawScores,
+      reasons: h.state.currentReasons, status: h.state.lastAnalysisStatus,
+      duration: h.state.lastAnalysisDurationMillis });
+    h.send('scores', { scores: { IP: 5 }, reasons: { IP: 'Late incremental explanation' } });
+    assert.equal(JSON.stringify({ scores: h.state.currentScores, rawScores: h.state.currentRawScores,
+      reasons: h.state.currentReasons, status: h.state.lastAnalysisStatus,
+      duration: h.state.lastAnalysisDurationMillis }), accepted);
+    h.send(terminal === 'complete' ? 'error' : 'complete', { ...terminalPayload,
+      status: 'ERROR', reasons: { IP: 'Duplicate terminal explanation' } });
+    assert.equal(h.state.currentReasons.IP, 'Final saved explanation');
+    assert.equal(h.state.lastAnalysisStatus, terminal === 'complete' ? 'SUCCESS' : 'PARTIAL');
+  });
 }
 
 test('streaming keeps area relevance in the group heading without a catalogue-node score badge', () => {
@@ -393,6 +566,39 @@ for (const terminal of ['complete', 'error']) {
     assert.equal(h.state.lastAnalysisStatus, 'PARTIAL');
     assert.equal(h.renders(), 1, 'terminal metadata must not rebuild the focused tree');
   });
+  test(`${terminal}: filtered rows receive root clarification coverage without rebuilding unchanged evidence`, () => {
+    for (const view of ['list', 'tabs']) {
+      const h = harness();
+      h.state.currentView = view;
+      h.browse.isRelevanceFilterActive = () => true;
+      const group = h.nodes.get('BP');
+      group.setAttribute('data-taxonomy-container', 'BP');
+      group._taxonomyNode = { code: 'BP', taxonomyContainer: true, children: [] };
+      group.header.className = 'tax-container-heading';
+      group.querySelector = selector => selector === ':scope > .tax-container-heading' ? group.header
+        : selector === ':scope > .tax-container-clarification'
+          ? group.children.find(child => child.className === 'tax-container-clarification') || null : null;
+      const question = 'Should booking work online or entirely locally?';
+      h.send('scores', { scores: {}, reasons: { BP: question } });
+      h.browse.refreshContainerSummaries(h.state.currentScores);
+      assert.equal(group.header.querySelector('.tax-container-area-state').textContent, 'Area relevance not assessed');
+      const renderedBefore = h.renders();
+      h.send(terminal, { status: 'PARTIAL', totalScores: {}, partialScores: {}, rawScores: {},
+        reasons: { BP: question }, errorMessage: 'Other work was interrupted.',
+        analysisCoverage: { assessedNodes: 0, unknownNodes: 1, failedOrBlockedNodes: 1, nodes: {
+          BP: { state: 'UNKNOWN', score: null, effectiveRelevance: null, descendants: 'UNASSESSED',
+            reason: 'CLARIFICATION: ' + question }
+        } } });
+      assert.equal(group.header.querySelector('.tax-container-area-state').textContent, 'Clarification needed');
+      assert.equal(group.querySelector(':scope > .tax-container-clarification').textContent, question);
+      assert.equal(group.getAttribute('aria-describedby'), 'tax-container-clarification-BP');
+      assert.equal(h.state.currentScores.BP, undefined);
+      assert.equal(h.state.currentRawScores.BP, undefined);
+      assert.equal(h.state.currentReasons.BP, question);
+      assert.equal(h.renders(), renderedBefore);
+      assert.equal(h.document.activeElement, h.focused);
+    }
+  });
 }
 
 test('terminal unresolved-parent zero remains explicit and clears the provisional label', () => {
@@ -487,8 +693,9 @@ for (const terminal of ['complete', 'error', 'mapping-error']) {
   test(`${terminal}: streaming refreshes duration without rebuilding the diagram or moving focus`, () => {
     const h = harness('de');
     h.state.currentView = 'sunburst';
-    const renderedBefore = h.renders();
     const score = { [family]: 60 };
+    h.score(score);
+    const renderedBefore = h.renders();
     const event = { status: terminal === 'complete' ? 'SUCCESS' : 'PARTIAL',
       analysisDurationMillis: 62500, totalScores: score, partialScores: score,
       rawScores: score, errorMessage: 'controlled test failure',
@@ -502,11 +709,31 @@ for (const terminal of ['complete', 'error', 'mapping-error']) {
     assert.equal(h.state.currentView, 'sunburst');
   });
 }
+
+for (const terminal of ['complete', 'error', 'mapping-error']) {
+  test(`${terminal}: terminal explanations and missed scores refresh the diagram evidence`, () => {
+    const h = harness();
+    h.state.currentView = 'decision';
+    const renderedBefore = h.renders();
+    const score = { [family]: 60 };
+    h.send(terminal === 'complete' ? 'complete' : 'error', {
+      status: terminal === 'complete' ? 'SUCCESS' : 'PARTIAL',
+      totalScores: score, partialScores: score, rawScores: score,
+      reasons: { [family]: 'Saved terminal explanation\nFINAL LINE' },
+      errorMessage: 'controlled test failure', scoreSemanticsUnavailable: terminal === 'mapping-error'
+    });
+    assert.equal(h.renders(), renderedBefore + 1);
+    assert.equal(h.state.currentScores[family], 60);
+    assert.equal(h.state.currentReasons[family], 'Saved terminal explanation\nFINAL LINE');
+    assert.equal(h.document.activeElement, h.focused);
+  });
+}
 test('duration header distinguishes zero duration from an unknown replacement result', () => {
   const h = harness();
   h.state.lastAnalyzedText = 'A requirement';
   h.send('complete', { totalScores: {}, analysisDurationMillis: 0 });
   assert.match(h.controls.analysisDurationDisplay.textContent, /0 min 00 s/);
+  h.api.runStreamingAnalysis();
   h.send('complete', { totalScores: {} });
   assert.match(h.controls.analysisDurationDisplay.textContent, /analysis.duration.unknown/);
   assert.doesNotMatch(h.controls.analysisDurationDisplay.textContent, /0 min 00 s/);
@@ -627,6 +854,86 @@ test('local raw score editing keeps decimals and rejects invalid values atomical
     assert.equal(JSON.stringify(h.state.currentRawScores), before);
   }
 });
+test('explicit local product previews remain pending until the family score or authoritative result arrives', () => {
+  const h = harness();
+  const data = [{code: family, analysisRole: 'PRODUCT_FAMILY', children: [
+    {code: product, analysisRole: 'PRODUCT', parentCode: family, children: []}]}];
+  h.state.taxonomyData = data;
+  const containsProduct = mode => h.views.filterRelevance(data, h.state.currentScores,
+    h.state.currentScoreDetails, mode).some(parent => parent.children.some(child => child.code === product));
+  // A continuation can retain its previous status; the preview boundary is explicit.
+  h.state.lastAnalysisStatus = 'SUCCESS';
+  h.api.applyLocalRawScores({[product]: 80}, true, true, true);
+  assert.equal(h.state.currentRawScores[product], 80);
+  assert.equal(h.state.currentProductSuitabilityScores[product], 80);
+  assert.equal(h.state.currentScores[product], 0, 'Retain the existing numeric preview placeholder');
+  assert.equal(h.state.currentScoreDetails[product].parentScore, null);
+  assert.equal(h.state.currentScoreDetails[product].effectiveRelevance, null,
+    'A locally derived pending placeholder is not authoritative zero evidence');
+  assert.match(h.api.describeScore(product, 0).label, /pending/);
+  assert.ok(h.state.currentScoreSemanticsWarnings.some(warning => /pending/.test(warning)));
+  assert.equal(containsProduct('hide-zero'), true);
+  assert.equal(containsProduct('positive'), false);
+
+  h.api.applyLocalRawScores({[product]: 80, [family]: 40}, true, true, true);
+  assert.equal(h.state.currentScores[product], 32);
+  assert.equal(h.state.currentScoreDetails[product].effectiveRelevance, 32);
+  assert.equal(containsProduct('positive'), true);
+  assert.doesNotMatch(h.api.describeScore(product, 32).label, /pending/);
+
+  h.api.applyLocalRawScores({[product]: 80, [family]: 0}, true, true, true);
+  assert.equal(h.state.currentScoreDetails[product].effectiveRelevance, 0);
+  assert.equal(containsProduct('hide-zero'), false);
+  assert.equal(containsProduct('positive'), false);
+
+  h.api.applyLocalRawScores({[product]: 80}, true, true, true);
+  assert.equal(containsProduct('hide-zero'), true);
+  h.send('complete', {status: 'SUCCESS', totalScores: {[product]: 0}, rawScores: {[product]: 80},
+    effectiveScores: {[product]: 0}, productSuitabilityScores: {[product]: 80},
+    scoreDetails: {[product]: {...hint, parentScore: null, effectiveRelevance: 0}}});
+  assert.equal(h.state.currentScoreDetails[product].effectiveRelevance, 0);
+  assert.equal(containsProduct('hide-zero'), false);
+  assert.doesNotMatch(h.api.describeScore(product, 0).label, /pending/);
+});
+
+test('local product projection without a live flag preserves final and manual-import semantics even with stale status', () => {
+  for (const status of [null, 'IN_PROGRESS', 'SUCCESS', 'PARTIAL', 'IMPORTED']) {
+    const h = harness();
+    h.state.taxonomyData = [{code: family, analysisRole: 'PRODUCT_FAMILY', children: [
+      {code: product, analysisRole: 'PRODUCT', parentCode: family, children: []}]}];
+    h.state.lastAnalysisStatus = status;
+    h.api.applyLocalRawScores({[product]: 80}, true);
+    assert.equal(h.state.currentScores[product], 0);
+    assert.equal(h.state.currentRawScores[product], 80);
+    assert.equal(h.state.currentScoreDetails[product].effectiveRelevance, 0);
+    assert.doesNotMatch(h.api.describeScore(product, 0).label, /pending/);
+    assert.ok(h.state.currentScoreSemanticsWarnings.some(warning => /effective relevance is 0/.test(warning)));
+  }
+});
+
+for (const view of ['list', 'tabs']) {
+  test(`${view}: polling resolves a pending product badge when its family arrives as measured zero`, () => {
+    const h = harness();
+    h.state.taxonomyData = [{code: family, analysisRole: 'PRODUCT_FAMILY', children: [
+      {code: product, analysisRole: 'PRODUCT', parentCode: family, children: []}]}];
+    h.state.currentView = view;
+    const receive = h.startPolling();
+    receive({rawScores: {[product]: 80}});
+    const badge = h.badge();
+    assert.match(badge.textContent, /pending/);
+    assert.match(h.aria(), /pending/);
+    const renders = h.renders();
+    receive({rawScores: {[product]: 80, [family]: 0}});
+    assert.equal(h.state.currentScores[product], 0);
+    assert.equal(h.state.currentRawScores[product], 80);
+    assert.equal(h.badge(), badge, 'Update the existing badge without replacing the row');
+    assert.match(h.badge().textContent, /80%.*0\/100/);
+    assert.doesNotMatch(h.badge().textContent, /pending/);
+    assert.doesNotMatch(h.aria(), /pending/);
+    assert.equal(h.renders(), renders, 'Unfiltered list and tab updates remain incremental');
+  });
+}
+
 test('invalid incoming numerical evidence is left open rather than turned into zero', () => {
   const h = harness(); h.score({[family]: .5});
   h.score({[product]: null}, {[product]: hint});

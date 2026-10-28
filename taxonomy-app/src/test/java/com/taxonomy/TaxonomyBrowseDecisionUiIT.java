@@ -8,7 +8,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.core.io.ClassPathResource;
@@ -418,6 +420,177 @@ class TaxonomyBrowseDecisionUiIT {
         assertThat(result.get("lazyAfterRender")).isEqualTo(0L);
     }
 
+    @ParameterizedTest @ValueSource(strings={"renderTreeDiagram","renderTreeCanvas","renderDecisionMap"})
+    void diagramRedrawRetainsRealZoomPanScrollAndBranchChoices(String renderer) {
+        loadDiagramEvidenceScripts();
+        browser.executeScript("""
+            const S=TaxonomyState;
+            S.currentView=arguments[0]==='renderDecisionMap'?'decision':'tree';
+            S.currentScores={'fixture-parent':70,'fixture-leaf':60,'fixture-zero':0,'fixture-bp-parent':50};
+            """,renderer);
+        renderDiagram(renderer);
+        boolean canvas=renderer.equals("renderTreeCanvas");
+        var branch=browser.findElement(By.cssSelector(canvas?"#taxonomyTree canvas":"[data-diagram-node='fixture-parent']"));
+        browser.executeScript("arguments[0].focus();",branch);
+        new Actions(browser).sendKeys(Keys.HOME,Keys.ENTER).perform();
+        waitDiagram(renderer);
+        assertThat(branch.getDomAttribute("aria-expanded")).isEqualTo("false");
+        diagramControl("views.diagram.zoomIn").click();
+        var beforePan=diagramViewport();
+        var surface=browser.findElement(By.cssSelector("#taxonomyTree svg, #taxonomyTree canvas"));
+        new Actions(browser).moveToElement(surface).clickAndHold().moveByOffset(37,23).release().perform();
+        var before=diagramViewport();
+        assertThat(((Number)before.get("k")).doubleValue()).isGreaterThan(1);
+        assertThat(before).as("native pointer drag changes the actual D3 viewport").isNotEqualTo(beforePan);
+        browser.executeScript("""
+            const host=document.getElementById('taxonomyTree');
+            host.style.width='500px';host.style.maxHeight='260px';host.style.overflow='auto';
+            document.body.style.minHeight='2400px';
+            const horizontalScroller=host.querySelector('.decision-tree-wrapper')||host;
+            horizontalScroller.scrollLeft=70;host.scrollTop=60;window.scrollTo(0,180);
+            TaxonomyState.currentScores['fixture-zero']=15;
+            """);
+        var scrollBefore=diagramScroll();
+        assertThat(((Number)scrollBefore.get("left")).doubleValue()).isGreaterThan(0);
+        assertThat(((Number)scrollBefore.get("top")).doubleValue()).isGreaterThan(0);
+        assertThat(((Number)scrollBefore.get("pageY")).doubleValue()).isGreaterThan(0);
+        renderDiagram(renderer);
+        assertThat(diagramViewport()).as("a score update retains zoom and pan").isEqualTo(before);
+        assertThat(diagramScroll()).as("a full replacement retains local and document scrolling").isEqualTo(scrollBefore);
+        branch=browser.findElement(By.cssSelector(canvas?"#taxonomyTree canvas":"[data-diagram-node='fixture-parent']"));
+        if(canvas){browser.executeScript("arguments[0].focus();",branch);new Actions(browser).sendKeys(Keys.HOME).perform();}
+        assertThat(branch.getDomAttribute("aria-expanded")).as("the manually closed branch stays closed").isEqualTo("false");
+
+        browser.findElement(By.cssSelector(".tax-diagram-collapse-all")).click();
+        renderDiagram(renderer);
+        if(canvas){
+            browser.findElement(By.cssSelector("#taxonomyTree canvas")).sendKeys(Keys.END);
+            assertThat(browser.findElement(By.cssSelector("#taxonomyTree canvas")).getDomAttribute("data-diagram-node")).isEqualTo("fixture-bp-parent");
+            assertThat(browser.findElement(By.cssSelector("#taxonomyTree canvas")).getDomAttribute("aria-expanded")).isEqualTo("false");
+        } else {
+            assertThat(browser.findElements(By.cssSelector("[data-diagram-node]:not([aria-hidden='true'])"))).hasSize(3);
+        }
+        browser.findElement(By.cssSelector(".tax-diagram-expand-all")).click();
+        renderDiagram(renderer);
+        if(canvas){
+            browser.findElement(By.cssSelector("#taxonomyTree canvas")).sendKeys(Keys.END);
+            assertThat(browser.findElement(By.cssSelector("#taxonomyTree canvas")).getDomAttribute("data-diagram-node")).isEqualTo("fixture-bp-leaf");
+        } else {
+            assertThat(browser.findElements(By.cssSelector("[data-diagram-node]:not([aria-hidden='true'])"))).hasSize(6);
+        }
+        diagramControl("views.diagram.reset").click();
+        renderDiagram(renderer);
+        assertThat(browser.switchTo().activeElement().getText()).as("redrawing keeps the focused toolbar control usable").isEqualTo("views.diagram.reset");
+    }
+
+    @Test void sunburstKeepsItsBranchAcrossViewChangesFallsBackAndResetsForANewAnalysis() {
+        loadDiagramEvidenceScripts();
+        browser.executeScript("""
+            const S=TaxonomyState;
+            S.taxonomyData=[{code:'fixture-diagram-root',name:'Authored diagram fixture',taxonomyContainer:false,
+                children:S.taxonomyData[0].children}];
+            S.currentView='sunburst';
+            TaxonomyBrowse.renderView(S.taxonomyData,null);
+            document.querySelector('[data-diagram-node="fixture-parent"]').focus();
+            """);
+        new Actions(browser).sendKeys(Keys.ENTER).perform();
+        assertThat(diagramControl("views.back").isEnabled()).isTrue();
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node]:not([aria-hidden='true'])"))).hasSize(3);
+        browser.executeScript("""
+            const S=TaxonomyState;
+            S.currentView='list';TaxonomyBrowse.renderView(S.taxonomyData,null);
+            S.currentView='sunburst';TaxonomyBrowse.renderView(S.taxonomyData,{'fixture-leaf':75});
+            """);
+        assertThat(diagramControl("views.back").isEnabled()).isTrue();
+        assertThat(browser.findElements(By.cssSelector("[data-diagram-node]:not([aria-hidden='true'])"))).hasSize(3);
+        browser.executeScript("""
+            const S=TaxonomyState;
+            S.taxonomyData[0].children=S.taxonomyData[0].children.filter(node=>node.code!=='fixture-parent');
+            TaxonomyBrowse.renderView(S.taxonomyData,null);
+            """);
+        assertThat(diagramControl("views.back").isEnabled()).as("the surviving ancestor remains the focused branch").isTrue();
+        assertThat(browser.findElement(By.cssSelector("[data-diagram-node][tabindex='0']")).getDomAttribute("data-diagram-node")).isEqualTo("fixture-diagram-root");
+        browser.executeScript("TaxonomyBrowse.resetDiagramContext();TaxonomyBrowse.renderView(TaxonomyState.taxonomyData,null);");
+        assertThat(diagramControl("views.back").isEnabled()).as("a new analysis starts at the overview").isFalse();
+    }
+
+    @Test void sunburstResizesWithoutFeedingBackIntoItsObservedContainer() {
+        loadDiagramEvidenceScripts();
+        browser.executeScript("""
+            window.diagramResizeErrors=[];
+            window.addEventListener('error',event=>window.diagramResizeErrors.push(event.message));
+            const host=document.getElementById('taxonomyTree');
+            host.style.cssText='width:360px;max-height:none;height:auto;overflow:visible';
+            TaxonomyState.currentView='sunburst';
+            TaxonomyBrowse.renderView(TaxonomyState.taxonomyData,null);
+            """);
+        for (int width : new int[]{220, 470, 320}) {
+            browser.executeScript("document.getElementById('taxonomyTree').style.width=arguments[0]+'px'", width);
+            new WebDriverWait(browser, Duration.ofSeconds(10)).until(d -> Boolean.TRUE.equals(browser.executeScript("""
+                const host=document.getElementById('taxonomyTree'),svg=host.querySelector('svg');
+                return Number(svg.getAttribute('width'))===host.clientWidth
+                    && Number(svg.getAttribute('height'))===host.clientWidth;
+                """)));
+            browser.executeAsyncScript("""
+                const done=arguments[arguments.length-1];
+                requestAnimationFrame(()=>requestAnimationFrame(()=>done(null)));
+                """);
+        }
+        assertThat(browser.executeScript("return window.diagramResizeErrors"))
+                .as("resizing a mobile diagram must settle without browser layout errors")
+                .isEqualTo(java.util.List.of());
+    }
+
+    private void loadDiagramEvidenceScripts() {
+        var failure=browser.executeAsyncScript("""
+            const done=arguments[arguments.length-1];
+            (async()=>{
+                for(const src of ['/d3.js','/js/core/taxonomy-views.js']){
+                    await new Promise((resolve,reject)=>{const script=document.createElement('script');
+                        script.src=src;script.onload=resolve;script.onerror=reject;document.head.append(script);});
+                }
+                await new Promise((resolve,reject)=>{const css=document.createElement('link');
+                    css.rel='stylesheet';css.href='/css/taxonomy.css';css.onload=resolve;css.onerror=reject;document.head.append(css);});
+                document.getElementById('taxonomyTree').style.width='900px';
+            })().then(()=>done(null),error=>done(String(error)));
+            """);
+        assertThat(failure).isNull();
+    }
+
+    private void renderDiagram(String renderer) {
+        browser.executeScript("""
+            const host=document.getElementById('taxonomyTree');
+            TaxonomyViews.prepareDiagramContext(host,{analysisKey:'browser-reading-fixture',
+                view:arguments[0]==='renderDecisionMap'?'decision':'tree',treeRoot:'fixture-roots'});
+            TaxonomyViews[arguments[0]](host,TaxonomyState.taxonomyData,TaxonomyState.currentScores);
+            """,renderer);
+        waitDiagram(renderer);
+    }
+
+    private void waitDiagram(String renderer) {
+        if(!renderer.equals("renderTreeCanvas")) new WebDriverWait(browser,Duration.ofSeconds(10)).until(d->
+                "true".equals(browser.findElement(By.id("taxonomyTree")).getDomAttribute("data-transitions-complete")));
+    }
+
+    private WebElement diagramControl(String key) {
+        return browser.findElement(By.xpath("//div[contains(@class,'tax-diagram-controls')]/button[normalize-space()='"+key+"']"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String,Object> diagramViewport() {
+        return (Map<String,Object>)browser.executeScript("const p=d3.zoomTransform(document.querySelector('#taxonomyTree svg, #taxonomyTree canvas'));return {x:p.x,y:p.y,k:p.k};");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String,Object> diagramScroll() {
+        return (Map<String,Object>)browser.executeScript("""
+            const host=document.getElementById('taxonomyTree');
+            const horizontalScroller=host.querySelector('.decision-tree-wrapper')||host;
+            return {left:horizontalScroller.scrollLeft,top:host.scrollTop,hostLeft:host.scrollLeft,
+                innerTop:horizontalScroller.scrollTop,pageX:window.scrollX,pageY:window.scrollY};
+            """);
+    }
+
     private void installBranchFixture(int branches) {
         browser.executeScript("""
             const branches=arguments[0];
@@ -436,6 +609,11 @@ class TaxonomyBrowseDecisionUiIT {
 
     private static void serve(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
+        if(path.equals("/d3.js")){
+            send(exchange,"application/javascript",new ClassPathResource("META-INF/resources/webjars/d3/7.9.0/dist/d3.min.js")
+                    .getContentAsString(StandardCharsets.UTF_8));
+            return;
+        }
         if (path.equals("/fixture")) {
             String template = new ClassPathResource("templates/index.html").getContentAsString(StandardCharsets.UTF_8);
             var input = Pattern.compile("<input[^>]*id=\"interactiveMode\"[^>]*>").matcher(template);

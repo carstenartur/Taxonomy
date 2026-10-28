@@ -118,6 +118,25 @@ class ClusterAnalysisDetailedProgressTest {
         }
     }
 
+    @Test void durableProgressPublishesSavedReasonsAlongsideItsScorePreview() {
+        try (var db = new Database(); var observation = observation(db.store)) {
+            var context = context("live-reasons"); db.admitFrozen(context);
+            var assessed = new AnalysisResult(Map.of("CP", 80d), List.of());
+            assessed.setReasons(Map.of("CP", "Saved capability explanation\nFINAL LINE"));
+            var task = db.task(CP);
+            db.store.start(task);
+            db.store.accept(db.complete(task, assessed));
+            var unassessed = new AnalysisResult(Map.of(), List.of()); unassessed.setStatus("ERROR");
+            db.store.accept(db.complete(db.task(IP), unassessed));
+
+            var live = snapshot(observation, context);
+            assertEquals("PARTIAL", live.status());
+            assertEquals(80d, live.rawScores().get("CP"));
+            assertEquals(Map.of("CP", "Saved capability explanation\nFINAL LINE"), live.reasons());
+            assertFalse(live.reasonsTruncated());
+        }
+    }
+
     @Test void distributedSnapshotsCountPositiveNodesAndLeafWeightFromFrozenWorkerEvidence() {
         try (var db = new Database(); var observation = observation(db.store)) {
             var context = context("score-progress"); db.admitFrozen(context);

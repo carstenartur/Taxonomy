@@ -720,7 +720,7 @@ public class AnalysisApiController {
     private static AnalysisStreamEvent withMeasuredDuration(AnalysisStreamEvent event, long startedNanos) {
         if (event instanceof AnalysisStreamEvent.Complete complete && complete.analysisDurationMillis() == null) {
             return new AnalysisStreamEvent.Complete(complete.status(), complete.allScores(), complete.warnings(),
-                    complete.discrepancies(), complete.productCoverageGaps(),
+                    complete.discrepancies(), complete.productCoverageGaps(), complete.allReasons(),
                     Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L), complete.analysisCoverage());
         }
         if (event instanceof AnalysisStreamEvent.Error error && error.analysisDurationMillis() == null) {
@@ -735,7 +735,7 @@ public class AnalysisApiController {
         String message = "The terminal result could not be fully rendered; collected raw evidence is retained.";
         if (event instanceof AnalysisStreamEvent.Complete complete) {
             return new AnalysisStreamEvent.Error("ERROR", message, complete.allScores(), complete.warnings(),
-                    complete.discrepancies(), complete.productCoverageGaps(), Map.of(), complete.analysisDurationMillis(),
+                    complete.discrepancies(), complete.productCoverageGaps(), complete.allReasons(), complete.analysisDurationMillis(),
                     complete.analysisCoverage());
         }
         var error = (AnalysisStreamEvent.Error) event;
@@ -782,7 +782,7 @@ public class AnalysisApiController {
             var terminal = run.finishAndGet(complete.status());
             return new AnalysisStreamEvent.Complete(terminal.resultStatus(), complete.allScores(),
                     terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps(),
-                    complete.analysisDurationMillis(), complete.analysisCoverage());
+                    complete.allReasons(), complete.analysisDurationMillis(), complete.analysisCoverage());
         }
         if (event instanceof AnalysisStreamEvent.Error error) {
             var terminal = run.finishAndGet(error.status());

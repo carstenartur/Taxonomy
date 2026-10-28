@@ -338,6 +338,7 @@
     }
 
     function clearRestoredAnalysisState() {
+        window.TaxonomyBrowse?.resetDiagramContext?.();
         var input = businessTextElement();
         if (input) {
             input.value = '';
@@ -399,6 +400,7 @@
         } else {
             var input = businessTextElement();
             if (input) input.value = payload.businessText || '';
+            window.TaxonomyBrowse?.resetDiagramContext?.();
             S.currentRawScores = payload.rawScores || payload.scores || {};
             S.currentEffectiveScores = payload.effectiveScores || payload.scores || {};
             S.currentScoreDetails = payload.scoreDetails || {};

@@ -5,6 +5,7 @@
     var t = TaxonomyI18n.t;
 
     var S = window.TaxonomyState;
+    var diagramContextGeneration = 0;
     // SC (scoring functions) resolved lazily — script may load before taxonomy-scoring.js
     function SC() { return window.TaxonomyScoring || {}; }
 
@@ -143,6 +144,7 @@
                             showStatus('danger', t('browse.import.failed', data.error));
                             return;
                         }
+                        resetDiagramContext();
                         S.recoveryContext = null;
                         const previousView = S.currentView;
                         if (SC().clearDerivedAnalysisView) {
@@ -688,28 +690,41 @@
         }
     }
 
+    function resetDiagramContext() {
+        diagramContextGeneration++;
+    }
+
+    function isRelevanceFilterActive() {
+        const filter = document.getElementById('diagramRelevanceFilter');
+        return !!filter && filter.value !== 'all';
+    }
+
     function renderView(data, scores) {
         refreshAnalysisDuration();
         if (!data || data.length === 0) { return; }
         const container = document.getElementById('taxonomyTree');
+        window.TaxonomyViews?.prepareDiagramContext?.(container, {
+            analysisKey: diagramContextGeneration, view: S.currentView, treeRoot: S.currentTreeRoot
+        });
         container.removeAttribute('data-view-rendered');
         const diagram = ['sunburst', 'tree', 'decision'].includes(S.currentView);
         const filter = document.getElementById('diagramRelevanceFilter');
         let diagramData = data;
-        if (diagram && window.TaxonomyViews) {
+        if (window.TaxonomyViews) {
             // Select the original taxonomy before projecting; an empty root must not switch to another taxonomy.
             if (S.currentView === 'tree') diagramData = [data.find(r => r.code === S.currentTreeRoot) || data[0]];
             diagramData = window.TaxonomyViews.filterRelevance(diagramData, scores, S.currentScoreDetails, filter ? filter.value : 'all');
         }
-        if (diagram && diagramData.length === 0) {
+        if (diagramData.length === 0) {
             cleanupD3(container);
             container.innerHTML = '<p class="text-muted p-3" role="status">' + t('view.relevance.empty') + '</p>';
-            window.TaxonomyViews?.installDiagramRelevanceControl?.(container);
+            if (diagram) window.TaxonomyViews?.installDiagramRelevanceControl?.(container);
+            window.TaxonomyViews?.restoreDiagramControlFocus?.(container);
             container.setAttribute('data-view-rendered', S.currentView);
         } else {
         switch (S.currentView) {
             case 'list':
-                renderTree(data, scores);
+                renderTree(diagramData, scores);
                 if (scores) {
                     materializeScoredPaths(scores);
                     SC().expandMatched(scores);
@@ -717,7 +732,7 @@
                 document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'list');
                 break;
             case 'tabs':
-                renderTabsView(data, scores);
+                renderTabsView(diagramData, scores);
                 if (scores) {
                     materializeScoredPaths(scores);
                     SC().expandMatched(scores);
@@ -750,7 +765,8 @@
                 }
                 break;
             case 'summary':
-                SC().renderSummaryView(data, scores);
+                cleanupD3(container);
+                SC().renderSummaryView(diagramData, scores);
                 document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'summary');
                 break;
         }
@@ -1221,6 +1237,9 @@
             container._taxObserver.disconnect();
             container._taxObserver = null;
         }
+        delete container._canvasRenderer;
+        delete container._canvasData;
+        delete container._canvasScores;
     }
 
     // ── Incremental tree materialization ─────────────────────────────────────
@@ -2006,6 +2025,7 @@
     }
 
     function resetStaleResults() {
+        resetDiagramContext();
         if (SC().clearDerivedAnalysisView) SC().clearDerivedAnalysisView();
         else SC().acceptRelationSearchReport?.(null);
         S.currentArchView = null;
@@ -2569,6 +2589,11 @@
             return;
         }
 
+        resetDiagramContext();
+        // A new manual assessment must expose unassessed entries for editing.
+        const relevanceFilter = document.getElementById('diagramRelevanceFilter');
+        if (relevanceFilter) relevanceFilter.value = 'all';
+
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;
         S.lastAnalysisLanguage = null;
@@ -2675,6 +2700,8 @@
     // ── Public API for cross-module use ──────────────────────────────────────
     window.TaxonomyBrowse = {
         renderView: renderView,
+        resetDiagramContext: resetDiagramContext,
+        isRelevanceFilterActive: isRelevanceFilterActive,
         refreshContainerSummaries: refreshContainerSummaries,
         refreshAnalysisDuration: refreshAnalysisDuration,
         switchView: switchView,

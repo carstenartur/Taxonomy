@@ -182,7 +182,7 @@
     // Explicit compatibility boundary for interactive provider batches and expert-entered raw
     // scores. All browser consumers receive comparable relevance, including report requests and
     // saved drafts. Resolve the role/parent once from the loaded catalogue, never from percentages.
-    function applyLocalRawScores(scores, replace, allowUnresolvedProviderKeys) {
+    function applyLocalRawScores(scores, replace, allowUnresolvedProviderKeys, livePreview) {
         var raw = replace ? {} : Object.assign({}, S.currentRawScores || {});
         Object.entries(scores || {}).forEach(function ([code, value]) {
             raw[code] = requireScore(value);
@@ -226,13 +226,15 @@
             var parentScore = context.parentCode && Number.isFinite(raw[context.parentCode])
                 ? raw[context.parentCode] : null;
             var product = context.role === 'PRODUCT';
+            var pending = product && parentScore === null && livePreview === true;
             var relevance = product
                 ? (parentScore === null ? 0 : percentageProduct(parentScore, value)) : value;
             if (product) {
                 suitability[code] = value;
                 if (parentScore === null && warnings.length < 100) {
                     warnings.push('Concrete product ' + code
-                        + ' has no evaluated direct family score; its effective relevance is 0.');
+                        + ' has no evaluated direct family score; its effective relevance is '
+                        + (pending ? 'pending.' : '0.'));
                 }
             }
             effective[code] = relevance;
@@ -240,7 +242,8 @@
                 nodeCode: code,
                 kind: product ? 'PRODUCT_SUITABILITY'
                     : (context.parentCode ? 'HIERARCHICAL_RELEVANCE' : 'ROOT_RELEVANCE'),
-                rawScore: value, effectiveRelevance: relevance,
+                // Keep the numeric preview placeholder separate from authoritative zero evidence.
+                rawScore: value, effectiveRelevance: pending ? null : relevance,
                 parentCode: context.parentCode, parentScore: parentScore
             };
         });
@@ -434,6 +437,18 @@
 
         // Prepend so newest entries appear at top
         content.insertBefore(entry, content.firstChild);
+    }
+
+    // A live preview can omit an explanation; absence does not erase saved evidence.
+    function mergeAnalysisReasons(reasons) {
+        var changed = [];
+        S.currentReasons = S.currentReasons || {};
+        Object.entries(reasons || {}).forEach(function ([code, reason]) {
+            if (typeof reason !== 'string' || !reason.trim() || S.currentReasons[code] === reason) return;
+            S.currentReasons[code] = reason;
+            changed.push(code);
+        });
+        return changed;
     }
 
     // A single setting describes the reasons only while every contributing batch
@@ -649,6 +664,7 @@
             return;
         }
         if (!options.continuation || options.newOperation === true) {
+        B().resetDiagramContext?.();
         S.currentReasons = {};
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
@@ -693,19 +709,24 @@
             return acceptedResult;
         }
         var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
+                if (resultHandled || progress && !progress.acceptsResult()) return;
                 clusterObserved = snapshot.transport === 'artemis' || clusterObserved;
                 var previous = S.currentEffectiveScores || {};
                 var previousRaw = S.currentRawScores || {};
+                var previousDetails = S.currentScoreDetails || {};
                 applyLocalRawScores(options.continuation
-                    ? Object.assign({}, previousRaw, snapshot.rawScores || {}) : snapshot.rawScores || {}, true, true);
-                var changed = Object.keys(S.currentScores || {}).filter(function (code) {
-                    return previous[code] !== S.currentScores[code] || previousRaw[code] !== S.currentRawScores[code];
-                });
+                    ? Object.assign({}, previousRaw, snapshot.rawScores || {}) : snapshot.rawScores || {}, true, true, true);
+                var reasonChanges = mergeAnalysisReasons(snapshot.reasons);
+                var changed = Array.from(new Set(Object.keys(S.currentScores || {}).filter(function (code) {
+                    var before = previousDetails[code] || {}, after = S.currentScoreDetails[code] || {};
+                    return previous[code] !== S.currentScores[code] || previousRaw[code] !== S.currentRawScores[code]
+                        || before.effectiveRelevance !== after.effectiveRelevance || before.parentScore !== after.parentScore;
+                }).concat(reasonChanges)));
                 if (!changed.length) return;
-                if (S.currentView === 'list' || S.currentView === 'tabs') {
+                if ((S.currentView === 'list' || S.currentView === 'tabs') && !B().isRelevanceFilterActive?.()) {
                     withScoreNodeUpdates(function () {
                         changed.forEach(function (code) {
-                            applyScoreToNode(code, S.currentScores[code], null,
+                            applyScoreToNode(code, S.currentScores[code], S.currentReasons[code],
                                 S.currentScoreDetails[code], S.currentRawScores[code], true);
                         });
                     });
@@ -820,6 +841,7 @@
         // never label an old result as an assessment of the current edited draft.
         field.value = saved.businessText;
         field.classList.remove('stale-results');
+        B().resetDiagramContext?.();
         if (lifecycle && typeof lifecycle.clearDerivedUi === 'function') lifecycle.clearDerivedUi();
         S.currentReasons = {}; S.currentDiscrepancies = []; S.currentProductCoverageGaps = [];
         S.currentArchView = null;
@@ -836,15 +858,19 @@
         S.lastAnalysisStatus = 'IN_PROGRESS'; window._currentProvisionalRelations = [];
         applyScoreEnvelope({}); clearAnalysisLog(true); setAnalyzing(true);
         B().renderView(S.taxonomyData, S.currentScores);
+        var resultHandled = false;
         var monitor = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
-            if (!inScope() || field.value !== saved.businessText) return;
-            applyLocalRawScores(snapshot.rawScores || {}, true, true);
+            if (resultHandled || !inScope() || monitor && !monitor.acceptsResult()
+                    || field.value !== saved.businessText) return;
+            applyLocalRawScores(snapshot.rawScores || {}, true, true, true);
+            mergeAnalysisReasons(snapshot.reasons);
             B().renderView(S.taxonomyData, S.currentScores);
         }, function (result) {
             if (!inScope() || !monitor.acceptsResult()) return;
             if (field.value !== saved.businessText) {
                 monitor.finish(result.status, false); setAnalyzing(false); return;
             }
+            resultHandled = true;
             monitor.finish(result.status, false, result.analysisDurationMillis);
             applyAnalysisResult(result, { text: saved.businessText, provider: saved.provider,
                 requestedScope: saved.analysisScope, options: { recoveryManaged: true }, operationId: operationId });
@@ -862,6 +888,7 @@
         }
 
         // Reset interactive state
+        B().resetDiagramContext?.();
         S.lastAnalysisScope = null;
         S.lastAnalysisReasonLength = null;
         S.lastAnalysisLanguage = null;
@@ -901,7 +928,7 @@
 
     // ── Streaming analysis (list / tabs views) ────────────────────────────────
     function runStreamingAnalysis() {
-        recoverySelection++;
+        var selection = ++recoverySelection;
         const text = document.getElementById('businessText').value.trim();
         if (!text) {
             B().showStatus('warning', t('scoring.enter.requirement'));
@@ -913,6 +940,7 @@
         catch (invalidScope) { B().showStatus('warning', invalidScope.message); return; }
 
         setAnalyzing(true);
+        B().resetDiagramContext?.();
         B().clearStatus();
         clearAnalysisLog();
         var llmCommLogEl = document.getElementById('llmCommLogContent');
@@ -958,8 +986,10 @@
         S.analysisProviderId = provider || null;
         S.analysisOperationId = null;
         const eventSource = new EventSource(url);
+        var finalized = false;
 
         eventSource.addEventListener('phase', function (e) {
+            if (finalized || selection !== recoverySelection) { eventSource.close(); return; }
             const data = JSON.parse(e.data);
             if (data.operationId) S.analysisOperationId = data.operationId;
             if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
@@ -967,6 +997,7 @@
         });
 
         eventSource.addEventListener('scores', function (e) {
+            if (finalized || selection !== recoverySelection) { eventSource.close(); return; }
             const data = JSON.parse(e.data);
             if (data.operationId) S.analysisOperationId = data.operationId;
             if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
@@ -982,8 +1013,13 @@
             var details = data.scoreDetails || {};
             Object.assign(S.currentRawScores, rawScores);
             Object.assign(S.currentScoreDetails, details);
+            acceptAnalysisReasonLength(data, false);
+            var reasonChanges = mergeAnalysisReasons(data.reasons);
             // A later family batch must reconcile products that already arrived.
             var changedScores = Object.assign({}, rawScores);
+            reasonChanges.forEach(function (code) {
+                if (Object.prototype.hasOwnProperty.call(S.currentRawScores, code)) changedScores[code] = S.currentRawScores[code];
+            });
             Object.entries(S.currentScoreDetails).forEach(function ([code, detail]) {
                 if (isProductScore(detail) && Object.prototype.hasOwnProperty.call(S.currentRawScores, code)
                         && Object.prototype.hasOwnProperty.call(rawScores, detail.parentCode)) {
@@ -993,16 +1029,17 @@
             var effectiveScores = effectiveIncrementalScores(changedScores, S.currentScoreDetails);
             Object.assign(S.currentEffectiveScores, effectiveScores);
             Object.assign(S.currentScores, effectiveScores);
-            acceptAnalysisReasonLength(data, false);
-            if (data.reasons) { Object.assign(S.currentReasons, data.reasons); }
             if (data.provider) { S.lastAnalysisProvider = data.provider; }
             if (data.scoreSemanticsVersion) {
                 S.scoreSemanticsVersion = data.scoreSemanticsVersion;
             }
-            withScoreNodeUpdates(function () {
+            Object.entries(changedScores).forEach(function ([code, raw]) {
+                if (isProductScore(S.currentScoreDetails[code])) S.currentProductSuitabilityScores[code] = clampScore(raw);
+            });
+            if (scoreUpdatesRequireRender()) B().renderView(S.taxonomyData, S.currentScores);
+            else withScoreNodeUpdates(function () {
                 Object.entries(changedScores).forEach(function ([code, raw]) {
                     var detail = S.currentScoreDetails[code];
-                    if (isProductScore(detail)) S.currentProductSuitabilityScores[code] = clampScore(raw);
                     applyScoreToNode(code, effectiveScores[code], S.currentReasons[code], detail, raw, true);
                 });
             });
@@ -1026,6 +1063,7 @@
         });
 
         eventSource.addEventListener('expanding', function (e) {
+            if (finalized || selection !== recoverySelection) { eventSource.close(); return; }
             const data = JSON.parse(e.data);
             if (data.operationId) S.analysisOperationId = data.operationId;
             if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
@@ -1036,11 +1074,14 @@
         });
 
         eventSource.addEventListener('complete', function (e) {
+            if (finalized || selection !== recoverySelection) { eventSource.close(); return; }
             const data = JSON.parse(e.data);
+            finalized = true;
             if (data.operationId) S.analysisOperationId = data.operationId;
             if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
             eventSource.close();
             setAnalyzing(false);
+            var previousEvidence = scoreViewEvidence();
             applyScoreEnvelope({
                 scores: data.totalScores,
                 rawScores: data.rawScores,
@@ -1052,9 +1093,9 @@
                 analysisDurationMillis: data.analysisDurationMillis
             });
             acceptAnalysisReasonLength(data, false);
-            if (data.reasons) Object.assign(S.currentReasons, data.reasons);
+            mergeAnalysisReasons(data.reasons);
             if (Object.prototype.hasOwnProperty.call(data, 'analysisCoverage')) S.analysisCoverage = data.analysisCoverage;
-            syncVisibleScoreNodes();
+            syncVisibleScoreNodes(previousEvidence);
             S.currentDiscrepancies = data.discrepancies || [];
             S.currentProductCoverageGaps = data.productCoverageGaps || [];
             S.lastAnalysisStatus = data.status || 'SUCCESS';
@@ -1082,16 +1123,19 @@
         });
 
         eventSource.addEventListener('error', function (e) {
+            if (finalized || selection !== recoverySelection) { eventSource.close(); return; }
             if (e.data) {
                 try {
                     const data = JSON.parse(e.data);
+                    finalized = true;
                     if (data.operationId) S.analysisOperationId = data.operationId;
                     if (data.analysisProviderId) S.analysisProviderId = data.analysisProviderId;
                     eventSource.close();
                     setAnalyzing(false);
+                    var previousEvidence = scoreViewEvidence();
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
                     acceptAnalysisReasonLength(data, false);
-                    if (data.reasons) Object.assign(S.currentReasons, data.reasons);
+                    mergeAnalysisReasons(data.reasons);
                     if (data.scoreSemanticsUnavailable) {
                         // A failed server-side projection supplies raw evidence only. Rebuild
                         // comparable relevance from the already loaded catalogue, not raw suitability.
@@ -1111,7 +1155,7 @@
                         && data.analysisDurationMillis >= 0 ? data.analysisDurationMillis : null;
                     if (Object.prototype.hasOwnProperty.call(data, 'analysisCoverage')) S.analysisCoverage = data.analysisCoverage;
                     if (typeof B().refreshAnalysisDuration === 'function') B().refreshAnalysisDuration();
-                    syncVisibleScoreNodes();
+                    syncVisibleScoreNodes(previousEvidence);
                     updateAnalysisLog({ timestamp: new Date(), totalNodes: Object.keys(S.currentScores || {}).length,
                         matchedEntries: Object.entries(S.currentScores || {}).filter(function (entry) { return entry[1] > 0; }),
                         warnings: data.warnings || [], status: S.lastAnalysisStatus });
@@ -1125,9 +1169,11 @@
         });
 
         eventSource.onerror = function (event) {
+            if (finalized || selection !== recoverySelection) { eventSource.close(); return; }
             // A valid named "error" event already finalized the result in its handler.
             // Malformed payloads and bodyless transport failures still need the error path.
             if (event && event.data && S.lastAnalysisStatus !== 'IN_PROGRESS') return;
+            finalized = true;
             eventSource.close();
             setAnalyzing(false);
             S.lastAnalysisStatus = 'ERROR';
@@ -1142,7 +1188,26 @@
         return update();
     }
 
-    function syncVisibleScoreNodes() {
+    function scoreUpdatesRequireRender() {
+        return B().isRelevanceFilterActive?.() || S.currentView && S.currentView !== 'list' && S.currentView !== 'tabs';
+    }
+
+    function scoreViewEvidence() {
+        var scores = S.currentScores || {}, raw = S.currentRawScores || {}, reasons = S.currentReasons || {};
+        var codes = new Set(Object.keys(scores).concat(Object.keys(raw), Object.keys(reasons)));
+        return JSON.stringify(Array.from(codes).sort().map(function (code) {
+            return [code, scores[code], raw[code], describeScore(code, scores[code]).label, reasons[code]];
+        }));
+    }
+
+    function syncVisibleScoreNodes(previousEvidence) {
+        if (scoreUpdatesRequireRender()) {
+            if (previousEvidence !== scoreViewEvidence()) B().renderView(S.taxonomyData, S.currentScores);
+            // Root clarification coverage can change without new scores or reasons.
+            else if (B().refreshContainerSummaries) B().refreshContainerSummaries(S.currentScores);
+            refreshScoreStatistics();
+            return;
+        }
         // Reconcile terminal evidence without rebuilding the tree or losing focus/scroll.
         withScoreNodeUpdates(function () {
             document.querySelectorAll('.tax-node[data-code], [data-taxonomy-container]').forEach(function (node) {
@@ -2196,12 +2261,37 @@
             return;
         }
 
+        // Project the display only; the saved architecture remains authoritative for exports.
+        // "All" also preserves external/legacy elements absent from the current catalogue.
+        var displayElements = view.includedElements;
+        var displayRelationships = view.includedRelationships || [];
+        var displayAnchors = view.anchors || [];
+        if (B().isRelevanceFilterActive?.()) {
+            var retainedCodes = new Set();
+            function retain(node) {
+                retainedCodes.add(node.code);
+                (node.children || []).forEach(retain);
+            }
+            (data || []).forEach(retain);
+            displayElements = displayElements.filter(function (el) { return retainedCodes.has(el.nodeCode); });
+            var displayedCodes = new Set(displayElements.map(function (el) { return el.nodeCode; }));
+            displayRelationships = displayRelationships.filter(function (relation) {
+                return displayedCodes.has(relation.sourceCode) && displayedCodes.has(relation.targetCode);
+            });
+            displayAnchors = displayAnchors.filter(function (anchor) { return displayedCodes.has(anchor.nodeCode); });
+        }
+        if (displayElements.length === 0) {
+            if (summarySelection && summarySelection.view === view) summarySelection = null;
+            container.innerHTML = '<div class="summary-view"><p class="text-muted" role="status">' + escapeHtml(t('view.relevance.empty')) + '</p></div>';
+            return;
+        }
+
         var bt = document.getElementById('businessText');
         var requirement = bt ? bt.value.trim() : '';
 
         // Group elements by taxonomy sheet
         var groups = {};
-        view.includedElements.forEach(function (el) {
+        displayElements.forEach(function (el) {
             var sheet = el.taxonomySheet || 'Unknown';
             if (!groups[sheet]) groups[sheet] = [];
             groups[sheet].push(el);
@@ -2216,10 +2306,10 @@
 
         // Collect relationship types between layers for arrow labels
         var layerRelations = {};
-        if (view.includedRelationships) {
-            view.includedRelationships.forEach(function (r) {
+        if (displayRelationships.length) {
+            displayRelationships.forEach(function (r) {
                 var srcSheet = null, tgtSheet = null;
-                view.includedElements.forEach(function (el) {
+                displayElements.forEach(function (el) {
                     if (el.nodeCode === r.sourceCode) srcSheet = el.taxonomySheet;
                     if (el.nodeCode === r.targetCode) tgtSheet = el.taxonomySheet;
                 });
@@ -2279,9 +2369,9 @@
         }
 
         // Stats footer
-        var anchorCount = view.anchors ? view.anchors.length : 0;
-        var elemCount = view.includedElements ? view.includedElements.length : 0;
-        var relCount = view.includedRelationships ? view.includedRelationships.length : 0;
+        var anchorCount = displayAnchors.length;
+        var elemCount = displayElements.length;
+        var relCount = displayRelationships.length;
         html += '<div class="summary-stats">';
         html += escapeHtml(t('scoring.ui.stats', anchorCount, elemCount, relCount, sortedSheets.length));
         html += '</div>';
@@ -2296,8 +2386,11 @@
         container.querySelector('.summary-view').appendChild(details);
 
         function select(code) {
-            var selected = view.includedElements.find(function (item) { return item.nodeCode === code; });
-            if (!selected) return;
+            var selected = displayElements.find(function (item) { return item.nodeCode === code; });
+            if (!selected) {
+                summarySelection = null;
+                return;
+            }
             summarySelection = { view: view, code: code };
             container.querySelectorAll('.summary-layer-element').forEach(function (button) {
                 button.setAttribute('aria-pressed', String(button.dataset.code === code));
