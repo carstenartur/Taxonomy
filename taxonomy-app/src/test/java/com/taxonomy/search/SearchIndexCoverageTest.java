@@ -69,7 +69,7 @@ class SearchIndexCoverageTest {
         var startup = mock(AppInitializationStateService.class);
         when(startup.getState()).thenReturn(AppInitializationStateService.State.READY);
         initializer = new LocalOnnxIndexInitializer(embeddings, startup,
-                new LocalEmbeddingIndexRebuilder(factory, 1, 4), indexHealth, "LOCAL_ONNX");
+                new LocalEmbeddingIndexRebuilder(factory, 1, 4), indexHealth);
     }
 
     @AfterEach

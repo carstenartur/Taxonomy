@@ -63,9 +63,16 @@ TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 
 With these defaults, startup, taxonomy import and Hibernate Search indexing do not initialise or download `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`; documents are indexed without vector values.
 
-To use a mounted model without outbound downloads:
+For a generative custom LLM together with local ONNX semantic search, keep the
+chat provider configured and enable embeddings separately. The node/relation
+vector index initializes at startup independently of the chat provider; a
+catalogue-only worker does not build a global index. For a mounted model without
+outbound downloads:
 
 ```bash
+export LLM_PROVIDER=CUSTOM_OPENAI
+export CUSTOM_LLM_URL=https://llm.example.com/v1/chat/completions
+export CUSTOM_LLM_MODEL=your-served-model-name
 export TAXONOMY_EMBEDDING_ENABLED=true
 export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
 export TAXONOMY_EMBEDDING_MODEL_PROFILE=MULTILINGUAL_MINILM_L12

@@ -136,6 +136,7 @@ public class TaxDslParser {
 
     /** Keep literal hashes inside quoted values, including escaped quotes and backslashes. */
     public static String withoutComment(String line) {
+        if (line.indexOf('#') < 0) return line;
         boolean quoted = false;
         boolean escaped = false;
         for (int index = 0; index < line.length(); index++) {

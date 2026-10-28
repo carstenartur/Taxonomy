@@ -275,9 +275,10 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8080/actuator/metr
 Do not delete `/app/data/lucene-index/*` expecting an automatic full rebuild.
 Restore a matching snapshot and verify representative search. The commit
 search scope is rebuilt on startup only when its relational projection is
-empty; local node/relation vector indexing runs only with embeddings enabled
-and `LLM_PROVIDER=LOCAL_ONNX`. Other indexed entities need a verified,
-release-specific rebuild path before discarding their on-disk indexes.
+empty; local node/relation vector indexing runs with embeddings enabled,
+independently of `LLM_PROVIDER`. Catalogue-only workers do not build these global
+indexes. Other indexed entities need a verified, release-specific rebuild path
+before discarding their on-disk indexes.
 
 ### Index Size
 

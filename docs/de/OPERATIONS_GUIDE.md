@@ -280,10 +280,10 @@ Löschen Sie `/app/data/lucene-index/*` nicht in der Erwartung eines
 vollständigen automatischen Neuaufbaus. Stellen Sie einen passenden Snapshot
 wieder her und prüfen Sie repräsentative Suchanfragen. Der Commit-Suchbereich
 wird beim Start nur dann neu aufgebaut, wenn die relationale Projektion leer
-ist. Lokale Knoten-/Relationsvektoren werden nur bei aktivierten Embeddings
-und `LLM_PROVIDER=LOCAL_ONNX` neu indiziert. Für andere indizierte Entitäten
-ist vor dem Verwerfen ihrer Dateindizes ein geprüftes, release-spezifisches
-Neuaufbauverfahren nötig.
+ist. Lokale Knoten-/Relationsvektoren werden bei aktivierten Embeddings
+unabhängig von `LLM_PROVIDER` neu indiziert. Reine Katalog-Worker bauen diese
+globalen Indizes nicht auf. Für andere indizierte Entitäten ist vor dem Verwerfen
+ihrer Dateindizes ein geprüftes, release-spezifisches Neuaufbauverfahren nötig.
 
 ### Indexgröße
 

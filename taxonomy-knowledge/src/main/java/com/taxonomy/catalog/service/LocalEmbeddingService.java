@@ -263,6 +263,9 @@ public class LocalEmbeddingService {
                 .optModelPath(modelPath)
                 .optModelName("model")
                 .optEngine("OnnxRuntime")
+                // The two inference permits bound callers; keep each operator on its
+                // caller instead of letting background indexing enlist every CPU core.
+                .optOption("intraOpNumThreads", "1")
                 .optArgument("includeTokenTypes", true)
                 .optArgument("pooling", profile.pooling())
                 .optArgument("maxLength", profile.maxTokens())

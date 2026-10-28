@@ -3,12 +3,17 @@ package com.taxonomy.search;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.AppInitializationStateService;
 import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.search.config.SpringContextHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.util.List;
 
@@ -16,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -70,7 +76,7 @@ class LocalOnnxIndexInitializerTest {
     @BeforeEach
     void setUp() {
         initializer = new LocalOnnxIndexInitializer(
-                embeddingService, initializationState, indexRebuilder, new EmbeddingIndexHealth(), "LOCAL_ONNX");
+                embeddingService, initializationState, indexRebuilder, new EmbeddingIndexHealth());
     }
 
     @Test
@@ -86,20 +92,36 @@ class LocalOnnxIndexInitializerTest {
         verifyNoInteractions(initializationState, indexRebuilder);
     }
 
-    @Test
-    void nonLocalOnnxProviderDoesNotStartIndexing() {
-        initializer = new LocalOnnxIndexInitializer(
-                embeddingService, initializationState, indexRebuilder, new EmbeddingIndexHealth(), "GEMINI");
-        when(embeddingService.isEnabled()).thenReturn(true);
+    @ParameterizedTest
+    @ValueSource(strings = {"CUSTOM_OPENAI", "GEMINI", "LOCAL_ONNX", ""})
+    void enabledEmbeddingsBecomeSearchableIndependentlyOfChatProvider(String provider) {
+        configureReadyTaxonomyAndSearchableNodes(309);
 
-        initializer.initializeLocalOnnxIndex();
+        new ApplicationContextRunner()
+                .withUserConfiguration(LocalOnnxIndexInitializer.class, CatalogueRuntimePolicy.class)
+                .withPropertyValues("llm.provider=" + provider)
+                .withInitializer(context -> {
+                    // Native inference and persistence are test doubles, not managed JPA services.
+                    var beans = context.getBeanFactory();
+                    beans.registerSingleton("springContextHolder", mock(SpringContextHolder.class));
+                    beans.registerSingleton("localEmbeddingService", embeddingService);
+                    beans.registerSingleton("initializationStateService", initializationState);
+                    beans.registerSingleton("localEmbeddingIndexRebuilder", indexRebuilder);
+                    beans.registerSingleton("embeddingIndexHealth", new EmbeddingIndexHealth());
+                })
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var configuredInitializer = context.getBean(LocalOnnxIndexInitializer.class);
 
-        assertThat(initializer.getState())
-                .isEqualTo(LocalOnnxIndexInitializer.State.DISABLED);
-        assertThat(initializer.hasStarted()).isFalse();
-        assertThat(initializer.getDetail())
-                .contains("LLM_PROVIDER=LOCAL_ONNX");
-        verifyNoInteractions(initializationState, indexRebuilder);
+                    configuredInitializer.initializeLocalOnnxIndex();
+
+                    assertThat(configuredInitializer.getState())
+                            .isEqualTo(LocalOnnxIndexInitializer.State.READY);
+                    assertThat(configuredInitializer.isNodeSearchReady()).isTrue();
+                    assertThat(configuredInitializer.getIndexedNodesAtReadiness()).isEqualTo(309);
+                    verify(indexRebuilder).rebuildNodeIndex();
+                    verify(indexRebuilder).rebuildRelationIndex();
+                });
     }
 
     @Test
