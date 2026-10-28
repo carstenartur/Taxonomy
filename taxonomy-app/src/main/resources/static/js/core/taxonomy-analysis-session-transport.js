@@ -483,6 +483,12 @@
     }
 
     function restoreOptions(payload, attempt) {
+        var update = function () { restoreOptionsNow(payload, attempt); };
+        if (C.observeDraftChanges) C.observeDraftChanges(update);
+        else update();
+    }
+
+    function restoreOptionsNow(payload, attempt) {
         if (runtime.restoredPayload !== payload) return;
         var options = payload && payload.analysisOptions;
         if (!options) return;
