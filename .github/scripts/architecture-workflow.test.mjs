@@ -56,11 +56,16 @@ for (const workspace of ['', 'private-source']) {
         const page = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js', import.meta.url), 'utf8');
         // Expose closure state without changing the production navigation body.
         vm.runInContext(page.replace(/\}\)\(\);\s*$/, 'window.detailProbe = {state, architectureWorkbenchUrl}; })();'), context);
-        context.detailProbe.state.selectedSnapshot = {id: 'snapshot-v2'};
-        const target = url(context.detailProbe.architectureWorkbenchUrl());
-        assert.equal(target.pathname, '/taxonomy/architecture/workbench');
-        assert.equal(target.searchParams.get('snapshotId'), 'snapshot-v2');
-        assert.equal(target.searchParams.get('workspaceId'), workspace);
+        assert.equal(context.detailProbe.architectureWorkbenchUrl(), '#', 'No selection cannot open an unrelated analysis');
+        for (const selected of ['snapshot-v2', 'snapshot-v1']) {
+            context.detailProbe.state.selectedSnapshot = {id: selected};
+            const target = url(context.detailProbe.architectureWorkbenchUrl());
+            assert.equal(target.pathname, '/taxonomy/architecture/workbench');
+            assert.equal(target.searchParams.get('projectId'), '12');
+            assert.equal(target.searchParams.get('snapshotId'), selected);
+            assert.equal(target.searchParams.get('workspaceId'), workspace);
+            assert.equal(target.searchParams.get('lang'), 'de');
+        }
     });
 
     test(`successful import returns to its project and ${workspace || 'shared'} scope`, async () => {

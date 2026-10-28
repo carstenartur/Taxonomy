@@ -166,6 +166,42 @@ class PortfolioClientRoutingIT {
         }
     }
 
+    @ParameterizedTest(name = "selected snapshot handoff retains workspace [{1}] under [{0}]")
+    @MethodSource("prefixesAndWorkspaces")
+    void workbenchLinkKeepsTheExactSelectedImmutableSnapshot(String prefix, String workspaceId) {
+        installRoutes(prefix);
+        var snapshots = List.of("snapshot-current", "snapshot-previous").stream().map(id ->
+                new PortfolioDtos.SnapshotSummary(id, 42L, 7L, "REQ-7", 11L, 1, "job-7",
+                        PortfolioTypes.AnalysisStatus.SUCCESS, "mock", "fixture-model", "catalogue-fixture",
+                        "prompt-fixture", workspaceId, "main", "0123456789012345678901234567890123456789",
+                        LABEL_TIME, 1L, 0, null)).toList();
+        page.route("GET", prefix + "/api/projects/42/requirements/7/snapshots", request ->
+                PortfolioClientTestPage.json(200, snapshots));
+        for (var snapshot : snapshots) {
+            var detail = new PortfolioDtos.SnapshotDetail(snapshot, null, null, null, null, List.of(), List.of());
+            page.route("GET", prefix + "/api/projects/42/snapshots/" + snapshot.id(), request ->
+                    PortfolioClientTestPage.json(200, detail));
+        }
+        open("requirement-detail", prefix, "/projects/42/requirements/7", workspaceSetup(workspaceId));
+        By workbenchLink = By.cssSelector("#snapshotResultOverview a[href*='/architecture/workbench']");
+        wait.until(ignored -> !driver.findElements(workbenchLink).isEmpty() && hidden("detailBusy"));
+        click(By.id("analyses-tab"));
+        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
+        for (String snapshotId : List.of("snapshot-current", "snapshot-previous")) {
+            if (snapshotId.equals("snapshot-previous")) {
+                click(By.cssSelector("#snapshotList [data-snapshot-id='snapshot-previous']"));
+            }
+            wait.until(ignored -> hidden("detailBusy") && !driver.findElements(By.cssSelector(
+                    "#snapshotList [data-snapshot-id='" + snapshotId + "'][aria-current='true']")).isEmpty());
+            assertThat(text("detailError")).isEmpty();
+            assertThat(driver.findElement(workbenchLink).getDomAttribute("href"))
+                    .isEqualTo(prefix + "/architecture/workbench?projectId=42&snapshotId=" + snapshotId
+                            + "&lang=de" + (workspaceQuery == null ? "" : "&" + workspaceQuery));
+            assertThat(requests("GET", prefix + "/api/projects/42/snapshots/" + snapshotId)).singleElement()
+                    .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
+        }
+    }
+
     @ParameterizedTest(name = "RepositoryState string branches render at [{0}]")
     @ValueSource(strings = {"", "/taxonomy", "/teams/blue/taxonomy"})
     void versioningRendersRealRepositoryStateBranchStrings(String prefix) {
@@ -787,18 +823,21 @@ class PortfolioClientRoutingIT {
     private static void prepareImport(String prefix, String location, String workspaceId) {
         page.route("POST", prefix + "/api/projects/42/requirements/import-review", request ->
                 PortfolioClientTestPage.json(200, Map.of("analysisJob", JOB)).withHeader("Location", location));
-        String scopeSetup = workspaceId == null ? "" : """
-                const importUrl = new URL(window.location.href);
-                importUrl.searchParams.set('workspaceId', %s);
-                window.history.replaceState(null, '', importUrl);
-                """.formatted(PortfolioClientTestPage.json(workspaceId));
-        open("portfolio-import", prefix, "/projects/42/import", scopeSetup + "localStorage.setItem('taxonomy.portfolio.importDraft.42', "
+        open("portfolio-import", prefix, "/projects/42/import", workspaceSetup(workspaceId) + "localStorage.setItem('taxonomy.portfolio.importDraft.42', "
                 + PortfolioClientTestPage.json(PortfolioClientTestPage.json(importDraft())) + ");");
         wait.until(ignored -> text("importProject").contains("P-42") && !hidden("restoreDraft"));
         click(By.id("restoreDraft"));
         wait.until(ignored -> !hidden("reviewStep"));
         click(By.id("reviewSummaryButton"));
         wait.until(ignored -> !hidden("summaryStep"));
+    }
+
+    private static String workspaceSetup(String workspaceId) {
+        return workspaceId == null ? "" : """
+                const contractPageUrl = new URL(window.location.href);
+                contractPageUrl.searchParams.set('workspaceId', %s);
+                window.history.replaceState(null, '', contractPageUrl);
+                """.formatted(PortfolioClientTestPage.json(workspaceId));
     }
 
     private static void awaitImportReturn(String expectedPath) {
