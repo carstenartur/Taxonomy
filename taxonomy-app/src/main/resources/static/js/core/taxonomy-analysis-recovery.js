@@ -11,6 +11,9 @@
         scopeKey: function () { var c = current(); return c ? c.workspaceId + '/' + c.id : ''; } });
     function input() { return (document.getElementById('businessText')?.value || '').trim(); }
     function current() { return S.recoveryContext; }
+    function observeDraftChanges(update) {
+        return C.observeDraftChanges ? C.observeDraftChanges(update) : update();
+    }
     function inScope(context) {
         return Boolean(context && current() === context && context.workspaceId === C.runtime.workspaceId
             && context.request.businessText === input()
@@ -337,7 +340,7 @@
         var reopen = wasOpen || Boolean(options.afterDecision);
         reading = observation;
         if (recovering || options.afterDecision || wasOpen && !options.background) {
-            c.syncState = 'CHECKING'; update();
+            observeDraftChanges(function () { c.syncState = 'CHECKING'; }); update();
             if (wasOpen) open();
         }
         observation.promise = Promise.resolve().then(async function () {
@@ -355,18 +358,25 @@
                 }
                 var previousState = S.analysisRecovery?.state, previousVersion = S.analysisRecovery?.version;
                 observation.installedVersion = snapshot.recovery.version;
-                c.confirmed = true; c.syncState = null;
-                if (recovering && !c.recoveryEvent) c.recoveryEvent = 'RECONNECTED';
-                S.analysisRecovery = snapshot.recovery;
-                if (snapshot.clusterOperationId) { c.distributed = true; c.operationId = snapshot.clusterOperationId; }
-                c.observationError = null; c.observationStatus = null; c.observationKind = null;
-                // A running new attempt can still carry an older paused result.
-                if (!busy && snapshot.recovery.state !== 'RUNNING') {
-                    hydrate(snapshot.result, c, options.acceptSavedResult && acceptedEvidence === localEvidence());
-                    if (c.evidenceConflict) reopen = true;
-                }
-                c.request = snapshot.request;
-                if (snapshot.request.relationSourceContinuationId) c.noFollowups = true;
+                var applySnapshot = function () {
+                    c.confirmed = true; c.syncState = null;
+                    if (recovering && !c.recoveryEvent) c.recoveryEvent = 'RECONNECTED';
+                    S.analysisRecovery = snapshot.recovery;
+                    if (snapshot.clusterOperationId) { c.distributed = true; c.operationId = snapshot.clusterOperationId; }
+                    c.observationError = null; c.observationStatus = null; c.observationKind = null;
+                    // A running new attempt can still carry an older paused result.
+                    if (!busy && snapshot.recovery.state !== 'RUNNING') {
+                        hydrate(snapshot.result, c, options.acceptSavedResult && acceptedEvidence === localEvidence());
+                        if (c.evidenceConflict) reopen = true;
+                    }
+                    c.request = snapshot.request;
+                    if (snapshot.request.relationSourceContinuationId) c.noFollowups = true;
+                };
+                // Reading a durable operation in a second tab must not turn that
+                // observer into a competing draft writer. Explicit result adoption
+                // and existing local edits still require normal optimistic saving.
+                if (options.acceptSavedResult) applySnapshot();
+                else observeDraftChanges(applySnapshot);
                 if (options.background && !c.evidenceConflict && previousState === snapshot.recovery.state && previousVersion === snapshot.recovery.version && !recovering)
                     reopen = false; // Progress heartbeats do not rebuild an open dialog.
                 if (!busy && snapshot.recovery.state !== 'RUNNING') {
@@ -376,8 +386,10 @@
                 return true;
             } catch (error) {
                 if (!inScope(c) || (S.analysisRecovery?.version || 0) > (observation.installedVersion ?? observation.version)) return false;
-                c.syncState = 'UNAVAILABLE'; c.observationError = error.message;
-                c.observationStatus = errorStatus(error); c.observationKind = connectionFailure(error) ? 'CONNECTION' : 'STATUS';
+                observeDraftChanges(function () {
+                    c.syncState = 'UNAVAILABLE'; c.observationError = error.message;
+                    c.observationStatus = errorStatus(error); c.observationKind = connectionFailure(error) ? 'CONNECTION' : 'STATUS';
+                });
                 return false;
             } finally {
                 if (reading === observation) reading = false;
