@@ -24,7 +24,9 @@ test('two pages can open and observe the same running draft without writes or co
   await context.route('http://taxonomy.test/**', async route => {
     const request = route.request(), url = new URL(request.url());
     const json = value => route.fulfill({ status: 200, json: value });
-    if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="de"><body>
+    if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="de"><head>
+      <script data-taxonomy-analysis-session></script>
+      </head><body>
       <textarea id="businessText" aria-label="Anforderung"></textarea>
       <select id="providerSelect"><option value="LOCAL">LOCAL</option></select>
       <input type="checkbox" id="interactiveMode"><input type="checkbox" id="includeArchitectureView">
@@ -50,6 +52,11 @@ test('two pages can open and observe the same running draft without writes or co
     await page.clock.install();
     await page.goto('http://taxonomy.test/');
     await page.evaluate(() => {
+      // This component fixture loads session modules explicitly below. Keep
+      // the API client's unrelated companion surfaces from bootstrapping a
+      // second script-loading lifecycle into the draft-only server fixture.
+      window.TaxonomyRoleSurface = {};
+      window.TaxonomyUiSemantics = {};
       window.TaxonomyBrowse = {
         renderView() { document.dispatchEvent(new CustomEvent('taxonomy:view-rendered')); },
         updateExportGroupVisibility() {}
