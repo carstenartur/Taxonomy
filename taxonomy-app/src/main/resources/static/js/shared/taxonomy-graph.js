@@ -9,6 +9,9 @@
 
     var MAX_AUTOCOMPLETE_SUGGESTIONS = 200;
     var resultSequence = 0;
+    var nodeQuery = 'upstream';
+    var selectionPending = false;
+    var selectedNodeCode = null;
 
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
@@ -30,6 +33,8 @@
     // also prevents an older response from restoring a result after switching.
     function clearResults() {
         resultSequence += 1;
+        selectedNodeCode = null;
+        selectionPending = false;
         ['graphResultsArea', 'requirementImpactResults', 'graphResultContext'].forEach(function (id) {
             var area = document.getElementById(id);
             if (area) area.style.display = 'none';
@@ -40,8 +45,12 @@
         });
     }
 
-    function beginResult(kind, code) {
+    function beginResult(kind, code, queryMode) {
         clearResults();
+        if (kind === 'node') {
+            selectedNodeCode = code;
+            if (queryMode) nodeQuery = queryMode;
+        }
         var area = document.getElementById(kind === 'requirement'
             ? 'requirementImpactResults' : 'graphResultsArea');
         if (area) area.style.display = '';
@@ -816,6 +825,8 @@
     // ── Event handlers ────────────────────────────────────────────────────────
 
     function onUpstreamClick() {
+        nodeQuery = 'upstream';
+        selectionPending = false;
         var code = getNodeCode();
         beginResult('node', code);
         if (!code) { showGraphError(t('graph.enter.code')); return; }
@@ -829,6 +840,8 @@
     }
 
     function onDownstreamClick() {
+        nodeQuery = 'downstream';
+        selectionPending = false;
         var code = getNodeCode();
         beginResult('node', code);
         if (!code) { showGraphError(t('graph.enter.code')); return; }
@@ -842,6 +855,8 @@
     }
 
     function onFailureClick() {
+        nodeQuery = 'failure';
+        selectionPending = false;
         var code = getNodeCode();
         beginResult('node', code);
         if (!code) { showGraphError(t('graph.enter.code')); return; }
@@ -865,9 +880,33 @@
         });
     }
 
+    // Intentional selections share the graph's current query without navigating,
+    // scrolling, or moving keyboard focus away from the taxonomy diagram.
+    function refreshSelectedNode() {
+        if (!selectionPending) return;
+        if (nodeQuery === 'downstream') onDownstreamClick();
+        else if (nodeQuery === 'failure') onFailureClick();
+        else if (nodeQuery === 'enriched') window.TaxonomyAnalysis.runEnrichedFailureImpact();
+        else onUpstreamClick();
+    }
+
+    function selectNode(code) {
+        code = typeof code === 'string' ? code.trim() : '';
+        var input = document.getElementById('graphNodeInput');
+        if (!code || !input) return;
+        input.value = code;
+        if (selectedNodeCode === code) return;
+        clearResults();
+        selectedNodeCode = code;
+        selectionPending = true;
+        var pane = document.getElementById('tab-graph');
+        if (pane && !pane.classList.contains('d-none') && !pane.hidden) refreshSelectedNode();
+    }
+
     // ── Open Graph Explorer for a specific node (called from taxonomy tree) ──
 
     function openGraphExplorer(nodeCode) {
+        selectionPending = false;
         if (typeof window.navigateToPage === 'function') window.navigateToPage('graph');
         var input = document.getElementById('graphNodeInput');
         if (input) input.value = typeof nodeCode === 'string' ? nodeCode.trim() : '';
@@ -1095,7 +1134,13 @@
         if (failBtn) failBtn.addEventListener('click', onFailureClick);
         if (apqcCheckbox) apqcCheckbox.addEventListener('change', onApqcFilterChange);
     });
-    document.addEventListener('taxonomy:analysis-invalidated', clearResults);
+    document.addEventListener('taxonomy:analysis-invalidated', function () {
+        selectionPending = false;
+        clearResults();
+    });
+    document.addEventListener('taxonomy:page-activated', function (event) {
+        if (event.detail?.page === 'graph') refreshSelectedNode();
+    });
 
     // ── Public API ────────────────────────────────────────────────────────────
     window.TaxonomyGraph = {
@@ -1103,6 +1148,7 @@
         isCurrentResult: isCurrentResult,
         clearResults: clearResults,
         openGraphExplorer: openGraphExplorer,
+        selectNode: selectNode,
         populateNodeSuggestions: populateNodeSuggestions,
         fetchUpstream: fetchUpstream,
         fetchDownstream: fetchDownstream,

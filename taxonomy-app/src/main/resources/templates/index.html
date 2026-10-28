@@ -69,6 +69,10 @@
                                 data-analysis-session-action="add-requirement"
                                 th:text="#{navbar.project.save_requirement}">Save as requirement</button>
                     </li>
+                    <li>
+                        <a id="projectReformulationAction" data-taxonomy-feature="portfolio" class="dropdown-item"
+                           href="#analysisNextSteps" th:text="#{analysis.guide.reformulate}">Reformulate requirement…</a>
+                    </li>
                     <li><hr class="dropdown-divider"/></li>
                     <li>
                         <a id="projectOpenAction" data-taxonomy-feature="portfolio" class="dropdown-item" th:href="@{/projects}"
@@ -339,6 +343,27 @@
                     </div>
                 </div>
 
+                <section id="analysisNextSteps" class="card shadow-sm mb-3" aria-labelledby="analysisNextStepsHeading">
+                    <div class="card-body">
+                        <h2 id="analysisNextStepsHeading" class="h6" th:text="#{analysis.guide.title}">Next steps</h2>
+                        <p id="analysisNextStepText" role="status" aria-live="polite"></p>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button id="analysisClarifyAction" type="button" class="btn btn-sm btn-outline-primary"
+                                    th:text="#{analysis.guide.clarify}" hidden>Review open assessments</button>
+                            <button id="analysisReanalyzeAction" type="button" class="btn btn-sm btn-primary"
+                                    th:text="#{analysis.guide.analyze}" hidden>Analyze current wording</button>
+                            <a id="analysisReformulationAction" href="#analysisNextSteps" class="btn btn-sm btn-outline-primary"
+                               data-taxonomy-feature="portfolio" th:text="#{analysis.guide.reformulate}">Reformulate requirement…</a>
+                            <a id="analysisLensAction" href="/architecture/editor#editorLensTitle" class="btn btn-sm btn-outline-primary"
+                               data-taxonomy-feature="architecture" th:href="@{/architecture/editor} + '#editorLensTitle'"
+                               th:text="#{analysis.guide.lens}">Architecture focus lens</a>
+                        </div>
+                        <p id="analysisReformulationHint" class="small text-muted mt-2 mb-1"></p>
+                        <p class="small text-muted mb-0" th:text="#{analysis.guide.lens.hint}">The lens investigates the editable workspace model. Analysis proposals require review before adoption.</p>
+                        <p id="analysisGuideError" class="small text-danger mt-2 mb-0" role="alert" hidden></p>
+                    </div>
+                </section>
+
                 <!-- Status / error messages -->
                 <div id="analysisRecoveryHost"></div>
                 <div id="statusArea"></div>
@@ -546,6 +571,12 @@
                 </ul>
 
                 <div id="subtab-arch-overview">
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <a id="architectureLensAction" href="/architecture/editor#editorLensTitle" class="btn btn-outline-primary"
+                       th:href="@{/architecture/editor} + '#editorLensTitle'" th:text="#{analysis.guide.lens}">Architecture focus lens</a>
+                    <a href="#analysisNextSteps" class="btn btn-outline-secondary" id="architectureNextStepsAction"
+                       th:text="#{analysis.guide.title}">Next steps</a>
+                </div>
 
                 <!-- Architecture View Panel -->
                 <div id="architectureViewPanel" class="mb-3" style="display:none;">
@@ -1626,6 +1657,7 @@
 <script th:src="@{/js/core/taxonomy-analysis-scope.js}"></script>
 <script th:src="@{/js/core/taxonomy-scoring.js}"></script>
 <script th:src="@{/js/core/taxonomy-browse.js}"></script>
+<script th:src="@{/js/core/taxonomy-analysis-guidance.js}"></script>
 <script th:src="@{/js/shared/taxonomy-document-import.js}"></script>
 <script th:src="@{/js/api/product-demo-api.js}"></script>
 <script th:src="@{/js/portfolio/product-demo.js}"></script>

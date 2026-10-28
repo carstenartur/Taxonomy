@@ -626,7 +626,7 @@ The main visualization is a **stable impact graph arranged by architecture layer
 - **Directed connections** show source, target, and relationship type. Selecting an element highlights its connected paths and de-emphasises unrelated elements.
 - Use **search** to find elements by code, title, or layer. Press Enter to move to the first match.
 - The **Context nodes** switch shows or hides propagated elements while preserving direct matches.
-- Switch between **Overview** and **Focus**. Focus mode shows the selected element and its immediate neighbours; double-clicking a card also activates it.
+- Switch between **Overview** and **Focus**. Focus mode shows the selected element and its immediate neighbours; double-clicking a card also activates it. **Unfocus** in the toolbar or element details restores the overview while retaining the selected element and other filters.
 - Use **Fit**, **zoom**, canvas panning, and **fullscreen** to inspect small or extensive results. On initial display, the complete graph is fitted inside the canvas. Responsive resizing repeats that fit until you zoom or pan manually; use **Fit** to restore the complete overview.
 - **Click** an element card or connection to view its relevance, distance, inclusion reason, and connected elements in the detail area. From there you can open the element in Graph Explorer.
 - Toggle to **"🏗️ Layer View"** for the compact swimlane representation grouped by architecture layer.
@@ -649,8 +649,11 @@ The Graph Explorer traces stored relationships in the primary catalogue around a
 Open **Graph** in the main navigation to display the Graph Explorer.
 
 1. From a taxonomy node, open its actions and choose **Graph**, or select **Open in Graph Explorer** in the Architecture View's element details. The application switches to **Graph**, fills and focuses **Node Code**, and immediately runs an **Upstream** query for that node. The result or its loading, empty, or error message appears in the visible panel.
+
 2. You can also enter a code directly in **Node Code**, then choose **Upstream**, **Downstream**, **Failure Impact**, or **Enriched Impact**. An empty code shows a prompt; enter a valid catalogue code and retry if the server rejects it.
 3. Set **Max Hops** to limit traversal depth (1–5; default: 2), then run the desired query again. Changing the value alone does not refresh the result.
+
+Selecting a node in the left List, Tabs, Sunburst, Tree, Decision or Summary view also updates an already open Graph Explorer. The last node query (Upstream, Downstream, Failure Impact or Enriched Impact) and hop depth are retained; keyboard focus stays in the left view. If Graph is hidden, the selection is remembered and its query starts when you open Graph.
 
 A new query replaces the previous result. A response arriving late from an older query cannot replace the current selection. An empty result means no matching stored relationships were returned within the selected scope; an error is displayed separately and does not establish that no dependencies exist.
 
@@ -2131,6 +2134,10 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 <a id="guide-section-27"></a>
 ## Saved reformulation offers and decision questions
+
+The analysis page shows **Next steps**, **Reformulate requirement…** and **Architecture focus lens**. The Project menu also exposes reformulation, and the Architecture View has a lens link. Partial results offer **Clarify open assessments**; edited text offers **Analyze current wording**. A finished run remains subject to evidence review and explicit acceptance.
+
+Reformulation opens the saved project requirement and preserves an explicitly selected snapshot. For an ad hoc analysis, the action first opens **Add as requirement**; select or create a matching snapshot in that requirement afterward. Saving the text does not attach the ad hoc analysis to the new requirement. Unsaved analysis-page edits are not copied into an existing saved requirement. The lens opens the editor in the selected workspace; enable the existing investigation workflow there. Navigation saves the current analysis draft and stops if saving fails.
 
 Open a saved requirement with an analysis snapshot and create a reformulation offer
 for that source version. The original, proposal and questions are separate views;

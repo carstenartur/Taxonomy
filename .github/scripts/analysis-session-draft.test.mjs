@@ -447,6 +447,41 @@ test('serializes overlapping autosaves and uses the latest optimistic version', 
   );
 });
 
+test('a queued latest-save conflict is reported to every waiter', async () => {
+  const first = deferred(), second = deferred(), requests = [];
+  const payload = {current:{businessText:'First draft'}};
+  const h = createHarness({inputText:payload.current.businessText,payload,
+    request:async (url,options)=>{requests.push(JSON.parse(options.body));return requests.length===1?first.promise:second.promise;}});
+  const saving = h.context.saveDraft();
+  payload.current = {businessText:'Latest draft'}; h.input.value = payload.current.businessText;
+  const queued = h.context.saveDraft();
+  first.resolve({version:1,payload:requests[0].payload});
+  await new Promise(resolve=>setImmediate(resolve));
+  second.reject(Object.assign(new Error('Conflict'),{status:409}));
+  assert.equal(await queued,false);
+  assert.equal(await saving,false);
+  assert.equal(h.runtime.conflict,true);
+  assert.equal(h.runtime.lastSavedComparable,JSON.stringify({businessText:'First draft'}));
+});
+
+test('explicit draft flush saves edits made during the awaited write before resolving', async () => {
+  const first = deferred(), second = deferred(), requests = [];
+  const payload = {current:{businessText:'First draft'}};
+  const h = createHarness({inputText:payload.current.businessText,payload,
+    request:async (url,options)=>{requests.push(JSON.parse(options.body));return requests.length===1?first.promise:second.promise;}});
+  assert.equal(typeof h.context.saveCurrentDraft,'function');
+  let finished=false;
+  const flush=h.context.saveCurrentDraft().then(result=>{finished=true;return result;});
+  payload.current={businessText:'Latest draft'};h.input.value=payload.current.businessText;
+  first.resolve({version:1,payload:requests[0].payload});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(finished,false);
+  assert.equal(requests[1].payload.businessText,'Latest draft');
+  second.resolve({version:2,payload:requests[1].payload});
+  assert.equal(await flush,true);
+  assert.equal(h.runtime.lastSavedComparable,JSON.stringify(payload.current));
+});
+
 test('Copilot reanalysis retains an in-flight autosave revision without restoring the old results', async () => {
   const first = deferred(), requests = [];
   const payload = { current: { businessText: 'Previous requirement', scores: { OLD: 100 } } };

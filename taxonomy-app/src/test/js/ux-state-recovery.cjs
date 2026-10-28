@@ -23,7 +23,7 @@ function dom() {
             replaceChildren(...children) {this.children = []; this.innerHTML = ''; this.textContent = ''; this.append(...children);},
             appendChild(child) {this.children.push(child); child.parentElement = this; return child;},
             addEventListener(name, fn) {if (!listeners.has(name)) listeners.set(name, []); listeners.get(name).push(fn);},
-            fire(name, event = {}) {event.preventDefault ||= () => {event.defaultPrevented = true;}; return Promise.all((listeners.get(name) || []).map(fn => fn(event)));},
+            fire(name, event = {}) {event.preventDefault ||= () => {event.defaultPrevented = true;}; event.target ||= this; event.currentTarget = this; return Promise.all((listeners.get(name) || []).map(fn => fn.call(this, event)));},
             click() {if (this.tagName === 'a') downloads.push(this); return this.fire('click');},
             focus() {document.activeElement = this;}, scrollIntoView() {},
             showModal() {this.open = true;}, close() {this.open = false; this.fire('close');},
@@ -523,8 +523,8 @@ function impactFixture() {
     const context = vm.createContext({window, document: f.document,
         TaxonomyI18n: {t: (key, ...args) => [key, ...args].join(' ')},
         TaxonomyUtils: {escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')},
-        AnalysisApi: {graphUpstream: () => request('upstream'), graphDownstream: () => request('downstream'),
-            graphFailureImpact: () => request('failure')}, fetch: request});
+        AnalysisApi: {graphUpstream: (code, hops) => request('upstream', {code, hops}), graphDownstream: (code, hops) => request('downstream', {code, hops}),
+            graphFailureImpact: (code, hops) => request('failure', {code, hops})}, fetch: request});
     for (const name of ['shared/taxonomy-graph.js', 'relations/taxonomy-relations.js', 'core/taxonomy-analysis.js']) {
         vm.runInContext(source(name), context);
     }
@@ -793,5 +793,230 @@ test('READY disagreement allows one automatic relation refresh per user load and
         const retry = f.table.querySelector('button');
         assert.ok(retry && !retry.disabled, 'manual status refresh remains available');
         if (attempt === 0) loading = retry.click();
+    }
+});
+
+
+test('taxonomy selection updates the visible graph without navigating or stealing keyboard focus', async () => {
+    const f = graphEntryFixture();
+    f.window.TaxonomyGraph.openGraphExplorer('CP.1');
+    f.document.getElementById('graphMaxHops').value = '3';
+    await f.document.getElementById('graphDownstreamBtn').fire('click');
+    const diagram = f.element('svg'); diagram.focus();
+    assert.equal(typeof f.window.TaxonomyGraph.selectNode, 'function');
+    f.window.TaxonomyGraph.selectNode(' BP-1040 ');
+    assert.equal(f.document.getElementById('graphNodeInput').value, 'BP-1040');
+    assert.equal(f.document.activeElement, diagram);
+    assert.equal(f.requests.at(-1).kind, 'downstream');
+    assert.deepEqual({...f.requests.at(-1).options}, {code:'BP-1040',hops:3});
+    assert.match(f.document.getElementById('graphResultContext').innerHTML, /BP-1040/);
+    const count = f.requests.length;
+    f.window.TaxonomyGraph.selectNode('BP-1040');
+    assert.equal(f.requests.length, count, 'Repeated selection must not duplicate a query');
+    f.requests.at(-1).resolve({originNodeCode:'BP-1040',neighbors:[],traversedRelationships:[],notes:[]}); await tick();
+    const rendered = f.graph.innerHTML;
+    f.requests[0].resolve({originNodeCode:'CP.1',neighbors:[],traversedRelationships:[],notes:[]}); await tick();
+    assert.equal(f.graph.innerHTML, rendered, 'An old result must not replace the selected node');
+});
+
+test('selection while graph is hidden defers its query until graph activation', () => {
+    const f = graphEntryFixture();
+    assert.equal(typeof f.window.TaxonomyGraph.selectNode, 'function');
+    f.window.TaxonomyGraph.selectNode('UA-1000');
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.window.location.hash, '#analyze');
+    assert.equal(f.document.getElementById('graphNodeInput').value, 'UA-1000');
+    f.document.getElementById('tab-graph').classList.remove('d-none');
+    f.document.fire('taxonomy:page-activated', {detail:{page:'graph'}});
+    assert.equal(f.requests.length, 1);
+    assert.deepEqual({...f.requests[0].options}, {code:'UA-1000',hops:2});
+    f.document.fire('taxonomy:page-activated', {detail:{page:'graph'}});
+    assert.equal(f.requests.length, 1);
+});
+
+test('graph selection follows the active result rather than unsent input and retries after invalidation', ()=>{
+    const f=graphEntryFixture();
+    f.window.TaxonomyGraph.openGraphExplorer('CP.1');
+    f.document.getElementById('graphNodeInput').value='BP-1040';
+    f.window.TaxonomyGraph.selectNode('BP-1040');
+    assert.equal(f.requests.at(-1).options.code,'BP-1040');
+    f.document.fire('taxonomy:analysis-invalidated');
+    const count=f.requests.length;
+    f.window.TaxonomyGraph.selectNode('BP-1040');
+    assert.equal(f.requests.length,count+1);
+    assert.notEqual(f.document.getElementById('graphResultsArea').style.display,'none');
+});
+
+test('linked graph selection retains enriched failure mode and its hop depth', async()=>{
+    const f=graphEntryFixture();
+    f.document.getElementById('tab-graph').classList.remove('d-none');
+    f.document.getElementById('graphMaxHops').value='3';
+    await f.document.getElementById('graphEnrichedFailureBtn').fire('click');
+    assert.match(f.requests.at(-1).kind,/CP.1\/enriched-failure-impact\?maxHops=3/);
+    f.window.TaxonomyGraph.selectNode('BP-1040');
+    assert.match(f.requests.at(-1).kind,/BP-1040\/enriched-failure-impact\?maxHops=3/);
+});
+
+function guidanceFixture(search = '') {
+    const f=dom(), calls=[];
+    for(const id of ['analysisNextSteps','analysisNextStepText','businessText','analysisReformulationHint',
+        'analysisReformulationAction','projectReformulationAction','analysisLensAction','architectureLensAction',
+        'analysisClarifyAction','analysisReanalyzeAction','analysisGuideError','statusArea','relationSearchReportPanel',
+        'architectureNextStepsAction','analysisNextStepsHeading','analyzeBtn']) f.element('div',id);
+    f.document.getElementById('businessText').value='Arbeitsschutz';
+    const state={lastAnalyzedText:'Arbeitsschutz',lastAnalysisStatus:'PARTIAL',
+        analysisRecovery:{state:'COMPLETED_WITH_GAPS',openQuestions:[{key:'CI'}]}};
+    const window={TaxonomyState:state, location:{search,assign:url=>calls.push(['navigate',url])},
+        TaxonomyI18n:{t:key=>key,resolveUrl:path=>'/taxonomy'+path},
+        TaxonomyAnalysisSession:{state:()=>({ready:true}),saveNow:async()=>true,addAsRequirement:options=>calls.push(['save-requirement',options])},
+        TaxonomyAnalysisRecovery:{open:()=>calls.push(['clarify'])}};
+    f.document.getElementById('analyzeBtn').addEventListener('click',()=>calls.push(['analyze']));
+    vm.runInNewContext(source('core/taxonomy-analysis-guidance.js'),{window,document:f.document,URLSearchParams,
+        MutationObserver:class{observe(){}}});
+    return {...f,window,state,calls};
+}
+
+test('partial analysis guides clarification and explicit project promotion with a scoped lens link', async()=>{
+    const f=guidanceFixture('?workspaceScopeKey=private-alice&branch=feature');
+    assert.equal(f.document.getElementById('analysisNextStepText').textContent,'analysis.guide.partial');
+    assert.equal(f.document.getElementById('analysisLensAction').href,'/taxonomy/architecture/editor?workspaceScopeKey=private-alice&branch=feature#editorLensTitle');
+    await f.document.getElementById('analysisClarifyAction').fire('click');
+    await f.document.getElementById('analysisReformulationAction').fire('click');
+    assert.equal(JSON.stringify(f.calls),JSON.stringify([['clarify'],['save-requirement',{preserveDraft:true}]]));
+    assert.equal(f.document.getElementById('businessText').value,'Arbeitsschutz');
+    assert.equal(f.document.getElementById('analysisReformulationHint').textContent,'analysis.guide.unsaved');
+});
+
+test('saved requirement navigation waits for successful draft saving and preserves exact source selection', async()=>{
+    const f=guidanceFixture('?projectId=7&requirementId=9&snapshot=snapshot-4&branch=review');
+    const button=f.document.getElementById('projectReformulationAction');
+    assert.equal(button.href,'/taxonomy/projects/7/requirements/9?branch=review&snapshot=snapshot-4#reformulationOffers');
+    f.window.TaxonomyAnalysisSession.saveNow=async()=>false;
+    await button.fire('click');await tick();
+    assert.deepEqual(f.calls,[]);
+    assert.equal(f.document.getElementById('analysisGuideError').hidden,false);
+    f.window.TaxonomyAnalysisSession.saveNow=async()=>true;
+    await button.fire('click');await tick();
+    assert.deepEqual(f.calls,[['navigate','/taxonomy/projects/7/requirements/9?branch=review&snapshot=snapshot-4#reformulationOffers']]);
+});
+
+test('lens pins the live analysis workspace even when the URL has no pin or an obsolete pin', ()=>{
+    for (const search of ['', '?workspaceScopeKey=obsolete&branch=review']) {
+        const f=guidanceFixture(search);
+        f.window.TaxonomyAnalysisSession.state=()=>({ready:true,workspaceId:'workspace-a'});
+        f.document.fire('taxonomy:view-rendered');
+        const target=new URL(f.document.getElementById('analysisLensAction').href,'https://example.test');
+        assert.equal(target.searchParams.get('workspaceScopeKey'),'workspace-a');
+        if(search) assert.equal(target.searchParams.get('branch'),'review');
+        f.window.TaxonomyAnalysisSession.state=()=>({ready:true,workspaceId:null});
+        f.document.fire('taxonomy:view-rendered');
+        assert.match(f.document.getElementById('analysisLensAction').href,/workspaceScopeKey=__shared__/);
+    }
+});
+
+test('stale, running and unresolved workspace states disable unsafe reformulation without hiding its entry', async()=>{
+    for(const condition of ['stale','running','unavailable']){
+        const f=guidanceFixture('?projectId=7&requirementId=9');
+        if(condition==='stale') f.document.getElementById('businessText').value='New wording';
+        if(condition==='running') f.state.lastAnalysisStatus='IN_PROGRESS';
+        if(condition==='unavailable') f.window.TaxonomyAnalysisSession.state=()=>({ready:false});
+        f.document.fire('taxonomy:view-rendered');
+        const button=f.document.getElementById('analysisReformulationAction');
+        assert.equal(button.getAttribute('aria-disabled'),'true');
+        assert.equal(button.hidden,false);
+        await button.fire('click');
+        assert.deepEqual(f.calls,[]);
+        assert.equal(f.document.getElementById('analysisNextStepText').textContent,'analysis.guide.'+condition);
+        if(condition==='stale'){
+            await f.document.getElementById('analysisReanalyzeAction').fire('click');
+            assert.deepEqual(f.calls,[['analyze']]);
+        }
+    }
+});
+
+test('partial imported evidence without recovery opens its retained report', async()=>{
+    const f=guidanceFixture();f.state.analysisRecovery=null;
+    await f.document.getElementById('analysisClarifyAction').fire('click');
+    assert.equal(f.document.activeElement,f.document.getElementById('relationSearchReportPanel'));
+    assert.deepEqual(f.calls,[]);
+    assert.equal(f.document.getElementById('analysisNextStepText').textContent,'analysis.guide.report');
+});
+
+test('shared lens navigation requires an empty evidence-free draft and needs no nonexistent draft endpoint',async()=>{
+    const f=guidanceFixture();
+    f.window.TaxonomyAnalysisSession.state=()=>({ready:true,workspaceId:null});
+    let meaningful=true;
+    f.window.__TaxonomyAnalysisSessionContext={currentPayload:()=>({}),meaningful:()=>meaningful};
+    f.window.TaxonomyAnalysisSession.saveNow=async()=>{throw Error('No shared draft endpoint');};
+    f.document.fire('taxonomy:view-rendered');
+    const button=f.document.getElementById('analysisLensAction');
+    assert.equal(button.getAttribute('aria-disabled'),'true');
+    assert.equal(f.document.getElementById('analysisNextStepText').textContent,'analysis.guide.workspace');
+    await button.fire('click');assert.deepEqual(f.calls,[]);
+    meaningful=false;f.document.getElementById('businessText').value='';f.state.lastAnalyzedText=null;
+    f.document.fire('taxonomy:view-rendered');
+    await button.fire('click');await tick();
+    assert.deepEqual(f.calls,[['navigate','/taxonomy/architecture/editor?workspaceScopeKey=__shared__#editorLensTitle']]);
+});
+
+test('editor transport pins shared and private contexts independently of another tab',async()=>{
+    const calls=[];
+    const window={TaxonomyApiClient:{getJson:async url=>calls.push(url)}};
+    vm.runInNewContext(source('api/architecture-editor-api.js'),{window,URLSearchParams});
+    for(const scope of ['__shared__','workspace-a']){
+        await window.ArchitectureEditorApi.load({workspaceScopeKey:scope});
+        const url=new URL(calls.at(-1),'https://example.test');
+        assert.equal(url.searchParams.has('workspaceId'),true);
+        assert.equal(url.searchParams.get('workspaceId'),scope==='__shared__'?'':scope);
+    }
+});
+
+test('explicit cancellation releases guidance actions and records a partial result', ()=>{
+    const f=guidanceFixture();
+    f.state.lastAnalysisStatus='IN_PROGRESS';
+    f.element('span','analyzeSpinner');
+    const runtime={activeAnalysisControllers:new Set([{}])};
+    const context={S:f.state,runtime,language:()=> 'en',text:key=>key,
+        showActionAlert(){},queueSave(){},cancelDerivedRequests(){
+            runtime.activeAnalysisControllers.clear();
+            f.document.getElementById('analyzeSpinner').classList.add('d-none');
+        }};
+    f.window.__TaxonomyAnalysisSessionContext=context;
+    vm.runInNewContext(source('core/taxonomy-analysis-session-ui.js'),{window:f.window,document:f.document,
+        CustomEvent:class{constructor(type){this.type=type;}}});
+    const originalDispatch=f.document.dispatchEvent;
+    f.document.dispatchEvent=event=>{originalDispatch(event);f.document.fire(event.type,event);};
+    context.cancelCurrentAnalysis();
+    assert.equal(f.state.lastAnalysisStatus,'CANCELLED');
+    assert.equal(f.document.getElementById('analysisLensAction').getAttribute('aria-disabled'),'false');
+    assert.equal(f.document.getElementById('analysisNextStepText').textContent,'analysis.guide.partial');
+});
+
+test('reformulation promotion preserves draft evidence and stops before creation when saving fails', async()=>{
+    for(const projects of [[{id:7,title:'Safety'}],[]]) for(const saved of [true,false]){
+        const f=dom(),calls=[];
+        f.document.readyState='loading';
+        const input=f.element('textarea','businessText');input.value='Arbeitsschutz';
+        const evidence={scores:{CI:80},businessText:input.value};
+        const context={S:{},runtime:{},text:key=>key,language:()=> 'en',businessTextElement:()=>input,
+            currentPayload:()=>evidence,saveDraft:async()=>{calls.push('save');return saved;},
+            resetDraft:async()=>{calls.push('reset');},invalidate:()=>calls.push('invalidate'),showActionAlert(){},
+            jsonRequest:async(path,options)=>{
+                if(options.method==='GET')return path==='/api/projects'?projects:[];
+                calls.push(path);return {id:path==='/api/projects'?7:9};
+            }};
+        const window={__TaxonomyAnalysisSessionContext:context,location:{assign:url=>calls.push(url)},
+            TaxonomyI18n:{resolveUrl:path=>'/taxonomy'+path}};
+        vm.runInNewContext(source('core/taxonomy-analysis-session-projects.js'),{window,document:f.document,URLSearchParams});
+        window.TaxonomyAnalysisSession.addAsRequirement({preserveDraft:true});await tick();
+        const form=f.all.find(node=>node.tagName==='form');form.reportValidity=()=>true;
+        const select=f.all.find(node=>node.tagName==='select');if(select)select.value='7';
+        await form.fire('submit');await tick();await tick();
+        if(saved)assert.deepEqual(calls,projects.length
+            ? ['save','/api/projects/7/requirements','/taxonomy/projects/7/requirements/9']
+            : ['save','/api/projects','/api/projects/7/requirements','/taxonomy/projects/7/requirements/9']);
+        else assert.deepEqual(calls,['save']);
+        assert.equal(input.value,'Arbeitsschutz');
+        assert.deepEqual(evidence.scores,{CI:80});
     }
 });

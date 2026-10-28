@@ -70,6 +70,7 @@
                     surface.setAttribute('aria-expanded', !!entry.node.children);
                 }
             }
+            if (!restoring) { window.TaxonomyGraph?.selectNode?.(entry.node.data.code); }
             if (options.change) { options.change(entry.node, restoring); }
             if (focus) {
                 container._taxRestoringDiagramFocus = !!restoring;
@@ -93,7 +94,7 @@
             else if (event.key === 'End') { next = entries.length - 1; }
             else if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault(); event.stopPropagation();
-                if (!event.repeat) { options.activate(entry.node); }
+                if (!event.repeat) { select(entry, false); options.activate(entry.node); }
                 return;
             } else { return; }
             event.preventDefault(); event.stopPropagation();
@@ -777,7 +778,10 @@
             .attr('d', function (d) { return arc(d.current); })
             .style('cursor', function (d) { return d.children ? 'pointer' : 'default'; });
 
-        paths.filter(function (d) { return d.children; }).on('click', clicked);
+        paths.on('click', function (event, node) {
+            sunNavigation.selectNode(node);
+            if (node.children) clicked(event, node);
+        });
 
         paths
             .on('mousemove', function (event, d) { showTooltip(event, d.data, scores); })

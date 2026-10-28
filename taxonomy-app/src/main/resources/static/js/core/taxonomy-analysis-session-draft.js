@@ -95,14 +95,16 @@
 
     function finishMutation(operation) {
         runtime.saveInFlight = operation.then(function (result) {
-            return result;
-        }).finally(function () {
             runtime.saveInFlight = null;
             if (runtime.saveQueued) {
                 runtime.saveQueued = false;
                 return saveDraft();
             }
-            return null;
+            return result;
+        }, function (error) {
+            runtime.saveInFlight = null;
+            runtime.saveQueued = false;
+            throw error;
         });
         return runtime.saveInFlight;
     }
@@ -228,6 +230,15 @@
             return false;
         });
         return finishMutation(operation);
+    }
+
+    async function saveCurrentDraft() {
+        do {
+            if (await saveDraft() !== true) return false;
+            if (runtime.restoring || runtime.invalidating || runtime.resetting
+                    || runtime.conflict || runtime.serverUnconfirmed) return false;
+        } while (comparable(currentPayload()) !== runtime.lastSavedComparable);
+        return true;
     }
 
     function revision(view) {
@@ -750,6 +761,7 @@
         deleteDraft: deleteDraft,
         resetDraft: resetDraft,
         saveDraft: saveDraft,
+        saveCurrentDraft: saveCurrentDraft,
         localStateIsPristine: localStateIsPristine,
         applyDraft: applyDraft,
         restoreRenderedState: restoreRenderedState,
