@@ -92,7 +92,7 @@
              Focused selectors keep their existing test set through the overrides below. -->
         <taxonomy.productDemo.testPhase>test</taxonomy.productDemo.testPhase>
         <taxonomy.productDemo.defaultTestExclude>**/ProductDemoEndToEndTest.java</taxonomy.productDemo.defaultTestExclude>
-        <poi.version>5.5.1</poi.version>
+        <poi.version>6.0.0</poi.version>
         <pdfbox.version>3.0.8</pdfbox.version>
         <lucene.version>9.12.3</lucene.version>
         <!-- Hibernate Search 8.4 targets Hibernate ORM 7.4 and Lucene 9.12.3.
