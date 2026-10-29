@@ -197,6 +197,7 @@
           "com.taxonomy.portfolio.reformulation.ReformulationProgressTest",
           "com.taxonomy.interop.IntegrationRestartTest",
           "com.taxonomy.editor.ArchitectureApplicationRestartTest",
+          "com.taxonomy.backup.recovery.NativeInstallationRecoveryTest",
           "com.taxonomy.portfolio.reformulation.ReformulationProcessRecoveryTest",
           "com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest",
           "com.taxonomy.portfolio.reformulation.ReformulationReportHistoryTest",
