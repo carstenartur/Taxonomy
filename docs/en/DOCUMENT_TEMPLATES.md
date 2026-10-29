@@ -4,6 +4,7 @@ Taxonomy stores Word templates as unpacked OOXML package trees in the logical
 JGit/Hibernate repository `taxonomy-document-templates`. WebDAV and downloads
 materialize complete `.dotx` files from that canonical representation.
 
+<a id="template-editing"></a>
 ## User interface and automated download test
 
 The administration page at `/admin/document-templates` shows the report template
@@ -98,6 +99,7 @@ Advanced Properties → Custom**, or without Word by reading `docProps/custom.xm
 the DOCX ZIP package. Compare the full commit with the template history and the
 SHA-256 with the corresponding `template.json` manifest.
 
+<a id="template-versions"></a>
 ## Version and concurrency semantics
 
 Each template exposes the last Git commit that changed its own OOXML subtree as its
@@ -113,6 +115,7 @@ per-template expected-version check is the durable lost-update guard after a pro
 restart or expired lock. A future multi-replica deployment needs a shared lock store
 before it can promise uninterrupted Word lock sessions across replicas.
 
+<a id="template-access"></a>
 ## Access and transport
 
 Authenticated users may read complete templates and create a new document from them.

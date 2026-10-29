@@ -121,6 +121,27 @@ class ApiWriteDenyByDefaultSecurityTest {
 
     @Test
     @WithMockUser(roles = "USER")
+    void userReachesEditorWorkingCopySourceValidationWithCsrf() throws Exception {
+        // Preserve the former repository-workspaces route's audience. An invalid
+        // source reaches the controller's exact-context check without creating data.
+        mockMvc.perform(post("/api/architecture/editor/workspaces").with(csrf())
+                        .param("workspaceId", "")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void editorWorkingCopyCreationRejectsInvalidCsrf() throws Exception {
+        // TestSecuritySupport adds a valid default token; explicitly replace it.
+        mockMvc.perform(post("/api/architecture/editor/workspaces").with(csrf().useInvalidToken())
+                        .param("workspaceId", "")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
     void userCannotTriggerDerivedMetadataWrites() throws Exception {
         mockMvc.perform(post("/api/architecture/metadata/recompute").with(csrf()))
                 .andExpect(status().isForbidden());

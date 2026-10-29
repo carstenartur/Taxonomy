@@ -119,7 +119,7 @@ public class ProductCatalogService {
                                      String username,
                                      WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("product update is required");
-        ProductCatalogEntry product = requireProduct(productId, username, context);
+        ProductCatalogEntry product = requireProductForUpdate(productId, username, context);
         Instant now = Instant.now();
         var requestedAmount = request.costAmount() != null
                 ? PortfolioValueValidator.money(request.costAmount(), "costAmount") : null;
@@ -165,7 +165,7 @@ public class ProductCatalogService {
                                               String username,
                                               WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("taxonomy coverage is required");
-        ProductCatalogEntry product = requireProduct(productId, username, context);
+        ProductCatalogEntry product = requireProductForUpdate(productId, username, context);
         String nodeCode = requireNodeCode(request.nodeCode());
         int coverage = normalizePercentage(request.coveragePercent(), "coveragePercent");
         Instant now = Instant.now();
@@ -239,10 +239,15 @@ public class ProductCatalogService {
                         selectionStatus,
                         PortfolioScope.username(username, context),
                         now));
+        if (candidate.getInventoryHardExclusions() != null && !candidate.getInventoryHardExclusions().isBlank()) {
+            if (selectionStatus == ProductSelectionStatus.SELECTED) throw PortfolioException.validation("Retained inventory hard exclusions prevent selection");
+        }
+        String effectiveExclusions = candidate.getInventoryHardExclusions() != null && !candidate.getInventoryHardExclusions().isBlank()
+                ? candidate.getInventoryHardExclusions() : exclusions;
         if (candidate.getId() != null) {
             candidate.update(
                     coverage,
-                    exclusions,
+                    effectiveExclusions,
                     ProjectPortfolioService.limited(request.strengths(), 4000, "strengths"),
                     ProjectPortfolioService.limited(request.weaknesses(), 4000, "weaknesses"),
                     ProjectPortfolioService.limited(request.openEvidence(), 4000, "openEvidence"),
@@ -254,6 +259,29 @@ public class ProductCatalogService {
         }
         candidateRepository.save(candidate);
         return toCandidateView(candidate);
+    }
+
+    /** Only the deterministic inventory workflow replaces the previous context's retained findings. */
+    @Transactional
+    public SolutionProductCandidateView applyReviewedInventoryCandidate(Long projectId,Long projectSolutionId,
+            UpsertProductCandidateRequest request,String comparisonId,String fingerprint,String computedHardExclusions,
+            String username,WorkspaceContext context) {
+        projectService.requireProject(projectId,username,context);
+        requireProduct(request.productId(),username,context);
+        candidateRepository.findByProjectSolutionIdAndProductId(projectSolutionId,request.productId())
+                .ifPresent(candidate->candidate.bindInventoryEvidence(comparisonId,fingerprint,computedHardExclusions));
+        var result=upsertCandidate(projectId,projectSolutionId,request,username,context);
+        bindInventoryEvidence(result.id(),comparisonId,fingerprint,computedHardExclusions,username,context);
+        return result;
+    }
+
+    /** Bind retained findings independently of browser-editable candidate fields. */
+    private void bindInventoryEvidence(Long candidateId,String comparisonId,String fingerprint,String hardExclusions,
+                                      String username,WorkspaceContext context) {
+        var candidate=candidateRepository.findById(candidateId).orElseThrow(()->PortfolioException.notFound("Product candidate not found"));
+        requireProduct(candidate.getProduct().getId(),username,context);
+        projectService.requireProject(candidate.getProjectSolution().getProject().getId(),username,context);
+        candidate.bindInventoryEvidence(comparisonId,fingerprint,hardExclusions);
     }
 
     @Transactional(readOnly = true)
@@ -276,6 +304,20 @@ public class ProductCatalogService {
         if (productId == null) throw PortfolioException.validation("productId is required");
         return productRepository.findByIdAndScopeKey(productId, PortfolioScope.key(username, context))
                 .orElseThrow(() -> PortfolioException.notFound("Product not found: " + productId));
+    }
+
+    /** Shared input fence for catalogue fields, confirmed coverage and immutable inventory assertions.
+     * Reviewed application acquires the project aggregate first, then this product lock,
+     * and retains both until its journal/application transaction commits. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ProductCatalogEntry requireProductForUpdate(Long productId, String username, WorkspaceContext context) {
+        if(productId==null)throw PortfolioException.validation("productId is required");
+        try {
+            return productRepository.findByIdAndScopeKeyForUpdate(productId,PortfolioScope.key(username,context))
+                    .orElseThrow(()->PortfolioException.notFound("Product not found: "+productId));
+        } catch(jakarta.persistence.OptimisticLockException | org.springframework.dao.OptimisticLockingFailureException concurrent) {
+            throw PortfolioException.conflict("Product inputs changed concurrently; retry the operation against current evidence");
+        }
     }
 
     public ProductView toProductView(ProductCatalogEntry product) {
@@ -316,6 +358,9 @@ public class ProductCatalogService {
     }
 
     public SolutionProductCandidateView toCandidateView(SolutionProductCandidate candidate) {
+        String openEvidence=candidate.getOpenEvidence();
+        if(candidate.getInventoryComparisonId()!=null && (openEvidence==null || !openEvidence.contains(candidate.getInventoryComparisonId())))
+            openEvidence=java.util.Objects.toString(openEvidence,"")+"; Inventory comparison "+candidate.getInventoryComparisonId()+" / "+candidate.getInventoryFingerprint();
         return new SolutionProductCandidateView(
                 candidate.getId(),
                 candidate.getProjectSolution().getId(),
@@ -324,7 +369,7 @@ public class ProductCatalogService {
                 candidate.getHardExclusions(),
                 candidate.getStrengths(),
                 candidate.getWeaknesses(),
-                candidate.getOpenEvidence(),
+                openEvidence,
                 candidate.getConfidence(),
                 candidate.getReviewStatus(),
                 candidate.getSelectionStatus(),

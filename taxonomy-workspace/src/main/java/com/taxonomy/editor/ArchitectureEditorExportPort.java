@@ -23,6 +23,12 @@ public interface ArchitectureEditorExportPort {
         return read(context, commit, revision);
     }
 
+    default ExportDocument read(RepositoryContext context, String commit, Long revision,
+            com.taxonomy.diagram.DiagramLayout.Strategy strategy, Long layoutRevision, String viewId) throws IOException {
+        if (viewId != null && !viewId.isBlank()) throw new IllegalArgumentException("This export adapter does not support selected views");
+        return read(context, commit, revision, strategy, layoutRevision);
+    }
+
     record ExportDocument(
             String repositoryId,
             String workspaceScopeKey,

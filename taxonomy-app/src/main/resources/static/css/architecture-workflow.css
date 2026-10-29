@@ -1,0 +1,16 @@
+.architecture-workflow { flex: 0 0 auto; margin: 0; padding: .85rem 1.5rem; border-bottom: 1px solid #c8d1dd; background: #f3f6fb; color: #17243a; font: 1rem/1.5 system-ui, sans-serif; }
+.architecture-workflow[hidden], .architecture-workflow [hidden] { display: none !important; }
+.workflow-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem 1rem; overflow-wrap: anywhere; }
+.workflow-state { color: #475569; font-size: .85rem; }
+.architecture-workflow nav { display: flex; flex-wrap: wrap; gap: .3rem .6rem; margin-top: .35rem; }
+.architecture-workflow nav a { display: inline-flex; align-items: center; min-height: 44px; padding: .35rem .65rem; border: 1px solid #91a2b9; border-radius: .35rem; background: white; color: #174481; text-decoration: none; font-weight: 600; }
+.architecture-workflow nav a:hover { background: #e6eefb; text-decoration: underline; }
+.architecture-workflow a:focus-visible { outline: 3px solid #ac5100; outline-offset: 2px; }
+.architecture-workflow p { margin: .4rem 0 0; font-size: .875rem; max-width: 90rem; }
+@media (max-width: 40rem) { .architecture-workflow { padding: .75rem; } .architecture-workflow nav a { flex: 1 1 10rem; } }
+@media print { .architecture-workflow { display: none; } }
+@media (forced-colors: active) { .architecture-workflow, .architecture-workflow nav a { color: CanvasText; background: Canvas; border-color: CanvasText; } }
+
+#snapshotAdoption { margin: 1rem 0; padding: 1rem; border: 1px solid #9aa9bd; border-radius: .5rem; }
+#snapshotAdoption pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
+#snapshotAdoption select { max-width: 100%; }

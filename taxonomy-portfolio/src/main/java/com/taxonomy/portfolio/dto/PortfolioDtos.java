@@ -643,6 +643,11 @@ public final class PortfolioDtos {
             Map<ActionStatus, Integer> actionStatusCounts) {
     }
 
+    /** Interpretation of the retained legacy confidence value, independent of human review. */
+    public enum ConflictConfidenceBasis {
+        UNCALIBRATED_RULE_WEIGHT
+    }
+
     public record ConflictView(
             Long id,
             Long projectId,
@@ -658,7 +663,8 @@ public final class PortfolioDtos {
             String resolutionNote,
             Instant detectedAt,
             String reviewedBy,
-            Instant reviewedAt) {
+            Instant reviewedAt,
+            ConflictConfidenceBasis confidenceBasis) {
     }
 
     public record ReviewConflictRequest(

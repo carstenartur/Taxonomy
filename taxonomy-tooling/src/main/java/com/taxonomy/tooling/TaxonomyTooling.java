@@ -54,6 +54,8 @@ public final class TaxonomyTooling {
         String[] commandArguments = java.util.Arrays.copyOfRange(
                 arguments, 1, arguments.length);
         return switch (command) {
+            case "native-installation" -> NativeInstallationSnapshot.run(
+                    commandArguments, workingDirectory, output, error);
             case "resolve-release-parameters" -> resolveReleaseParameters(
                     commandArguments, environment, workingDirectory, error);
             case "check-version-state" -> checkVersionState(

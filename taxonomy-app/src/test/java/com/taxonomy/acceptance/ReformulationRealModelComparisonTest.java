@@ -11,7 +11,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import tools.jackson.databind.*;
 import tools.jackson.databind.node.*;
 import java.nio.file.*;
-import java.time.Instant;
 import java.util.*;
 import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,55 +29,58 @@ class ReformulationRealModelComparisonTest {
             "IP", "IP-1000", "IP-1005", "IP-1102", "IP-1116");
 
     @Test void compareFiveAuthoredCasesWithTheSameSourceContextProviderAndModel() throws Exception {
-        Path output = Path.of("target/reformulation-model-comparison"); Files.createDirectories(output);
+        JsonNode cases;
+        try (var stream = getClass().getResourceAsStream("/scenarios/reformulation-model-comparison.json")) { cases = json.readTree(stream); }
+        var run = ReformulationComparisonEvidence.create(Path.of("target/reformulation-model-comparison"), json,
+                git("rev-parse", "HEAD"), cases);
         var provider = providers.getActiveProvider();
-        var manifest = json.createObjectNode().put("recordedAt", Instant.now().toString())
-                .put("humanQualityGate", "NOT_REVIEWED").put("pricingBasis", "NOT_PROVIDED; no currency cost inferred");
         if (provider == LlmProvider.LOCAL_ONNX || providers.isMockMode() || !providers.isProviderConfigured(provider)
                 || providers.getProviderConfigurationError(provider) != null) {
-            manifest.put("status", "NOT_RUN").put("reason", "No configured generative provider available");
-            write(output.resolve("manifest.json"), manifest);
-            Assumptions.assumeTrue(false, "NOT RUN: configure a real generative provider to evaluate model quality");
+            run.notRun("No configured generative provider available");
+            Assumptions.assumeTrue(false, "NOT RUN: configure a real generative provider to evaluate model quality; evidence: " + run.directory());
         }
         String model = provider == LlmProvider.GEMINI
                 ? providers.getGeminiUrl().replaceFirst(".*models/([^:/?]+).*", "$1")
                 : providers.getOpenAiCompatibleModel(provider);
-        manifest.put("provider", provider.name()).put("model", model).put("status", "RUNNING");
-        write(output.resolve("manifest.json"), manifest);
-        JsonNode cases;
-        try (var stream = getClass().getResourceAsStream("/scenarios/reformulation-model-comparison.json")) { cases = json.readTree(stream); }
-        assertThat(cases.path("cases")).hasSize(5);
-        var reports = manifest.putArray("cases");
         var failed = new ArrayList<String>();
-        providers.setRequestProvider(provider);
+        String status;
         try {
+            run.start(provider.name(), model);
+            // A commit hash must identify the source actually evaluated, rather than an
+            // uncommitted implementation with the same HEAD. Generated target evidence is ignored.
+            assertThat(git("status", "--porcelain")).as("Live evaluation requires a committed source tree").isEmpty();
+            providers.setRequestProvider(provider);
             for (var testCase : cases.path("cases")) {
+                String id = testCase.path("id").asText();
+                run.beginCase(id); // Persist before catalogue/baseline work, which can throw.
                 var baseline = baseline(testCase);
-                Path directory = output.resolve(testCase.path("id").asText()); Files.createDirectories(directory);
-                write(directory.resolve("input.json"), json.valueToTree(baseline));
-                var pair = reports.addObject().put("id", testCase.path("id").asText())
-                        .put("sourceSha256", baseline.originalTextHash())
-                        .put("contextSha256", StableIdentityHash.sha256(json.writeValueAsString(baseline.frozenContext())))
-                        .put("provider", provider.name()).put("model", model).put("humanQualityGate", "NOT_REVIEWED");
+                run.prepareCase(id, json.valueToTree(baseline));
                 for (String variant : List.of("walk-up", "single-complete-prompt")) {
                     Supplier<Object> operation = variant.equals("walk-up")
                             ? () -> reconciliation.reconcile(baseline, walkUp.synthesize(baseline, List.of(), List.of()), List.of(), List.of())
                             : () -> nodes.synthesize(completeInput(baseline));
                     var result = measure(operation, testCase);
-                    write(directory.resolve(variant + ".json"), result);
-                    pair.set(variant, result);
-                    if (!result.path("schemaOutcome").asText().equals("VALIDATED")) failed.add(testCase.path("id").asText() + ":" + variant);
-                    write(output.resolve("manifest.json"), manifest);
+                    run.recordVariant(id, variant, result);
+                    if (!result.path("schemaOutcome").asText().equals("VALIDATED")) failed.add(id + ":" + variant);
                 }
-                write(directory.resolve("human-review.json"), reviewTemplate(testCase));
+                run.completeCase(id);
             }
-        } finally {
-            providers.clearRequestProvider();
-            manifest.put("status", failed.isEmpty() ? "OUTPUTS_REQUIRE_HUMAN_REVIEW" : "EXECUTION_FAILURES");
-            write(output.resolve("manifest.json"), manifest);
-        }
+            status = run.finish();
+        } catch (Exception | AssertionError failure) {
+            try { run.abort(failure); } catch (Exception recordingFailure) { failure.addSuppressed(recordingFailure); }
+            throw failure;
+        } finally { providers.clearRequestProvider(); }
+        assertThat(status).as("Complete real-HTTP output evidence: " + run.directory()).isEqualTo("OUTPUTS_REQUIRE_HUMAN_REVIEW");
         // This is a schema/execution assertion, deliberately not a language-quality verdict.
-        assertThat(failed).as("Provider/schema failures; review recorded outputs and actual transport observations").isEmpty();
+        assertThat(failed).as("Provider/schema failures; review recorded outputs and actual transport observations: " + run.directory()).isEmpty();
+    }
+
+    private static String git(String... arguments) throws Exception {
+        var command = new ArrayList<String>(); command.add("git"); command.addAll(List.of(arguments));
+        var process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+        String value = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+        if (process.waitFor() != 0) throw new IllegalStateException("Cannot establish evaluation source provenance");
+        return value;
     }
 
     private ObjectNode measure(Supplier<Object> operation, JsonNode testCase) {
@@ -140,13 +142,4 @@ class ReformulationRealModelComparisonTest {
         return kept;
     }
     private void collect(JsonNode tree, Set<String> ids) { tree.forEach(n -> { ids.add(n.path("code").asText()); collect(n.path("children"), ids); }); }
-    private ObjectNode reviewTemplate(JsonNode testCase) {
-        var review = json.createObjectNode().put("case", testCase.path("id").asText()).put("status", "NOT_REVIEWED");
-        for (String criterion : List.of("sourceConditionLoss", "unmarkedAdditions", "concreteQuestionUsefulness", "duplicatesAndConflicts", "readability")) {
-            var entry = review.putObject(criterion); entry.putNull("walkUpScore0to4"); entry.putNull("singlePromptScore0to4");
-            entry.put("evidence", "");
-        }
-        review.put("reviewer", "").put("reviewedAt", ""); return review;
-    }
-    private void write(Path file, JsonNode value) throws Exception { Files.writeString(file, value.toPrettyString()); }
 }

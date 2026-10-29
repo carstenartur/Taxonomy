@@ -221,6 +221,7 @@ class AppTestShardVerifierTest {
         Map<String, Object> actual = object(read(repository().resolve(".mvn/verification-suites.json")).get("applicationTestShards"));
         Set<String> inventory = new HashSet<>(discover(repository().resolve("taxonomy-app/src/test/java")));
         for (Object group : object(actual.get("groups")).values()) assertTrue(inventory.containsAll(strings(object(group).get("tests"))));
+        assertTrue(strings(object(object(actual.get("groups")).get("browser")).get("tests")).contains("com.taxonomy.portfolio.reformulation.InventoryComparisonUiIT"));
         assertTrue(inventory.contains("com.taxonomy.ArchitectureExceptionLedgerTest"));
         assertTrue(inventory.contains("com.taxonomy.composition.demo.ProductDemoEndToEndTest"));
     }

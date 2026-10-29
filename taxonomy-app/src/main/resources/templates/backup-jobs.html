@@ -8,12 +8,15 @@
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#backupJobs" th:text="#{backup.skip}">Skip to backup jobs</a>
 <nav class="navbar navbar-dark bg-dark" th:attr="aria-label=#{backup.navigation}">
     <div class="container-fluid gap-2"><a class="navbar-brand" th:href="@{/(lang=${#locale.language})}">Taxonomy</a>
-        <a class="btn btn-outline-light" th:href="@{/(lang=${#locale.language})}" th:text="#{backup.back}">Back to application</a></div>
+        <a class="btn btn-outline-light" th:href="@{/(lang=${#locale.language})}" th:text="#{backup.back}">Back to application</a>
+        <a th:replace="~{fragments/context-help :: button('OPERATIONS_GUIDE', 'portable-exports')}"></a>
+    </div>
 </nav>
 <main class="container py-3" id="backupJobs" tabindex="-1">
     <h1 class="h2" th:text="#{backup.title}">Backup jobs</h1>

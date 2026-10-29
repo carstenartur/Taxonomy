@@ -73,19 +73,84 @@ incomplete. Both strategies use identical source, frozen catalogue context, prov
 and model: production walk-up plus reconciliation versus a single complete prompt.
 The fixed front is an explicit evaluation assumption, not an analysis-quality result.
 
-`taxonomy-app/target/reformulation-model-comparison/` records source/context hashes,
-actual HTTP attempts/retries, available provider usage, duration, validated output or
-execution failure. Literal presence diagnostics are not semantic quality judgments.
-Without a configured generative provider the manifest says `NOT_RUN` and JUnit skips
-the opt-in case. Playback must never substitute for that evidence. No price or cost
-improvement is inferred without a documented price basis.
+Each invocation creates a fresh UUID directory under
+`taxonomy-app/target/reformulation-model-comparison/`. Use the run directory printed
+by the test; files from an earlier run cannot satisfy the current run. The manifest
+records the source commit, exact case inventory and corpus hash, source/context/input
+hashes, output and artifact hashes, actual HTTP attempts/retries, available provider
+usage, durations and explicit per-case outcomes. A live evaluation requires a clean,
+committed source tree so that the recorded commit identifies the code evaluated.
+The fixed front remains an explicit evaluation assumption.
 
-For each case, a human must assess both outputs in `human-review.json`: source-condition
-loss, unmarked additions, usefulness of concrete questions, duplication/conflicts and
-readability. Scores range from 0 (unacceptable) to 4 (fully satisfactory); enter cited
-output passages, reviewer and date. Retain contradictions for explicit decisions
-rather than rewarding an invented resolution. `NOT_REVIEWED` remains open until
-this review is performed, even when both outputs are structurally valid.
+Execution states are deliberately separate:
 
-No provider was configured for the recorded local run. Live-model quality and any
-claim of superiority therefore remain unverified.
+| State | Meaning |
+|---|---|
+| `NOT_RUN` | No configured generative provider; the opt-in JUnit test is skipped. |
+| `RUNNING` | Execution has not recorded a terminal result; interruption is not complete evidence. |
+| `INCOMPLETE_EXECUTION` | A case, baseline, artifact write or run finalization did not finish. |
+| `SCHEMA_FAILURE` | All pairs were recorded, but at least one result failed schema or real-HTTP evidence checks. |
+| `OUTPUTS_REQUIRE_HUMAN_REVIEW` | Exactly five complete, persisted, validated real-HTTP pairs are available; semantic quality is still unreviewed. |
+
+Literal presence diagnostics do not judge semantic quality. Playback cannot substitute
+for live evidence. No price or cost improvement is inferred without a documented
+price basis. `summary.md` shows the recorded execution observations without assigning
+a model-quality verdict.
+
+For each complete case, a human edits its generated `human-review.json`. Keep the
+`runId`, `case`, `walkUpOutputSha256` and `singlePromptOutputSha256` bindings unchanged.
+Set `status` to `REVIEWED`, provide the actual reviewer and an ISO UTC timestamp such
+as `2026-10-29T12:00:00Z`, and complete all five criteria: source-condition loss,
+unmarked additions, usefulness of concrete questions, duplication/conflicts and
+readability. Scores are integers from 0 (unacceptable) to 4 (fully satisfactory).
+Each criterion requires a written `evidence` rationale and verbatim citations from
+**both** recorded outputs. A citation has this shape:
+
+```json
+{"variant": "walk-up", "passage": "verbatim text from an output field"}
+```
+
+Use `single-complete-prompt` for the second strategy's citation. Citation text must
+occur inside a textual field of that strategy's exact recorded `output`; transport
+metadata and invented passages cannot satisfy the citation check. Retain contradictions
+for explicit decisions rather than rewarding an invented resolution. Reviewers may
+record multiple citations per strategy and should explain omissions or unsupported
+additions in the rationale. The tool checks completeness and binding; it cannot prove
+that the assessment was independent or semantically correct.
+
+Validate and retain the completed review with the **same existing Maven profile**,
+selecting its provider-free JUnit class explicitly. Use an absolute path to one run:
+
+```sh
+./mvnw -B -ntp -pl taxonomy-app -am test -Preformulation-real-llm \
+  -Dtest=ReformulationHumanReviewTest \
+  -Dreformulation.review.run=/absolute/path/to/taxonomy-app/target/reformulation-model-comparison/RUN_UUID
+```
+
+This selection does not initialize Spring or invoke a provider. It rejects absent,
+incomplete, different-corpus or modified-output evidence, mismatched review bindings,
+missing criteria, scores outside 0–4, invalid dates and absent or incorrect citations.
+On success it writes `human-review-validation.json`, updates `summary.md` and records
+`humanQualityGate: REVIEW_RECORDED`. The execution state remains
+`OUTPUTS_REQUIRE_HUMAN_REVIEW` as the name of the completed-output stage; the separate
+human gate states whether a complete review was recorded. This is a record of the
+human assessment, not an automatic semantic pass or a claim that one strategy wins.
+A failed revalidation resets the human gate and removes the previous validation and
+archive so changed reviews cannot retain a stale success marker.
+
+The command also creates `RUN_UUID-reviewed.zip` beside the run directory. Retain this
+archive as the review artifact (for example, in the existing CI artifact retention or
+an authorized evidence store); it contains the corpus, inputs, outputs, manifest,
+review files, validation and readable summary. Retention uses an exact artifact inventory:
+unrelated files, noncanonical names and symbolic links (including links in case or
+run-directory paths) are rejected. The archive contains the same frozen bytes that
+were validated. Review artifacts are staged before publication; a failed ZIP or
+final publication resets the human gate and removes successful summary/validation/
+archive artifacts. Keep raw execution evidence under
+`target/` or in artifact storage. Commit only concise, manually written findings and
+reproduction commands when updating the project report; do not make the historical
+status file green merely because evidence-validation tests pass.
+
+No provider was configured for the historical recorded local run. The checked-in
+`reformulation-model-comparison-status.json` therefore remains `NOT_RUN` and
+`NOT_REVIEWED`. Live-model quality and any claim of superiority remain unverified.

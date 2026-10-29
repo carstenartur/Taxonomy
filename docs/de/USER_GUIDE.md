@@ -23,6 +23,43 @@ Das System untersucht den ausgewählten Taxonomieumfang hierarchisch und erhält
 > 💡 **Neue Benutzer:** Beginnen Sie mit dem Kernarbeitsablauf (Analysieren → Architektur → Export).
 > Mit der [Anforderungsklärung](#requirement-clarification-workflow) führen Sie Fragen zu gespeicherten Entscheidungen; [Analyseumfang und Fortschritt](#analysis-scope-and-progress) erläutern die Steuerung des Arbeitsaufwands.
 
+<a id="architecture-source-context"></a>
+## Den Bezug zur Anforderung beim Ansichtswechsel behalten
+
+Die gespeicherte Architekturansicht nennt Projekt, Anforderung und Analyse.
+**Anforderung und Nachweise** führt zu genau dieser Analyse zurück;
+**Anforderung klären** öffnet den zugehörigen Klärungsbereich.
+**Projektportfolio** wählt das entsprechende Projekt aus. Die Links behalten den
+ausdrücklich gewählten Arbeitsbereich bei, auch den gemeinsamen Arbeitsbereich.
+Die aktive Auswahl eines anderen Tabs ersetzt diesen Bezug nicht.
+
+**Architektur-Arbeitsstand öffnen** öffnet den aktuellen Editorstand des
+aufgezeichneten Repositorys und Zweigs. Dabei wird das Analyseergebnis weder in
+den Editor importiert noch der unveränderliche Snapshot bearbeitet. Im Editor
+bleibt **Zurück zur Ausgangsanalyse** erhalten, auch nach dem Anlegen eines
+privaten Arbeitsbereichs. Fehlt das aufgezeichnete Repository oder der Zweig,
+erklärt die Architekturansicht, warum dieser Editorübergang nicht verfügbar ist.
+
+Angenommene Editoränderungen werden als Operationen mit eigener Undo-/Redo-Historie
+gespeichert. **Checkpoint/Version erstellen** hält eine Git-Version fest.
+Element- und Historienlisten sind separat scrollbar und per Tastatur erreichbar.
+
+**Übernahme dieses Snapshots prüfen** startet die ausdrückliche Übernahme einer
+eingefrorenen Analyse. Erstellen Sie bei Bedarf eine private Arbeitskopie und wählen
+Sie **Snapshot-Übernahme prüfen**. Die Vorschau zeigt Quelle, Zielrevision sowie
+ergänzte und wiederverwendete Elemente und Beziehungen. Vorhandene Bearbeitungen,
+Zuständigkeiten und Beziehungsentscheidungen bleiben erhalten; abweichende Quellwerte
+werden zum Vergleich angezeigt. Typ- und Quellidentitätskonflikte verhindern die
+Bestätigung. Neue Beziehungen bleiben vorgeschlagen.
+
+**Diesen eingefrorenen Snapshot übernehmen** speichert eine einzelne rückgängig
+machbare Editoroperation. Die kanonische Sicht behält die exakt gespeicherten
+Beziehungen und die ursprüngliche Anforderungsversion. Spätere Textänderungen
+ersetzen diese Herkunft nicht. **Gesamte bearbeitbare Architektur** zeigt das ganze
+Modell. Die erneute Übernahme derselben Quelle öffnet die vorhandene Sicht. Der
+Quelllink führt auch nach dem Anlegen einer Arbeitskopie zum ursprünglichen
+Repository, Arbeitsbereich und Branch zurück.
+
 <a id="requirement-clarification-workflow"></a>
 ## Eine Anforderung durch Architektur und Entscheidungen klären
 
@@ -457,6 +494,7 @@ Die Bewertung eines Bereichs steht gesondert als **Bereichsrelevanz** an seiner 
 
 DOT- und Mermaid-Baumexporte stellen die Bereiche als Gruppen dar. Der CSV-Export erhält ihre Werte, lässt ihren Rang leer und kennzeichnet sie in der Spalte `TaxonomyContainer` mit `true`. Bei Originaleinträgen steht dort `false`; bei Codes, die im geladenen Katalog fehlen, bleibt die Kennzeichnung leer. Gespeicherte Analysen und JSON-Nachweise behalten die vollständige Hierarchie und die aufgezeichneten Bewertungen.
 
+<a id="taxonomy-view-list"></a>
 ### Listenansicht (Standard)
 
 Die Standardansicht zeigt alle Taxonomieknoten als flache, eingerückte Liste. Jede Zeile enthält den Knotennamen, seinen Code und — nach der Analyse — einen Bewertungsbalken und Prozentsatz.
@@ -467,12 +505,14 @@ Die Standardansicht zeigt alle Taxonomieknoten als flache, eingerückte Liste. J
 
 ![Listenansicht mit sichtbaren Beschreibungen](../images/09-list-view-descriptions.png)
 
+<a id="taxonomy-view-tabs"></a>
 ### Registerkartenansicht
 
 Die Registerkartenansicht gruppiert Taxonomieknoten unter Registerkarten-Überschriften für jede Kategorie der obersten Ebene. Klicken Sie auf eine Registerkarte, um nur die Knoten in diesem Zweig anzuzeigen.
 
 ![Registerkartenansicht](../images/05-tabs-view.png)
 
+<a id="taxonomy-view-sunburst"></a>
 ### Sunburst-Ansicht
 
 Die Sunburst-Ansicht stellt die Taxonomie als radiales Sunburst-Diagramm dar, bei dem das Zentrum der Stamm ist und jeder Ring eine tiefere Ebene darstellt. Nach der Analyse werden die Segmente entsprechend ihrer Bewertung eingefärbt.
@@ -490,6 +530,7 @@ Liste, Registerkarten, Sunburst, Baum, Entscheidungskarte und Zusammenfassung ve
 
 Während einer laufenden Analyse behalten Sunburst, Baum und Entscheidungskarte ihren Ausschnitt: Zoom, Verschiebung, Scrollposition und manuell geöffnete oder geschlossene Zweige werden bei neuen Ergebnissen wiederhergestellt. Sunburst merkt sich den geöffneten Teilbaum. Jede Ansicht und jede im Baum ausgewählte Teiltaxonomie hat ihren eigenen Zustand; auch ein Wechsel zwischen SVG- und Canvas-Darstellung erhält ihn. Wenn ein Filter den ausgewählten Knoten entfernt, wird ein noch sichtbarer Elternknoten verwendet. **Diagramm einpassen** und **Zoom zurücksetzen** ändern den Ausschnitt ausdrücklich. Eine neue Analyse oder ein neu geladener Anforderungsentwurf beginnt mit einem neuen Ansichtszustand.
 
+<a id="taxonomy-view-tree"></a>
 ### Baumansicht
 
 **Nur relevante Knoten (> 0)** ist direkt in der Diagrammleiste verfügbar und wirkt auf Ansicht und Druck. Der gemeinsame Relevanzfilter bietet zusätzlich die Unterscheidung zwischen Nullwerten und noch unbekannten Bewertungen.
@@ -500,6 +541,7 @@ Baum und Entscheidungskarte bieten **Alles ausklappen** und **Alles zuklappen**.
 
 ![Baumansicht](../images/07-tree-view.png)
 
+<a id="taxonomy-view-decision"></a>
 ### Entscheidungskarten-Ansicht
 
 Die Entscheidungskarten-Ansicht zeigt die Taxonomie als Entscheidungsbaum-Layout, das für die Auswahl relevanter Knoten basierend auf den Analysebewertungen optimiert ist.
@@ -528,6 +570,7 @@ Wählen Sie im Browser einen Drucker mit passendem Papierformat oder **Als PDF s
 >
 > ![Entscheidungskarte — leerer Zustand](../images/08-decision-map-view.png)
 
+<a id="taxonomy-view-summary"></a>
 ### Zusammenfassungsansicht (📋 Summary)
 
 Die Zusammenfassungsansicht erscheint automatisch nach Durchführung einer Analyse mit aktiviertem **Architecture View**-Kontrollkästchen. Sie präsentiert einen geschichteten Architekturüberblick Ihrer Analyseergebnisse, gruppiert nach Taxonomiekategorie:
@@ -633,7 +676,7 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 - **Gerichtete Verbindungen** zeigen Quelle, Ziel und Beziehungstyp. Wenn Sie ein Element auswählen, werden dessen verbundene Pfade hervorgehoben und nicht zugehörige Elemente zurückgenommen.
 - Mit der **Suche** finden Sie Elemente anhand von Code, Bezeichnung oder Ebene. Drücken Sie die Eingabetaste, um zum ersten Treffer zu springen.
 - Der Schalter **Kontextknoten** blendet propagierte Elemente ein oder aus. Direkte Treffer bleiben sichtbar.
-- Wechseln Sie zwischen **Übersicht** und **Fokus**. Der Fokusmodus zeigt das ausgewählte Element mit seinen direkten Nachbarn; ein Doppelklick auf eine Karte aktiviert ihn ebenfalls.
+- Wechseln Sie zwischen **Übersicht** und **Fokus**. Der Fokusmodus zeigt das ausgewählte Element mit seinen direkten Nachbarn; ein Doppelklick auf eine Karte aktiviert ihn ebenfalls. **Fokus aufheben** in der Werkzeugleiste oder den Elementdetails stellt die Übersicht wieder her und erhält das ausgewählte Element sowie die übrigen Filter.
 - Nutzen Sie **Einpassen**, **Zoom**, Verschieben der Zeichenfläche und **Vollbild**, um kleine oder umfangreiche Ergebnisse zu untersuchen. Beim ersten Anzeigen wird der vollständige Graph in die Zeichenfläche eingepasst. Responsive Größenänderungen wiederholen dies, bis Sie manuell zoomen oder verschieben; mit **Einpassen** stellen Sie anschließend die vollständige Übersicht wieder her.
 - **Klicken** Sie auf eine Elementkarte oder Verbindung, um im Detailbereich Relevanz, Entfernung, Begründung und verbundene Elemente anzuzeigen. Von dort können Sie das Element im Graph Explorer öffnen.
 - Wechseln Sie zu **„🏗️ Layer View"** für die kompakte Swimlane-Darstellung nach Architekturebene.
@@ -657,8 +700,11 @@ Der Graph Explorer verfolgt gespeicherte Beziehungen im primären Katalog um ein
 Öffnen Sie **Graph** in der Hauptnavigation, um den Graph Explorer anzuzeigen.
 
 1. Öffnen Sie an einem Taxonomieknoten die Knotenaktionen und wählen Sie **Graph**, oder wählen Sie **Im Graph Explorer öffnen** in den Elementdetails der Architekturansicht. Die Anwendung wechselt zum Register **Graph**, füllt und fokussiert **Knoten-Code** und startet sofort eine **Vorgelagerte Elemente (Upstream)**-Abfrage für diesen Knoten. Das Ergebnis beziehungsweise die Lade-, Leer- oder Fehlermeldung erscheint im sichtbaren Panel.
+
 2. Alternativ geben Sie einen Code direkt in **Knoten-Code** ein und wählen **Vorgelagerte Elemente (Upstream)**, **Nachgelagerte Elemente (Downstream)**, **Ausfallauswirkung** oder **Erweiterte Auswirkung**. Bei leerem Code erscheint ein Hinweis. Lehnt der Server den Code ab, geben Sie einen gültigen Katalogcode ein und wiederholen Sie die Abfrage.
 3. Begrenzen Sie mit **Max. Sprünge** die Suchtiefe (1–5; Standard: 2) und starten Sie die gewünschte Abfrage erneut. Das Ändern des Werts allein aktualisiert das Ergebnis nicht.
+
+Die Knotenauswahl links in Liste, Reitern, Sunburst, Baum, Entscheidungsansicht oder Zusammenfassung aktualisiert auch den geöffneten Graph Explorer. Abfragerichtung (Upstream, Downstream, Ausfallauswirkung oder erweiterte Auswirkung) und Hop-Tiefe bleiben erhalten; der Tastaturfokus bleibt links. Ist Graph ausgeblendet, wird die Auswahl vorgemerkt und erst beim Öffnen abgefragt.
 
 Eine neue Abfrage ersetzt das vorherige Ergebnis. Eine verspätete Antwort auf eine ältere Abfrage überschreibt die aktuelle Auswahl nicht. Ein leeres Ergebnis bedeutet, dass innerhalb des gewählten Umfangs keine passenden gespeicherten Beziehungen zurückgegeben wurden. Ein Fehler wird getrennt angezeigt und belegt nicht, dass keine Abhängigkeiten bestehen.
 
@@ -2141,6 +2187,10 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 
 <a id="guide-section-27"></a>
 ## Gespeicherte Neuformulierungsangebote und Entscheidungsfragen
+
+Die Analyseseite zeigt **Nächste Schritte**, **Anforderung neu formulieren…** und **Architektur-Lupe**. Die Neuformulierung ist auch im Projektmenü erreichbar, die Lupe zusätzlich in der Architekturansicht. Bei Teilergebnissen erscheint **Offene Bewertungen klären**, bei geändertem Text **Aktuelle Formulierung analysieren**. Auch nach Laufende bleiben die Nachweise zu prüfen und Änderungen ausdrücklich zu übernehmen.
+
+Die Neuformulierung öffnet die gespeicherte Projektanforderung und erhält einen ausdrücklich gewählten Snapshot. Bei einer Ad-hoc-Analyse öffnet sie zunächst **Als Anforderung hinzufügen**; wählen oder erzeugen Sie danach in dieser Anforderung einen passenden Snapshot. Das Speichern des Textes ordnet die Ad-hoc-Analyse nicht automatisch zu. Ungespeicherte Änderungen auf der Analyseseite werden nicht in eine bestehende Anforderung kopiert. Die Lupe öffnet den Editor im gewählten Arbeitsbereich; aktivieren Sie dort die vorhandene Untersuchungsfunktion. Vor der Navigation wird der Analyseentwurf gespeichert. Scheitert das Speichern, bleiben Sie auf der Seite.
 
 Öffnen Sie eine gespeicherte Anforderung mit Analyse-Snapshot und erstellen Sie ein
 Neuformulierungsangebot für diese Quellversion. Original, Vorschlag und Fragen sind

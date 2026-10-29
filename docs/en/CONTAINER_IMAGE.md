@@ -231,6 +231,7 @@ The production Compose stack stores mutable state below `/app/data`:
 |---|---|
 | `/app/data/taxonomydb*` | File-backed HSQLDB catalogue, users and Git pack/ref/reflog data |
 | `/app/data/lucene-index` | Hibernate Search/Lucene indexes |
+| Configured retained-source directory (normally `./data/source-content`) | Original source/version bytes; include it in the stopped data volume or back up its separate mount explicitly |
 
 Named volumes configured by `docker-compose.prod.yml` survive container recreation.
 Stop every writer to the HSQLDB files, including any separately started
@@ -287,6 +288,16 @@ history before accepting the backup. For an upgrade that changes the JGit Core
 schema, retain the backup until refs, commit traversal and pack BLOB checksums
 have been verified. Never restore over a live database or mix restored database
 files with a stale index snapshot.
+
+The [native installation recovery rehearsal](../testing/native-installation-recovery.md)
+provides a Maven-owned full-application test and the existing tooling's
+`native-installation capture`, `verify` and `restore` commands. It records exact
+file digests, restores into a new isolated directory and checks real portfolio,
+source, Git/editor history, preferences, templates and search after two restored
+application starts. This is same-version cold HSQL recovery. Portable `.taxbackup`
+owner imports and cross-database restore remain separately unsupported; the
+portable support registry stays closed. A configured data path outside the
+captured root needs its own explicit backup and restore plan.
 
 ## 6. Health checks
 

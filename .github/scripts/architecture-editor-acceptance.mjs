@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { csrfJson } from './ui-role-fixtures.mjs';
 
 export async function measureEditorFrame(page, selected = false) {
   return page.locator('#editorGraph').evaluate(async (svg, selected) => {
@@ -58,6 +59,131 @@ export async function verifyConstrainedEditorFrames(page) {
     assert.equal(frame.rendered, 1, 'A constrained viewport must not invert culling and lose the selected node');
   }
   return frames;
+}
+
+/** Real retained central evidence and the existing private journal, including uncertain transport. */
+async function runSnapshotAdoptionAcceptance(page, base, initial) {
+  const repository = initial.document.context.repositoryId;
+  const current = new URL(page.url()).searchParams;
+  const branch = current.get('branch') || initial.document.context.branch;
+  const sourceWorkspace = current.get('workspaceId');
+  assert.ok(sourceWorkspace,'Ordinary analysis fixtures must be created in an isolated source workspace');
+  const pin = new URLSearchParams({repositoryId:repository,workspaceId:sourceWorkspace,branch});
+  const scoped = path => path + '?' + pin;
+  await page.goto(base + '/projects?' + pin + '&lang=en');
+  await page.locator('#portfolioMain').waitFor();
+  async function request(path,body,method='POST') {
+    const response = await csrfJson(page,scoped(path),{method,body});
+    assert.ok(response.status >= 200 && response.status < 300, `${path}: ${response.status} ${response.text}`);
+    return response.json;
+  }
+  const suffix = Date.now().toString(36).toUpperCase();
+  const project = await request('/api/projects',{projectKey:'ADOPT-'+suffix,title:'Frozen snapshot adoption',description:'Browser acceptance',status:'ACTIVE'});
+  const requirementBody = {requirementKey:'REQ-ADOPT',title:'Secure command exchange',
+    text:'Provide secure resilient command information exchange with auditable decisions.',status:'APPROVED',priority:90,
+    criticality:'MISSION_CRITICAL',requirementType:'SECURITY',reviewStatus:'CONFIRMED',changeReason:'Browser acceptance fixture'};
+  const requirement = await request(`/api/projects/${project.id}/requirements`,requirementBody);
+  const job = await request(`/api/projects/${project.id}/requirements/${requirement.id}/analyses`,{provider:'GEMINI',maxArchitectureNodes:20,idempotencyKey:'adoption-'+suffix});
+  let completed;
+  const deadline = Date.now()+120000;
+  while (Date.now()<deadline) {
+    const current = await request(`/api/projects/${project.id}/analysis-jobs/${job.id}`,undefined,'GET');
+    if (['SUCCESS','PARTIAL'].includes(current.status)) { completed=current; break; }
+    assert.ok(!['FAILED','CANCELLED'].includes(current.status),JSON.stringify(current));
+    await page.waitForTimeout(250);
+  }
+  assert.ok(completed,'Mock analysis must persist a snapshot within the existing analysis timeout');
+  const snapshot = completed.items[0].snapshotId;
+  await request(`/api/projects/${project.id}/requirements/${requirement.id}/versions`,{text:'Later edited requirement must not replace frozen evidence.',changeReason:'Retained version regression'});
+  await page.goto(base+`/architecture/workbench?projectId=${project.id}&snapshotId=${snapshot}&${pin}&lang=en`);
+  await page.locator('#workflow-adopt').waitFor({state:'visible'});
+  const sourceUrl = await page.locator('#workflow-adopt').getAttribute('href');
+  assert.equal(new URL(sourceUrl,base).searchParams.get('sourceRepositoryId'),repository);
+  assert.equal(new URL(sourceUrl,base).searchParams.get('sourceWorkspaceScopeKey'),sourceWorkspace);
+  // Select a different editable destination through an explicit central context; the frozen source stays private.
+  const destination = new URL(sourceUrl,base); destination.searchParams.set('workspaceId',''); destination.searchParams.set('workspaceScopeKey','__shared__');
+  await page.goto(destination.href);
+  await page.waitForFunction(()=>document.getElementById('architectureEditor')?.getAttribute('aria-busy')==='false');
+  assert.equal(await page.locator('#adoptionPreview').isDisabled(),true,'Opening the central source cannot adopt');
+  const copyResponse = page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/api/architecture/editor/workspaces'));
+  await page.locator('#editorWorkspace').click();
+  const copy = await (await copyResponse).json();
+  await page.waitForFunction(()=>!document.getElementById('adoptionPreview').disabled);
+  assert.equal(new URL(page.url()).searchParams.get('sourceWorkspaceScopeKey'),sourceWorkspace);
+  assert.equal(new URL(page.url()).searchParams.get('workspaceId'),copy.workspaceId);
+  const previewResponse = page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/snapshot-adoptions/preview'));
+  await page.locator('#adoptionPreview').click();
+  const previewHttp = await previewResponse; assert.equal(previewHttp.status(),200,await previewHttp.text());
+  const preview = await previewHttp.json();
+  assert.equal(preview.preview.context.revision,0);
+  assert.match(preview.preview.change.dsl,/Provide secure resilient command information exchange/);
+  assert.ok(!preview.preview.change.dsl.includes('Later edited requirement'));
+  assert.equal(await page.locator('#editorHistory li').count(),0,'Preview must not initialize history');
+  await page.waitForFunction(()=>document.activeElement?.id==='adoptionAccept'&&!document.activeElement.disabled);
+  await page.evaluate(()=>{
+    const original=window.ArchitectureEditorApi.adoptSnapshot;
+    window.__snapshotRetry={original,attempts:[]};
+    window.ArchitectureEditorApi.adoptSnapshot=async request=>{
+      window.__snapshotRetry.attempts.push(JSON.parse(JSON.stringify(request)));
+      const result=await original(request);
+      if(window.__snapshotRetry.attempts.length===1)throw Object.assign(new Error('Lost accepted snapshot response fixture'),{status:0});
+      return result;
+    };
+  });
+  await page.keyboard.press('Enter');
+  await page.locator('#editorError').filter({hasText:'Lost accepted snapshot response fixture'}).waitFor();
+  const acceptedResponse = page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/snapshot-adoptions'));
+  await page.locator('#adoptionAccept').click();
+  const acceptedHttp=await acceptedResponse;assert.equal(acceptedHttp.status(),200,await acceptedHttp.text());
+  const adopted=await acceptedHttp.json();assert.equal(adopted.accepted.replayed,true);assert.equal(adopted.accepted.context.revision,1);
+  const attempts=await page.evaluate(()=>{const state=window.__snapshotRetry;window.ArchitectureEditorApi.adoptSnapshot=state.original;delete window.__snapshotRetry;return state.attempts;});
+  assert.deepEqual(attempts[0],attempts[1]);
+  await page.waitForFunction(()=>new URL(location.href).searchParams.get('revision')==='1'&&document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
+  assert.equal(new URL(page.url()).searchParams.get('viewId'),adopted.viewId);
+  assert.equal(await page.locator('#editorHistory li').count(),1);
+  await page.locator('#snapshotAdoption details > summary').click();
+  assert.match(await page.locator('#adoptionProvenance').innerText(),new RegExp(snapshot));
+  const returnUrl = new URL(await page.locator('#adoptionSourceLink').getAttribute('href'),base);
+  assert.equal(returnUrl.searchParams.get('workspaceId'),sourceWorkspace);assert.equal(returnUrl.searchParams.get('repositoryId'),repository);
+  await page.locator('#editorRationale').fill('Retain frozen adoption checkpoint');
+  const checkpointResponse=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/editor/checkpoints'));
+  await page.locator('#editorCheckpoint').click();const checkpoint=await (await checkpointResponse).json();
+  await page.waitForFunction(()=>document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
+  // A checkpoint made before adoption has no adopted view. Its history link must open a usable full model.
+  const beforeCommit = preview.preview.context.commit;
+  assert.ok(beforeCommit);
+  await page.locator('#editorVersions a').filter({hasText:beforeCommit.substring(0,12)}).click();
+  await page.waitForFunction(()=>document.getElementById('architectureEditor')?.getAttribute('aria-busy')==='false');
+  assert.equal(new URL(page.url()).searchParams.has('viewId'),false);
+  assert.equal(await page.locator('#editorError').isVisible(),false);
+  assert.equal(await page.locator('#editorRefresh').isEnabled(),true);
+  await page.locator('#editorRefresh').click();
+  await page.waitForFunction(()=>new URL(location.href).searchParams.get('revision')==='1'&&document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
+  await page.locator('#adoptionView').selectOption(adopted.viewId);
+  await page.waitForFunction(id=>new URL(location.href).searchParams.get('viewId')===id,adopted.viewId);
+  // Historical version navigation opens a new document, so supply a fresh audit rationale.
+  await page.locator('#editorRationale').fill('Review undo and redo after historical navigation');
+  async function invert(kind) {
+    const preview=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/editor/preview'));
+    await page.locator('#editorHistory li').filter({hasText:kind}).first().locator('button').click();
+    assert.equal((await preview).status(),200);
+    await page.waitForFunction(()=>document.activeElement?.id==='editorAccept'&&!document.activeElement.disabled);
+    const accepted=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/editor/commands'));
+    await page.keyboard.press('Enter');const value=await (await accepted).json();
+    await page.waitForFunction(revision=>new URL(location.href).searchParams.get('revision')===String(revision)&&document.getElementById('architectureEditor').getAttribute('aria-busy')==='false',value.context.revision);
+    return value;
+  }
+  const undone=await invert('AdoptAnalysisSnapshot');
+  assert.equal(new URL(page.url()).searchParams.has('viewId'),false);
+  const redone=await invert('UNDO');
+  assert.match(await page.locator('#editorDsl').inputValue(),new RegExp(adopted.viewId));
+  await page.locator('#adoptionView').selectOption(adopted.viewId);
+  await page.waitForFunction(id=>new URL(location.href).searchParams.get('viewId')===id,adopted.viewId);
+  await page.locator('#adoptionSourceLink').click();
+  await page.locator('#workflow-adopt').waitFor({state:'visible'});
+  assert.match(await page.locator('#requirementText').innerText(),/Provide secure resilient command information exchange/);
+  return {snapshot,sourceRepository:repository,targetWorkspace:copy.workspaceId,viewId:adopted.viewId,acceptedRevision:1,
+    replayed:true,checkpoint:checkpoint.commitId,undo:undone.operationId,redo:redone.operationId,retainedOldRequirement:true,sourceReturn:true};
 }
 
 /** Real authenticated UI commands, sharing the existing role/engine/reflow application fixture. */
@@ -502,6 +628,11 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(measurement.rendererDomReleased, true, 'Destroy must release the renderer-owned SVG content');
     assert.ok(measurement.renderMs < 1500 && measurement.focusMs < 1500,
       `Renderer exceeded its 1500 ms CI budget: ${JSON.stringify(measurement)}`);
+  }
+  if (role !== 'USER') {
+    measurements.snapshotAdoption = await runSnapshotAdoptionAcceptance(page,base,initial);
+    await page.goBack();
+    await page.waitForFunction(()=>document.getElementById('architectureEditor')?.getAttribute('aria-busy')==='false');
   }
   await evidence.runAxe('architecture-editor');
   assert.ok(await page.locator('#editorGraph .editor-node').count() <= 200);

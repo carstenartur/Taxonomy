@@ -460,6 +460,13 @@
             + `<dt>${escapeHtml(t('baseline'))}</dt><dd><code>${escapeHtml(String(summary.taxonomyFingerprint || '').slice(0, 16))}</code> / <code>${escapeHtml(String(summary.promptFingerprint || '').slice(0, 16))}</code></dd></dl>`
             + renderDecisionReportActions(summary)
             + renderAnalysisSummary(detail);
+        if (window.TaxonomyInventoryComparison) {
+            const inventory = document.createElement('div');
+            inventory.id = 'inventoryComparison';
+            target.append(inventory);
+            window.TaxonomyInventoryComparison.mount(inventory, {projectId, snapshot: detail,
+                solutions: state.portfolio?.solutions || []});
+        }
     }
 
     function renderDecisionReportActions(summary) {
@@ -719,7 +726,10 @@
                 || state.selectedSnapshot.id === undefined) {
             return '#';
         }
-        const url = new URL('/architecture/workbench', window.location.origin);
+        if (window.TaxonomyArchitectureWorkflow) {
+            return window.TaxonomyArchitectureWorkflow.workbenchUrl(projectId, String(state.selectedSnapshot.id));
+        }
+        const url = new URL(applicationUrl('/architecture/workbench'), window.location.origin);
         url.searchParams.set('projectId', String(projectId));
         url.searchParams.set('snapshotId', String(state.selectedSnapshot.id));
         url.searchParams.set('lang', locale);

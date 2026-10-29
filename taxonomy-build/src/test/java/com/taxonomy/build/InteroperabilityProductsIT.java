@@ -13,12 +13,13 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfSystemProperty(named="taxonomy.interoperability.skip",matches="false")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class InteroperabilityProductsIT {
+    private static final Set<String> REQUIRED = Set.of("StrictDoc/reqif-1.2/1", "Archi/archimate-3.1/1", "Archi/taxonomy-archimate-3.1-v2");
     private Map<String,JsonNode> outcomes;
     private Throwable failure;
     private JsonNode report;
     private ExternalDriverSupport.Result execution;
     @TestFactory Stream<DynamicTest> productRoundTrips() {
-        Stream<DynamicTest> cases=Stream.of("StrictDoc","Archi").map(product -> DynamicTest.dynamicTest(product,() -> {
+        Stream<DynamicTest> cases=REQUIRED.stream().sorted().map(product -> DynamicTest.dynamicTest(product,() -> {
             executeOnce();
             ExternalDriverSupport.assertObserved(outcomes,product,"result",failure,execution);
         }));
@@ -31,12 +32,15 @@ class InteroperabilityProductsIT {
     }
     private static Map<String,JsonNode> readOutcomes(JsonNode report) {
         Map<String,JsonNode> actual=new LinkedHashMap<>();
-        for(JsonNode result:report.path("results")) assertNull(actual.put(result.path("product").asText(),result),"Duplicate product outcome");
+        for(JsonNode result:report.path("results")) {
+            String key=result.path("product").asText()+"/"+result.path("profile").asText();
+            assertNull(actual.put(key,result),"Duplicate product/profile outcome");
+        }
         return actual;
     }
     static Map<String,JsonNode> validateOutcomes(JsonNode report) {
         var actual=readOutcomes(report);
-        assertEquals(Set.of("StrictDoc","Archi"),actual.keySet(),"Missing/unexpected product round trip");
+        assertEquals(REQUIRED,actual.keySet(),"Missing/unexpected product/profile round trip");
         assertEquals("passed",report.path("status").asText());
         for(var product:actual.values()) assertEquals("passed",product.path("result").asText());
         return actual;

@@ -16,7 +16,7 @@ public interface ArchitectureProjectRepository extends JpaRepository<Architectur
 
     Optional<ArchitectureProject> findByIdAndScopeKey(Long id, String scopeKey);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Lock(LockModeType.PESSIMISTIC_FORCE_INCREMENT)
     @Query("select p from ArchitectureProject p where p.id=:id and p.scopeKey=:scope")
     Optional<ArchitectureProject> findByIdAndScopeKeyForUpdate(@Param("id") Long id, @Param("scope") String scope);
 

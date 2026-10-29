@@ -41,6 +41,13 @@ Every draft carries a JPA `@Version`. Updates and deletes must submit the versio
 last observed by the browser. A stale tab receives HTTP 409 and cannot silently
 overwrite a newer state from another tab or device.
 
+Opening a saved draft, restoring its view/options, and observing its durable
+analysis status are read-only operations. Browser normalization and received
+status/result updates must not create a competing draft revision when there are
+no local edits. Local edits remain subject to optimistic concurrency. Reconciling
+a changed server draft detaches the old tab observation without cancelling the
+shared analysis; cancellation remains an explicit user action.
+
 ### 3. Browser tabs pin their workspace explicitly
 
 Each tab remembers its workspace ID in `sessionStorage` and supplies that exact

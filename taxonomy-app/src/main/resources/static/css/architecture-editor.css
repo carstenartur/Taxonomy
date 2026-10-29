@@ -30,6 +30,8 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 #editorTree button { display: block; text-align: left; width: 100%; margin: .25rem 0; overflow-wrap: anywhere; }
 #editorTree button[aria-current="true"] { border: 2px solid #8d3d00; }
 #editorTree small { display: block; }
+#editorTree { max-height: 24rem; overflow-y: auto; scrollbar-gutter: stable; padding: .25rem; }
+.editor-history-region { max-height: 18rem; overflow-y: auto; scrollbar-gutter: stable; padding: .25rem; }
 #editorHistory li { margin: 1rem 0; overflow-wrap: anywhere; }
 #editorRelations li { margin: .6rem 0; overflow-wrap: anywhere; }
 #editorError, #editorPreviewError { color: #8f210f; white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -25,7 +25,7 @@ public class InteroperabilityProductProbe {
         return profile.equals("reqif") ? new ReqifExchangeCodec().read(Files.readAllBytes(path), null, true)
                 : new ArchiMateExchangeCodec().read(Files.readAllBytes(path), null, true);
     }
-    private static Map<String, Object> semantics(String profile, ExchangeDocument document) {
+    static Map<String, Object> semantics(String profile, ExchangeDocument document) {
         Map<String, Object> result = new TreeMap<>();
         for (Artifact artifact : document.artifacts()) {
             Map<String, String> attributes = new TreeMap<>();
@@ -83,7 +83,7 @@ public class InteroperabilityProductProbe {
         }
         return result;
     }
-    private static List<MappingLoss> compareConnectionGeometry(ExchangeDocument before, ExchangeDocument after) {
+    static List<MappingLoss> compareConnectionGeometry(ExchangeDocument before, ExchangeDocument after) {
         var original = geometry(before); var returned = geometry(after); var losses = new ArrayList<MappingLoss>();
         if (!original.keySet().equals(returned.keySet())) throw new AssertionError("Product changed view connection identities");
         original.forEach((id, points) -> {

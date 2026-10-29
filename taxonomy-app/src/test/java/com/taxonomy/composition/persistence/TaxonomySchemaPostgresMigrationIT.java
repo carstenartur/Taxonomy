@@ -147,6 +147,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(dataSource, "editor_operation", "before_dsl")).isTrue();
         assertThat(columnExists(dataSource, "editor_operation", "target_operation_id")).isTrue();
         assertIntegrationSchema(dataSource);
+        assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
         assertAnalysisDispatchSchema(dataSource);
@@ -157,7 +158,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44");
     }
 
     @Test
@@ -232,8 +233,9 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44");
         assertIntegrationSchema(dataSource);
+        assertInventorySchema(dataSource);
         assertReformulationSchema(dataSource);
         assertAnalysisRecoverySchema(dataSource);
         assertAnalysisDispatchSchema(dataSource);
@@ -566,6 +568,31 @@ class TaxonomySchemaPostgresMigrationIT {
             }
         }
         return List.copyOf(bindings.values());
+    }
+
+    private static void assertInventorySchema(DataSource dataSource) throws SQLException {
+        var columns = java.util.Map.of(
+                "inventory_comparison", List.of("project_id", "snapshot_id", "actor", "fingerprint", "comparison_json"),
+                "inventory_assertion", List.of("candidate_id", "assertion_json"),
+                "inventory_observation", List.of("profile_id", "profile_revision", "actor", "organization_id", "status",
+                        "failure_code", "created_at", "observation_json"),
+                "inventory_review", List.of("comparison_id", "review_fingerprint", "review_json"),
+                "inventory_mapping", List.of("candidate_id", "mapping_json"));
+        for (var table : columns.entrySet()) {
+            assertThat(tableExists(dataSource, table.getKey())).as(table.getKey()).isTrue();
+            for (String column : List.of("id", "repository_id", "scope_key", "branch_name")) {
+                assertThat(columnExists(dataSource, table.getKey(), column))
+                        .as(table.getKey() + " exact identity " + column).isTrue();
+            }
+            for (String column : table.getValue()) {
+                assertThat(columnExists(dataSource, table.getKey(), column))
+                        .as(table.getKey() + " retained evidence " + column).isTrue();
+            }
+        }
+        for (String column : List.of("inventory_comparison_id", "inventory_fingerprint", "inventory_hard_exclusions")) {
+            assertThat(columnExists(dataSource, "solution_product", column))
+                    .as("solution product retained inventory " + column).isTrue();
+        }
     }
 
     private static void assertIntegrationSchema(DataSource dataSource) throws SQLException {

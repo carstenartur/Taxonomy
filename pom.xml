@@ -85,14 +85,14 @@
              CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525 (#989), plus the
              chunked-response buffer reset fix (#1275). -->
         <tomcat.version>11.0.27</tomcat.version>
-        <djl.version>0.38.0</djl.version>
+        <djl.version>0.39.0</djl.version>
         <skipITs>true</skipITs>
         <excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle</excludedGroups>
         <!-- Give the full product demo a fresh fork after the ordinary App tests.
              Focused selectors keep their existing test set through the overrides below. -->
         <taxonomy.productDemo.testPhase>test</taxonomy.productDemo.testPhase>
         <taxonomy.productDemo.defaultTestExclude>**/ProductDemoEndToEndTest.java</taxonomy.productDemo.defaultTestExclude>
-        <poi.version>5.5.1</poi.version>
+        <poi.version>6.0.0</poi.version>
         <pdfbox.version>3.0.8</pdfbox.version>
         <lucene.version>9.12.3</lucene.version>
         <!-- Hibernate Search 8.4 targets Hibernate ORM 7.4 and Lucene 9.12.3.
@@ -108,7 +108,7 @@
         <commons-configuration2.version>2.15.1</commons-configuration2.version>
         <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
         <svgpath.version>2.6.0</svgpath.version>
-        <springdoc.version>3.1.1</springdoc.version>
+        <springdoc.version>3.2.0</springdoc.version>
         <postgresql.version>42.7.14</postgresql.version>
         <!-- Patched databind families for CVE-2026-91776 and CVE-2026-91777. -->
         <jackson-2-bom.version>2.22.4</jackson-2-bom.version>
@@ -122,7 +122,7 @@
         <cyclonedx.version>2.9.3</cyclonedx.version>
         <maven-site-plugin.version>3.22.0</maven-site-plugin.version>
         <maven-fluido-skin.version>2.1.0</maven-fluido-skin.version>
-        <maven-surefire-report.version>3.6.0</maven-surefire-report.version>
+        <maven-surefire-report.version>3.6.1</maven-surefire-report.version>
         <maven-project-info-reports.version>3.9.0</maven-project-info-reports.version>
         <git-commit-id.version>10.0.1</git-commit-id.version>
         <jacoco.version>0.8.15</jacoco.version>

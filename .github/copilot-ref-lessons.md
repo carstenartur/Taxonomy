@@ -48,6 +48,18 @@
 
 **Key takeaway:** A different database URL or `@DirtiesContext` does not isolate JVM-global bootstrap/cache state. Keep process isolation for this browser shard and retain the workspace's missing-source checkpoint validation.
 
+## Surefire isolation does not apply to Failsafe (2026-10-29)
+
+`InventoryComparisonUiIT` bootstrapped its database before
+`AnalysisSnapshotAdoptionUiIT` started an independent file database in the same
+Failsafe JVM. The static bootstrap guard skipped the latter database's initial
+`draft`, so the editor returned HTTP 500 and its workspace control stayed hidden.
+Keep `forkCount=1` and `reuseForks=false` on both test plugins in the existing
+`ci-app-test-shard-browser` profile. Regress with these two existing classes and
+`-Dfailsafe.runOrder=reversealphabetical`; running adoption alone misses this
+interaction. Verify both fresh database bootstraps and distinct class JVMs, while
+retaining adoption's deliberate restart of its own persistent database.
+
 ## Stabilize native browser clicks before the hit test (2026-10-22)
 
 Bootstrap enables smooth scrolling. A visible, enabled element can still move between `scrollIntoView` and WebDriver's native click, so an interception failure may show a clear target in the later screenshot. Scroll with `behavior:'instant'`, reacquire the element and retry only transient interception or staleness within the existing wait. Keep native clicks: the scenario regression asserts a trusted click after a temporary obstruction and a timeout with no clicks for a permanent obstruction.
