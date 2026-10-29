@@ -41,12 +41,19 @@ class ArchiMateWorkspaceImportTests {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired private com.taxonomy.workspace.repository.UserWorkspaceRepository workspaceRepository;
+    @Autowired private com.taxonomy.workspace.service.SystemRepositoryService repositories;
+    @Autowired private com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService repositoryProvisioning;
+
+
     @BeforeEach
     void removeEligibleFixtureRelationFromAllScopes() {
         relationRepository.deleteAll(
                 relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(
                         "CP", "CR", RelationType.COMMUNICATES_WITH));
         relationRepository.flush();
+        var primary = repositories.getPrimaryRepository();
+        savedWorkspace("qa-architect", primary.getRepositoryId(), primary.getDefaultBranch(), true);
     }
 
     @Test
@@ -149,6 +156,126 @@ class ArchiMateWorkspaceImportTests {
         mockMvc.perform(multipart("/api/import/preview/archimate").file(file))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("INVALID_ARCHIMATE_XML"));
+    }
+
+    @Test
+    void explicitReturnEndpointPreviewsReviewsAppliesAndRejectsChangedReview() throws Exception {
+        byte[] original = returnOriginal();
+        byte[] returned = new String(original, StandardCharsets.UTF_8).replace("type=\"number\"", "type=\"string\"")
+                .replace("type=\"boolean\"", "type=\"string\"").getBytes(StandardCharsets.UTF_8);
+        var sourceFile = new MockMultipartFile("original", "original.xml", MediaType.APPLICATION_XML_VALUE, original);
+        var returnFile = new MockMultipartFile("file", "returned.xml", MediaType.APPLICATION_XML_VALUE, returned);
+        long before = relationRepository.count();
+        String response = mockMvc.perform(multipart("/api/import/preview/archimate-return").file(sourceFile).file(returnFile))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.preview").value(true))
+                .andExpect(jsonPath("$.mappingProfile").value("taxonomy-archi-5.10-return-v1"))
+                .andExpect(jsonPath("$.writableContext").value(true))
+                .andExpect(jsonPath("$.relationsImported").value(0)).andReturn().getResponse().getContentAsString();
+        assertThat(relationRepository.count()).isEqualTo(before);
+        String fingerprint = tools.jackson.databind.json.JsonMapper.builder().build().readTree(response).get("reviewFingerprint").asString();
+        mockMvc.perform(multipart("/api/import/archimate-return").file(sourceFile).file(returnFile).param("reviewedFingerprint", "wrong"))
+                .andExpect(status().isUnprocessableEntity());
+        assertThat(relationRepository.count()).isEqualTo(before);
+        mockMvc.perform(multipart("/api/import/archimate-return").file(sourceFile).file(returnFile).param("reviewedFingerprint", fingerprint))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.relationsImported").value(1));
+        mockMvc.perform(multipart("/api/import/archimate-return").file(sourceFile).file(returnFile).param("reviewedFingerprint", fingerprint))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.relationsImported").value(0)).andExpect(jsonPath("$.relationsSkipped").value(1));
+        assertThat(relationRepository.count()).isEqualTo(before + 1);
+        mockMvc.perform(multipart("/api/import/preview/archimate").file(returnFile)).andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    @WithMockUser(username = "return-reader", roles = {"USER"})
+    void returnApplicationRetainsArchitectAuthorization() throws Exception {
+        byte[] original = returnOriginal();
+        var source = new MockMultipartFile("original", "original.xml", MediaType.APPLICATION_XML_VALUE, original);
+        var returned = new MockMultipartFile("file", "returned.xml", MediaType.APPLICATION_XML_VALUE, original);
+        mockMvc.perform(multipart("/api/import/preview/archimate-return").file(source).file(returned)).andExpect(status().isOk());
+        mockMvc.perform(multipart("/api/import/archimate-return").file(source).file(returned).param("reviewedFingerprint", "irrelevant"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void returnHttpUsesPersistedNonPrimaryRepositoryAndNeverWritesPrimaryTenant() throws Exception {
+        var sourceRepository = repositoryProvisioning.createRepository("Archi return B", "archi-return-" + java.util.UUID.randomUUID(),
+                "isolated return regression", com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, "qa-architect", "branch-b");
+        var workspace = savedWorkspace("qa-architect", sourceRepository.getRepositoryId(), "branch-b", false);
+        byte[] original = returnOriginal();
+        var source = new MockMultipartFile("original", "source.xml", MediaType.APPLICATION_XML_VALUE, original);
+        var returned = new MockMultipartFile("file", "returned.xml", MediaType.APPLICATION_XML_VALUE, original);
+        String response = mockMvc.perform(multipart("/api/import/preview/archimate-return").file(source).file(returned)
+                        .header("X-Taxonomy-Workspace-Id", workspace.getWorkspaceId()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String fingerprint = tools.jackson.databind.json.JsonMapper.builder().build().readTree(response).get("reviewFingerprint").asString();
+        mockMvc.perform(multipart("/api/import/archimate-return").file(source).file(returned)
+                        .param("reviewedFingerprint", fingerprint))
+                .andExpect(status().isUnprocessableEntity());
+        mockMvc.perform(multipart("/api/import/archimate-return").file(source).file(returned)
+                        .header("X-Taxonomy-Workspace-Id", workspace.getWorkspaceId()).param("reviewedFingerprint", fingerprint))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.relationsImported").value(1));
+        var rows = relationRepository.findByRepositoryIdAndWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(
+                sourceRepository.getRepositoryId(), workspace.getWorkspaceId(), "CP", "CR", RelationType.COMMUNICATES_WITH);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().getOwnerUsername()).isEqualTo("qa-architect");
+        assertThat(rows.getFirst().getProvenance()).isEqualTo("ARCHIMATE_RETURN");
+        assertThat(relationRepository.findByRepositoryIdAndWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(
+                repositories.getPrimaryRepository().getRepositoryId(), workspace.getWorkspaceId(), "CP", "CR", RelationType.COMMUNICATES_WITH)).isEmpty();
+    }
+
+    @Test
+    void centralHttpPreviewBindsAuthenticatedUserAndDoesNotGrantWriteAuthority() throws Exception {
+        byte[] original = returnOriginal();
+        var source = new MockMultipartFile("original", "source.xml", MediaType.APPLICATION_XML_VALUE, original);
+        var returned = new MockMultipartFile("file", "returned.xml", MediaType.APPLICATION_XML_VALUE, original);
+        java.util.List<String> fingerprints = new java.util.ArrayList<>();
+        for (String user : java.util.List.of("central-return-alice", "central-return-bob")) {
+            String response = mockMvc.perform(multipart("/api/import/preview/archimate-return").file(source).file(returned)
+                            .header("X-Taxonomy-Workspace-Id", "")
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(user).roles("USER", "ARCHITECT")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.writableContext").value(false))
+                    .andReturn().getResponse().getContentAsString();
+            fingerprints.add(tools.jackson.databind.json.JsonMapper.builder().build().readTree(response).get("reviewFingerprint").asString());
+        }
+        assertThat(fingerprints.getFirst()).isNotEqualTo(fingerprints.getLast());
+        long before = relationRepository.count();
+        mockMvc.perform(multipart("/api/import/archimate-return").file(source).file(returned)
+                        .header("X-Taxonomy-Workspace-Id", "").param("reviewedFingerprint", fingerprints.getFirst())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("central-return-alice").roles("USER", "ARCHITECT")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(multipart("/api/import/archimate").file(returned).header("X-Taxonomy-Workspace-Id", ""))
+                .andExpect(status().isForbidden());
+        assertThat(relationRepository.count()).isEqualTo(before);
+    }
+
+    @Test
+    void ordinaryHttpImportRetainsNonPrimaryRepositoryIdentity() throws Exception {
+        var repository = repositoryProvisioning.createRepository("Ordinary B", "ordinary-" + java.util.UUID.randomUUID(),
+                "ordinary import compatibility", com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, "qa-architect", "branch-b");
+        var workspace = savedWorkspace("qa-architect", repository.getRepositoryId(), "branch-b", false);
+        var file = new MockMultipartFile("file", "model.xml", MediaType.APPLICATION_XML_VALUE, eligibleModel().getBytes(StandardCharsets.UTF_8));
+        mockMvc.perform(multipart("/api/import/archimate").file(file).header("X-Taxonomy-Workspace-Id", workspace.getWorkspaceId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.relationsImported").value(1));
+        assertThat(relationRepository.findByRepositoryIdAndWorkspaceId(repository.getRepositoryId(), workspace.getWorkspaceId())).hasSize(1);
+        assertThat(relationRepository.findByRepositoryIdAndWorkspaceId(repositories.getPrimaryRepository().getRepositoryId(), workspace.getWorkspaceId())).isEmpty();
+    }
+
+    private com.taxonomy.workspace.model.UserWorkspace savedWorkspace(String username, String repositoryId, String branch, boolean defaultWorkspace) {
+        var workspace = new com.taxonomy.workspace.model.UserWorkspace();
+        workspace.setWorkspaceId("archi-return-" + java.util.UUID.randomUUID());
+        workspace.setUsername(username); workspace.setDisplayName(workspace.getWorkspaceId());
+        workspace.setSourceRepositoryId(repositoryId); workspace.setCurrentBranch(branch);
+        workspace.setSourceBranch(branch); workspace.setCreatedAt(java.time.Instant.now());
+        workspace.setDefault(defaultWorkspace);
+        return workspaceRepository.saveAndFlush(workspace);
+    }
+
+    private static byte[] returnOriginal() {
+        var graph = new com.taxonomy.diagram.DiagramModel("Return endpoint fixture", java.util.List.of(
+                new com.taxonomy.diagram.DiagramNode("CP", "Capabilities", "Capabilities", .9, true, 1),
+                new com.taxonomy.diagram.DiagramNode("CR", "Core Services", "Core Services", .8, false, 2)),
+                java.util.List.of(new com.taxonomy.diagram.DiagramEdge("return-r", "CP", "CR", "COMMUNICATES_WITH", .8)),
+                new com.taxonomy.diagram.DiagramLayout("LR", true));
+        return new com.taxonomy.archimate.exchange.ArchiMateXmlExporter().export(new com.taxonomy.export.ArchiMateDiagramService().convert(graph));
     }
 
     private static ByteArrayInputStream stream(String xml) {

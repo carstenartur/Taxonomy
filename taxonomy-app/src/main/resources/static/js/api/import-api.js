@@ -59,10 +59,28 @@ window.ImportApi = (function () {
         return client.sendFormData('/api/import/archimate', formData);
     }
 
+    // The explicit page selection must survive shared active-tab routing. Use the
+    // existing canonical client's request policy, including an explicit empty central pin.
+    function returnUpload(path, data) {
+        var selection = new URL(window.location.href).searchParams;
+        var query = new URLSearchParams();
+        ['repositoryId', 'workspaceId', 'branch'].forEach(function (key) {
+            if (selection.has(key)) query.set(key, selection.get(key));
+        });
+        var workspace = selection.has('workspaceId') ? selection.get('workspaceId') : undefined;
+        var headers = {};
+        if (workspace !== undefined) headers['X-Taxonomy-Workspace-Id'] = workspace;
+        return client.request(path + (query.size ? '?' + query.toString() : ''),
+            {method: 'POST', body: data, headers: headers}, {pinnedWorkspaceId: workspace})
+            .then(function (response) { return response.json(); });
+    }
+
     return {
         loadProfiles:    loadProfiles,
         preview:         preview,
         execute:         execute,
-        importArchiMate: importArchiMate
+        importArchiMate: importArchiMate,
+        previewArchiReturn: function (data) { return returnUpload('/api/import/preview/archimate-return', data); },
+        applyArchiReturn: function (data) { return returnUpload('/api/import/archimate-return', data); }
     };
 })();

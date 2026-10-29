@@ -1,0 +1,613 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model xmlns="http://www.opengroup.org/xsd/archimate/3.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd" identifier="id-model-0000001f736e617073686f742d736e617073686f742d61726368692d70726f64756374">
+  <name>Workbench interoperability fixture</name>
+  <properties>
+    <property propertyDefinitionRef="propid-19">
+      <value>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</value>
+    </property>
+    <property propertyDefinitionRef="propid-20">
+      <value>main</value>
+    </property>
+    <property propertyDefinitionRef="propid-21">
+      <value>49e990b1e5b38a35fd778b155e75412ff2cfc38af2a466ea0fee0dc8a0183641</value>
+    </property>
+    <property propertyDefinitionRef="propid-22">
+      <value>archimate-writer-v2</value>
+    </property>
+    <property propertyDefinitionRef="propid-23">
+      <value>true</value>
+    </property>
+    <property propertyDefinitionRef="propid-10">
+      <value>snapshot-snapshot-archi-product</value>
+    </property>
+    <property propertyDefinitionRef="propid-24">
+      <value>length-prefixed-utf8-hex-v1</value>
+    </property>
+    <property propertyDefinitionRef="propid-25">
+      <value>LR</value>
+    </property>
+    <property propertyDefinitionRef="propid-26">
+      <value>type</value>
+    </property>
+    <property propertyDefinitionRef="propid-27">
+      <value>CP</value>
+    </property>
+    <property propertyDefinitionRef="propid-28">
+      <value>MAPPED</value>
+    </property>
+    <property propertyDefinitionRef="propid-29">
+      <value>Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.</value>
+    </property>
+    <property propertyDefinitionRef="propid-30">
+      <value>element</value>
+    </property>
+    <property propertyDefinitionRef="propid-31">
+      <value>type</value>
+    </property>
+    <property propertyDefinitionRef="propid-32">
+      <value>CR</value>
+    </property>
+    <property propertyDefinitionRef="propid-33">
+      <value>MAPPED</value>
+    </property>
+    <property propertyDefinitionRef="propid-34">
+      <value>Taxonomy category projected to ArchiMate; exact source type retained in taxonomy.type.</value>
+    </property>
+    <property propertyDefinitionRef="propid-35">
+      <value>element</value>
+    </property>
+    <property propertyDefinitionRef="propid-36">
+      <value>type</value>
+    </property>
+    <property propertyDefinitionRef="propid-37">
+      <value>relation</value>
+    </property>
+    <property propertyDefinitionRef="propid-38">
+      <value>MAPPED</value>
+    </property>
+    <property propertyDefinitionRef="propid-39">
+      <value>Broad ArchiMate projection with Taxonomy endpoint order retained; exact type and category remain properties. Native metamodel equivalence is not asserted.</value>
+    </property>
+    <property propertyDefinitionRef="propid-40">
+      <value>relationship</value>
+    </property>
+    <property propertyDefinitionRef="propid-41">
+      <value>selectionProfileFingerprint</value>
+    </property>
+    <property propertyDefinitionRef="propid-42">
+      <value>snapshot-archi-product</value>
+    </property>
+    <property propertyDefinitionRef="propid-43">
+      <value>OMITTED</value>
+    </property>
+    <property propertyDefinitionRef="propid-44">
+      <value>Not retained in the authorized persisted snapshot projection; no current-state value was substituted.</value>
+    </property>
+    <property propertyDefinitionRef="propid-45">
+      <value>model</value>
+    </property>
+    <property propertyDefinitionRef="propid-46">
+      <value>providerPayload</value>
+    </property>
+    <property propertyDefinitionRef="propid-47">
+      <value>snapshot-archi-product</value>
+    </property>
+    <property propertyDefinitionRef="propid-48">
+      <value>OMITTED</value>
+    </property>
+    <property propertyDefinitionRef="propid-49">
+      <value>Outside the authorized model exchange subset; use the canonical evidence report when separately authorized.</value>
+    </property>
+    <property propertyDefinitionRef="propid-50">
+      <value>model</value>
+    </property>
+    <property propertyDefinitionRef="propid-51">
+      <value>prompt</value>
+    </property>
+    <property propertyDefinitionRef="propid-52">
+      <value>snapshot-archi-product</value>
+    </property>
+    <property propertyDefinitionRef="propid-53">
+      <value>OMITTED</value>
+    </property>
+    <property propertyDefinitionRef="propid-54">
+      <value>Outside the authorized model exchange subset; use the canonical evidence report when separately authorized.</value>
+    </property>
+    <property propertyDefinitionRef="propid-55">
+      <value>model</value>
+    </property>
+    <property propertyDefinitionRef="propid-56">
+      <value>sourceEvidence</value>
+    </property>
+    <property propertyDefinitionRef="propid-57">
+      <value>snapshot-archi-product</value>
+    </property>
+    <property propertyDefinitionRef="propid-58">
+      <value>OMITTED</value>
+    </property>
+    <property propertyDefinitionRef="propid-59">
+      <value>Raw model-level provider/source evidence is omitted; recorded scoped relationship evidence is retained where present.</value>
+    </property>
+    <property propertyDefinitionRef="propid-60">
+      <value>model</value>
+    </property>
+    <property propertyDefinitionRef="propid-61">
+      <value>warnings</value>
+    </property>
+    <property propertyDefinitionRef="propid-62">
+      <value>snapshot-archi-product</value>
+    </property>
+    <property propertyDefinitionRef="propid-63">
+      <value>OMITTED</value>
+    </property>
+    <property propertyDefinitionRef="propid-64">
+      <value>Outside the authorized model exchange subset; use the canonical evidence report when separately authorized.</value>
+    </property>
+    <property propertyDefinitionRef="propid-65">
+      <value>model</value>
+    </property>
+    <property propertyDefinitionRef="propid-66">
+      <value>reviewMetadata</value>
+    </property>
+    <property propertyDefinitionRef="propid-67">
+      <value>CR</value>
+    </property>
+    <property propertyDefinitionRef="propid-68">
+      <value>OMITTED</value>
+    </property>
+    <property propertyDefinitionRef="propid-69">
+      <value>No persisted mapping metadata is available for this selected element.</value>
+    </property>
+    <property propertyDefinitionRef="propid-70">
+      <value>element</value>
+    </property>
+    <property propertyDefinitionRef="propid-71">
+      <value>taxonomy-archimate-3.1-v2</value>
+    </property>
+    <property propertyDefinitionRef="propid-72">
+      <value>42</value>
+    </property>
+    <property propertyDefinitionRef="propid-73">
+      <value>repository</value>
+    </property>
+    <property propertyDefinitionRef="propid-74">
+      <value>7</value>
+    </property>
+    <property propertyDefinitionRef="propid-75">
+      <value>eea91342a3ee8bfa0d47c82cee47485c8e0bc18f6e338d4a90504aebe8d314b9</value>
+    </property>
+    <property propertyDefinitionRef="propid-76">
+      <value>Protect subscriber information and retain delivery history.</value>
+    </property>
+    <property propertyDefinitionRef="propid-77">
+      <value>99</value>
+    </property>
+    <property propertyDefinitionRef="propid-78">
+      <value>relevance in [0,1]; anchor and impact are separate selection flags</value>
+    </property>
+    <property propertyDefinitionRef="propid-79">
+      <value>2026-09-01T11:00:00Z</value>
+    </property>
+    <property propertyDefinitionRef="propid-80">
+      <value>snapshot-archi-product</value>
+    </property>
+    <property propertyDefinitionRef="propid-81">
+      <value>SUCCESS</value>
+    </property>
+    <property propertyDefinitionRef="propid-82">
+      <value>catalogue-frozen-fixture</value>
+    </property>
+    <property propertyDefinitionRef="propid-83">
+      <value>workspace</value>
+    </property>
+  </properties>
+  <elements>
+    <element identifier="id-element-000000024350" xsi:type="Capability">
+      <name>Subscriber protection</name>
+      <properties>
+        <property propertyDefinitionRef="propid-1">
+          <value>Fixture evidence reference</value>
+        </property>
+        <property propertyDefinitionRef="propid-2">
+          <value>true</value>
+        </property>
+        <property propertyDefinitionRef="propid-3">
+          <value>0.8</value>
+        </property>
+        <property propertyDefinitionRef="propid-4">
+          <value>2026-09-01T12:00:00Z</value>
+        </property>
+        <property propertyDefinitionRef="propid-5">
+          <value>fixture-author</value>
+        </property>
+        <property propertyDefinitionRef="propid-6">
+          <value>Reviewed fixture rationale</value>
+        </property>
+        <property propertyDefinitionRef="propid-7">
+          <value>0.0</value>
+        </property>
+        <property propertyDefinitionRef="propid-8">
+          <value>98.0</value>
+        </property>
+        <property propertyDefinitionRef="propid-9">
+          <value>CP</value>
+        </property>
+        <property propertyDefinitionRef="propid-10">
+          <value>CP</value>
+        </property>
+        <property propertyDefinitionRef="propid-11">
+          <value>1.0</value>
+        </property>
+        <property propertyDefinitionRef="propid-12">
+          <value>HUMAN</value>
+        </property>
+        <property propertyDefinitionRef="propid-13">
+          <value>Recorded fixture contribution</value>
+        </property>
+        <property propertyDefinitionRef="propid-14">
+          <value>0.98765</value>
+        </property>
+        <property propertyDefinitionRef="propid-15">
+          <value>false</value>
+        </property>
+        <property propertyDefinitionRef="propid-16">
+          <value>CP</value>
+        </property>
+        <property propertyDefinitionRef="propid-17">
+          <value>Capabilities</value>
+        </property>
+      </properties>
+    </element>
+    <element identifier="id-element-000000024352" xsi:type="TechnologyService">
+      <name>Delivery service</name>
+      <properties>
+        <property propertyDefinitionRef="propid-2">
+          <value>false</value>
+        </property>
+        <property propertyDefinitionRef="propid-7">
+          <value>0.0</value>
+        </property>
+        <property propertyDefinitionRef="propid-10">
+          <value>CR</value>
+        </property>
+        <property propertyDefinitionRef="propid-11">
+          <value>2.0</value>
+        </property>
+        <property propertyDefinitionRef="propid-14">
+          <value>0.87654</value>
+        </property>
+        <property propertyDefinitionRef="propid-15">
+          <value>false</value>
+        </property>
+        <property propertyDefinitionRef="propid-17">
+          <value>Core Services</value>
+        </property>
+      </properties>
+    </element>
+  </elements>
+  <relationships>
+    <relationship identifier="id-relationship-0000000872656c6174696f6e" source="id-element-000000024352" target="id-element-000000024350" xsi:type="Realization">
+      <name>FULFILLS</name>
+      <properties>
+        <property propertyDefinitionRef="propid-10">
+          <value>relation</value>
+        </property>
+        <property propertyDefinitionRef="propid-18">
+          <value>trace</value>
+        </property>
+        <property propertyDefinitionRef="propid-14">
+          <value>0.76543</value>
+        </property>
+        <property propertyDefinitionRef="propid-17">
+          <value>FULFILLS</value>
+        </property>
+      </properties>
+    </relationship>
+  </relationships>
+  <propertyDefinitions>
+    <propertyDefinition identifier="propid-1" type="string">
+      <name>taxonomy.actionEvidence</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-2" type="string">
+      <name>taxonomy.anchor</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-19" type="string">
+      <name>taxonomy.authoritativeCommit</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-20" type="string">
+      <name>taxonomy.branch</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-21" type="string">
+      <name>taxonomy.canonicalGraphSha256</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-3" type="string">
+      <name>taxonomy.confidence</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-4" type="string">
+      <name>taxonomy.decisionAt</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-5" type="string">
+      <name>taxonomy.decisionBy</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-6" type="string">
+      <name>taxonomy.decisionRationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-7" type="string">
+      <name>taxonomy.depth</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-8" type="string">
+      <name>taxonomy.directScore</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-22" type="string">
+      <name>taxonomy.exporterVersion</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-23" type="string">
+      <name>taxonomy.groupByLayer</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-9" type="string">
+      <name>taxonomy.hierarchyPath</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-10" type="string">
+      <name>taxonomy.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-24" type="string">
+      <name>taxonomy.idProfile</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-11" type="string">
+      <name>taxonomy.layer</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-25" type="string">
+      <name>taxonomy.layoutDirection</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-26" type="string">
+      <name>taxonomy.loss.0.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-27" type="string">
+      <name>taxonomy.loss.0.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-28" type="string">
+      <name>taxonomy.loss.0.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-29" type="string">
+      <name>taxonomy.loss.0.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-30" type="string">
+      <name>taxonomy.loss.0.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-31" type="string">
+      <name>taxonomy.loss.1.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-32" type="string">
+      <name>taxonomy.loss.1.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-33" type="string">
+      <name>taxonomy.loss.1.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-34" type="string">
+      <name>taxonomy.loss.1.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-35" type="string">
+      <name>taxonomy.loss.1.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-36" type="string">
+      <name>taxonomy.loss.2.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-37" type="string">
+      <name>taxonomy.loss.2.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-38" type="string">
+      <name>taxonomy.loss.2.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-39" type="string">
+      <name>taxonomy.loss.2.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-40" type="string">
+      <name>taxonomy.loss.2.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-41" type="string">
+      <name>taxonomy.loss.3.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-42" type="string">
+      <name>taxonomy.loss.3.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-43" type="string">
+      <name>taxonomy.loss.3.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-44" type="string">
+      <name>taxonomy.loss.3.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-45" type="string">
+      <name>taxonomy.loss.3.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-46" type="string">
+      <name>taxonomy.loss.4.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-47" type="string">
+      <name>taxonomy.loss.4.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-48" type="string">
+      <name>taxonomy.loss.4.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-49" type="string">
+      <name>taxonomy.loss.4.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-50" type="string">
+      <name>taxonomy.loss.4.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-51" type="string">
+      <name>taxonomy.loss.5.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-52" type="string">
+      <name>taxonomy.loss.5.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-53" type="string">
+      <name>taxonomy.loss.5.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-54" type="string">
+      <name>taxonomy.loss.5.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-55" type="string">
+      <name>taxonomy.loss.5.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-56" type="string">
+      <name>taxonomy.loss.6.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-57" type="string">
+      <name>taxonomy.loss.6.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-58" type="string">
+      <name>taxonomy.loss.6.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-59" type="string">
+      <name>taxonomy.loss.6.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-60" type="string">
+      <name>taxonomy.loss.6.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-61" type="string">
+      <name>taxonomy.loss.7.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-62" type="string">
+      <name>taxonomy.loss.7.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-63" type="string">
+      <name>taxonomy.loss.7.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-64" type="string">
+      <name>taxonomy.loss.7.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-65" type="string">
+      <name>taxonomy.loss.7.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-66" type="string">
+      <name>taxonomy.loss.8.field</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-67" type="string">
+      <name>taxonomy.loss.8.id</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-68" type="string">
+      <name>taxonomy.loss.8.kind</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-69" type="string">
+      <name>taxonomy.loss.8.rationale</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-70" type="string">
+      <name>taxonomy.loss.8.scope</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-12" type="string">
+      <name>taxonomy.mappingOrigin</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-71" type="string">
+      <name>taxonomy.mappingProfile</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-13" type="string">
+      <name>taxonomy.presenceReason</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-72" type="string">
+      <name>taxonomy.projectId</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-18" type="string">
+      <name>taxonomy.relationCategory</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-14" type="string">
+      <name>taxonomy.relevance</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-73" type="string">
+      <name>taxonomy.repositoryId</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-74" type="string">
+      <name>taxonomy.requirementId</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-75" type="string">
+      <name>taxonomy.requirementSha256</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-76" type="string">
+      <name>taxonomy.requirementText</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-77" type="string">
+      <name>taxonomy.requirementVersionId</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-78" type="string">
+      <name>taxonomy.scoreSemantics</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-15" type="string">
+      <name>taxonomy.selectedForImpact</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-79" type="string">
+      <name>taxonomy.snapshotCreatedAt</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-80" type="string">
+      <name>taxonomy.snapshotId</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-81" type="string">
+      <name>taxonomy.snapshotStatus</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-82" type="string">
+      <name>taxonomy.taxonomyFingerprint</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-16" type="string">
+      <name>taxonomy.taxonomyRoot</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-17" type="string">
+      <name>taxonomy.type</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-83" type="string">
+      <name>taxonomy.workspaceId</name>
+    </propertyDefinition>
+  </propertyDefinitions>
+  <views>
+    <diagrams>
+      <view identifier="id-view-000000076c617965726564" xsi:type="Diagram" viewpoint="Layered">
+        <name>Workbench interoperability fixture</name>
+        <properties>
+          <property propertyDefinitionRef="propid-10">
+            <value>layered</value>
+          </property>
+        </properties>
+        <node identifier="id-node-000000076c617965726564000000024350" elementRef="id-element-000000024350" xsi:type="Element" x="40" y="40" w="120" h="40">
+          <style>
+            <fillColor r="255" g="255" b="181" a="100" />
+            <lineColor r="92" g="92" b="92" a="100" />
+            <font name="Sans" size="9">
+              <color r="0" g="0" b="0" />
+            </font>
+          </style>
+        </node>
+        <node identifier="id-node-000000076c617965726564000000024352" elementRef="id-element-000000024352" xsi:type="Element" x="200" y="40" w="120" h="40">
+          <style>
+            <fillColor r="181" g="255" b="255" a="100" />
+            <lineColor r="92" g="92" b="92" a="100" />
+            <font name="Sans" size="9">
+              <color r="0" g="0" b="0" />
+            </font>
+          </style>
+        </node>
+        <connection identifier="id-connection-000000076c6179657265640000000872656c6174696f6e" relationshipRef="id-relationship-0000000872656c6174696f6e" xsi:type="Relationship" source="id-node-000000076c617965726564000000024352" target="id-node-000000076c617965726564000000024350">
+          <style>
+            <lineColor r="0" g="0" b="0" />
+            <font name="Sans" size="9">
+              <color r="0" g="0" b="0" />
+            </font>
+          </style>
+        </connection>
+      </view>
+      <view identifier="id-view-00000006696d70616374" xsi:type="Diagram" viewpoint="Layered">
+        <name>Anchor and impact selection</name>
+        <properties>
+          <property propertyDefinitionRef="propid-10">
+            <value>impact</value>
+          </property>
+        </properties>
+        <node identifier="id-node-00000006696d70616374000000024350" elementRef="id-element-000000024350" xsi:type="Element" x="40" y="40" w="120" h="40">
+          <style>
+            <fillColor r="255" g="255" b="181" a="100" />
+            <lineColor r="92" g="92" b="92" a="100" />
+            <font name="Sans" size="9">
+              <color r="0" g="0" b="0" />
+            </font>
+          </style>
+        </node>
+      </view>
+    </diagrams>
+  </views>
+</model>

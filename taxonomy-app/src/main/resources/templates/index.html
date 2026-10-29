@@ -754,6 +754,22 @@
                             <button id="archiMateImportBtn" data-taxonomy-feature="interop" class="btn btn-outline-success" th:title="#{export.btn.archimate.import.title}" title="Import an ArchiMate XML model to map elements and relations to taxonomy" th:attr="aria-label=#{ui.aria.import_archimate_xml}" aria-label="Import ArchiMate XML" th:text="#{index.ui.importArchiMate}">&#128228; Import ArchiMate</button>
                             <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
                         </div>
+                        <details id="archiReturnPanel" class="mt-3" data-taxonomy-feature="interop">
+                            <summary th:text="#{archi.return.title}">Review an Archi 5.10 return</summary>
+                            <p class="small mt-2" th:text="#{archi.return.scope}">Content-preserving return only. Provide the original model XML from your export bundle and the returned XML. Semantic edits are rejected. Review all losses before creating catalogue relations in the current workspace.</p>
+                            <label class="form-label" for="archiReturnOriginal" th:text="#{archi.return.original}">Original exported model XML</label>
+                            <input class="form-control mb-2" type="file" id="archiReturnOriginal" accept=".xml,application/xml">
+                            <label class="form-label" for="archiReturnFile" th:text="#{archi.return.returned}">XML returned by Archi</label>
+                            <input class="form-control mb-2" type="file" id="archiReturnFile" accept=".xml,application/xml">
+                            <button id="archiReturnPreview" type="button" class="btn btn-outline-secondary" disabled th:text="#{archi.return.preview}">Preview return and losses</button>
+                            <div id="archiReturnStatus" class="small my-2" role="status" aria-live="polite" style="white-space:pre-wrap"></div>
+                            <ol id="archiReturnLosses" class="small" style="max-height:20rem;overflow:auto" tabindex="0" th:attr="aria-label=#{archi.return.losses}" aria-label="Declared return and import losses"></ol>
+                            <div class="form-check my-2">
+                                <input class="form-check-input" type="checkbox" id="archiReturnAccept" disabled>
+                                <label class="form-check-label small" for="archiReturnAccept" th:text="#{archi.return.accept}">I reviewed these losses and accept relation-only application. This does not restore snapshots, decisions, provenance authority or views.</label>
+                            </div>
+                            <button id="archiReturnApply" type="button" class="btn btn-primary" disabled th:text="#{archi.return.apply}">Apply reviewed relations</button>
+                        </details>
 
                     </div>
                 </div>
@@ -1659,6 +1675,7 @@
 <script th:src="@{/js/relations/taxonomy-coverage.js}"></script>
 <script th:src="@{/js/relations/taxonomy-relations.js}"></script>
 <script th:src="@{/js/core/taxonomy-analysis.js}"></script>
+<script th:src="@{/js/shared/archimate-return.js}"></script>
 <script th:src="@{/js/shared/taxonomy-database-setup.js}"></script>
 <script th:src="@{/js/shared/taxonomy-onboarding.js}"></script>
 <script th:src="@{/js/shared/taxonomy-help.js}"></script>

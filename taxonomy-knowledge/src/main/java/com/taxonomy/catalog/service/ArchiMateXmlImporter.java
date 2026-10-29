@@ -2,6 +2,7 @@ package com.taxonomy.catalog.service;
 
 import com.taxonomy.archimate.ArchiMateModel;
 import com.taxonomy.archimate.exchange.ArchiMateSchema;
+import com.taxonomy.archimate.exchange.ArchiMateReturnProfile;
 import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
@@ -68,10 +69,59 @@ public class ArchiMateXmlImporter {
         return importXml(inputStream, WorkspaceContext.SHARED);
     }
 
+    /** Explicit bounded return: no semantic edits, no implicit fallback from ordinary XML import. */
+    @Transactional(readOnly = true)
+    public ArchiMateImportResult previewReturn(byte[] original, byte[] returned, WorkspaceContext context) {
+        return executeReturn(original, returned, requireContext(context), null, false);
+    }
+
+    @Transactional
+    public ArchiMateImportResult importReturn(byte[] original, byte[] returned, String reviewedFingerprint,
+                                              WorkspaceContext context) {
+        return executeReturn(original, returned, requireContext(context), reviewedFingerprint, true);
+    }
+
+    private ArchiMateImportResult executeReturn(byte[] original, byte[] returned, WorkspaceContext context,
+                                                String reviewedFingerprint, boolean materialize) {
+        try {
+            var exchange = new ArchiMateReturnProfile().read(original, returned);
+            String fingerprint = returnFingerprint(original, returned, context);
+            if (materialize && !fingerprint.equals(reviewedFingerprint))
+                throw new ArchiMateImportException("Review the exact original and returned files in the current workspace before applying");
+            var result = execute(parsedExchange(exchange), context, materialize,
+                    "Reviewed Archi return " + fingerprint, "ARCHIMATE_RETURN");
+            result.setMappingProfile(ArchiMateReturnProfile.VERSION);
+            result.setReviewFingerprint(fingerprint);
+            result.getNotes().add("Content-preservation return only: semantic edits are rejected. Erased representation is interpreted from the supplied original; this is not a lossless return or proof of source authenticity.");
+            return result;
+        } catch (IllegalArgumentException error) {
+            throw new ArchiMateImportException("Unsupported Archi return: " + error.getMessage(), error);
+        }
+    }
+
+    private static String returnFingerprint(byte[] original, byte[] returned, WorkspaceContext context) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            List<byte[]> fields = new ArrayList<>(List.of(original, returned,
+                    ArchiMateReturnProfile.VERSION.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            for (String field : new String[] {context.username(), context.workspaceId(), context.currentBranch(), context.repositoryId()})
+                fields.add(field == null ? new byte[] {0} : ("1" + field).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            for (byte[] value : fields) {
+                digest.update(java.nio.ByteBuffer.allocate(4).putInt(value.length).array());
+                digest.update(value);
+            }
+            return java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+
     private ArchiMateImportResult execute(InputStream inputStream,
                                           WorkspaceContext context,
                                           boolean materialize) {
-        ParsedModel model = parseModel(inputStream);
+        return execute(parseModel(inputStream), context, materialize, "Imported from ArchiMate XML", "ARCHIMATE_IMPORT");
+    }
+
+    private ArchiMateImportResult execute(ParsedModel model, WorkspaceContext context, boolean materialize,
+                                           String description, String provenance) {
         List<String> notes = new ArrayList<>();
         notes.add("Parsed " + model.elements().size() + " elements and "
                 + model.relationships().size() + " relationships from XML");
@@ -139,10 +189,10 @@ public class ArchiMateXmlImporter {
             try {
                 if (WorkspaceContext.LEGACY_REPOSITORY_ID.equals(context.repositoryId())) {
                     relationService.createRelation(sourceNode.getCode(), targetNode.getCode(), relationType,
-                            "Imported from ArchiMate XML", "ARCHIMATE_IMPORT", context.workspaceId(), context.username());
+                            description, provenance, context.workspaceId(), context.username());
                 } else {
                     relationService.createRelationInContext(sourceNode.getCode(), targetNode.getCode(), relationType,
-                            "Imported from ArchiMate XML", "ARCHIMATE_IMPORT", repositoryContext(context));
+                            description, provenance, repositoryContext(context));
                 }
                 created++;
             } catch (IllegalArgumentException error) {
@@ -202,15 +252,7 @@ public class ArchiMateXmlImporter {
             List<ParsedRelationship> relationships = new ArrayList<>();
             if (ArchiMateExchangeReader.hasTaxonomyProfile(document)) {
                 ArchiMateModel exchange = new ArchiMateExchangeReader().read(document);
-                for (var element : exchange.elements()) {
-                    elements.put(element.id(), new ParsedElement(element.id(), element.archiMateType(),
-                            element.label(), true));
-                }
-                for (var relation : exchange.relationships()) {
-                    relationships.add(new ParsedRelationship(relation.id(), relation.sourceId(), relation.targetId(),
-                            relation.archiMateType(), relation.properties().get("taxonomy.type").value()));
-                }
-                return new ParsedModel(elements, relationships, exchange);
+                return parsedExchange(exchange);
             }
             var root = document.getDocumentElement();
             for (var element : ArchiMateExchangeReader.children(ArchiMateExchangeReader.child(root, "elements"), "element")) {
@@ -227,6 +269,17 @@ public class ArchiMateXmlImporter {
         } catch (java.io.IOException | IllegalArgumentException error) {
             throw new ArchiMateImportException("Malformed or unsupported ArchiMate XML: " + error.getMessage(), error);
         }
+    }
+
+    private static ParsedModel parsedExchange(ArchiMateModel exchange) {
+        Map<String, ParsedElement> elements = new LinkedHashMap<>();
+        List<ParsedRelationship> relationships = new ArrayList<>();
+        for (var element : exchange.elements())
+            elements.put(element.id(), new ParsedElement(element.id(), element.archiMateType(), element.label(), true));
+        for (var relation : exchange.relationships())
+            relationships.add(new ParsedRelationship(relation.id(), relation.sourceId(), relation.targetId(),
+                    relation.archiMateType(), relation.properties().get("taxonomy.type").value()));
+        return new ParsedModel(elements, relationships, exchange);
     }
 
     private Map<String, TaxonomyNode> matchElements(Map<String, ParsedElement> elements,
