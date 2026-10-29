@@ -1,519 +1,144 @@
-# Taxonomy 1.5.2
-
-These notes describe the Taxonomy 1.5.2 release line. Publication remains subject to the verification boundary below. The source combines the stabilization prepared for the unpublished 1.3.1 line with a substantially stronger requirements and architecture workbench, an authoritative recoverable Copilot session, a versioned Information Product catalogue overlay, bounded concrete-product analysis, versioned Word-template administration, deterministic architecture exports, local semantic-search readiness, a guided product demo without live AI, constrained-cluster deployment profiles, bounded authentication controls, and a fail-closed release pipeline.
-
-## Important release-line note
-
-During preparation on **12 October 2026**, the latest published stable GitHub Release was **1.3.0**, published on **3 August 2026**. The staged **1.5.0** release remains unpublished: its image build succeeded, but the immutable image scan rejected two HIGH OpenSSL package findings for [CVE-2026-84782](https://ubuntu.com/security/CVE-2026-84782). The existing `v1.5.0` tag and draft remain historical evidence; this release uses a new source revision with the runtime package correction. Earlier unpublished `v1.3.1`, `v1.4.0` and `v1.4.1` tags also remain historical attempts. Install only assets from a published release with matching source, digest and verification evidence.
-
-The source preparation targets **1.5.2-SNAPSHOT**, with **1.5.2** as the release and **1.5.3-SNAPSHOT** as the following development version. All reactor modules, including the independent Mermaid plugin, share that product version. Publication requires a separately anchored release request and all normal release gates. Historical attempt tags and their notes remain unchanged.
-
-Feature descriptions below retain their documented scope. A merged implementation slice, a closed foundation issue or a passing selected test must not be read as completion of its broader programme. Publication, feature acceptance and target-product compatibility are separate claims.
-
-## Graph navigation and release completion
-
-The unpublished `v1.5.1` tag and draft remain unchanged. Its final image scan stopped because the SARIF action ignored the configured severity filter; the archived report contained no HIGH or CRITICAL findings. This new source release includes the Graph and documentation corrections merged after that tag, together with the corrected release scan configuration.
-
-- Opening a graph from the taxonomy tree or impact details now reveals the Graph page, preserves the selected code, moves keyboard focus and runs the existing upstream query. Empty results and failures are visible, and older responses cannot replace a newer selection.
-- The German and English guides include current application captures and an inventory of all 27 page templates with their documentation and test owners. The inventory explicitly identifies control paths whose acceptance remains unverified; it is not a claim that every button has been exhaustively tested.
-- Screenshot generation requires real application operations instead of substituting result HTML or healthy status badges. Historical illustrations, component captures and deterministic mock-provider results are identified as such. The complete documentation screenshot profile remains a separate opt-in verification.
-- Both standard and ONNX release image scans apply the existing HIGH/CRITICAL severity threshold to SARIF output while retaining blocking scanner errors. The release gate also tolerates the two known empty-check registration responses within its bounded retry loop; unknown errors and unsuccessful checks still block publication.
-
-## Product highlights
-
-### Architecture focus lens and optional crossing reduction
-
-The architecture editor can investigate selected or swept elements through an
-explicitly enabled focus lens. A bounded queue shows actual investigation states,
-supports pause and an investigation budget, and discards stale responses after a
-context or revision change. Suggested directed relations appear as separate
-overlays with their method, rationale and matching source excerpts. Local text
-matches remain labelled unassessed; a suggestion is not evidence that a deployed
-relationship exists.
-
-Accepting a suggestion performs one existing semantic command and retains its
-provenance. Semantic undo uses the accepted operation identity. Investigation,
-acceptance and undo keep the current layout stable. An explicit crossing-reduction
-strategy is available alongside stable ordering; exact-revision SVG/PDF exports
-use the same ordering reference. Crossing reduction is a heuristic, not a
-guarantee of a crossing-free diagram. The existing renderer limits and ordinary
-requirement-analysis workflow remain in place. See the
-[focus-lens design](docs/superpowers/specs/2026-10-24-architecture-focus-design.md).
-
-### Guided product demo without live AI
-
-Entering `produktdemo` in the analysis field and selecting **Analyze** creates an
-isolated, labelled demo project for the company-wide working-time-recording scenario. The existing typed
-draft and other projects remain unchanged. A persistent demo banner and stations
-guide the operator through the first analysis, requirement reformulation, displayed
-answers and rejection of the GPS addition, reviewed adoption, a second analysis
-and reference comparison.
-
-The demo uses the normal analysis, reformulation and export paths with versioned
-scenario replies. A missing reply stops the affected step without contacting a
-live provider. Catalogue validation and persisted project/run/provider binding
-reject scenario drift, unrelated requirements and closed runs before replay.
-The reference comparison evaluates both analysis generations and leaves
-unexecuted stations explicit; it does not certify the quality of a live model.
-This is a guided operator workflow, including explicit adoption and comparison
-actions. See the [product-demo guide](docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md#product-demo-without-ai-qa-reference).
-
-### Bounded multi-user analysis and visible waiting
-
-Full analyses share bounded execution and waiting capacity, including per-user
-limits. Gemini and OpenAI-compatible HTTP calls have separate provider concurrency
-and waiting limits. The UI distinguishes waiting for an analysis slot, provider
-capacity, rate limits and a provider response, and reports queue time separately
-from execution time. Cancellation removes queued work before it can call a provider.
-The optional `multiuser-analysis` profile increases portfolio worker concurrency;
-existing deployments otherwise retain their configured worker count.
-
-These controls are process-local. They do not provide a cluster-wide dispatcher,
-global upstream-account quota or a new durable queue for direct/SSE requests.
-See [multi-user operation and limits](docs/en/MULTIUSER_ANALYSIS.md).
-
-### Complete progress totals and resumable relationship work
-
-The analysis fixes the node total before scoring and distinguishes directly assessed
-nodes, descendants excluded by successful zero assessments, and open nodes, overall
-and per taxonomy. Relationship work has its own complete source/target-taxonomy
-plan, with completed, unresolved and pending tasks and the currently evaluated
-source, target, relation type, direction and search step.
-
-Call and source budgets limit new work in each execution without hiding the rest
-of the plan. Continuation reuses validated saved relationship responses, preserves
-earlier evidence and does not charge replay against the new provider-call budget.
-Invalid answers and exhausted limits remain explicit unfinished work. Saved reports
-without the new progress fields remain readable. See
-[progress and recovery scope](docs/implementation/analysis-work-progress.md).
-
-### Reviewed requirement reformulation
-
-The workbench can prepare a reformulation offer from a frozen requirement version,
-analysis snapshot and decision context. Bottom-up node reasoning and cross-taxonomy
-reconciliation retain original constraints, expose open questions and preserve
-answers, deferrals and manual edits. Adoption is explicit and creates a traceable
-new requirement version; preparing or exporting an offer does not replace the source.
-Historical revisions remain exportable in JSON, Markdown, HTML and DOCX without
-new inference. See [reformulation behavior and verification](docs/testing/requirement-reformulation.md).
-
-### Versioned planning information
-
-The architecture editor supports bounded requirement planning profiles for a target
-go-live year/date and references to standards or internal guidance. These reuse the
-existing workspace revision, review, undo and history contracts. ReqIF carries the
-versioned planning envelope; a standard reference is not a compliance certification,
-and a planned date is not evidence that a system is operational. See
-[planning profiles](docs/features/planning-profiles.md).
-
-### Local account administration and guided installation
-
-The opt-in `local-user-management` profile adds administrator forms for the existing
-local account service, with role checks, password replacement and last-administrator
-protection. Keycloak deployments continue to manage identities through their identity
-provider; disabling an account does not revoke already established browser sessions.
-See [local user management](docs/LOCAL_USER_MANAGEMENT.md).
-
-Guided Rancher/Helm values and a native installation/preflight foundation reuse the
-existing Spring configuration, deployment secrets and migration safeguards. Database,
-authentication and custom-provider settings are validated without adding a public
-first-run setup service. Native package production and target-platform acceptance
-remain distinct from successful configuration validation. See
-[installation scope and limits](docs/INSTALLATION_SETUP.md).
-
-### Independent root relevance and explicit provider limits
-
-Root assessments now retain their independent 0–100 relevance instead of converting
-every positive root to 100. Child categories still distribute their parent's budget,
-including a group with one child; concrete products retain their separate suitability
-semantics. Saved historical results are not rewritten.
-
-`LOCAL_ONNX` performs local embedding search and scoring. It cannot generate relation
-assessments: that part of an analysis remains explicitly unassessed/partial, with
-no unsupported completion call, repeated retry or inferred confirmed absence of
-relationships. A generative provider is required for generated relation evidence.
-
-### Experimental Sparx EA XMI exchange
-
-The tool integration workflow now offers an experimental `sparx-xmi-2.1@1`
-profile for reviewed file import and export. It reuses the existing durable
-preview, identity, three-way conflict and semantic journal services. The semantic
-subset covers packages, mapped elements, project requirements, tags and supported
-connectors; layout remains excluded with an explicit loss report.
-
-This is partial delivery of [#1075](https://github.com/carstenartur/Taxonomy/issues/1075).
-Real Enterprise Architect compatibility has not been executed. OSLC AM live
-synchronization and conditional publication remain unimplemented. See the
-[English](docs/features/sparx-integration.md) or
-[German](docs/features/sparx-integration-de.md) guide before evaluating the profile.
-
-### Project and requirement portfolio workflows
-
-The portfolio workbench supports a traceable end-to-end process rather than isolated screens:
-
-- project creation, selection, and independent requirements;
-- reviewed PDF and DOCX import with an atomic apply step;
-- immutable requirement versions, snapshots, history, and diffs;
-- persisted asynchronous analysis jobs with reload recovery and retry;
-- evidence-backed taxonomy mapping review;
-- solution and product catalogues with comparisons and requirement links;
-- conflict detection with guided decisions;
-- interactive coverage and decision matrices with drill-down and filtered CSV/JSON export;
-- portfolio Git preview, commit, materialisation preview/apply, ordinary merge, and semantic merge;
-- project and requirement reports in HTML, DOCX, Markdown, JSON, and CSV.
-
-The browser acceptance suite exercises this as a vertical workflow and treats serious accessibility findings as release failures. See the [Project Portfolio Guide](docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md) and [feature matrix](docs/en/PROJECT_PORTFOLIO_FEATURE_MATRIX.md).
-
-### Authoritative and recoverable requirement Copilot sessions
-
-The requirement Copilot no longer treats one browser request or one polling connection as the authority for a longer analysis session. The persisted server operation exposes explicit `RUNNING`, `SUCCEEDED`, `PARTIAL`, `FAILED`, and `CANCELLED` states and remains observable across transient status failures, navigation and page reloads.
-
-The session workflow includes:
-
-- explicit `RECONNECTING` state instead of declaring a still-running server operation failed;
-- indeterminate progress for opaque LLM work and determinate progress only for completed passes;
-- cancellation that waits for the authoritative terminal state;
-- visible running, success, and failure states for DOCX, HTML, and JSON decision-report exports;
-- validation of non-empty export bodies, media types, and filenames;
-- non-secret AI target descriptors covering provider, model, operating mode, health, configuration fingerprint, and prompt budget;
-- fail-closed prompt-size enforcement immediately before every productive HTTP LLM request;
-- persisted, addressable failure evidence when a saved requirement exceeds the configured prompt budget.
-
-A PostgreSQL/Testcontainers browser acceptance performs one coherent session with cancellation, forced restart, a transient poll failure, reload recovery, result navigation, real exports, OOXML validation, cross-format evidence checks, responsive controls, and a server-owned oversized-prompt failure.
-
-This Copilot-session scope does not establish completion of the separate durable ad-hoc synchronous/SSE operation and replay work in [#808](https://github.com/carstenartur/Taxonomy/issues/808). Likewise, the portfolio Git operations above are not a claim that every portable installation backup, database-to-database restore or external Git reintegration scenario in [#1146](https://github.com/carstenartur/Taxonomy/issues/1146) is accepted.
-
-### Versioned Information Product overlay and bounded concrete-product analysis
-
-The checked-in C3 Excel workbook remains the upstream catalogue baseline. A versioned JSON overlay applies explicit structural corrections and draft Information Product classifications without rewriting that workbook.
-
-The overlay contract:
-
-- rejects unknown parents, self-parenting, cycles, cross-root edges, unresolved strict-coverage entries, and source-title or source-state drift;
-- recalculates effective hierarchy levels after validated corrections;
-- retains source identity and provenance;
-- records a proposed primary family, optional secondary candidates, confidence, `reviewRequired`, and written justification for every draft mapping;
-- incorporates the Excel digest, overlay digest, and mapping version into the effective catalogue fingerprint.
-
-Concrete `PRODUCT` leaves are evaluated independently from taxonomy categories in deterministic batches of at most ten. All products may score zero. When a relevant family has no suitable catalogued product above the configured threshold, Taxonomy emits a structured product-coverage gap instead of inventing a taxonomy node or a winning product. Failed or incomplete product batches remain `PARTIAL` and never become confirmed gaps. Completed product evidence and an already established gap remain available when a separate category call fails.
-
-Every overlay mapping delivered in 1.5.2 is provisional and requires expert review. The dedicated review queue and runtime Git-promotion workflow are not part of this release. General two-stage analysis for arbitrary taxonomy category nodes with more than ten children also remains follow-up work; the bounded concrete-product path must not be presented as completion of that broader high-fan-out programme.
-
-### Versioned Word templates and template-backed decision reports
-
-Administrators can maintain DOTX templates through the browser or a virtual WebDAV collection while retaining precise Git history for the unpacked OOXML package contents. Taxonomy stores each template canonically as an unpacked tree in a dedicated Hibernate-backed JGit repository and materialises a valid `.dotx` package on demand. WebDAV exposes complete Office documents only; the unpacked representation remains an internal Git and inspection concern.
-
-The browser administration surface provides upload, current and historical download, version history, and test export. The underlying service and Git model also support per-part inspection, comparison, and conflict-protected restore. A fully guided compare-and-restore workflow in the administrator UI remains follow-up work and is not claimed as complete in 1.5.2.
-
-The template boundary includes:
-
-- revocable, user-bound WebDAV application credentials with read/write scopes, expiry, hashed storage, one-time secret display, exact token parsing, and bounded fail-closed authentication lockout;
-- ETags, lock tokens, conditional writes, stale-write rejection, and concurrent-create protection;
-- rejection of unsafe ZIP paths, malformed XML, invalid manifests and relationships, unsafe external links, dangerous Word field instructions, macros, ActiveX, OLE objects, and signatures;
-- rejection of comments and reviewer identity, tracked insert/delete/move/cell revisions, tracked-revision mode, hidden or web-hidden text in document stories, custom XML, custom document properties, printer settings, stale thumbnails, and uncontrolled personal or workstation metadata;
-- a fail-closed placeholder contract that permits known Taxonomy tokens only in supported body/table paragraphs, headers, and footers and rejects unknown, malformed, text-box, content-control, footnote, metadata, attributes, and other unsupported placements before activation;
-- deterministic package materialisation and semantic-validation caching by immutable template revision.
-
-Taxonomy rejects unsafe or privacy-bearing templates; it does not silently sanitize and activate them. A downloadable sanitization report and optional deterministic cleanup remain post-1.5.2 administration enhancements.
-
-A valid macro-free decision-rationale template is bundled and seeded idempotently without overwriting organisation-specific changes. Generated reports inherit the selected template's branding, page setup, styles, headers, footers, and static metadata while retaining the generated executive summary, decision chapters, diagrams, and appendix. Every emitted XML part is checked for unresolved Taxonomy placeholders.
-
-The produced DOCX records the full template ID, full 40-character Git revision, and canonical package SHA-256 in custom document properties independently of any visible template fields. The browser/container acceptance path starts the packaged application with Testcontainers, signs in through Playwright, verifies first-start seeding and WebDAV discovery, downloads the generated DOCX, validates the package, and renders that exact document through LibreOffice. See the [English document-template guide](docs/en/DOCUMENT_TEMPLATES.md) and [German document-template guide](docs/de/DOCUMENT_TEMPLATES.md).
-
-### Server-authoritative architecture workbench
-
-Requirement architecture is rendered from the persisted analysis snapshot through one neutral server-side diagram scene. The browser view, standalone SVG, and vector PDF use the same semantic nodes, relationships, layout, and source snapshot. Viewing or exporting an existing snapshot does not invoke the LLM and does not rebuild historical content from current preferences. See [ADR 0003](docs/adr/0003-server-authoritative-architecture-workbench.md).
-
-### Deterministic local semantic-search readiness
-
-The local ONNX path has an explicit, fail-closed lifecycle:
-
-- the pinned embedding model is restored or downloaded deterministically;
-- catalogue nodes are available before the semantic index is rebuilt;
-- the application reports readiness instead of exposing a partially initialised index;
-- stale or missing indexes are rebuilt through the controlled initializer;
-- real-model and browser tests cover startup, readiness, rebuild, and interaction behaviour;
-- graph and similar-node result counts are bounded before Hibernate Search or candidate arithmetic, and non-positive graph limits perform no embedding or search work.
-
-BGE embeddings explicitly use normalized CLS pooling. Semantic search separates
-bounded ANN candidate exploration from the number of returned hits. Existing vectors
-from the earlier pooling behavior require rebuilding through the LOCAL_ONNX
-initializer. The paired DE/EN reference evaluation keeps German reference misses
-visible; English-model success is not evidence of equivalent German retrieval quality.
-
-Custom OpenAI-compatible provider configuration and diagnostics also provide clearer validation and failure reporting.
-
-Graph semantic search additionally requires a proven relation source for the
-selected repository, scope and branch. The existing central/default-branch legacy
-fallback retains relation KNN. A current, exactly empty branch projection can
-return catalogue node hits with empty relation statistics. A nonempty projection
-without branch/commit-bound relation vectors, an unready source, or a source/head
-change during the search returns explicit unavailability. Global `graphReady`
-reports model/index prerequisites; it does not certify every selected branch.
-Complete branch semantic indexing remains follow-up work in
-[#741](https://github.com/carstenartur/Taxonomy/issues/741).
-
-### Responsive and accessible task interaction
-
-Navigation and task controls remain discoverable at narrow widths and 200–400% zoom. Overlays cannot silently hide the required action surface, disclosures use collision-safe identities, keyboard order follows visual order, and shared semantic helpers keep role and accessibility state consistent.
-
-### Rancher, RKE2, and constrained-cluster deployment
-
-The Helm chart includes:
-
-- a Rancher/RKE2 profile for ingress-nginx under `/taxonomy/`;
-- a generic small evaluation profile with a 500-mCPU ceiling;
-- forwarded-prefix and browser base-path handling that prevents sub-path 404 responses;
-- explicit immutable-image requirements, readiness checks, ResourceQuota and LimitRange validation, restricted-egress coverage, secret-safe diagnostics, and NetworkPolicy guidance.
-
-See the [Rancher/RKE2 deployment guide](deploy/helm/taxonomy/RANCHER.md). The small profile is an evaluation and functional-validation floor, not a measured capacity claim for bulk imports, local model download, or high-concurrency analysis.
-
-### Audited runtime configuration and safer operator defaults
-
-The German and English configuration references form an executable inventory of deployment-facing settings. A contract test discovers effective Spring placeholders, direct bindings, feature switches, and `@ConfigurationProperties` fields and requires both language references to match. Profile-dependent database, Hibernate Search, LLM, Copilot/Autopilot, portfolio, document-import, security, repository, and lifecycle settings are identified explicitly rather than being presented as one global default.
-
-The historical name `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` remains unchanged, but its actual scope is explicit: it limits architecture views created by both manual Copilot and Autopilot. The effective ceiling is the lower of that value and `TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES`. Production Compose forwards the operator-maintained `.env` file and no longer enables local embeddings implicitly; embedding inference and runtime model download remain separate opt-ins.
-
-Interactive login and machine monitoring credentials are deliberately separated. `TAXONOMY_ADMIN_PASSWORD` bootstraps the local form-login administrator. The historic application variable `ADMIN_PASSWORD` remains the optional Actuator/admin token. In the supplied Helm chart, the existing Secret key `ADMIN_PASSWORD` continues to supply the login credential for upgrade compatibility, while a distinct optional `ADMIN_TOKEN` key supplies the machine token and protected ServiceMonitor. The chart rejects reuse of one Secret key for both purposes and rejects an application/ServiceMonitor token-key mismatch. Token-authenticated Actuator reads work behind a context path, missing or incorrect tokens are rejected, and CSRF protection remains enabled.
-
-### Reliability and data integrity
-
-Analysis-draft autosaves are serialized. Multiple browser changes that arrive during an active save are coalesced and persisted with the server-returned optimistic revision, preventing two local PUT requests from racing with the same version. Genuine cross-tab or cross-device conflicts remain visible and require an explicit user decision.
-
-The PostgreSQL schema removes the redundant non-unique relation-projection checkpoint index through immutable migration V18 while preserving the equivalent constraint-owned unique index. The JPA mapping no longer recreates the removed index when schema update is enabled, and Testcontainers coverage proves the resulting index state.
-
-Relationship hypotheses and their evidence retain explicit branch authority in
-addition to repository and workspace identity. The selected branch applies to
-reads, review, analysis-session linking, counts and publication. A hypothesis may
-exist independently on two branches without one branch accepting or modifying
-the other's row. Evidence is constrained to its parent's full authority tuple.
-The upgrade derives legacy branches only from consistent recorded project or
-analysis-snapshot links. Missing or conflicting provenance stops migration with
-bounded diagnostics and retains the data for operator correction.
-
-Materialization with an omitted branch uses the selected authorized branch for
-the document, projection and response context. Explicit contradictory branches
-remain rejected. Typed knowledge backup payloads include the stored hypothesis
-branch and use component schema version 2; the portable NDJSON envelope remains
-version 1. Staged HSQLDB restore migration V13 enforces the same required branch
-and composite evidence authority. Populated staging data without that authority
-stops migration and remains intact for operator correction.
-
-### Integrated multi-repository technical foundation
-
-Taxonomy 1.5.2 includes the repository-scoped storage, context, and service foundation needed for future multi-repository operation. This is not yet a generally supported public multi-repository product surface. The `/api/repositories/**` API remains disabled by default, and the broader tenancy, recovery, authority, cache, UX, and end-to-end isolation programme remains tracked separately. The established primary-repository/workspace behaviour is the supported default for 1.5.2.
-
-## Security and bounded runtime state
-
-The storage dependency is updated to released `jgit-storage-hibernate-core:0.11.4`.
-PostgreSQL JDBC is pinned to `42.7.14`, incorporating the fixes for
-[CVE-2026-107314](https://github.com/pgjdbc/pgjdbc/security/advisories/GHSA-rhp9-mr79-r74h)
-and [CVE-2026-107315](https://github.com/pgjdbc/pgjdbc/security/advisories/GHSA-f64h-wr5q-3qf3).
-Taxonomy retains its synchronization safeguard for the
-[upstream lock-order issue](https://github.com/carstenartur/jgit-storage-hibernate/issues/363).
-
-Both managed Jackson lines include the Databind fixes for CVE-2026-91776 and
-CVE-2026-91777: Jackson 2.22.3 and 3.1.7. The fixes bound polymorphic type-id caching
-and address quadratic forward-reference resolution. Maven Enforcer rejects the
-affected compile/runtime dependencies even when a BOM version is overridden.
-See the upstream [2.22.3](https://github.com/FasterXML/jackson/wiki/Jackson-Release-2.22.3)
-and [3.1.7](https://github.com/FasterXML/jackson/wiki/Jackson-Release-3.1.7) release notes.
-
-### Keycloak access-token audience validation
-
-REST bearer validation requires the configured application audience as well as
-the existing issuer, signature and lifetime checks. The default audience follows
-`KEYCLOAK_CLIENT_ID` (`taxonomy-app` by default); deployments with a distinct API
-audience can use Spring's standard resource-server audience setting. A token for
-another application, a missing audience or an `azp` claim alone is insufficient.
-The supplied realms include explicit access-token audience mappers. Existing
-Keycloak realms must be updated before upgrading API clients; see the
-[Keycloak migration guide](docs/en/KEYCLOAK_MIGRATION.md). Browser login and the
-existing principal identity modes remain unchanged.
-
-### Stable LLM quotas after authorization
-
-LLM-backed operations consume quota only after Spring Security has authenticated and authorized the request. Local accounts are keyed by a digest of the canonical authenticated username. Keycloak browser OIDC and bearer JWT access for the same account share the exact immutable issuer/subject identity; editable display names, forwarding headers, and peer addresses do not create fresh budgets.
-
-The in-memory principal table is capped at 10,000 entries per running application instance, inactive entries expire, and identities above the cap share a fail-closed overflow budget. Exactly `0` disables the LLM quota; a negative value fails closed to one request per minute. HTTP 429 responses are UTF-8 JSON with `Retry-After` and `Cache-Control: no-store`. The same route contract applies at root and below a servlet context such as `/taxonomy`.
-
-### Authoritative login lockout
-
-The local-user login limiter is registered exactly once inside Spring Security, after trusted session restoration and before form-login and HTTP-Basic authentication. It counts only genuine downstream credential failures: a form-login error redirect or HTTP 401 after an explicit Basic API attempt. Missing credentials, bearer credentials, unrelated authorization failures, and an already authenticated session do not allocate or increment peer state.
-
-Peer identities use fixed-size SHA-256 digests of the framework-resolved remote address. The filter never parses client-controlled forwarding headers itself. State uses monotonic time, global expiry, a hard 10,000-peer cap per running instance, and a shared fail-closed overflow budget that cannot erase existing lockouts. Blocked attempts receive non-cacheable UTF-8 JSON HTTP 423 with `Retry-After`. Deployments must enable forwarded-address processing only behind a trusted ingress and prevent direct access to the application port.
-
-### Context-path-safe required password replacement
-
-Bootstrap and administrator-reset local credentials can be marked for mandatory replacement. The enforcement filter is registered only once in the local Spring Security chain. It compares application paths after removing the servlet context, so `/taxonomy/change-password`, its API, and required CSS, JavaScript, image, and webjar resources remain reachable instead of entering a redirect loop.
-
-Browser redirects stay inside the active context. Restricted API calls return non-cacheable UTF-8 JSON HTTP 428 with the stable `PASSWORD_CHANGE_REQUIRED` code and a context-aware replacement endpoint. The existing root deployment and real HTTP-Basic password-replacement flow remain unchanged. Keycloak deployments continue to delegate password lifecycle policy to the identity provider.
-
-### Bounded WebDAV application-credential authentication
-
-The WebDAV credential boundary rejects oversized Basic headers before Base64 decoding, bounds decoded credential material, requires strict UTF-8, limits username and password code points, and invokes the credential service only for the exact productive 71-character `taxdav_…` syntax. Malformed or oversized application-token candidates receive the same generic Basic challenge without reaching BCrypt. Ordinary local-account Basic authentication still falls through to Spring Security.
-
-Failure state stores only a digest of the framework-resolved peer and normalized supplied username. Admission, cleanup, and overflow selection are serialized; the regular table is capped at 10,000 identities per running application instance; inactive entries expire; and excess identities share one fail-closed overflow tracker instead of clearing active lockouts. After ten failures, the next attempt receives non-cacheable UTF-8 JSON HTTP 429 with `Retry-After`. Read/write scope enforcement and conditional WebDAV operations are unchanged.
-
-### Sanitized expected failures
-
-Repairable decision-report template unavailability has a stable, non-sensitive HTTP 503 contract. Framework-level and generic HTTP 5xx responses no longer copy arbitrary exception messages to clients; complete exceptions remain available in server logs. The release candidate also retains sanitized diagnostics, secret-safe health checks, and explicit fail-closed startup validation for unsafe production credentials.
-
-All LLM quota, login-lockout, and WebDAV credential-failure counters are process-local. Multi-replica deployments multiply aggregate allowance and keep separate lockout tables unless an outer distributed control is supplied.
-
-## Modular runtime architecture and plugins
-
-Taxonomy remains one deployable Spring Boot application. Workspace, knowledge,
-templates, interoperability, architecture, analysis and portfolio have physical Maven
-owners. Reporting has a separate implementation and framework-free model API; templates
-also expose a framework-free consumer API. Enforced dependencies remain acyclic and
-prevent feature implementations from depending back on the application.
-
-The packaged host uses `PropertiesLauncher`. Six feature implementations are installed
-beside the host in `features/`: templates, architecture, reporting, analysis, portfolio
-and interoperability. Startup validates feature dependencies and exact host-version
-compatibility before opening database connections or HTTP listeners. Changing this
-feature set requires a stopped host and restart; removing a feature does not delete its data.
-Workspace, knowledge, security, migrations and application-wide composition remain in
-the core distribution.
-
-Mermaid is an independently built plugin in `plugins/`. The runtime validates artifact
-identity and SDK compatibility, and the existing export routes resolve contributions
-through the shared registry. Optional administrator-controlled activation and draining
-are disabled by default and apply only to eligible dynamic export/renderer contributions
-on supported single-instance deployments. There is no remote plugin upload UI. Startup
-contributions and cluster/Artemis/worker deployments reject dynamic changes.
-
-Durable provider jobs retain exact plugin identity and a non-secret configuration
-fingerprint; workers reject mismatches before contacting the provider. Backups declare
-data-owning feature prerequisites and reject missing or changed artifacts before restore.
-Plugin binaries are not backup payloads; retain the matching verified distribution.
-These safeguards do not complete the broader backup/restore programme in
-[#1146](https://github.com/carstenartur/Taxonomy/issues/1146).
-
-The downloadable `taxonomy-1.5.2-distribution.tar.gz` contains `app.jar`, the six feature
-JARs, plugin JARs with their checksums, legal notices, release notes and launch instructions.
-Verify the archive checksum, extract it, then run `java -jar app.jar` from its distribution
-directory. A standalone host JAR contains only the core; copy the complete distribution
-for the standard installation. Publication requires both the archive and its checksum.
-
-Unit tests, packaged HTTP tests, plugin lifecycle tests, backup compatibility contracts
-and the full `plugin-packaging-tests` profile verify these boundaries. See the
-[module boundaries](docs/en/MODULE_BOUNDARIES.md),
-[extension and startup contracts](docs/dev/extension-module-boundaries.md) and
-[extraction completion scope](docs/dev/MODULE_EXTRACTION_COMPLETION.md).
-
-## Release and reproducibility
-
-### One exact release candidate
-
-Every release request is bound to one exact reviewed parent commit and may change only `.github/release-request.json`. Its revision must advance exactly once. Before immutable artifacts are published, the unchanged candidate must pass:
-
-- canonical CI/CD and browser verification;
-- PostgreSQL compatibility;
-- Oracle compatibility;
-- Microsoft SQL Server compatibility;
-- CodeQL source analysis;
-- Security Scan;
-- relevant constrained-Kubernetes, document-template, and consumer contracts.
-
-Missing, failed, cancelled, unexpectedly skipped, timed-out, mismatched, or unreliable exact-SHA evidence stops publication.
-
-### Exact-fingerprint CodeQL migration boundary
-
-The 1.5.2 release train removes six previously baselined findings: the WebDAV write-scope authorization dataflow, two unbounded semantic-search arithmetic paths, and three predictable temporary-evidence paths in JavaScript tooling.
-
-At the reviewed source `f47c0497dfee663de6a0e865ecfd99bc2151b8b8`, the checked-in [CodeQL baseline](.github/codeql-sarif-baseline.json) contains **3 entries**, all for `java/user-controlled-bypass` in `ProposalApiController`. Each records an exact primary-location fingerprint and a rationale referring to service-side context, authorization and expected-head checks. A retained entry is neither proof of an exploitable bypass nor a claim that the finding disappeared. Further work is tracked in [#857](https://github.com/carstenartur/Taxonomy/issues/857).
-
-The earlier count of eight and its list of remaining logging/bootstrap-password findings are not the current baseline inventory. No complete rule class, severity or path is excluded. New occurrences still require the normal exact-fingerprint review and release gates; the eventual release source must be checked again rather than inheriting this count from prose.
-
-### Immutable, digest-bound delivery
-
-The release transaction aligns source and deployment evidence:
-
-- the release tag and packaged source are verified before use;
-- the complete application distribution, Maven module JARs, checksums, SBOM/VEX companion, Helm assets, and Kubernetes manifests are archived;
-- the OCI image carries source/version labels and is referenced by immutable digest;
-- provenance and SBOM attestations are enabled;
-- the immutable digest is vulnerability-scanned before the draft release becomes public;
-- Helm deployment evidence records the same image digest and source commit.
-
-### Runtime security and release stability
-
-The runtime image explicitly updates `libssl3` and `openssl` alongside its existing
-healthcheck dependency. [Ubuntu USN-8847-1](https://ubuntu.com/security/notices/USN-8847-1)
-identifies `3.0.2-0ubuntu1.30` as the fixed Jammy version for the OpenSSL issue that
-blocked the staged 1.5.0 image. The actual release digest must still pass the
-unchanged HIGH/CRITICAL vulnerability gate before publication.
-
-The release image uses an explicitly selected attestation-capable Buildx builder.
-The final Main revision is checked again immediately before publication and the
-deployment hook, so a changed candidate stops the transaction. Browser verification
-also retains a persistent workspace-sync fixture across concurrent requests and
-waits for the completed publish state, strengthening the evidence used by these gates.
-
-### Maven/JUnit-owned quality contracts
-
-Maven remains the canonical verification entry point. Deterministic repository policy is owned by JUnit/Failsafe or dependency-free Java tooling, including workflow test authority, documentation links, aggregate reactor coverage, dependency alignment, immutable supply-chain references, packaged dependency hygiene, frontend API boundaries, release version state, request ancestry, CodeQL SARIF enforcement, and SBOM/VEX companion generation.
-
-Split CI now assigns JavaScript contracts and packaged plugin integration tests
-to one authoritative lane each and consumes their original reports in the final
-evidence. Companion plugin/database runs avoid repeating upstream unit suites;
-standalone verification keeps its normal coverage. An opt-in JUnit Platform
-discovery filter removes inherited duplicate methods from the two selected
-reformulation subclasses while retaining their own cases and the original base
-suite. Required checks, assertions and coverage thresholds remain in force. See
-[test execution ownership](docs/superpowers/specs/2026-10-24-test-execution-ownership-design.md).
-
-A bounded set of existing Python release adapters and evidence generators remains in 1.5.2 under Maven/JUnit-owned positive and negative contracts. Remaining adapter migration and release-manifest work is tracked in [#629](https://github.com/carstenartur/Taxonomy/issues/629); [#673](https://github.com/carstenartur/Taxonomy/issues/673) was closed for delivered foundations only, not for complete Python removal. This release introduces no new Python tooling and does not represent retained adapters as product runtime dependencies.
-
-The Java/Maven-only reproducibility requirement is **not yet fulfilled**. The current [Maven verification inventory](docs/dev/MAVEN_VERIFICATION.md) lists remaining container/Helm prerequisites, checks outside root `verify`, conditional integration lanes and post-test evidence rules. Neither the `ci` profile alone nor `test-local` proves all Actions checks were reproduced. This is a known delivery gap, not a passed release criterion.
-
-## Compatibility and deliberate exclusions
-
-- AI-generated mappings, architectures, gaps, solutions, products, scores, and rationales remain proposals requiring qualified human review. Taxonomy 1.5.2 does not claim independently benchmarked architecture accuracy or calibrated decision probability.
-- Provisional Information Product mappings are not external approvals. The dedicated expert review queue and runtime Git-promotion workflow remain follow-up work.
-- General two-stage high-fan-out category analysis is not complete; the bounded concrete-product path covers product leaves, not every taxonomy node with a large child set.
-- The public multi-repository API is disabled by default and is not a production-supported 1.5.2 capability.
-- Federated authority and collaborative-editing documents are planning baselines, not claims that those future capabilities are delivered.
-- WebDAV exposes valid packaged DOTX resources only; unpacked OOXML remains an internal Git and inspection concern.
-- The administrator UI does not yet provide the complete guided template compare-and-restore journey, although the versioned backend capabilities exist.
-- Raw Taxonomy placeholders inside Word text boxes, content controls, footnotes, metadata, attributes, and other unsupported stories are rejected rather than silently exported. Full content-control-driven chapter and appendix templating remains follow-up work.
-- Direct Word links require public HTTPS except for loopback development. Deployments should use scoped application credentials rather than ordinary account passwords for desktop WebDAV clients.
-- Direct desktop-Word editing is not certified as generally compatible across Microsoft 365 versions, operating systems, reverse proxies, credential managers, and recovery/autosave flows. Ordinary HTTPS download and upload remain the supported fallback.
-- WebDAV lock coordination is process-local. Multi-replica direct editing requires shared lock coordination and remains follow-up work; Git/ETag preconditions still prevent silent lost updates.
-- LLM quota, login-lockout, and WebDAV authentication-failure state is process-local rather than cluster-global.
-- DOCX and FOP/PDF decision reports use separate rendering paths. Their end-to-end semantic parity is tracked separately and is not claimed by this release.
-- Autosave-session grouping and long-history/template-count performance work remain follow-up items.
-- `ADMIN_PASSWORD` is a separate machine token and is not the local form-login password; production installations that use both must configure distinct values.
-- Local semantic embeddings and runtime model download are disabled unless explicitly enabled.
-- Complete Python removal and the remaining release-manifest implementation are open in #629; the closed foundation issue #673 must not be used as proof of completion.
-- The small Kubernetes profile is not a measured production capacity envelope.
-- The unpublished `v1.3.1`, `v1.4.0`, `v1.4.1`, `v1.5.0` and `v1.5.1` tags must not be used as substitutes for 1.5.2 release assets.
-
-## Upgrade notes
-
-Apply these instructions only to published 1.5.2 assets with matching source and verification evidence. They do not authorize deployment of an unpublished attempt tag.
-
-1. Back up the application database and persistent storage using the normal operational procedure.
-2. Keep existing installations on their supported, verified release until a successor is actually published. Validate the intended upgrade from 1.3.0 on a restorable copy; do not infer upgrade acceptance from a successful fresh install.
-3. After the first 1.5.2 start, verify that `decision-rationale-report.dotx` is present in `/admin/document-templates`. Seeding is idempotent and does not replace an organisation-specific revision.
-4. Existing or newly uploaded Word templates containing comments, tracked changes, hidden text, custom XML, personal/workstation properties, unsupported Taxonomy token placements, or other rejected constructs must be cleaned in Word before Taxonomy will activate them.
-5. Configure a trusted external HTTPS origin before enabling direct Word/WebDAV actions, and create scoped WebDAV application credentials for users who require them.
-6. For local form login, configure `TAXONOMY_ADMIN_PASSWORD`. Review `TAXONOMY_REQUIRE_PASSWORD_CHANGE`, `TAXONOMY_LOGIN_RATE_LIMIT`, `TAXONOMY_LOGIN_MAX_ATTEMPTS`, and `TAXONOMY_LOGIN_LOCKOUT_SECONDS` before production rollout. Forwarded peer addresses are trustworthy only behind a controlled ingress.
-7. When protected Actuator or ServiceMonitor access is used, configure a distinct machine token. With the supplied Helm chart, keep Secret key `ADMIN_PASSWORD` for the login credential and add `ADMIN_TOKEN` for the machine token; never reuse one value for both. Installations with `serviceMonitor.enabled=false` may omit `ADMIN_TOKEN`.
-8. Review the bilingual configuration reference before carrying forward environment values. Production Compose forwards `.env`, while local embeddings and runtime model download remain disabled until enabled explicitly.
-9. Review every provisional Information Product mapping and every AI-generated decision before treating it as organisational or procurement authority.
-10. Deploy only an immutable digest whose source, version and scan evidence match an actually published GitHub Release. Do not deploy `latest` or an unpublished attempt tag, including `v1.4.1`, `v1.5.0` and `v1.5.1`.
-11. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml`, verify `/taxonomy/actuator/health/readiness`, and exercise the prefixed login/password-replacement path.
-12. Treat the reported semantic-search readiness state as authoritative while model/index initialization is in progress.
-13. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle.
-14. Follow the corrected [backup/restore procedure](docs/en/CONTAINER_IMAGE.md#5-persistence-and-backup), which resolves the actual Compose service volume. Restore acceptance must include users, workspace state, search and Git history.
-15. Use PostgreSQL's managed migration path for external production databases. MSSQL and Oracle remain compatibility profiles pending complete production qualification; switching a profile is not a cross-database data migration. Never use `ddl-auto=create` to upgrade an existing database.
-16. File-backed HSQLDB upgrades from 1.3 prepare required repository and portfolio tenant fields before Hibernate starts. Keep schema migration enabled and resolve reported provenance/key conflicts from a restored stopped-writer backup; do not bypass the checks or reassign historical data to the current branch. See the [database upgrade guidance](docs/en/DATABASE_SETUP.md#hsqldb-default).
-17. For Keycloak REST clients, configure access-token audience mappers before the upgrade. The expected audience defaults to `KEYCLOAK_CLIENT_ID`; custom client IDs and separate API audiences require matching provider and application configuration. Existing tokens without the intended audience will be rejected. See the [migration guide](docs/en/KEYCLOAK_MIGRATION.md).
-18. Test the hypothesis branch migration on the restored database. Repair reported missing or conflicting recorded links from trustworthy historical evidence before restarting. Do not assign an arbitrary branch or delete hypotheses/evidence to make an upgrade pass; any archival/removal requires a separate operator decision. The [database setup guide](docs/en/DATABASE_SETUP.md) describes the supported migration paths and compatibility limits.
-
-## Verification boundary
-
-Taxonomy 1.5.2 is published only after the release request, final source commit, Git tag, GitHub Release, Maven artifacts, checksums, SBOM/VEX evidence, OCI digest, image scan, attestations, Helm package, Kubernetes manifests, deployment evidence, and post-release `1.5.3-SNAPSHOT` state agree with the same release transaction.
+# Taxonomy 1.5.3
+
+Taxonomy 1.5.3 develops the path from retained requirements and analysis results
+to reviewed, editable architecture. It adds scoped inventory comparison,
+explicit snapshot adoption, stronger recovery and exchange evidence, and fixes
+analysis, navigation and export behavior. These notes describe the source for
+this release; publication is established by the published release assets and
+their matching source and digest evidence.
+
+## Requirements, decisions and architecture
+
+A retained analysis snapshot can be reviewed and adopted into an editable
+architecture working copy. The operation preserves the source requirement,
+snapshot and provenance, checks the current workspace, and uses the existing
+semantic command, undo and history mechanisms. Reopening the result does not
+require rerunning the model. Snapshot adoption remains an explicit user action.
+
+The requirement and architecture views now carry their project, repository and
+working-copy context through the workflow. Next-step controls expose
+reformulation, the focus lens and architecture editing where those actions are
+available. Tree and graph selection stay synchronized, while navigation and
+filter changes preserve diagram position. Printing supports A0 and A1 output.
+Contextual help is available from the application views.
+
+Rule weights and conflict scores are presented as heuristic evaluation inputs.
+Missing evidence and unresolved root relevance remain visible. They do not
+become exclusions, fulfillment percentages or probabilities of correctness.
+The Copilot finalizes and retains its reports on the server; opening a second
+browser tab no longer causes the previously observed analysis conflict or
+unintended cancellation.
+
+See [the user guide](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/en/USER_GUIDE.md),
+[the project portfolio guide](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md) and
+[the German portfolio guide](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/de/PROJECT_REQUIREMENT_PORTFOLIO.md).
+
+## Scoped inventory evidence
+
+Saved requirement analyses can be compared with curated product evidence and
+inventory observations from operator-approved source profiles. Findings keep
+their source,
+identity mapping, context, time and evidence. Availability and capabilities
+remain distinct, and an absence of evidence is not a positive or negative
+inventory assertion. Retained comparisons and deliberate review decisions
+remain available after reopening the requirement.
+
+Relationship requirements distinguish directed interfaces, dependencies,
+alternatives and hard exclusions. Evidence is matched by endpoint identities,
+relationship meaning, contract or version qualifier, context and time. Expired or
+incomplete evidence remains an
+open question. Existing project solutions serve as domain variants: comparison
+retains their prerequisites, risks, cost assumptions, evidence and open points.
+Selection is deliberate and reasoned; a hard exclusion prevents selection.
+These decisions use the existing portfolio, history and review mechanisms.
+Coverage remains an explicit reviewed assessment; the comparison does not rank
+variants or declare a requirement fulfilled.
+
+Alfabet is available as an optional inventory-source plugin alongside the
+existing supported adapters. Access depends on an explicitly configured and
+authorized source profile; an imported or restored observation does not itself
+activate permission to contact that source.
+
+See [inventory comparison](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/features/inventory-comparison.md) for the
+supported evidence and review contracts.
+
+## Recovery and exchange
+
+Native cold installation recovery captures a stopped, file-backed HSQL
+installation and restores it to a distinct data root for the same application
+version. The application rehearsal checks retained data, Git-backed history,
+reopening and semantic undo/redo. A cold backup requires all writers to stop;
+copying a live database directory is not an equivalent operation.
+
+The same-version native recovery tooling also supports PostgreSQL 16 with a
+custom-format logical dump and the stopped application's filesystem content.
+It requires a separately created empty target database and an absent target data
+root, checks their physical identities, and applies database content and its
+restore receipt in one transaction before publishing the files. Native recovery
+preserves stored application identities and grants; it requires operator control
+of external access and pending work before the restored application starts.
+The generic portable cross-database/owner restore registry remains closed where
+the required importers are incomplete. See
+[PostgreSQL recovery](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/testing/native-postgresql-recovery.md).
+
+The installed-product acceptance lane now passes the actual architecture
+workbench ArchiMate export to Archi and checks the returned model, separately
+from the integration exchange profile. Evidence identifies the product,
+profile, file hashes and accepted transformations. Visio exports now open on
+native editable drawings, preserve their element and relationship identities,
+and place supporting text on appendices. Requirement context is exported
+through the bounded supported fields.
+
+An explicit Archi 5.10 return workflow accepts the strict original export and a
+content-preserving returned XML file. It checks identities, values, provenance,
+geometry and view order, lists every supported representation loss, and requires
+review before applying relations between existing catalogue elements. The strict
+ordinary reader
+is unchanged. Semantic edits in Archi, restoration of a whole architecture
+snapshot, and transfer of review authority are outside this return profile.
+
+See [native installation recovery](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/testing/native-installation-recovery.md)
+and [scenario acceptance](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/testing/scenario-acceptance.md) for the tested
+operations and exact compatibility boundaries. The
+[Archi return guide](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/features/standards-interoperability.md#bounded-archi-return-to-catalogue-relations)
+describes the reviewed import, while the
+[exchange-profile guide](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/dev/ARCHIMATE_EXCHANGE_PROFILE.md#consumer-evidence-and-remaining-acceptance)
+records installed-consumer evidence and its limits.
+
+## Model evaluation and verification
+
+Model-comparison evidence and manual review are bound to a validated run and its
+original and reformulated requirements, source revision, provider/model
+identity, output hashes and actual execution results. Mismatched or incomplete
+evidence is rejected. Authored scenario responses remain deterministic
+functional test inputs, not live-model quality evidence.
+
+Full live-provider quality assessment still requires an actual configured
+provider and the specified human review. Live LeanIX/Alfabet installation
+acceptance and licensed Microsoft Visio acceptance likewise require their
+respective environments. Installed Archi checks, independent document rendering
+and local XML/package checks establish their documented scopes only.
+
+See [reformulation verification](https://github.com/carstenartur/Taxonomy/blob/v1.5.3/docs/testing/requirement-reformulation.md).
+
+## Runtime and operation
+
+The build and application runtime now use **Java 25**. Source deployments must
+update their JDK; packaged images and their runtime metadata use the same
+version. Local ONNX search initialization works with generative LLM provider
+configurations. Deployment documentation includes the Artemis Kubernetes setup.
+
+PostgreSQL remains the external production database profile with its managed
+migration contract. SQL Server and Oracle retain their documented evaluation
+and compatibility scope. Database migration, native recovery and portable
+cross-database restoration are separate operations; changing a Spring profile
+does not migrate stored data.
+
+## Release evidence
+
+Use only the assets of the published v1.5.3 release together with their source,
+checksums and image digests. The normal release workflow verifies the reviewed
+source, builds the immutable artifacts, checks the final development snapshot
+and applies the existing security and delivery gates before publication.
+Merged pull requests and selected local test results are not a substitute for
+that final release evidence.
