@@ -75,12 +75,17 @@ class PortfolioClientRoutingIT {
             }
         });
         page.open("index", prefix, "/", language, "localStorage.setItem('taxonomy_onboarded', 'true');");
+        awaitTranslationContinuations();
+        // Onboarding rearranges the task surface after its asynchronous account lookup.
+        // Wait for that UI to exist, then use the same native click path as other client contracts.
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.id("analysisTaskProgress")));
+        click(By.id("businessText"));
         driver.findElement(By.id("businessText")).clear();
         driver.findElement(By.id("businessText")).sendKeys("Unsaved contextual-help requirement");
-        driver.findElement(By.cssSelector("#mainNavTabs [data-page='graph']")).click();
+        click(By.cssSelector("#mainNavTabs [data-page='graph']"));
         String original = driver.getWindowHandle();
         var windows = driver.getWindowHandles();
-        driver.findElement(By.cssSelector("#tab-graph .context-help")).click();
+        click(By.cssSelector("#tab-graph .context-help"));
         wait.until(web -> web.getWindowHandles().size() == windows.size() + 1);
         String help = driver.getWindowHandles().stream().filter(handle -> !windows.contains(handle)).findFirst().orElseThrow();
         try {

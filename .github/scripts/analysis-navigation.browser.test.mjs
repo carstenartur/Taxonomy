@@ -186,8 +186,8 @@ test('dismissing inline feedback returns focus to the closed settings launcher',
         assert.equal(await page.locator('#applicationSettings').getAttribute('open'),null);
     }finally{await finish(page);}
 });
-test('Help loads once through the common navigation lifecycle and keeps F1 functional',async()=>{
-    const page=await fixture();try{
+for (const locale of ['de','en']) test(`${locale}: Help loads once through the common navigation lifecycle and keeps F1 functional`,async()=>{
+    const page=await fixture(locale);try{
         await page.evaluate(()=>{
             document.getElementById('tab-help').innerHTML='<ul id="helpTocList"></ul><h2 id="helpDocTitle"></h2><div id="helpDocBody"></div><button id="helpBackToTop">Top</button>';
             window.helpRequests=[];
@@ -196,10 +196,11 @@ test('Help loads once through the common navigation lifecycle and keeps F1 funct
         await page.addScriptTag({path:path.join(resources,'static/js/shared/taxonomy-help.js')});
         await page.locator('[data-page="help"]').first().click();
         await page.waitForFunction(()=>document.getElementById('helpDocBody').textContent==='Bedienung der Anwendung');
-        assert.deepEqual(await page.evaluate(()=>helpRequests),['/help','/help/USER_GUIDE']);
+        const expectedRequests=[`/taxonomy/help?lang=${locale}`,`/taxonomy/help/USER_GUIDE?lang=${locale}`];
+        assert.deepEqual(await page.evaluate(()=>helpRequests),expectedRequests);
         await page.evaluate(()=>navigateToPage('analyze'));await page.keyboard.press('F1');
         assert.equal(await page.locator('#tab-help').isVisible(),true);
-        assert.deepEqual(await page.evaluate(()=>helpRequests),['/help','/help/USER_GUIDE']);
+        assert.deepEqual(await page.evaluate(()=>helpRequests),expectedRequests);
     }finally{await finish(page);}
 });
 
