@@ -40,8 +40,9 @@ window.ArchitectureEditorApi = (function () {
             return window.TaxonomyI18n.resolveUrl(base + '.' + format + '?' + query(context, source === 'GIT_CHECKPOINT' ? context.commit : context.revision, layout, layoutRevision));
         },
         createWorkspace: function (context) {
-            return window.TaxonomyApiClient.sendJson('/api/repositories/' + encodeURIComponent(context.repositoryId) + '/workspaces', {
-                displayName: 'Architecture editor', description: '', sourceBranch: context.branch
+            return window.TaxonomyApiClient.sendJson(base + '/workspaces?' + query(context), {
+                repositoryId: context.repositoryId, branch: context.branch,
+                displayName: window.TaxonomyI18n.t('workflow.editor')
             });
         }
     };

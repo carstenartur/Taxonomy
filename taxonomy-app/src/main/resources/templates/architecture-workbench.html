@@ -12,6 +12,7 @@
           href="/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workbench.css}"
           href="/css/architecture-workbench.css"/>
+    <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
 </head>
 <body th:attr="data-project-id=${projectId},
                data-snapshot-id=${snapshotId},
@@ -24,7 +25,6 @@
 <header class="workbench-toolbar navbar navbar-dark bg-dark px-3">
     <a class="navbar-brand" th:href="@{/projects}" href="/projects" th:text="#{workbench.ui.brand}">Taxonomy Copilot Architecture</a>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-        <a class="btn btn-sm btn-outline-light" th:href="@{/architecture/editor}" th:text="#{editor.title}">Architecture editor</a>
         <button id="printArchitectureView" class="btn btn-sm btn-outline-light" type="button" disabled
                 th:title="#{workbench.ui.printTitle}" title="Print the displayed diagram, provenance and selection details"
                 th:text="#{workbench.ui.print}">Print view</button>
@@ -65,6 +65,7 @@
         </details>
     </div>
 </header>
+<section th:replace="~{fragments/architecture-workflow :: context}"></section>
 
 <div id="architectureStatus" class="workbench-status" role="status" aria-live="polite" th:text="#{workbench.ui.loading}">
     Loading persisted Copilot architecture snapshot…
@@ -181,6 +182,7 @@
         src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
 <script th:src="@{/js/taxonomy-i18n.js}"
         src="/js/taxonomy-i18n.js"></script>
+<script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
 <script th:src="@{/js/api/architecture-workbench-api.js}"

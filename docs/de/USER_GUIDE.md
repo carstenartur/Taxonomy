@@ -23,6 +23,27 @@ Das System untersucht den ausgewählten Taxonomieumfang hierarchisch und erhält
 > 💡 **Neue Benutzer:** Beginnen Sie mit dem Kernarbeitsablauf (Analysieren → Architektur → Export).
 > Mit der [Anforderungsklärung](#requirement-clarification-workflow) führen Sie Fragen zu gespeicherten Entscheidungen; [Analyseumfang und Fortschritt](#analysis-scope-and-progress) erläutern die Steuerung des Arbeitsaufwands.
 
+<a id="architecture-source-context"></a>
+## Den Bezug zur Anforderung beim Ansichtswechsel behalten
+
+Die gespeicherte Architekturansicht nennt Projekt, Anforderung und Analyse.
+**Anforderung und Nachweise** führt zu genau dieser Analyse zurück;
+**Anforderung klären** öffnet den zugehörigen Klärungsbereich.
+**Projektportfolio** wählt das entsprechende Projekt aus. Die Links behalten den
+ausdrücklich gewählten Arbeitsbereich bei, auch den gemeinsamen Arbeitsbereich.
+Die aktive Auswahl eines anderen Tabs ersetzt diesen Bezug nicht.
+
+**Architektur-Arbeitsstand öffnen** öffnet den aktuellen Editorstand des
+aufgezeichneten Repositorys und Zweigs. Dabei wird das Analyseergebnis weder in
+den Editor importiert noch der unveränderliche Snapshot bearbeitet. Im Editor
+bleibt **Zurück zur Ausgangsanalyse** erhalten, auch nach dem Anlegen eines
+privaten Arbeitsbereichs. Fehlt das aufgezeichnete Repository oder der Zweig,
+erklärt die Architekturansicht, warum dieser Editorübergang nicht verfügbar ist.
+
+Angenommene Editoränderungen werden als Operationen mit eigener Undo-/Redo-Historie
+gespeichert. **Checkpoint/Version erstellen** hält eine Git-Version fest.
+Element- und Historienlisten sind separat scrollbar und per Tastatur erreichbar.
+
 <a id="requirement-clarification-workflow"></a>
 ## Eine Anforderung durch Architektur und Entscheidungen klären
 

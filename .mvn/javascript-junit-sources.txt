@@ -22,6 +22,7 @@
 .github/scripts/architecture-workbench-basepath.test.mjs
 .github/scripts/architecture-workbench-fit.test.mjs
 .github/scripts/architecture-workbench-print.test.mjs
+.github/scripts/architecture-workflow.test.mjs
 .github/scripts/backup-export.test.mjs
 .github/scripts/browser-sessions-acceptance.test.mjs
 .github/scripts/browser-validation-departure.test.mjs
