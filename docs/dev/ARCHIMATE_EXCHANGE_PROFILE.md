@@ -157,17 +157,66 @@ projection, not as the persistence inverse of an architecture snapshot.
 
 ## Consumer evidence and remaining acceptance
 
-The regression suite proves normative XSD validity and the Taxonomy reader
-contract. It does not substitute for Archi desktop import or another independent
-architecture consumer. A source inspection of Archi commit
-`f757b06d5f75b5565786bb0679c75450cc3a577f` found that `XMLModelImporter` discards
-property-definition types because Archi stores property values as strings. This
-is **source evidence only**, not an executed import. A subsequent Archi export
-may therefore lose the typed-property declarations required by this profile; the
-strict reader rejects that changed contract rather than silently accepting it.
+The existing Maven-owned installed-product lane now distinguishes the integration
+profile `archimate-3.1/1` from this workbench profile. A passing integration-profile
+fixture cannot satisfy the workbench outcome. The workbench case calls the actual
+`ArchitectureSnapshotExportService`, retains its ZIP and manifest, and imports the
+exact `model.archimate.xml` bytes into pinned Archi **5.10.0** before exporting them
+again. Its authored frozen projection exercises model provenance, element and
+relationship identities and names, exact property values, endpoints, two views,
+labels, styles, language attributes and geometry.
+It is not a live analysis or an authorization test.
 
-Before closing #967, record successful imports of the same fixture into Archi and
-an independent consumer, including exact tool versions, Taxonomy source commit,
+The retained installed-Archi pair from 2026-10-29 contains these observed changes:
+
+| Affected items | Observed transition |
+| --- | --- |
+| 8 property definitions | `number` or `boolean` becomes `string` |
+| 96 property values | The emitted `en` language marker is omitted |
+| 89 names | `en` is omitted from 83 property-definition names and 6 model/element/relationship/view names |
+| 3 node labels | The complete label, including its `en` marker, is omitted |
+| 2 node line widths | The emitted `lineWidth="3"` is omitted |
+| 3 node styles | Fill alpha `100`, line RGBA `92/92/92/100`, and Sans `9` black font are added; original fill RGB stays exact |
+| 1 connection style | A black line and Sans `9` black font are added |
+| 2 source-type folders | The folders and their `en`-labelled names are omitted; element identities and diagram membership remain checked |
+
+Each affected item receives a `mappingLosses` record: 204 records in this retained
+pair. All 190 original language markers are accounted for: 185 omitted attributes
+on surviving values/names, plus 3 removed node labels and 2 removed folder labels.
+The 83 observed property-definition identifier rewrites are intentionally resolved
+by unique semantic property name; product-owned declaration IDs are separate from
+the names, values and declaration types being checked.
+
+The workbench DOM comparison checks names, labels and complete style subtrees.
+It accepts unchanged fields or only the exact observed transitions above; it does
+not discard styles or all language attributes. Other type/language/style changes,
+changed node labels or relationship names, changed values or provenance, missing
+elements or relationships, changed endpoints, altered view membership, and unknown
+geometry changes fail the check.
+The existing straight-line attachment-to-midpoint conversion is also reported
+when observed. A successful bounded check means that the declared content survives
+with those reported losses. **It does not mean that Archi preserves the typed
+Taxonomy profile.** The production `ArchiMateExchangeReader` remains strict and
+rejects the returned type-erased contract.
+
+Run the existing lane with Java 25 and its normal installed-product prerequisites:
+
+```bash
+./mvnw -B -f .github/ui-verification-pom.xml verify -Pinteroperability
+```
+
+The lane verifies the commit-bound application and feature JAR digests before
+running either exporter. `target/interoperability-products/evidence.json` retains
+the source commit/tree, application digest, exact product/profile versions,
+fixture hashes, per-profile result and observed losses. The existing JUnit report
+and CI artifacts retain separate outcomes for StrictDoc, integration ArchiMate,
+and workbench ArchiMate. The existing evidence artifact includes the exact
+`workbench.zip`, retaining its `manifest.json`, `mapping-profile.tsv` and source
+XML alongside the separate input/returned XML files. The pinned Archi release SHA-256 is
+`f9422455a00a22f5340dc28692ceafe0ad720c8cde839eaafb0fab1cea57287f`.
+
+Before closing #967, complete the acceptance in an independent consumer alongside
+the bounded installed-Archi record, including exact tool versions, Taxonomy source commit,
 schema/profile versions, fixture checksums, inspected model/view content and
 observed losses. Keep the UI experimental until those records exist. No claim of
 universal or named-tool compatibility is made by this implementation.
