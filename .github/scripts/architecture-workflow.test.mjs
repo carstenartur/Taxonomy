@@ -280,3 +280,83 @@ test('workbench project transport retains explicit source repository branch and 
     assert.equal(url(requests[0].url).searchParams.get('branch'),'retained-branch');
     assert.equal(api.scopeUrl('/taxonomy/api/projects/12?repositoryId=explicit-other'),'/taxonomy/api/projects/12?repositoryId=explicit-other');
 });
+
+async function returnUi(writableContext = true) {
+    const nodes = new Map();
+    for (const id of ['archiReturnOriginal', 'archiReturnFile', 'archiReturnPreview', 'archiReturnApply', 'archiReturnAccept', 'archiReturnStatus', 'archiReturnLosses']) {
+        nodes.set(id, {files: [], disabled: true, checked: false, children: [], textContent: '',
+            addEventListener(event, listener) {this[event] = listener;},
+            replaceChildren(...children) {this.children = children;}, appendChild(child) {this.children.push(child);}});
+    }
+    const calls = [];
+    const result = {writableContext, reviewFingerprint: 'review-sha', elementsMatched: 2, relationsParsed: 1, relationsSkipped: 0, relationsRejected: 0,
+        losses: [{scope: 'return', id: 'CP', field: 'label', kind: 'OMITTED', rationale: '<img src=x onerror=alert(1)>'}], notes: ['Bounded return']};
+    const context = vm.createContext({console, FormData: class {values = new Map(); append(k,v) {this.values.set(k,v);}},
+        document: {readyState: 'complete', getElementById: id => nodes.get(id), createElement: () => ({textContent: ''})},
+        TaxonomyI18n: {t: key => key}, TaxonomyRoleSurface: {canMutateArchitecture: () => true},
+        ImportApi: {previewArchiReturn: async form => {calls.push(['preview', form]); return result;},
+            applyArchiReturn: async form => {calls.push(['apply', form]); return {...result, relationsImported: 1};}}});
+    context.window = context;
+    vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/shared/archimate-return.js', import.meta.url), 'utf8').catch(() => ''), context);
+    return {nodes, calls, context};
+}
+
+test('Archi return requires both files, a completed preview and explicit loss acknowledgement before application', async () => {
+    const {nodes, calls} = await returnUi();
+    assert.equal(typeof nodes.get('archiReturnPreview').click, 'function', 'Return review UI must be installed');
+    nodes.get('archiReturnOriginal').files = [{name: 'source.xml'}];
+    nodes.get('archiReturnFile').files = [{name: 'returned.xml'}];
+    nodes.get('archiReturnFile').change();
+    await nodes.get('archiReturnPreview').click();
+    assert.equal(calls.length, 1);
+    assert.equal(nodes.get('archiReturnApply').disabled, true);
+    assert.match(nodes.get('archiReturnLosses').children[0].textContent, /<img/);
+    nodes.get('archiReturnAccept').checked = true; nodes.get('archiReturnAccept').change();
+    assert.equal(nodes.get('archiReturnApply').disabled, false);
+    await nodes.get('archiReturnApply').click();
+    assert.equal(calls[1][0], 'apply');
+    assert.equal(calls[1][1].values.get('reviewedFingerprint'), 'review-sha');
+    assert.equal(nodes.get('archiReturnApply').disabled, true);
+});
+
+test('Changing either Archi input invalidates the reviewed fingerprint and disables application', async () => {
+    const {nodes, calls} = await returnUi();
+    assert.equal(typeof nodes.get('archiReturnPreview').click, 'function');
+    nodes.get('archiReturnOriginal').files = [{}]; nodes.get('archiReturnFile').files = [{}];
+    nodes.get('archiReturnFile').change(); await nodes.get('archiReturnPreview').click();
+    nodes.get('archiReturnAccept').checked = true; nodes.get('archiReturnAccept').change();
+    nodes.get('archiReturnOriginal').change();
+    assert.equal(nodes.get('archiReturnApply').disabled, true);
+    await nodes.get('archiReturnApply').click();
+    assert.equal(calls.length, 1);
+});
+
+test('Central read-only Archi review never enables apply and explains the working-copy prerequisite', async () => {
+    const {nodes, calls} = await returnUi(false);
+    nodes.get('archiReturnOriginal').files = [{}]; nodes.get('archiReturnFile').files = [{}];
+    nodes.get('archiReturnFile').change(); await nodes.get('archiReturnPreview').click();
+    nodes.get('archiReturnAccept').checked = true; nodes.get('archiReturnAccept').change();
+    assert.equal(nodes.get('archiReturnApply').disabled, true);
+    assert.match(nodes.get('archiReturnStatus').textContent, /archi.return.workspaceRequired/);
+    await nodes.get('archiReturnApply').click();
+    assert.equal(calls.length, 1);
+});
+
+test('Archi return uploads retain explicit repository, branch and central/workspace pins', async () => {
+    for (const workspace of ['', 'secondary-workspace']) {
+        const calls = [];
+        const context = vm.createContext({URL, URLSearchParams, window: {
+            location: {href: 'https://example.test/?workspaceId=' + workspace + '&repositoryId=repo-b&branch=retained'},
+            TaxonomyApiClient: {
+                request: async (...args) => {calls.push(args); return {json: async () => ({preview: true})};},
+                sendFormData: async (...args) => {calls.push(args); return {};}
+            }
+        }});
+        vm.runInContext(await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/api/import-api.js', import.meta.url), 'utf8'), context);
+        await context.window.ImportApi.previewArchiReturn('files');
+        assert.equal(new URL(calls[0][0], 'https://example.test').searchParams.get('repositoryId'), 'repo-b');
+        assert.equal(new URL(calls[0][0], 'https://example.test').searchParams.get('branch'), 'retained');
+        assert.equal(calls[0][1].headers['X-Taxonomy-Workspace-Id'], workspace);
+        assert.equal(calls[0][2].pinnedWorkspaceId, workspace);
+    }
+});

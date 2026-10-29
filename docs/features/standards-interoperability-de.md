@@ -130,3 +130,52 @@ Browsertests prüfen Rollen, Übernahme, Retry, Reload, Abbruch, Download,
 Tastaturbedienung, schmale Ansichten und deutsche Beschriftungen. Die vollständige
 CI-Abnahme bleibt erforderlich. Details und API-Verträge stehen in der
 [englischen Dokumentation](standards-interoperability.md).
+
+## Begrenzte Archi-Rückgabe als Katalogbeziehungen
+
+Das explizite Profil `taxonomy-archi-5.10-return-v1` unterstützt die **inhaltserhaltende
+Rückgabe** eines Taxonomy-Workbench-Exports über Archi 5.10. Inhaltliche Bearbeitung
+in Archi wird nicht unterstützt. Die normale XML-Interpretation und der strenge Reader
+für `taxonomy-archimate-3.1-v2` bleiben unverändert. Beide HTTP-Importaktionen erfordern
+eine bearbeitbare Arbeitskopie; zentrale Lesekontexte erlauben nur die Vorschau.
+
+Unter **Architektur → Export → Archi-5.10-Rückgabe prüfen** wählen Sie die ursprüngliche
+`model.archimate.xml` aus dem heruntergeladenen ZIP und die von Archi exportierte XML.
+Die Vorschau validiert beide Dateien und vergleicht den gesamten Inhalt. Identitäten,
+Beziehungsendpunkte, Eigenschaftswerte, Herkunftsmetadaten, Geometrie und Reihenfolge
+der Ansichten müssen unverändert sein. Neue Eigenschaftsdeklarations-IDs sind nur bei
+übereinstimmenden eindeutigen Eigenschaftsnamen zulässig. XML-Formatierung,
+Namensraumpräfixe und Schemahinweise sind kein Modellinhalt; die Reihenfolge der
+Eigenschafts-, Deklarations-, Element- und Beziehungssammlungen ist für den
+Inhaltsvergleich unabhängig von der Serialisierung.
+
+Jede erlaubte Darstellungsänderung wird einzeln ausgewiesen: Zahlen-/Boolesche
+Deklarationen werden Strings; englische Sprachmarker, Knotenbeschriftungen und flache
+Typordner entfallen; die beobachtete Linienbreite entfällt; genau die beobachteten
+Knoten-/Verbindungsstile kommen hinzu; Deklarations-IDs ändern sich; der zuvor implizite
+Diagrammtyp wird explizit. Andere Änderungen werden abgewiesen. Die ursprüngliche
+Datei liefert die verlorene Typ-/Darstellungsinterpretation. Fehlende Werte, Identitäten
+oder Herkunft werden nicht erfunden. Der Vergleich beweist keine autorisierte Herkunft
+einer vom Benutzer bereitgestellten Originaldatei.
+
+Öffnen oder erstellen Sie eine bearbeitbare Arbeitskopie über die bestehende
+Arbeitsbereichssteuerung. Eine zentrale Vorschau erklärt diese Voraussetzung und
+sperrt Bestätigung und Übernahme. Prüfen Sie die Verluste, bestätigen Sie die Übernahme von Beziehungen und übernehmen
+Sie anschließend. Der Prüffingerabdruck bindet beide Dateien, Profil sowie aktuellen
+Benutzer, Repository, Arbeitsbereich und Branch, jedoch keinen Revisionsstand des
+Zielrepositories. Geänderte Dateien oder ein anderer
+Kontext erfordern eine neue Vorschau. Die Übernahme prüft aktuellen Katalog und
+Duplikate erneut und verwendet den bestehenden autorisierten Beziehungsschreiber
+und dessen Transaktion. Sie protokolliert `ARCHIMATE_RETURN` mit Prüffingerabdruck;
+Wiederholungen überspringen vorhandene Endpunkt-/Typ-Beziehungen. Snapshot-IDs,
+Entscheidungen, Bewertungen, Herkunftsautorität, Ansichten und Katalogbeschriftungen
+werden nicht wiederhergestellt; diese Auslassungen stehen in der Vorschau.
+
+Die Multipart-Endpunkte lauten `POST /api/import/preview/archimate-return`
+(`original`, `file`) und `POST /api/import/archimate-return` (dieselben Dateien und
+`reviewedFingerprint`), jeweils maximal 16 MiB pro Datei. Für die Übernahme gilt die
+bestehende Architekt-/Administratorberechtigung. Der bestehende Produkttest prüft den
+Adapter mit seinem frisch durch Archi erzeugten Dateipaar und speichert beide Hashes
+und Rückgabeverluste. `ArchiMateReturnUiIT` im bestehenden Browser-Owner prüft echten Dateiupload,
+Bestätigung, Übernahme und Duplikaterkennung nach Neuladen. Beide Nachweise müssen
+für den aktuellen Quellstand vor einer Freigabe ausgeführt werden.

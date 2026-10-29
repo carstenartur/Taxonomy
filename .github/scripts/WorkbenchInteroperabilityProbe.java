@@ -58,6 +58,17 @@ public final class WorkbenchInteroperabilityProbe {
     }
 
     private static List<MappingLoss> compare(Path source, Path returned) throws Exception {
+        // Exercise the production bounded return adapter independently of the product comparator.
+        // The strict default still rejects type-erased output; only this original-bound profile accepts it.
+        try {
+            var returnedModel = new com.taxonomy.archimate.exchange.ArchiMateReturnProfile().read(Files.readAllBytes(source), Files.readAllBytes(returned));
+            var reader = new ArchiMateExchangeReader();
+            requireEqual("production return diagram", reader.toDiagram(reader.read(Files.readAllBytes(source))), reader.toDiagram(returnedModel));
+            System.out.println("RETURN_IMPORT_PROFILE " + com.taxonomy.archimate.exchange.ArchiMateReturnProfile.VERSION);
+            System.out.println("RETURN_IMPORT_LOSSES " + tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(returnedModel.losses()));
+        } catch (IllegalArgumentException rejected) {
+            throw new AssertionError("Production bounded return reader rejected the product output", rejected);
+        }
         var codec = new ArchiMateExchangeCodec();
         var before = codec.read(Files.readAllBytes(source), null, true);
         var after = codec.read(Files.readAllBytes(returned), null, true);

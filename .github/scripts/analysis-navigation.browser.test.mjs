@@ -208,3 +208,51 @@ async function finish(page) {
     await page.close();
     assert.deepEqual(page.uiErrors, [], 'Unexpected browser script errors');
 }
+
+for (const locale of ['en', 'de']) test(`bounded Archi return review is operable in the native browser (${locale})`, async () => {
+    const page = await browser.newPage();
+    try {
+        const start = template.indexOf('<details id="archiReturnPanel"');
+        assert.ok(start >= 0, 'Production return panel exists');
+        const markup = template.slice(start, template.indexOf('</details>', start) + '</details>'.length);
+        const dictionary = {};
+        for (const file of ['messages.properties', ...(locale === 'de' ? ['messages_de.properties'] : [])]) {
+            for (const line of (await readFile(path.join(resources, 'i18n', file), 'utf8')).split('\n')) {
+                const match = line.match(/^([^#!\s][^=]*)=(.*)$/); if (match) dictionary[match[1]] = match[2];
+            }
+        }
+        await page.setContent(`<html lang="${locale}"><head><style>${bootstrapCss}</style></head><body><main>${markup}</main></body></html>`);
+        await page.evaluate(dict => {
+            window.returnCalls = [];
+            window.TaxonomyI18n = {t: (key, ...args) => (dict[key] || key).replace(/\{(\d+)\}/g, (_, n) => args[n])};
+            for (const element of document.querySelectorAll('[th\\:text]')) {
+                const key = element.getAttribute('th:text').slice(2, -1); element.textContent = dict[key] || key;
+            }
+            window.TaxonomyRoleSurface = {canMutateArchitecture: () => true};
+            window.ImportApi = {
+                previewArchiReturn: async form => {
+                    window.returnCalls.push({operation: 'preview', original: form.get('original').name, returned: form.get('file').name});
+                    return {writableContext: true, reviewFingerprint: 'native-review', elementsMatched: 2, relationsParsed: 1, relationsSkipped: 0, relationsRejected: 0,
+                        losses: [{scope: 'return', id: 'CP', field: 'label', kind: 'ARCHI_NODE_LABEL_OMITTED', rationale: '<img src=x onerror=alert(1)> lost label'}]};
+                },
+                applyArchiReturn: async form => {window.returnCalls.push({operation: 'apply', fingerprint: form.get('reviewedFingerprint')}); return {relationsImported: 1, relationsSkipped: 0, relationsRejected: 0};}
+            };
+        }, dictionary);
+        await page.addScriptTag({content: await readFile(path.join(resources, 'static/js/shared/archimate-return.js'), 'utf8')});
+        await page.locator('#archiReturnPanel summary').click();
+        await page.locator('#archiReturnOriginal').setInputFiles({name: 'original.xml', mimeType: 'application/xml', buffer: Buffer.from('<model/>')});
+        await page.locator('#archiReturnFile').setInputFiles({name: 'returned.xml', mimeType: 'application/xml', buffer: Buffer.from('<model/>')});
+        await page.locator('#archiReturnPreview').click();
+        await page.waitForFunction(() => !document.getElementById('archiReturnAccept').disabled);
+        assert.equal(await page.locator('#archiReturnApply').isDisabled(), true);
+        assert.match(await page.locator('#archiReturnLosses').innerText(), /<img src=x/);
+        assert.equal(await page.locator('#archiReturnLosses img').count(), 0, 'Loss content remains escaped text');
+        await page.locator('#archiReturnAccept').check();
+        await page.locator('#archiReturnApply').click();
+        await page.waitForFunction(() => window.returnCalls.length === 2);
+        assert.deepEqual(await page.evaluate(() => window.returnCalls), [
+            {operation: 'preview', original: 'original.xml', returned: 'returned.xml'}, {operation: 'apply', fingerprint: 'native-review'}]);
+        assert.equal(await page.locator('#archiReturnApply').isDisabled(), true);
+        assert.match(await page.locator('#archiReturnStatus').innerText(), locale === 'de' ? /Angelegte Beziehungen: 1/ : /Created relations: 1/);
+    } finally { await page.close(); }
+});

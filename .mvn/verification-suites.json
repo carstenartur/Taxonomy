@@ -231,6 +231,7 @@
           "com.taxonomy.CompleteCopilotSessionIT",
           "com.taxonomy.SeleniumPostgresContainerIT",
           "com.taxonomy.AnalysisSnapshotAdoptionUiIT",
+          "com.taxonomy.ArchiMateReturnUiIT",
           "com.taxonomy.ArchitectureWorkbenchUiIT",
           "com.taxonomy.PortfolioMatrixReviewIT"
         ]
