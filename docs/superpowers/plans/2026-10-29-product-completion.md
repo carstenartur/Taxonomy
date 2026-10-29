@@ -38,20 +38,20 @@
 - [x] Independently review the Boot standalone verification-POM alignment and CodeQL quality-metadata pin alignment.
 - [x] Integrate [POI PR #1327](https://github.com/carstenartur/Taxonomy/pull/1327), merged by existing automation as `ef0484d64087d4decaee1fa609aaa2626d0dc11d` after its cancelled supplemental job passed on retry.
 - [x] Integrate [Boot PR #1330](https://github.com/carstenartur/Taxonomy/pull/1330), merged by existing automation as `ab826ed43c6da80dd8291636be6ce8f5e307d55c` after current-head checks passed.
-- [ ] Integrate reviewed [CodeQL PR #1332](https://github.com/carstenartur/Taxonomy/pull/1332); current-head canonical run [40923735665](https://github.com/carstenartur/Taxonomy/actions/runs/40923735665) and applicable checks have passed.
+- [x] Integrate reviewed [CodeQL PR #1332](https://github.com/carstenartur/Taxonomy/pull/1332) as `9c9aee70e02837dac8b12ab640ff2fbea5dda31e` after current-head canonical run [40923735665](https://github.com/carstenartur/Taxonomy/actions/runs/40923735665) and applicable checks passed.
 
-The first Boot-integrated main performance job failed before any measurement because Maven could not resolve a core-extension dependency descriptor. A parallel clean job on the same SHA resolved that dependency successfully. One targeted infrastructure retry was initiated; its outcome and the final main gate still require verification. No performance budget or test was weakened.
+The first Boot-integrated main performance job failed before any measurement because Maven could not resolve a core-extension dependency descriptor. A parallel clean job on the same SHA resolved that dependency successfully. The one independently justified infrastructure retry passed, followed by the final Maven verification gate in [run 40932695990](https://github.com/carstenartur/Taxonomy/actions/runs/40932695990). Later publication stages were superseded by the next authorized integration; the whole earlier workflow is not claimed as successful. No performance budget or test was weakened.
 
 ## Task 3: Complete relationship and domain-variant evaluation
 
 **Owners:** Existing inventory contracts, source projections, host/journal, portfolio evaluators/service/controller, solution writers and Git contributor, existing inventory UI and localization.
 
-- [ ] Freeze additive bounded DTOs for relationship requirements/evidence/findings, variant inputs/assessments and explicit decisions; preserve old constructors, canonical fingerprints and retained JSON.
-- [ ] Implement exact directed endpoint/kind/qualifier/context/time evaluation and explicit configured source projections with provenance.
-- [ ] Freeze actual project-solution state, prerequisites, risks, cited costs, links and membership. Additional candidates add evidence and never remove existing solution coverage or exclusions. Cost amounts stay validated decimal strings.
-- [ ] Implement deliberate review through existing portfolio operations and exact input/mapping fingerprints. Scope anchors precede comparison/project/sorted-solution/sorted-product locks. Mapping/observation writers share the scope fence; Git acquires sorted aggregate fences before outer materialization and does not acquire scope locks.
-- [ ] Preserve selection exclusions and their matching provenance through edits, replay, Git and backup. Keep full immutable review/exclusion text with bounded mutable references. Support PostgreSQL V45, HSQL restore V15 and pre-JPA initialization for Flyway-enabled and Flyway-disabled existing profiles.
-- [ ] Extend the native project/requirement UI and EN/DE help with relationship inputs, cited assumptions, side-by-side variants and reasoned review/reopen.
+- [x] Freeze additive bounded DTOs for relationship requirements/evidence/findings, variant inputs/assessments and explicit decisions; preserve old constructors, canonical fingerprints and retained JSON.
+- [x] Implement exact directed endpoint/kind/qualifier/context/time evaluation and explicit configured source projections with provenance.
+- [x] Freeze actual project-solution state, prerequisites, risks, cited costs, links and membership. Additional candidates add evidence and never remove existing solution coverage or exclusions. Cost amounts stay validated decimal strings.
+- [ ] Finish deliberate review through existing portfolio operations and exact input/mapping fingerprints. Scope anchors precede comparison/project/sorted-solution/sorted-product locks; Git acquires aggregate fences before outer materialization. A freshly reproduced first-observation race still requires a durable existing-repository fence shared by observation/review and Git writers, with its lock order and metadata-version behavior independently reviewed.
+- [x] Preserve selection exclusions and their matching provenance through edits, replay, Git and backup. Keep full immutable review/exclusion text with bounded mutable references. Support PostgreSQL V45, HSQL restore V15 and pre-JPA initialization for Flyway-enabled and Flyway-disabled existing profiles.
+- [x] Extend the native project/requirement UI and EN/DE help with relationship inputs, cited assumptions, side-by-side variants and reasoned review/reopen.
 - [ ] Run semantic negative and compatibility tests, actual HSQL/JPA concurrency tests, schema startup/restore, Git roundtrips and native browser acceptance. Independently review the final reconstructed commit and require published-head CI before integration.
 
 ### Reconstruction checkpoint — 29 October 2026
@@ -60,12 +60,15 @@ The first local implementation, `4cd8cd3337ba6982ce7ea7f006414b729239770c`, had 
 
 The same approved scope is being reconstructed on the restored current-main checkout, with small committed checkpoints published early. Task 3 is therefore open again until the reconstructed source is freshly tested and independently reviewed. All five earlier review findings remain required regressions: Flyway-disabled startup, same-target Git provenance, long rationale bounds, outer Git lock ordering and additive-candidate coverage exclusions. This recovery changes neither the requested behavior nor the acceptance gates.
 
+Reconstructed source through local `aebe6f02c2cce71097e2f3783b3a05f983f5f933` is preserved remotely as `7d208c1221b43a8416bec21f2241ca99f5be272a`, with exact tree `ca2bdbcef2248b38ca081cfef919e2623559a8a7`. Fresh combined local acceptance passed 88 portfolio, 11 interoperability and 62 application tests, including two native browser journeys. Independent review identified and then confirmed the correction of partial-window relationship conflicts, missing contract qualification and nested variant-input identity in backup validation. The backup correction separately passed 60 interoperability and two export tests. These results precede the remaining first-observation race correction and are not its verification or published-head CI.
+
 ## Task 4: Complete supported Archi return workflow
 
 - [x] Implement and independently review the bounded `taxonomy-archi-5.10-return-v1` return profile, with exact identities/provenance/geometry/view order, explicit representation losses, a review-before-apply catalogue path and canonical writable-context guards. The strict ordinary reader remains unchanged.
 - [x] Run installed Archi 5.10 import/export evidence through the existing owner and native UI review/apply/reopen checks. Initial installed-product run [40924217787](https://github.com/carstenartur/Taxonomy/actions/runs/40924217787) is bound to its recorded feature tree.
 - [x] Review the two necessary public workspace-service dependency edges; update only their existing baseline count, with all 32 existing architecture checks passing.
 - [x] Correct the existing positive endpoint smoke-test prerequisite without weakening the central-read guard. Independent review of local `e673dd4b6d4bfa0a331b9bafcb869523d021f8de` is clear; 29 focused tests passed without errors or skips.
+- [x] Verify fresh installed Archi 5.10 evidence from [job 123711200870](https://github.com/carstenartur/Taxonomy/actions/runs/40948068916/job/123711200870). Its recorded source `acfdf1028a6cda7efd8b296882a1cb727644120a` is the test merge of Boot-integrated main and exact PR head `e538532af0dfc3cad3ccb62b373eea8ebaee76a3`; the source tree and both original/returned XML hashes match the downloaded evidence. This is authored-fixture product compatibility, not live-provider or human acceptance.
 - [ ] Require all current-head checks for [PR #1345](https://github.com/carstenartur/Taxonomy/pull/1345), now at `e538532af0dfc3cad3ccb62b373eea8ebaee76a3`, then integrate and reverify the combined source. Fresh canonical run: [40948068916](https://github.com/carstenartur/Taxonomy/actions/runs/40948068916).
 
 ## Task 5: Complete supported restoration path
@@ -75,7 +78,8 @@ The same approved scope is being reconstructed on the restored current-main chec
 - [x] Independently review and fix large-object/collation occupancy and non-root host ownership of client output files. The focused selection passed 38 tests, including three real PostgreSQL rehearsals.
 - [x] Confirm the existing Docker PostgreSQL owner executed all three `NativeInstallationPostgresRecoveryIT` cases successfully in [run 40927316484, job 123636173406](https://github.com/carstenartur/Taxonomy/actions/runs/40927316484/job/123636173406).
 - [x] Require current-head canonical CI and applicable checks for [PR #1346](https://github.com/carstenartur/Taxonomy/pull/1346): run [40927316571](https://github.com/carstenartur/Taxonomy/actions/runs/40927316571) passed, including reactor coverage and final Maven verification.
-- [ ] Integrate the reviewed PR and reverify the combined source. Native recovery preserves stored application identities, grants and pending work; external access must be isolated before startup.
+- [x] Integrate the reviewed PR as `95ba162700d0a1a92a40c2f1f899e6ac15193c9f`.
+- [ ] Reverify the combined source, currently in [run 40949279646](https://github.com/carstenartur/Taxonomy/actions/runs/40949279646). Native recovery preserves stored application identities, grants and pending work; external access must be isolated before startup.
 
 ## Task 6: Real task qualification and release
 
