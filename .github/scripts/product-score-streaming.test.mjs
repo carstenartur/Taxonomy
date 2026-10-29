@@ -108,7 +108,9 @@ function harness(locale = 'en') {
     escapeHtml: value => String(value),
     async copyText(value) { copiedDiagnostics.push(value); }
   };
+  const graphSelections = [];
   const window = { TaxonomyState: state, TaxonomyI18n: { getLocale: () => locale }, TaxonomyUtils: sharedUtils,
+    TaxonomyGraph: {selectNode: code => graphSelections.push(code)},
     TaxonomyBrowse: {
       renderView() { renders++; }, ensureNodeRendered() {}, showStatus(...args) { statuses.push(args); }, clearStatus() {},
       updateExportGroupVisibility() {}
@@ -137,7 +139,7 @@ function harness(locale = 'en') {
   vm.runInContext(viewsSource, context);
   window.TaxonomyScoring.runStreamingAnalysis();
   return {
-    state, nodes, statuses, controls, document, focused, copiedDiagnostics, browse,
+    state, nodes, statuses, controls, document, focused, copiedDiagnostics, browse, graphSelections,
     renders: () => renders, api: window.TaxonomyScoring, views: window.TaxonomyViews,
     send(type, data) {
       const event = { data: JSON.stringify(data) };
@@ -231,6 +233,18 @@ function summaryHarness() {
     details() { return container.querySelector('.summary-view').children.find(child => child.id === 'summarySelectionDetails'); }
   };
 }
+
+test('Summary intentional selection updates Graph Explorer without replaying selection on render', () => {
+  const h = summaryHarness();
+  h.render();
+  assert.deepEqual(h.graphSelections, []);
+  h.select(product);
+  assert.deepEqual(h.graphSelections, [product]);
+  h.render('positive');
+  assert.deepEqual(h.graphSelections, [product]);
+  h.select('CP');
+  assert.deepEqual(h.graphSelections, [product, 'CP']);
+});
 
 test('Summary positive filter projects saved elements, relationships and anchor counts without losing a surviving selection', () => {
   const h = summaryHarness();

@@ -7,6 +7,7 @@
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#restoreMain" th:text="#{skip.link}">Skip to main content</a>
@@ -16,6 +17,7 @@
         <a class="btn btn-outline-light"
            th:href="@{/admin/document-templates/{id}(id=${template.templateId},from=${restoreRevision},to=${restoreExpectedHead})}"
            th:text="#{document.template.restore.cancel}">Back to comparison</a>
+        <a th:replace="~{fragments/context-help :: button('DOCUMENT_TEMPLATES', 'template-versions')}"></a>
     </div>
 </nav>
 <main id="restoreMain" class="container py-4">

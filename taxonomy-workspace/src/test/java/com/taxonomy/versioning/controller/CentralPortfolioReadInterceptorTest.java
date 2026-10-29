@@ -27,6 +27,9 @@ class CentralPortfolioReadInterceptorTest {
         for (String path : List.of("/api/projects", "/api/projects/1",
                 "/api/projects/1/requirements/2/versions",
                 "/api/projects/1/snapshots/3", "/api/projects/1/reports/docx",
+                "/api/projects/1/architecture-workbench/snapshot-old",
+                "/api/projects/1/architecture-workbench/snapshot-old.svg",
+                "/api/projects/1/architecture-workbench/snapshot-old.pdf",
                 "/api/solutions", "/api/solutions/4", "/api/products/5")) {
             var fixture = fixture(CENTRAL, CENTRAL_VIEW);
             assertTrue(fixture.interceptor.preHandle(request("GET", path, "", ""), null, null), path);

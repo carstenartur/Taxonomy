@@ -57,6 +57,59 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("ui-acceptance")
 @Tag("ci-app-shard-browser")
 class PortfolioClientRoutingIT {
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "de"})
+    void contextualHelpOpensTheGraphSectionInANewTabAndPreservesWork(String language) throws Exception {
+        String prefix = "/taxonomy";
+        page.clearRoutes();
+        // The full workspace loads capabilities on startup; a missing response opens
+        // the export-error dialog and correctly blocks interaction with the page beneath it.
+        page.route("GET", prefix + "/api/capabilities", request -> PortfolioClientTestPage.json(200,
+                Map.of("revision", "contextual-help-fixture", "features", List.of("architecture", "portfolio"),
+                        "exports", List.of(), "reports", List.of())));
+        page.route("GET", prefix + "/help", request -> PortfolioClientTestPage.json(200,
+                List.of(Map.of("filename", "USER_GUIDE", "title", "Guide", "icon", "", "audience", "Everyone"))));
+        page.route("GET", prefix + "/help/USER_GUIDE", request -> {
+            var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
+            try {
+                org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.forLanguageTag(language));
+                var response = new com.taxonomy.shared.controller.HelpController(new I18nConfig().messageSource()).getDoc("USER_GUIDE");
+                return new PortfolioClientTestPage.Response(response.getStatusCode().value(), "text/html; charset=utf-8", response.getBody());
+            } finally {
+                org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous);
+            }
+        });
+        page.open("index", prefix, "/", language, "localStorage.setItem('taxonomy_onboarded', 'true');");
+        awaitTranslationContinuations();
+        // Onboarding rearranges the task surface after its asynchronous account lookup.
+        // Wait for that UI to exist, then use the same native click path as other client contracts.
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.id("analysisTaskProgress")));
+        click(By.id("businessText"));
+        driver.findElement(By.id("businessText")).clear();
+        driver.findElement(By.id("businessText")).sendKeys("Unsaved contextual-help requirement");
+        click(By.cssSelector("#mainNavTabs [data-page='graph']"));
+        String original = driver.getWindowHandle();
+        var windows = driver.getWindowHandles();
+        click(By.cssSelector("#tab-graph .context-help"));
+        wait.until(web -> web.getWindowHandles().size() == windows.size() + 1);
+        String help = driver.getWindowHandles().stream().filter(handle -> !windows.contains(handle)).findFirst().orElseThrow();
+        try {
+            driver.switchTo().window(help);
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#helpDocBody p:has(> #guide-section-8) + h2")));
+            assertThat(driver.getCurrentUrl()).endsWith("/taxonomy/?lang=" + language + "#help/USER_GUIDE/guide-section-8");
+            assertThat(driver.findElement(By.id("tab-help")).isDisplayed()).isTrue();
+            assertThat(driver.findElement(By.id("tab-analyze")).isDisplayed()).isFalse();
+            assertThat(driver.executeScript("return document.activeElement.tagName")).isEqualTo("H2");
+            assertThat(driver.executeScript("const r = document.activeElement.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight;")).isEqualTo(true);
+            assertThat(driver.findElement(By.tagName("html")).getDomAttribute("lang")).isEqualTo(language);
+        } finally {
+            driver.close();
+            driver.switchTo().window(original);
+        }
+        assertThat(driver.findElement(By.id("businessText")).getDomProperty("value")).isEqualTo("Unsaved contextual-help requirement");
+        assertThat(driver.getCurrentUrl()).endsWith("#graph");
+    }
+
     private static final List<String> PREFIXES = List.of("", "/taxonomy", "/teams/blue/taxonomy");
     private static final List<PageContract> PAGES = List.of(
             new PageContract("requirement-detail", "/requirements/7", "requirementHeading", "detailError"),
@@ -152,7 +205,9 @@ class PortfolioClientRoutingIT {
         }
         assertThat(text(contract.error())).as("The initializer completes without a hidden page error").isEmpty();
         assertThat(requests("GET", prefix + "/api/projects/42")).hasSize(1);
-        assertThat(href("portfolioBack")).isEqualTo(prefix + "/projects?lang=de");
+        String portfolioReturn = contract.template().equals("portfolio-import")
+                ? "/projects?projectId=42&lang=de" : "/projects?lang=de";
+        assertThat(href("portfolioBack")).isEqualTo(prefix + portfolioReturn);
         if (contract.template().equals("requirement-detail")) {
             assertThat(href("matrixLink")).isEqualTo(prefix + "/projects/42/matrices?lang=de");
         }
@@ -161,6 +216,42 @@ class PortfolioClientRoutingIT {
         }
         if (contract.template().equals("portfolio-versioning")) {
             assertThat(href("reportsLink")).isEqualTo(prefix + "/projects/42/reports?lang=de");
+        }
+    }
+
+    @ParameterizedTest(name = "selected snapshot handoff retains workspace [{1}] under [{0}]")
+    @MethodSource("prefixesAndWorkspaces")
+    void workbenchLinkKeepsTheExactSelectedImmutableSnapshot(String prefix, String workspaceId) {
+        installRoutes(prefix);
+        var snapshots = List.of("snapshot-current", "snapshot-previous").stream().map(id ->
+                new PortfolioDtos.SnapshotSummary(id, 42L, 7L, "REQ-7", 11L, 1, "job-7",
+                        PortfolioTypes.AnalysisStatus.SUCCESS, "mock", "fixture-model", "catalogue-fixture",
+                        "prompt-fixture", workspaceId, "main", "0123456789012345678901234567890123456789",
+                        LABEL_TIME, 1L, 0, null)).toList();
+        page.route("GET", prefix + "/api/projects/42/requirements/7/snapshots", request ->
+                PortfolioClientTestPage.json(200, snapshots));
+        for (var snapshot : snapshots) {
+            var detail = new PortfolioDtos.SnapshotDetail(snapshot, null, null, null, null, List.of(), List.of());
+            page.route("GET", prefix + "/api/projects/42/snapshots/" + snapshot.id(), request ->
+                    PortfolioClientTestPage.json(200, detail));
+        }
+        open("requirement-detail", prefix, "/projects/42/requirements/7", workspaceSetup(workspaceId));
+        By workbenchLink = By.cssSelector("#snapshotResultOverview a[href*='/architecture/workbench']");
+        wait.until(ignored -> !driver.findElements(workbenchLink).isEmpty() && hidden("detailBusy"));
+        click(By.id("analyses-tab"));
+        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
+        for (String snapshotId : List.of("snapshot-current", "snapshot-previous")) {
+            if (snapshotId.equals("snapshot-previous")) {
+                click(By.cssSelector("#snapshotList [data-snapshot-id='snapshot-previous']"));
+            }
+            wait.until(ignored -> hidden("detailBusy") && !driver.findElements(By.cssSelector(
+                    "#snapshotList [data-snapshot-id='" + snapshotId + "'][aria-current='true']")).isEmpty());
+            assertThat(text("detailError")).isEmpty();
+            assertThat(driver.findElement(workbenchLink).getDomAttribute("href"))
+                    .isEqualTo(prefix + "/architecture/workbench?projectId=42&snapshotId=" + snapshotId
+                            + "&lang=de" + (workspaceQuery == null ? "" : "&" + workspaceQuery));
+            assertThat(requests("GET", prefix + "/api/projects/42/snapshots/" + snapshotId)).singleElement()
+                    .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
         }
     }
 
@@ -253,19 +344,27 @@ class PortfolioClientRoutingIT {
         assertThat(href("projectImportLink")).as("A stale selected-project target is removed").isNull();
     }
 
-    @ParameterizedTest(name = "import completion stores its job and returns to [{0}]")
-    @ValueSource(strings = {"", "/taxonomy", "/teams/blue/taxonomy"})
-    void importCompletionStoresAUsableAnalysisJobAndReturnsToContext(String prefix) {
+    @ParameterizedTest(name = "import completion retains project and workspace [{1}] under [{0}]")
+    @MethodSource("prefixesAndWorkspaces")
+    void importCompletionStoresAUsableAnalysisJobAndReturnsToContext(String prefix, String workspaceId) {
         installRoutes(prefix);
-        prepareImport(prefix, "/api/projects/42/analysis-jobs/job-7");
+        prepareImport(prefix, "/api/projects/42/analysis-jobs/job-7", workspaceId);
+        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
+        String portfolioReturn = prefix + "/projects?projectId=42&lang=de"
+                + (workspaceQuery == null ? "" : "&" + workspaceQuery);
+        assertThat(href("portfolioBack")).isEqualTo(portfolioReturn);
+        assertThat(requests("GET", prefix + "/api/projects/42")).singleElement()
+                .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
         click(By.id("confirmImport"));
         wait.until(ignored -> !hidden("importInfo") && hidden("importBusy"));
         assertThat(text("importError")).isEmpty();
+        assertThat(requests("POST", prefix + "/api/projects/42/requirements/import-review")).singleElement()
+                .extracting(PortfolioClientTestPage.Request::query).isEqualTo(workspaceQuery);
         JsonNode stored = readJobs();
         assertThat(stored.size()).isEqualTo(1);
         assertThat(stored.get(0).path("url").asText()).isEqualTo(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
         assertThat(stored.get(0).path("projectId").asInt()).isEqualTo(42);
-        awaitImportReturn(prefix);
+        awaitImportReturn(portfolioReturn);
     }
 
     @ParameterizedTest(name = "analysis-job registration and real polling stay within [{0}]")
@@ -349,7 +448,7 @@ class PortfolioClientRoutingIT {
             wait.until(ignored -> !hidden("importInfo") && hidden("importBusy"));
             assertThat(readJobs().size()).as("An imported job must belong to this project and application: %s", location).isZero();
             // Keep this fixture's review saved before opening the next case.
-            // The redirect itself is verified separately by the three import cases.
+            // The redirect itself is verified separately across prefixes and workspaces.
             driver.executeScript("localStorage.setItem(arguments[0], arguments[1]);",
                     "taxonomy.portfolio.importDraft.42", PortfolioClientTestPage.json(importDraft()));
         }
@@ -479,10 +578,7 @@ class PortfolioClientRoutingIT {
                 .map(status -> labelRequirement(7 + status.ordinal(), status)).toList();
         var product = labelProduct();
         var solution = labelSolution(product);
-        var conflict = new PortfolioDtos.ConflictView(51L, 42L, 7L, "REQ-7", 8L, "REQ-8",
-                PortfolioTypes.ConflictType.DATA_LOCATION, PortfolioTypes.ConflictStatus.RESOLVED,
-                "Reviewed data location", "Recorded evidence", 0.8, "Reviewed resolution",
-                LABEL_TIME, "qa-reviewer", LABEL_TIME);
+        var conflict = labelConflict();
         page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, List.of(project)));
         page.route("GET", prefix + "/api/projects/42/portfolio", request ->
                 PortfolioClientTestPage.json(200, labelPortfolio(project, requirements, List.of(solution), List.of(conflict))));
@@ -539,6 +635,53 @@ class PortfolioClientRoutingIT {
         wait.until(ignored -> driver.findElement(By.cssSelector("#conflictsList .portfolio-conflict-card")).isDisplayed());
         assertThat(driver.findElements(By.cssSelector("#conflictsList .badge"))).extracting(WebElement::getText)
                 .containsExactlyElementsOf(german ? List.of("Datenstandort", "Gelöst") : List.of("Data Location", "Resolved"));
+        assertThat(driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText())
+                .contains(german ? "Regelgewicht" : "Rule weight")
+                .contains("80 / 100");
+        String assessment = driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText();
+        assertThat(assessment).contains(german ? "keine gemessene Wahrscheinlichkeit" : "not a measured probability");
+        click(By.cssSelector("#conflictsList .conflict-review[data-status='CONFIRMED']"));
+        wait.until(ignored -> driver.findElement(By.id("guidedConflictConfidence")).isDisplayed());
+        assertThat(text("guidedConflictConfidence").replaceAll("\\s+", " "))
+                .isEqualTo(assessment.replaceAll("\\s+", " "));
+        assertThat(text("guidedConflictEvidence")).isEqualTo("Recorded evidence");
+        assertThat(driver.findElement(By.id("guidedConflictDecision")).getDomProperty("value")).isEqualTo("CONFIRMED");
+        assertThat(text("portfolioError")).isEmpty();
+    }
+
+    @ParameterizedTest(name = "Conflict rule weight retains missing/invalid/zero state [{0}]")
+    @ValueSource(strings = {"undefined", "null", "NaN", "Infinity", "-0.1", "1.1", "'0.88'", "unknown-basis", "zero"})
+    void conflictWeightStatesRemainDistinctInTheActualBrowser(String state) {
+        installRoutes("");
+        var project = labelProject(42, PortfolioTypes.ProjectStatus.ACTIVE, 0, 0);
+        page.route("GET", "/api/projects", request -> PortfolioClientTestPage.json(200, List.of(project)));
+        page.route("GET", "/api/projects/42/portfolio", request -> PortfolioClientTestPage.json(200,
+                labelPortfolio(project, List.of(), List.of(), List.of(labelConflict()))));
+        String mutation = switch (state) {
+            case "unknown-basis" -> "payload.conflicts[0].confidenceBasis = 'UNRECORDED';";
+            case "zero" -> "payload.conflicts[0].confidence = 0;";
+            default -> "payload.conflicts[0].confidence = " + state + ";";
+        };
+        // Trusted fixture input after HTTP decoding also exercises JS-only NaN/Infinity.
+        // The template, feature scripts, DOM, modal and browser remain unchanged.
+        String fixtureInput = """
+                localStorage.clear();
+                const fixtureJson = Response.prototype.json;
+                Response.prototype.json = async function () {
+                    const payload = await fixtureJson.call(this);
+                    if (new URL(this.url, location.href).pathname === '/api/projects/42/portfolio') {
+                        %s
+                    }
+                    return payload;
+                };
+                """.formatted(mutation);
+        page.open("projects", "", "/projects", "en", fixtureInput);
+        wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
+        click(By.id("conflicts-tab"));
+        wait.until(ignored -> driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).isDisplayed());
+        String assessment = driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText();
+        if (state.equals("zero")) assertThat(assessment).contains("0 / 100");
+        else assertThat(assessment).contains("—").doesNotContain("/ 100", "NaN", "Infinity", "%");
         assertThat(text("portfolioError")).isEmpty();
     }
 
@@ -651,6 +794,14 @@ class PortfolioClientRoutingIT {
                 requirements, solutions, 0);
     }
 
+    private static PortfolioDtos.ConflictView labelConflict() {
+        return new PortfolioDtos.ConflictView(51L, 42L, 7L, "REQ-7", 8L, "REQ-8",
+                PortfolioTypes.ConflictType.DATA_LOCATION, PortfolioTypes.ConflictStatus.RESOLVED,
+                "Reviewed data location", "Recorded evidence", 0.8, "Reviewed resolution",
+                LABEL_TIME, "qa-reviewer", LABEL_TIME,
+                PortfolioDtos.ConflictConfidenceBasis.UNCALIBRATED_RULE_WEIGHT);
+    }
+
     private static PortfolioDtos.ProjectPortfolioView labelPortfolio(
             PortfolioDtos.ProjectView project, List<PortfolioDtos.RequirementView> requirements,
             List<PortfolioDtos.ProjectSolutionView> solutions, List<PortfolioDtos.ConflictView> conflicts) {
@@ -745,6 +896,12 @@ class PortfolioClientRoutingIT {
         return PREFIXES.stream().flatMap(prefix -> PAGES.stream().map(contract -> Arguments.of(prefix, contract)));
     }
 
+    private static Stream<Arguments> prefixesAndWorkspaces() {
+        // No pin follows the current session; an empty pin explicitly selects shared scope.
+        return PREFIXES.stream().flatMap(prefix -> Stream.<String>of(null, "", "private-source")
+                .map(workspaceId -> Arguments.of(prefix, workspaceId)));
+    }
+
     private static void open(String template, String prefix, String path, String setup) {
         page.open(template, prefix, path, "de", "localStorage.clear();\n" + OBSERVE_FETCH + setup);
     }
@@ -765,9 +922,13 @@ class PortfolioClientRoutingIT {
     }
 
     private static void prepareImport(String prefix, String location) {
+        prepareImport(prefix, location, null);
+    }
+
+    private static void prepareImport(String prefix, String location, String workspaceId) {
         page.route("POST", prefix + "/api/projects/42/requirements/import-review", request ->
                 PortfolioClientTestPage.json(200, Map.of("analysisJob", JOB)).withHeader("Location", location));
-        open("portfolio-import", prefix, "/projects/42/import", "localStorage.setItem('taxonomy.portfolio.importDraft.42', "
+        open("portfolio-import", prefix, "/projects/42/import", workspaceSetup(workspaceId) + "localStorage.setItem('taxonomy.portfolio.importDraft.42', "
                 + PortfolioClientTestPage.json(PortfolioClientTestPage.json(importDraft())) + ");");
         wait.until(ignored -> text("importProject").contains("P-42") && !hidden("restoreDraft"));
         click(By.id("restoreDraft"));
@@ -776,12 +937,20 @@ class PortfolioClientRoutingIT {
         wait.until(ignored -> !hidden("summaryStep"));
     }
 
-    private static void awaitImportReturn(String prefix) {
+    private static String workspaceSetup(String workspaceId) {
+        return workspaceId == null ? "" : """
+                const contractPageUrl = new URL(window.location.href);
+                contractPageUrl.searchParams.set('workspaceId', %s);
+                window.history.replaceState(null, '', contractPageUrl);
+                """.formatted(PortfolioClientTestPage.json(workspaceId));
+    }
+
+    private static void awaitImportReturn(String expectedPath) {
         // An actual beforeunload dialog, if shown, belongs to the native browser;
         // accepting it allows the production 1200ms return navigation to finish.
         try { new WebDriverWait(driver, Duration.ofSeconds(3)).until(ExpectedConditions.alertIsPresent()).accept(); }
         catch (TimeoutException | NoAlertPresentException absent) { /* Navigation may complete without a dialog. */ }
-        wait.until(ignored -> driver.getCurrentUrl().equals(page.origin() + prefix + "/projects?lang=de"));
+        wait.until(ignored -> driver.getCurrentUrl().equals(page.origin() + expectedPath));
     }
 
     private static Map<String, Object> importDraft() {
@@ -846,7 +1015,7 @@ class PortfolioClientRoutingIT {
         new WebDriverWait(driver, Duration.ofSeconds(20))
                 .ignoring(ElementClickInterceptedException.class)
                 .ignoring(StaleElementReferenceException.class)
-                .withMessage("Native click on " + selector)
+                .withMessage(() -> "Native click on " + selector + "; " + interactionState(selector))
                 .until(browser -> {
                     WebElement control = browser.findElement(selector);
                     if (!control.isDisplayed() || !control.isEnabled()) return false;
@@ -859,6 +1028,22 @@ class PortfolioClientRoutingIT {
                     control.click();
                     return true;
                 });
+    }
+
+    private static String interactionState(By selector) {
+        var matches = driver.findElements(selector);
+        if (matches.isEmpty()) return "target missing at " + driver.getCurrentUrl();
+        return String.valueOf(driver.executeScript("""
+                const element = arguments[0], bounds = element.getBoundingClientRect();
+                const describe = node => node && ({tag: node.tagName, id: node.id, classes: node.className,
+                    hidden: node.hidden, inert: node.inert, disabled: node.disabled,
+                    display: getComputedStyle(node).display, visibility: getComputedStyle(node).visibility,
+                    bounds: node.getBoundingClientRect().toJSON()});
+                const ancestors = []; for (let node = element; node; node = node.parentElement) ancestors.push(describe(node));
+                return JSON.stringify({hash: location.hash, active: describe(document.activeElement), ancestors,
+                    covering: describe(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
+                    dialogs: Array.from(document.querySelectorAll('dialog[open], .modal.show')).map(describe)});
+                """, matches.getFirst()));
     }
 
     private static WebElement element(String id) { return driver.findElement(By.id(id)); }

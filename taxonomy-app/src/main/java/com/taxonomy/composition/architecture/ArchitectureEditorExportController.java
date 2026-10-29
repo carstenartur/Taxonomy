@@ -66,11 +66,13 @@ public final class ArchitectureEditorExportController {
             @Parameter(description = "Exact retained architecture Git commit; required when no semantic revision is supplied") @RequestParam(required = false) String commit,
             @Parameter(description = "Exact retained revision number or commit, as required by this endpoint") @RequestParam(required = false) Long revision,
             @Parameter(description = "Server layout: stable (default) or reduce-crossings") @RequestParam(required = false) String layout,
-            @Parameter(description = "Optional retained workspace revision supplying optimized ordering") @RequestParam(required = false) Long layoutRevision) throws IOException {
+            @Parameter(description = "Optional retained workspace revision supplying optimized ordering") @RequestParam(required = false) Long layoutRevision,
+            @Parameter(description = "Optional canonical architecture view identity") @RequestParam(required = false) String viewId) throws IOException {
         var strategy = com.taxonomy.diagram.DiagramLayout.Strategy.fromId(layout);
         requireExactSelection(commit, revision);
-        ExportDocument document = exports.read(
-                readContext(repositoryId, workspaceScopeKey, branch), commit, revision, strategy, layoutRevision);
+        var context = readContext(repositoryId, workspaceScopeKey, branch);
+        ExportDocument document = viewId == null ? exports.read(context, commit, revision, strategy, layoutRevision)
+                : exports.read(context, commit, revision, strategy, layoutRevision, viewId);
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", document.layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.svg")
@@ -88,11 +90,13 @@ public final class ArchitectureEditorExportController {
             @Parameter(description = "Exact retained architecture Git commit; required when no semantic revision is supplied") @RequestParam(required = false) String commit,
             @Parameter(description = "Exact retained revision number or commit, as required by this endpoint") @RequestParam(required = false) Long revision,
             @Parameter(description = "Server layout: stable (default) or reduce-crossings") @RequestParam(required = false) String layout,
-            @Parameter(description = "Optional retained workspace revision supplying optimized ordering") @RequestParam(required = false) Long layoutRevision) throws IOException {
+            @Parameter(description = "Optional retained workspace revision supplying optimized ordering") @RequestParam(required = false) Long layoutRevision,
+            @Parameter(description = "Optional canonical architecture view identity") @RequestParam(required = false) String viewId) throws IOException {
         var strategy = com.taxonomy.diagram.DiagramLayout.Strategy.fromId(layout);
         requireExactSelection(commit, revision);
-        ExportDocument document = exports.read(
-                readContext(repositoryId, workspaceScopeKey, branch), commit, revision, strategy, layoutRevision);
+        var context = readContext(repositoryId, workspaceScopeKey, branch);
+        ExportDocument document = viewId == null ? exports.read(context, commit, revision, strategy, layoutRevision)
+                : exports.read(context, commit, revision, strategy, layoutRevision, viewId);
         String selected = "GIT_CHECKPOINT".equals(document.source())
                 ? "Checkpoint " + document.commit()
                 : "Revision " + document.revision() + " / checkpoint " + document.commit();
@@ -102,6 +106,16 @@ public final class ArchitectureEditorExportController {
                 .header("X-Taxonomy-Layout-Source", document.layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
                 .body(pdf.render(document.scene(), provenance));
+    }
+
+    public ResponseEntity<String> svg(String repositoryId, String workspaceScopeKey, String branch,
+            String commit, Long revision, String layout, Long layoutRevision) throws IOException {
+        return svg(repositoryId, workspaceScopeKey, branch, commit, revision, layout, layoutRevision, null);
+    }
+
+    public ResponseEntity<byte[]> pdf(String repositoryId, String workspaceScopeKey, String branch,
+            String commit, Long revision, String layout, Long layoutRevision) throws IOException {
+        return pdf(repositoryId, workspaceScopeKey, branch, commit, revision, layout, layoutRevision, null);
     }
 
     public ResponseEntity<String> svg(String repositoryId, String workspaceScopeKey, String branch,

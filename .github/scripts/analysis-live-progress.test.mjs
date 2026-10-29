@@ -1358,3 +1358,26 @@ test('cancelling retains the observed partial progress until the analysis is exp
     f.document.dispatchEvent(new CustomEvent('taxonomy:analysis-cancelled'));
     assert.ok(f.document.getElementById('analysisLiveProgress'));
 });
+
+for (const reason of ['server-draft-changed', 'server-draft-missing', 'server-workspace-unavailable']) {
+    test(`server reconciliation detaches observation without cancelling shared work (${reason})`, async () => {
+        const f = fixture(async () => response(clusterSnapshot(5)), 'workspace-a', true);
+        await f.step(0);
+        const stream = f.streams[0];
+        f.document.dispatchEvent(new CustomEvent('taxonomy:analysis-invalidated', { detail: { reason } }));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(stream.closed, true);
+        assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 0,
+            'observing another tab\'s draft is not a cancellation command');
+        await stream.emit('progress', clusterSnapshot(6));
+        assert.equal(f.snapshots.length, 1, 'detached observation cannot repaint the reconciled page');
+    });
+}
+
+test('an explicit cancel still sends one cancellation for a shared durable run', async () => {
+    const f = fixture(async () => response(clusterSnapshot(5)), 'workspace-a', true);
+    await f.step(0);
+    f.document.dispatchEvent(new CustomEvent('taxonomy:analysis-cancelled'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+});

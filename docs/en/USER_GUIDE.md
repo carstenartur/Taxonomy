@@ -27,6 +27,39 @@ The system evaluates the selected taxonomy scope hierarchically and preserves pa
 > 💡 **New users:** Start with the core workflow (Analyze → Architecture → Export).
 > Continue with [requirement clarification](#requirement-clarification-workflow) to turn questions into recorded decisions, and [analysis scope and progress](#analysis-scope-and-progress) to control the work.
 
+<a id="architecture-source-context"></a>
+## Keep the source while moving between architecture views
+
+The saved architecture workbench identifies the project, requirement and analysis.
+**Requirement and evidence** returns to that exact analysis; **Clarify requirement**
+opens its clarification area. **Project portfolio** selects the corresponding
+project. These links retain the explicitly selected workspace, including a shared
+workspace, instead of relying on another tab's active selection.
+
+**Open architecture working state** opens the recorded repository and branch's
+current editor state. It does not import the analysis result into the editor or
+edit the immutable snapshot. The editor retains **Return to source analysis**,
+even after a private workspace is created. If the source repository or branch
+is missing, the workbench explains why this editor action is unavailable.
+
+**Preview adopting this snapshot** starts an explicit frozen-analysis handoff. Create
+an editable private copy when required, then choose **Preview snapshot adoption**.
+The preview identifies the independent source and target revision and lists added
+and reused elements/relations. Existing names, descriptions, ownership and relation
+review decisions are preserved; differing recorded values are shown for comparison.
+Type or source-identity collisions block acceptance. New relations stay proposed.
+
+**Adopt this frozen snapshot** records one undoable editor operation. The named
+canonical view retains the exact recorded relation membership and source provenance,
+including the original requirement version; later requirement edits do not replace
+that evidence. Select **Full editable architecture** to work across the entire model.
+Opening the same adopted source again reuses its existing view. Its source link still
+returns to the original repository, workspace and branch after creating a copy.
+
+Accepted editor changes are durable operations with their own undo/redo history.
+Use **Create checkpoint/version** to record a Git version. The element and history
+lists scroll independently and can be focused with the keyboard.
+
 <a id="requirement-clarification-workflow"></a>
 ## Clarify a requirement through architecture and decisions
 
@@ -451,6 +484,7 @@ An area's assessment appears separately as **Area relevance** beside its heading
 
 DOT and Mermaid tree exports represent areas as groups. CSV exports retain their values, leave their rank blank and identify them with `true` in the `TaxonomyContainer` column. Original entries have `false`; codes missing from the loaded catalogue have an empty value. Saved analyses and JSON evidence retain the complete hierarchy and recorded assessments.
 
+<a id="taxonomy-view-list"></a>
 ### List View (Default)
 
 The default view shows all taxonomy nodes as a flat, indented list. Each row contains the node name, its code, and — after analysis — a score bar and percentage.
@@ -461,12 +495,14 @@ The default view shows all taxonomy nodes as a flat, indented list. Each row con
 
 ![List view with descriptions visible](../images/09-list-view-descriptions.png)
 
+<a id="taxonomy-view-tabs"></a>
 ### Tabs View
 
 The Tabs view groups taxonomy nodes under tab headers for each top-level category. Click a tab to display only the nodes in that branch.
 
 ![Tabs view](../images/05-tabs-view.png)
 
+<a id="taxonomy-view-sunburst"></a>
 ### Sunburst View
 
 The Sunburst view renders the taxonomy as a radial sunburst chart where the centre is the root and each ring is a deeper level. After analysis, segments are coloured by their score.
@@ -484,6 +520,7 @@ List, Tabs, Sunburst, Tree, Decision and Summary share the same relevance select
 
 During an analysis, Sunburst, Tree and Decision retain their reading position when new results arrive: zoom, pan, scroll position and manually opened or closed branches are restored. Sunburst remembers its focused subtree. Each view and selected tree taxonomy has its own state, including when the tree switches between SVG and Canvas rendering. If filtering removes the selected node, a surviving ancestor becomes the selection. **Fit diagram** and **Reset zoom** explicitly change the viewport. A new analysis or a newly loaded requirement draft begins with a fresh view state.
 
+<a id="taxonomy-view-tree"></a>
 ### Tree View
 
 **Only relevant nodes (> 0)** is available directly in the diagram toolbar and applies to the view and printout. The shared relevance selector additionally distinguishes measured zeroes from unknown scores.
@@ -494,6 +531,7 @@ Tree and Decision offer **Expand all** and **Collapse all**. **Reason** shows th
 
 ![Tree view](../images/07-tree-view.png)
 
+<a id="taxonomy-view-decision"></a>
 ### Decision Map View
 
 The Decision Map view shows the taxonomy as a decision-tree style layout optimised for selecting relevant nodes based on the analysis scores.
@@ -522,6 +560,7 @@ Choose a printer supporting the selected paper size or **Save as PDF** in the br
 >
 > ![Decision Map — empty state](../images/08-decision-map-view.png)
 
+<a id="taxonomy-view-summary"></a>
 ### Summary View (📋 Summary)
 
 The Summary view appears automatically after running an analysis with the **Architecture View** checkbox enabled. It presents a layered architecture overview of your analysis results, grouping elements by their taxonomy category:
@@ -626,7 +665,7 @@ The main visualization is a **stable impact graph arranged by architecture layer
 - **Directed connections** show source, target, and relationship type. Selecting an element highlights its connected paths and de-emphasises unrelated elements.
 - Use **search** to find elements by code, title, or layer. Press Enter to move to the first match.
 - The **Context nodes** switch shows or hides propagated elements while preserving direct matches.
-- Switch between **Overview** and **Focus**. Focus mode shows the selected element and its immediate neighbours; double-clicking a card also activates it.
+- Switch between **Overview** and **Focus**. Focus mode shows the selected element and its immediate neighbours; double-clicking a card also activates it. **Unfocus** in the toolbar or element details restores the overview while retaining the selected element and other filters.
 - Use **Fit**, **zoom**, canvas panning, and **fullscreen** to inspect small or extensive results. On initial display, the complete graph is fitted inside the canvas. Responsive resizing repeats that fit until you zoom or pan manually; use **Fit** to restore the complete overview.
 - **Click** an element card or connection to view its relevance, distance, inclusion reason, and connected elements in the detail area. From there you can open the element in Graph Explorer.
 - Toggle to **"🏗️ Layer View"** for the compact swimlane representation grouped by architecture layer.
@@ -649,8 +688,11 @@ The Graph Explorer traces stored relationships in the primary catalogue around a
 Open **Graph** in the main navigation to display the Graph Explorer.
 
 1. From a taxonomy node, open its actions and choose **Graph**, or select **Open in Graph Explorer** in the Architecture View's element details. The application switches to **Graph**, fills and focuses **Node Code**, and immediately runs an **Upstream** query for that node. The result or its loading, empty, or error message appears in the visible panel.
+
 2. You can also enter a code directly in **Node Code**, then choose **Upstream**, **Downstream**, **Failure Impact**, or **Enriched Impact**. An empty code shows a prompt; enter a valid catalogue code and retry if the server rejects it.
 3. Set **Max Hops** to limit traversal depth (1–5; default: 2), then run the desired query again. Changing the value alone does not refresh the result.
+
+Selecting a node in the left List, Tabs, Sunburst, Tree, Decision or Summary view also updates an already open Graph Explorer. The last node query (Upstream, Downstream, Failure Impact or Enriched Impact) and hop depth are retained; keyboard focus stays in the left view. If Graph is hidden, the selection is remembered and its query starts when you open Graph.
 
 A new query replaces the previous result. A response arriving late from an older query cannot replace the current selection. An empty result means no matching stored relationships were returned within the selected scope; an error is displayed separately and does not establish that no dependencies exist.
 
@@ -2131,6 +2173,10 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 
 <a id="guide-section-27"></a>
 ## Saved reformulation offers and decision questions
+
+The analysis page shows **Next steps**, **Reformulate requirement…** and **Architecture focus lens**. The Project menu also exposes reformulation, and the Architecture View has a lens link. Partial results offer **Clarify open assessments**; edited text offers **Analyze current wording**. A finished run remains subject to evidence review and explicit acceptance.
+
+Reformulation opens the saved project requirement and preserves an explicitly selected snapshot. For an ad hoc analysis, the action first opens **Add as requirement**; select or create a matching snapshot in that requirement afterward. Saving the text does not attach the ad hoc analysis to the new requirement. Unsaved analysis-page edits are not copied into an existing saved requirement. The lens opens the editor in the selected workspace; enable the existing investigation workflow there. Navigation saves the current analysis draft and stops if saving fails.
 
 Open a saved requirement with an analysis snapshot and create a reformulation offer
 for that source version. The original, proposal and questions are separate views;

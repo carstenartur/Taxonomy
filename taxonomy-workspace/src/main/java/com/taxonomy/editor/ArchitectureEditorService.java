@@ -466,6 +466,16 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         parts.add(Long.toString(command.context().revision()));
         if (command.operation() instanceof SemanticCommand semantic) {
             switch (semantic.command()) {
+                case AdoptAnalysisSnapshot a -> {
+                    parts.add(a.viewId()); parts.add(a.title()); parts.add(a.description()); parts.add(a.graphFingerprint());
+                    parts.add(Integer.toString(a.elements().size()));
+                    for (var element : a.elements()) {
+                        parts.add(element.id()); parts.add(element.type()); parts.add(element.title()); parts.add(element.description());
+                    }
+                    parts.add(Integer.toString(a.relations().size()));
+                    a.relations().forEach(relation -> parts.add(relation.id()));
+                    properties(parts, a.provenance());
+                }
                 case SetRequirementPlanning p -> planningFingerprint(parts, p.requirementId(), p.entry());
                 case ImportRequirementPlanning p -> planningFingerprint(parts, p.requirementId(), p.entry());
                 case DeleteRequirementPlanning p -> { parts.add(p.requirementId()); parts.add(p.entryId()); }

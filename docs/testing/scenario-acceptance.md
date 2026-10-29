@@ -4,7 +4,10 @@ Die Abnahme beginnt mit einer öffentlichen Anforderung und führt den echten
 Taxonomy-Copilot bis zum gespeicherten Architektur-Snapshot und dessen Exporten aus.
 Nur die HTTP-Antwort der entfernten LLM wird durch Spring ersetzt. Projektverwaltung,
 Authentifizierung, Katalog, Prompts, Providerformat, Parser, Analyse, Verifikationsläufe,
-Hypothesen, Datenbank, Git und Renderer bleiben echte Anwendungskomponenten.
+anforderungsbezogene Beziehungssuche, Datenbank, Git und Renderer bleiben echte
+Anwendungskomponenten. Die Abnahme prüft einen begrenzten funktionalen Referenzfall
+mit fachlich verfassten Modellantworten. Sie ist kein Nachweis, dass ein beliebiges
+Live-Modell vollständige oder bessere Produktionsarchitekturen erzeugt.
 
 ## Nachvollziehbare Anforderung
 
@@ -23,24 +26,21 @@ Warnungen verschickt noch reale Abonnentendaten verwendet.
 
 Die Datei
 [`flood-information.json`](../../taxonomy-app/src/test/resources/scenarios/flood-information.json)
-enthält Quellen, Anforderung, Katalogbindungen und 39 Antwortregeln auf rund 20 KB.
-Die Antworten sind fachlich verfasste Testdaten, keine aufgezeichneten LLM-Ausgaben.
+enthält Quellen, Anforderung, Katalogbindungen, hierarchische Bewertungsantworten und
+die fachlich verfassten Beiträge und Beziehungsbehauptungen der Wiedergabe. Die
+ausgelagerten Ausschlussregeln werden beim Laden ergänzt. Das ist ein mehrstufiger
+Antwortkorpus, keine Liste von acht festgelegten Architektur-Endpunkten und keine
+Aufzeichnung echter LLM-Ausgaben. Alle gebundenen Codes und Namen werden gegen
+`/api/taxonomy` geprüft, das den echten Katalog liefert.
 
-| Fachlicher Schwerpunkt | Tatsächlicher Katalog-Endpunkt |
-|---|---|
-| Eingang veröffentlichter Beobachtungen | BP-1017 — Acquire Data |
-| Fachliche Aufsicht | BR-1223 — Civil Governance Roles |
-| Hydrografische Verarbeitung | CI-1052 — Hydrography Services |
-| SMS-Zugang | CO-1048 — Short Messaging Access Services |
-| Verbreitung von Informationen | CP-1041 — Information Dissemination Capabilities |
-| Dauerhafte Zustellaufträge | CR-1097 — Message Queueing Services |
-| Umweltlagebild | IP-1116 — Recognized Environmental Pictures |
-| Oberfläche für Wasserinformationen | UA-1580 — Hydrographic Applications |
-
-Alle Codes und Namen werden gegen `/api/taxonomy` geprüft, das den echten Workbook-
-Katalog liefert. Die gewichteten Antworten konzentrieren jeden Taxonomiezweig auf
-einen fachlichen Pfad. Ein Score von 100 ist hierbei eine Verteilung innerhalb dieses
-Pfads; er bedeutet weder Vollständigkeit noch eine Freigabe der Architektur.
+Die unabhängig gepflegte
+[`flood-quality-reference.json`](../../taxonomy-app/src/test/resources/scenarios/flood-quality-reference.json)
+beschreibt die erwarteten gerichteten Funktionen, erlaubte bedingte Ergänzungen,
+Abdeckungspflichten und offen zu haltenden Eingangsidentitäten. Ihre fachlichen
+Grenzen und die Entwicklung des Antwortkorpus stehen in der
+[Referenzprüfung](../qa/scenario-reference-review.md). Bewertungswerte wählen und
+gewichten Katalogbeiträge; sie sind weder ein Erfüllungsgrad der Anforderung noch
+eine Wahrscheinlichkeit für die Richtigkeit oder eine Freigabe der Architektur.
 
 ## Testgrenze und Ablauf
 
@@ -50,22 +50,53 @@ sendet seine normalen Requests an `https://scenario.invalid/v1/chat/completions`
 der Spring-Server beantwortet sie im Prozess. Kein Netzwerk-Fallback ist möglich.
 Unbekannte URLs, Modelle, Anfragen, Aufgaben, Budgets oder Kategorien führen zum Fehler.
 
-`ScenarioLlmPlayback` erkennt die Anforderung, die Aufgabe und die vollständige Menge
-der angefragten Kategorien. Aufrufreihenfolge und Wiederholungen verändern die Antwort
-nicht. Doppelte Regeln werden schon beim Laden abgewiesen. Die Abnahme verlangt jede
-Regel genau zweimal, einmal je Verifikationslauf; auch vom Anwendungscode abgefangene
-Playback-Fehler lassen den Test scheitern.
+[`ScenarioLlmPlayback`](../../taxonomy-app/src/test/java/com/taxonomy/acceptance/ScenarioLlmPlayback.java)
+und die fachlichen Wiedergabestrategien prüfen die Anforderung, Bewertungsbudgets,
+vollständige Kandidatenmengen, Quellbeiträge, Suchrichtung und den jeweiligen
+Navigations- oder Verifikationsschritt. Unbekannte oder widersprüchliche Anfragen
+werden nicht durch eine allgemeine Erfolgsantwort beantwortet. Auch vom
+Anwendungscode abgefangene Playback-Fehler lassen die Abnahme scheitern. Die
+Abdeckung wird für beide unabhängigen Verifikationsläufe geprüft; Fortsetzungen
+dürfen gespeicherte Antworten wiederverwenden und sind keine zusätzlichen Läufe.
+
+Der standardmäßig aktivierte produktive Pfad
+[`RequirementRelationSearchService`](../../taxonomy-analysis/src/main/java/com/taxonomy/analysis/relations/RequirementRelationSearchService.java)
+ermittelt anforderungsbezogene Beiträge, sucht passende Gegenstellen hierarchisch
+und lässt einen Treffer gesondert verifizieren. Richtung, Funktion, Notwendigkeit,
+Bedingung und wörtlicher Originalbeleg bleiben strukturiert erhalten.
+[`EvidenceRelationProjection`](../../taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/EvidenceRelationProjection.java)
+übernimmt gesondert geprüfte notwendige Beziehungen in die erforderliche Sicht;
+Optionen, Alternativen und offene Fragen bleiben unterscheidbar. Eine hohe
+Bewertung zweier Katalogeinträge allein erzeugt hier keine Beziehung. Die
+Snapshot-Vorschläge sind damit noch nicht in die aktive Architektur übernommen.
 
 1. Anmelden; Projekt und Anforderung anlegen.
 2. Copilot mit Profil **Exhaustive**, zwei Verifikationsläufen und Lösungsvorschlägen starten.
-3. Auf den tatsächlich gespeicherten erfolgreichen Auftrag warten.
-4. Beide Snapshots auf gleiche Scores, Begründungen und Architektur prüfen.
+3. Auf den gespeicherten Endzustand warten und fortsetzbare Budgetarbeit für beide
+   ursprünglichen Läufe über die vorhandene Fortsetzungsaktion weiterführen.
+4. Beide Snapshots auf gleiche Scores, Begründungen und semantische Architektur
+   prüfen; ursprüngliche Snapshots und getrennte Verbrauchsjournale erhalten.
 5. Den ausgewählten Snapshot erneut über HTTP öffnen und dessen Identität prüfen.
 6. Exporte aus diesem Snapshot bzw. seiner erzeugten Graphstruktur erstellen und prüfen.
 7. Die erzeugte ArchiMate-Datei in einem per REST angelegten getrennten Repository prüfen
-   und übernehmen; den unterstützten Anteil als Sparx-XMI ausliefern und wieder einlesen.
+   und übernehmen; denselben gerichteten Graphen mit seinen Belegen über das
+   Sparx-Profil `sparx-xmi-2.1@3` ausliefern und wieder einlesen.
 8. Optional denselben Ablauf im echten Browser ausführen, während der Analyse neu laden,
    Ergebnisse und Workbench öffnen, Bedienelemente ausführen und Screenshots speichern.
+
+[`ScenarioContinuationWalkthrough`](../../taxonomy-app/src/test/java/com/taxonomy/ScenarioContinuationWalkthrough.java)
+begrenzt die Fortsetzungen je ursprünglichem Lauf. Jeder Schritt muss Fortschritt
+nachweisen, die ursprünglichen Ressourcenlimits einhalten und einen neuen Snapshot
+erzeugen; sein unveränderlicher Vorgänger bleibt abrufbar. Die Abnahme verwendet
+bewusst einen engeren Ressourcenrahmen als die konfigurierbaren Produktionsvorgaben.
+
+Der erwartete Endzustand dieses Referenzfalls ist ausdrücklich **`PARTIAL`** mit
+**`COMPLETED_WITH_GAPS`**: Eine begrenzte Frage zur Identität eines F5-Eingangs bleibt
+offen. Sie darf weder durch eine erfundene Produktidentität noch durch eine pauschale
+Erfolgsmeldung verschwinden. Die unabhängige Prüfung verlangt die vorgesehenen
+Funktionen und Belege, keine ausstehende Budgetarbeit und ausschließlich die exakt
+zugelassenen offenen Bindungen. `PASS_WITH_OPEN_POINTS` im fachlichen Prüfbericht
+ist deshalb mit einem weiterhin partiellen Snapshot vereinbar.
 
 Der Test verwendet eine echte HSQLDB-Datenbank. Optionales ONNX-Embedding ist deaktiviert;
 es wird nicht durch eine Attrappe ersetzt. Datenbankvarianten und reale Remote-LLMs
@@ -95,7 +126,8 @@ mit `-Dwebdriver.chrome.driver=/absolute/path/chromedriver` und optional
 `-Dscenario.chrome.binary=/absolute/path/chrome` verwendet werden.
 Das Profil `scenario-acceptance` setzt `generateScreenshots=true` und aktiviert damit
 Browser und Screenshots. `-DgenerateScreenshots=false` schaltet beides aus.
-Es werden keine HTML-Inhalte, erfolgreichen Antworten oder Ergebniszustände injiziert.
+HTML-Inhalte, vorbereitete Analyseergebnisse und erfolgreiche Auftragszustände
+werden nicht injiziert; ersetzt werden ausschließlich die entfernten Provider-Antworten.
 Der Container-Browser vertraut ausschließlich der dynamischen HTTP-Testadresse
 `host.testcontainers.internal:<port>`, wie die vorhandene Container-Testinfrastruktur.
 Damit blockiert Chrome die Anhänge nicht als unsichere Downloads. Die Ausnahme gilt
@@ -106,18 +138,23 @@ Die ergänzende CI
 [`.github/workflows/scenario-acceptance.yml`](../../.github/workflows/scenario-acceptance.yml)
 führt den Browserweg bei relevanten Pull Requests aus und bewahrt das gesamte
 Abnahmepaket als Workflow-Artefakt auf. Sie benötigt keine Provider-Secrets und schreibt
-nichts in den Branch zurück. Die allgemeine Pflichtprüfung bleibt:
+nichts in den Branch zurück. Der kanonische Einstieg für den kombinierten lokalen
+CI-Prüfumfang lautet:
 
 ```bash
-./mvnw verify -DexcludedGroups="real-llm"
+./mvnw -B verify -Pci -DrunOnnxTests=true
 ```
+
+Die [Maven-Verifikationsautorität](../dev/MAVEN_VERIFICATION.md) beschreibt dessen
+native Voraussetzungen, separate Datenbank-Lanes und zusätzliche externe
+Freigabebedingungen. Die Szenarioauswahl oben ersetzt diese Gesamtprüfung nicht.
 
 ## Exporte und Prüftiefe
 
 Die [Word- und Sparx-Abschlussprüfung](../qa/word-and-sparx-completion-review.md)
-unterscheidet die beiden Word-Exporte und hält fehlende Graphen sowie den noch
-implementierbaren Umfang von #1075 fest. Grüne Abnahmetests sind keine Aussage,
-dass diese offenen Produktfunktionen bereits vorhanden sind.
+unterscheidet die beiden eingefrorenen Word-Exporte, historische Renderbefunde,
+implementierte Integrationsverträge und weiterhin gesondert erforderliche
+Produktabnahmen. Maßgeblich sind jeweils die dort genannten Revisionen und Artefakte.
 
 | Ausgabe | Geprüfte Eigenschaften |
 |---|---|
@@ -126,23 +163,50 @@ dass diese offenen Produktfunktionen bereits vorhanden sind.
 | ArchiMate XML + ZIP | Profil-Reader rekonstruiert denselben Graphen; Bundle-Inhalt und Hash stimmen überein |
 | Visio VSDX + ZIP | XML-Paket, ursprüngliche Element-/Beziehungsidentitäten, vorhandene Connector-Endpunkte, gleicher Bundle-Inhalt |
 | Entscheidungsbericht HTML, DOCX, JSON | Anforderung und Snapshot erhalten; Word-Dokument mit echtem POI-Parser gelesen |
-| Diagrammadapter ArchiMate, Visio, Mermaid, Structurizr | Alle registrierten Adapter erhalten denselben erzeugten Graphen; Mermaid-Labels sowie offizieller Structurizr-Parser 6.2.3 und lokale Importparität |
+| Registrierte Diagrammadapter | ArchiMate, Visio, SVG, Mermaid, Structurizr und Sparx erhalten denselben erzeugten Graphen; Mermaid-Labels sowie offizieller Structurizr-Parser und lokale Importparität |
 | Allgemeiner Bericht Markdown, HTML, DOCX, JSON | Echte REST-Endpunkte erhalten die erzeugten Scores; Dokumente lesbar und der Anforderung zugeordnet |
-| Unabhängiges Rendering | LibreOffice Writer/Draw öffnen DOCX/VSDX; Poppler prüft Begründungen, Knotenlabels und alle 44 Beziehungs-Schlüssel/Richtungen/Typen auf den nativen Detailseiten, leere Seiten und Seitenumfang; PNGs für Sichtprüfung |
-| Sparx-XMI über echte Integrations-API | Geprüfter ArchiMate-Import, natives Journal, Exportvorschau, Verlustentscheidungen, Dateiabruf und semantischer Vergleich der unterstützten Teilmenge |
+| Unabhängiges Rendering | LibreOffice Writer/Draw öffnen DOCX/VSDX; Poppler prüft Begründungen, Knotenlabels und die tatsächlichen Beziehungs-Schlüssel/Richtungen/Typen auf den nativen Detailseiten, leere Seiten und quellgebundene Seitengrenzen; PNGs für Sichtprüfung |
+| Sparx-XMI über echte Integrations-API | Geprüfter ArchiMate-Import, natives Journal, Exportvorschau, ausdrückliche Review-Entscheidungen, Dateiabruf und semantischer Vergleich des vollständigen Szenariographen mit Profil v3 |
 | ArchiMate-Integrationscodec | Tatsächlich exportierte Datei wird eingelesen, erneut geschrieben und mit gleichen Identitäten eingelesen |
+| Unabhängige fachliche Architekturprüfung | Gerichtete erforderliche Beziehungen und zulässige Ergänzungen; funktionale und qualitative Pflichten am richtigen Element bzw. an der richtigen Beziehung; Originalzitate, Notwendigkeit, Bedingungen, Herkunft, Review-Status und eng begrenzte offene Fragen bis in die Sparx-Datei |
 
-Das sind 17 Snapshot-/Berichtsdateien plus die geprüfte Sparx-XMI-Datei, zusätzlich zu Snapshot, Auftragsdaten, LLM-Aufrufprotokoll und
-Qualitätsbericht in `taxonomy-app/target/scenario-acceptance/`. Die vier Diagrammadapter
-werden direkt über ihre produktive Spring-Registrierung aufgerufen, da ihre älteren
-REST-Endpunkte bewusst eine neue Analyse starten würden. Die Snapshot-Exporte dürfen
+Die Snapshot-/Berichtsdateien und die geprüfte Sparx-XMI-Datei entstehen zusammen
+mit Snapshot, Auftragsdaten, Fortsetzungshistorie, LLM-Aufrufprotokoll und
+Qualitätsberichten in `taxonomy-app/target/scenario-acceptance/`. Die registrierten
+Diagrammadapter werden direkt über ihre produktive Spring-Registrierung aufgerufen,
+da ihre älteren REST-Endpunkte bewusst eine neue Analyse starten würden. Die Snapshot-Exporte dürfen
 keinen zusätzlichen LLM-Aufruf auslösen.
 
-Die [fachliche Referenzprüfung](../qa/civilian-reference-review.md) dokumentiert
-F1–F5/A1 samt verbleibenden Abdeckungslücken. `integration-import-review.json` und
-`integration-sparx-review.json` halten jede Annahme/Ablehnung fest; der ursprüngliche
-Snapshot bleibt unverändert. Von 44 Beziehungskandidaten werden 36 nativ übernommen;
-das Sparx-Profil v1 kann davon 8 liefern. Diese Grenze ist ein geprüftes Ergebnis.
+[`ScenarioArchitectureQuality`](../../taxonomy-app/src/test/java/com/taxonomy/acceptance/ScenarioArchitectureQuality.java)
+prüft den tatsächlichen Snapshot, den Workbench-Graphen und das gelieferte Sparx-XMI
+gemeinsam gegen die unabhängige Referenz. `classification-quality.json`,
+`prompt-evidence-quality.json`, `relation-quality.json` und `architecture-quality.json`
+trennen Bewertungs-, Prompt-, Such- und funktionale Modellnachweise.
+`integration-import-review.json` und `integration-sparx-review.json` halten die
+ausdrücklichen Übernahmeentscheidungen fest; der ursprüngliche Snapshot bleibt
+unverändert. Die aktuelle Integrationsprüfung verlangt, dass alle Beziehungen des
+erzeugten Szenariographen über Profil v3 mit gerichteten Endpunkten, Typen und
+Taxonomy-Belegen erhalten bleiben. Das ist eine Prüfung des funktionalen Modells
+und der Austauschverträge, keine Ausführung oder Zertifizierung von Sparx EA.
+
+Die ältere [Referenzprüfung](../qa/civilian-reference-review.md) beschreibt
+den historischen Fall mit acht ausgewählten Endpunkten, 38 Graphknoten und
+44 Beziehungskandidaten sowie dem damaligen Sparx-Profil v1 mit acht lieferbaren
+Beziehungen. Diese Zahlen und damaligen F3/F4-Lücken sind historische Befunde;
+sie beschreiben weder den heutigen Antwortkorpus noch die aktuelle Abnahme.
+
+Als reproduzierbare Dokumentregression sind die komprimierten Dateien unter
+[`complete-flood-v1`](../../taxonomy-tooling/src/test/resources/scenario-documents/complete-flood-v1)
+erhalten. Ihr `run.json.gz` identifiziert den Lauf
+[39296468148](https://github.com/carstenartur/Taxonomy/actions/runs/39296468148) an
+Revision `2fb5a7ae342af5c1ade5b97b65de4bed658f38f5`; die Berichtsmetadaten datieren
+ihn auf den **19. Oktober 2026**. Dieser gespeicherte Lauf enthält **50 Knoten,
+36 Beziehungen und 5.994 verfasste Provider-Antworten über die HTTP-Testgrenze**;
+sein Analysestatus bleibt `PARTIAL`. Die Aufrufzahl bezeichnet Wiedergabeaustausche
+des gesamten Abnahmelaufs, keine echten Remote-Modellaufrufe und keine Zusage zum
+Aufwand einer neuen Analyse. Korpus, Referenz und aktuelle Prüfläufe können sich
+weiterentwickeln; ihre Fingerabdrücke und tatsächlichen Ergebnisse sind jeweils
+getrennt zu lesen.
 
 Die CI rendert die tatsächlichen Dateien zusätzlich mit:
 
@@ -154,7 +218,7 @@ java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling ch
 Dafür werden LibreOffice Writer/Draw und Poppler benötigt. `document-qa/` enthält
 PDFs, sämtliche Seiten-PNGs und `quality.json` mit Renderer-Version, Hashes und
 Textprüfungen einschließlich der Zuordnung jeder kanonischen Beziehung zu ihrer
-lesbaren Detailseite. Der aktuelle VSDX-Nachweis steht in
+lesbaren Detailseite. Ein historischer, revisionsgebundener VSDX-Nachweis steht in
 [visio-graphical-quality.json](../qa/visio-graphical-quality.json). Mit dem optionalen
 Schalter `--visio-only` wird gezielt VSDX geprüft, wenn unveränderte Word-Nachweise
 bereits vorliegen; ohne Schalter bleibt die vollständige Dokumentprüfung aktiv.
@@ -199,7 +263,7 @@ Die Emulation verändert weder Anwendungsdaten noch Netzwerkantworten.
 | Workbench / Suche | Markiert Knoten nach Code, Titel oder Schicht; die Referenz sucht CI-1052. |
 | Workbench / × | Leert die Suche und entfernt die Suchmarkierung. |
 | Workbench / Knoten auswählen | Zeigt Identität, Herkunft, Begründung und Review-Status im Detailbereich. |
-| Workbench / Context elements | Schaltet zusätzliche Kontextknoten ein oder aus. Die Referenz enthält nur Ankerknoten; hier wird die unveränderte Ankersicht geprüft, kein Ausblenden zusätzlicher Kontextknoten nachgewiesen. |
+| Workbench / Context elements | Schaltet bei vorhandenen Impact-Ankern zusätzliche Kontextknoten ein oder aus. Die evidenzbasierte Sicht hat keine solchen Anker: Der Schalter bleibt dann markiert und deaktiviert, alle Modellelemente bleiben sichtbar. Beide Fälle werden anhand des tatsächlichen Snapshots geprüft. |
 | Workbench / Overview | Zeigt wieder die vollständige sichtbare Übersicht. |
 | Workbench / Focus | Zeigt den gewählten Knoten und seine Nachbarn; benötigt eine Auswahl. |
 | Workbench / − und + | Verkleinern bzw. vergrößern den Ausschnitt. |
@@ -229,7 +293,9 @@ Die Abnahme hat eine reale Vervielfachung abgeleiteter Beziehungen aufgedeckt:
 auch gleich bewertete Vorfahren wurden als konkrete Impact-Endpunkte behandelt.
 Die Auswahl unterdrückt nun einen Vorfahren, wenn ein qualifizierter Nachfolger
 seinen Pfad repräsentiert. Andere Zweige und schwach bewertete Nachfolger bleiben
-korrekt unterscheidbar. Im Referenzfall sinkt die Zahl von 334 auf 44 Beziehungen.
+korrekt unterscheidbar. Im damaligen Referenzfall sank die Zahl von 334 auf
+44 Beziehungen. Das beschreibt die historische Ableitung, nicht die aktuelle
+anforderungsbezogene Beziehungssuche.
 
 Zwei weitere Befunde betreffen die Ausgabe: Ein interner Übersetzungsschlüssel wurde
 als Titel übernommen; jetzt wird dafür der lesbare Anforderungstitel verwendet.
@@ -250,11 +316,14 @@ schnitt breite Diagramme auf einem Telefon und sehr hohe Diagramme ab. Die
 Geometrieprüfung reproduziert beide Fälle und verlangt vollständig sichtbare Grenzen
 mit Rand; die Browserabnahme prüft zusätzlich die tatsächliche mobile SVG-Fläche.
 
-Der Copilot liefert weiterhin eine **Taxonomie-basierte Kandidatenarchitektur**.
-Kontoverwaltung, Zustellgarantien, konkrete Datenmodelle und die vollständige Umsetzung
-sämtlicher Anforderungssätze werden dadurch nicht bewiesen. Hierarchiekontext und
-abgeleitete Hypothesen bleiben erkennbar; sie sind keine fachlich bestätigten
-Komponenten oder Schnittstellen. Fachliche Vollständigkeit, Lesbarkeit bei gewünschtem
+Der Copilot liefert eine **Taxonomie-basierte funktionale Kandidatenarchitektur**.
+Die aktuelle Referenz prüft die deklarierten Funktionen und ihre gebundenen
+Qualitätsanforderungen einschließlich Kontoverwaltung; die F5-Identitätsfrage bleibt
+sichtbar. Das belegt keine implementierten Abläufe, Zustellgarantien, konkreten
+Datenmodelle, Laufzeitwerte oder Sicherheitszertifizierung. Modellgestützte
+Verifikation und wörtliche Belege ersetzen keine menschliche semantische Prüfung;
+die Konfidenz ist nicht als Wahrscheinlichkeit der Architekturrichtigkeit kalibriert.
+Vollständigkeit außerhalb dieses begrenzten Referenzfalls, Lesbarkeit bei gewünschtem
 Druckmaßstab und echte Zielprodukt-Kompatibilität sind zusätzliche Abnahmekriterien.
 Der lokale Structurizr-Importer ist keine unabhängige Prüfung der vollständigen DSL.
 Sparx EA und Microsoft Visio werden durch diese Tests nicht als Desktop-Produkte gestartet.
@@ -264,9 +333,12 @@ zu prüfen: lesbare Bezeichnungen, keine Überdeckungen, nachvollziehbare Verbin
 kein abgeschnittener Text, verständliche Hinweise auf Hypothesen und Exportverluste.
 Ein erfolgreicher Parser-Test allein ist keine visuelle Freigabe.
 
-Die erste tatsächliche Word-Renderprüfung hat einen offenen Befund geliefert:
-Der Entscheidungsbericht umfasst 87 Seiten, darunter eine Seite ohne Inhalt
+Die erste tatsächliche Word-Renderprüfung lieferte einen historischen Befund:
+Der damalige Entscheidungsbericht umfasste 87 Seiten, darunter eine Seite ohne Inhalt
 zwischen Titelseite und Zusammenfassung. Wiederholte Begründungen in schmalen
-Tabellenspalten erschweren die kompakte Darstellung. Diese Datei ist daher trotz
-bestandener Strukturprüfung noch nicht visuell freigegeben. Aktueller Stand und
-Prüfgrenzen stehen im [Validierungsnachweis](../qa/civilian-acceptance-validation.md).
+Tabellenspalten erschwerten die kompakte Darstellung. Diese damalige Datei war trotz
+bestandener Strukturprüfung nicht visuell freigegeben. Der
+[historische Validierungsnachweis](../qa/civilian-acceptance-validation.md) bleibt
+erhalten; spätere eingefrorene Word-Berichte und die quellgebundene Complete-Flood-
+Paginierung sind in der [Word-Abschlussprüfung](../qa/word-and-sparx-completion-review.md)
+gesondert dokumentiert. Ein neuer Lauf benötigt seine eigenen Render- und Sichtnachweise.

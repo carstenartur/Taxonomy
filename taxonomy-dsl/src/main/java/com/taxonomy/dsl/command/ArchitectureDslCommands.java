@@ -72,6 +72,7 @@ public final class ArchitectureDslCommands {
         Objects.requireNonNull(source, "source");
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(source);
         return switch (command) {
+            case AdoptAnalysisSnapshot adoption -> AnalysisSnapshotAdoption.apply(this, source, adoption);
             case SetRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), false);
             case ImportRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), true);
             case DeleteRequirementPlanning p -> planning.remove(source, p.requirementId(), p.entryId());
@@ -103,6 +104,7 @@ public final class ArchitectureDslCommands {
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
                 && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
                 && !change.id().startsWith("mapping:")
+                && !AnalysisSnapshotAdoption.isAdoptionView(change)
                 && !com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, change.id()))) {
             throw problem("NOT_UNDOABLE", "targetOperationId", "Target contains unsupported semantic objects");
         }
@@ -420,7 +422,7 @@ public final class ArchitectureDslCommands {
                 new RelationKey(command.parentId(), "CONTAINS", command.id()), "proposed", Map.of());
     }
 
-    private static void validateRelation(Map<String, BlockAst> blocks, RelationKey relation) {
+    static void validateRelation(Map<String, BlockAst> blocks, RelationKey relation) {
         token(relation.sourceId(), "sourceId");
         token(relation.targetId(), "targetId");
         if (relation.sourceId().equals(relation.targetId())) throw problem("SELF_RELATION", "targetId", "Self-relations are not permitted");
@@ -475,7 +477,8 @@ public final class ArchitectureDslCommands {
                 references = "package".equals(candidate.getKind()) && id.equals(candidate.property("parent"))
                         || "element".equals(candidate.getKind()) && id.equals(candidate.property("package"));
             } else if ("relation".equals(removed.getKind())) {
-                references = relationKey(removed).id().equals(candidate.property("for-relation"));
+                references = relationKey(removed).id().equals(candidate.property("for-relation"))
+                        || AnalysisSnapshotAdoption.relationMembers(candidate).contains(relationKey(removed).id());
             }
             if (references) dependencies.add(ArchitectureSemanticPatch.key(candidate));
         }

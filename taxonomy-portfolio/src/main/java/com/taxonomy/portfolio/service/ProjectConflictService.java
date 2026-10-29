@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.service;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictConfidenceBasis;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewConflictRequest;
 import com.taxonomy.portfolio.model.ArchitectureProject;
 import com.taxonomy.portfolio.model.PortfolioTypes.ConflictStatus;
@@ -175,7 +176,8 @@ public class ProjectConflictService {
                 conflict.getResolutionNote(),
                 conflict.getDetectedAt(),
                 conflict.getReviewedBy(),
-                conflict.getReviewedAt());
+                conflict.getReviewedAt(),
+                ConflictConfidenceBasis.UNCALIBRATED_RULE_WEIGHT);
     }
 
     private static ConflictRule rule(ConflictType type,

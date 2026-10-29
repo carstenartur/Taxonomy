@@ -65,6 +65,9 @@
             'products.new': 'New product',
             'conflicts.title': 'Requirement conflict hypotheses',
             'conflicts.help': 'Detection is evidence-backed but never auto-confirmed.',
+            'conflicts.rule.weight': 'Rule weight',
+            'conflicts.rule.help': 'Fixed priority assigned to this detection rule; not a measured probability. Review the evidence before confirming or rejecting the conflict.',
+            'conflicts.rule.unknown': 'The score basis or a valid weight is unavailable. Review the evidence to decide whether the requirements conflict.',
             'snapshots.title': 'Analysis snapshot history',
             'snapshots.help': 'Select a requirement in the Requirements tab to inspect and compare snapshots.',
             'snapshots.none': 'No snapshot selected.',
@@ -196,6 +199,9 @@
             'products.new': 'Neues Produkt',
             'conflicts.title': 'Konflikthypothesen zwischen Anforderungen',
             'conflicts.help': 'Die Erkennung ist evidenzbasiert, wird aber niemals automatisch bestätigt.',
+            'conflicts.rule.weight': 'Regelgewicht',
+            'conflicts.rule.help': 'Feste Priorität dieser Erkennungsregel; keine gemessene Wahrscheinlichkeit. Prüfen Sie die Belege, bevor Sie den Konflikt bestätigen oder verwerfen.',
+            'conflicts.rule.unknown': 'Die Bewertungsgrundlage oder ein gültiges Regelgewicht fehlt. Prüfen Sie anhand der Belege, ob sich die Anforderungen widersprechen.',
             'snapshots.title': 'Historie der Analyse-Snapshots',
             'snapshots.help': 'Im Reiter Anforderungen eine Anforderung auswählen, um Snapshots zu prüfen und zu vergleichen.',
             'snapshots.none': 'Kein Snapshot ausgewählt.',
@@ -425,11 +431,18 @@
             renderProjectList();
             const stored = Number(window.localStorage.getItem('taxonomy.portfolio.projectId')) || null;
             const candidate = preferredProjectId || stored;
-            const selected = state.projects.find(function (project) { return project.id === candidate; })
+            const selected = window.TaxonomyArchitectureWorkflow
+                ? window.TaxonomyArchitectureWorkflow.preferredProject(state.projects, preferredProjectId, stored)
+                : state.projects.find(function (project) { return project.id === candidate; })
                 || state.projects[0]
                 || null;
             if (selected) await selectProject(selected.id);
-            else showNoProjectSelected();
+            else {
+                showNoProjectSelected();
+                if (new URLSearchParams(window.location.search).has('projectId')) {
+                    showError(new Error(window.TaxonomyI18n.t('workflow.projectUnavailable')));
+                }
+            }
         }).catch(function () {});
     }
 
@@ -944,9 +957,8 @@
                 + statusBadgeClass(conflict.status) + '">' + escapeHtml(humanize(conflict.status))
                 + '</span></div><strong class="d-block mt-2">' + escapeHtml(conflict.title)
                 + '</strong><div><code>' + escapeHtml(conflict.requirementAKey) + '</code> ↔ <code>'
-                + escapeHtml(conflict.requirementBKey) + '</code></div></div><div class="text-end small">'
-                + escapeHtml(t('label.confidence')) + '<br><strong>'
-                + formatPercent(conflict.confidence) + '</strong></div></div><div class="portfolio-evidence mt-3">'
+                + escapeHtml(conflict.requirementBKey) + '</code></div></div></div>'
+                + conflictAssessmentHtml(conflict) + '<div class="portfolio-evidence mt-3">'
                 + escapeHtml(conflict.evidence) + '</div><div class="btn-group btn-group-sm mt-3">'
                 + '<button class="btn btn-outline-success conflict-review" data-conflict-id="' + conflict.id
                 + '" data-status="CONFIRMED">' + escapeHtml(t('action.confirm')) + '</button>'
@@ -960,6 +972,20 @@
         });
         if (conflicts.length === 0) target.innerHTML = '<div class="portfolio-empty"><span>✓</span><p>'
             + escapeHtml(t('empty.conflicts')) + '</p></div>';
+    }
+
+    function conflictAssessmentHtml(conflict) {
+        const known = conflict.confidenceBasis === 'UNCALIBRATED_RULE_WEIGHT'
+            && typeof conflict.confidence === 'number'
+            && Number.isFinite(conflict.confidence)
+            && conflict.confidence >= 0 && conflict.confidence <= 1;
+        const weight = known
+            ? new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(conflict.confidence * 100) + ' / 100'
+            : '—';
+        return '<div class="conflict-assessment small border rounded p-2 mt-3"><span>'
+            + escapeHtml(t('conflicts.rule.weight')) + ': </span><strong>' + escapeHtml(weight)
+            + '</strong>\n<p class="text-body-secondary mb-0 mt-1">'
+            + escapeHtml(t(known ? 'conflicts.rule.help' : 'conflicts.rule.unknown')) + '</p></div>';
     }
 
     function renderMatrix(targetId, matrix) {
@@ -1161,6 +1187,15 @@
                     + snapshot.warnings.map(function (warning) { return '<li>' + escapeHtml(warning) + '</li>'; }).join('')
                     + '</ul></div>' : '') + '<div class="mt-3"><button class="btn btn-sm btn-outline-secondary snapshot-compare" '
             + 'type="button">' + escapeHtml(t('action.compare.previous')) + '</button></div><div id="snapshotDiff" class="mt-3"></div>';
+        if (window.TaxonomyInventoryComparison) {
+            const exact = await window.TaxonomyPortfolioApi.getSnapshot(state.selectedProjectId, snapshotId);
+            if (state.selectedSnapshotId !== snapshotId) return;
+            const inventory = document.createElement('div');
+            inventory.id = 'inventoryComparison';
+            target.append(inventory);
+            window.TaxonomyInventoryComparison.mount(inventory, {projectId: state.selectedProjectId,
+                snapshot: exact, solutions: state.portfolio?.solutions || []});
+        }
     }
 
     async function onSnapshotDetailAction(event) {

@@ -5,6 +5,24 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DriverOutcomeChecksTest {
+ @Test void oldProductPairCannotCertifyWorkbenchProfile() throws Exception {
+  var report=new ObjectMapper().readTree("""
+      {"status":"passed","results":[
+        {"product":"StrictDoc","profile":"reqif-1.2/1","result":"passed"},
+        {"product":"Archi","profile":"archimate-3.1/1","result":"passed"}]}
+      """);
+  assertThrows(AssertionError.class,()->InteroperabilityProductsIT.validateOutcomes(report));
+ }
+ @Test void eachProductProfileHasAnIndependentRequiredOutcome() throws Exception {
+  var report=new ObjectMapper().readTree("""
+      {"status":"passed","results":[
+        {"product":"StrictDoc","profile":"reqif-1.2/1","result":"passed"},
+        {"product":"Archi","profile":"archimate-3.1/1","result":"passed"},
+        {"product":"Archi","profile":"taxonomy-archimate-3.1-v2","result":"passed"}]}
+      """);
+  assertEquals(Set.of("StrictDoc/reqif-1.2/1","Archi/archimate-3.1/1","Archi/taxonomy-archimate-3.1-v2"),
+      InteroperabilityProductsIT.validateOutcomes(report).keySet());
+ }
  @Test void acceptsEveryScenarioExactlyOnce() throws Exception {
   var report=new ObjectMapper().readTree("{\"outcome\":\"passed\",\"scenarioCount\":2,\"groups\":[{\"scenarios\":[{\"suite\":\"ui\",\"id\":\"one\",\"outcome\":\"passed\"},{\"suite\":\"ui\",\"id\":\"two\",\"outcome\":\"passed\"}]}]}");
   assertEquals(Set.of("ui/one","ui/two"),UiScenarioIT.validateOutcomes(report,List.of("ui/one","ui/two")).keySet());

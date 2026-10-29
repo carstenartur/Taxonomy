@@ -128,25 +128,4 @@ class CompleteCopilotResultUiContractTest {
                 .contains("<th scope=", "t('relation')", "t('reasoning')");
     }
 
-    @Test
-    void workbenchLinkKeepsTheExactSelectedImmutableSnapshot()
-            throws IOException {
-        String detail = Files.readString(Path.of(
-                "src/main/resources/static/js/portfolio/requirement-detail.js"));
-        String session = Files.readString(Path.of(
-                "src/test/java/com/taxonomy/CompleteCopilotSessionIT.java"));
-
-        assertThat(detail)
-                .contains("new URL('/architecture/workbench', window.location.origin)")
-                .contains("url.searchParams.set('projectId', String(projectId))")
-                .contains("url.searchParams.set('snapshotId', String(state.selectedSnapshot.id))")
-                .doesNotContain("+ '/architecture?lang=' + encodeURIComponent(locale)");
-        assertThat(session)
-                .contains("openSelectedSnapshotThroughVisibleAnalysisControls(projectId)")
-                .contains("#snapshotResultOverview a[href*='/architecture/workbench']")
-                .contains("projectId=")
-                .contains("snapshotId=")
-                .contains("selectedSnapshotId");
-    }
-
 }

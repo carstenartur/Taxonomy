@@ -1189,8 +1189,17 @@
     }
     if (typeof document !== 'undefined' && document.addEventListener) {
         ['taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled'].forEach(function (name) {
-            document.addEventListener(name, function () {
-                if (active) { active.cancelAndStop(); active = null; }
+            document.addEventListener(name, function (event) {
+                if (active) {
+                    // A remote draft revision only replaces this tab's view. It
+                    // must not cancel durable work still used by another tab.
+                    var observedChange = name === 'taxonomy:analysis-invalidated'
+                        && ['server-draft-changed', 'server-draft-missing', 'server-workspace-unavailable']
+                            .includes(event.detail?.reason);
+                    if (observedChange) active.stop();
+                    else active.cancelAndStop();
+                    active = null;
+                }
                 clearRecent();
                 if (name === 'taxonomy:analysis-invalidated') {
                     document.getElementById('analysisLiveProgress')?.remove();

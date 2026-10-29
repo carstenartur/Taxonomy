@@ -297,6 +297,7 @@ The first six settings below initialise repository-backed preferences. The `taxo
 | `TAXONOMY_EXTERNAL_GIT_USERNAME` | direct deployment credential | `oauth2` | Username supplied to the administrator-configured canonical external repository. |
 | `TAXONOMY_EXTERNAL_GIT_TOKEN` | direct deployment credential | empty | Write-only token for fetch/push; never persist or log it. |
 | `TAXONOMY_INTEGRATIONS_REMOTES` | `taxonomy.integrations.remotes` | empty map | Administrator-owned OSLC endpoint profiles. Configure the structured map through YAML or `SPRING_APPLICATION_JSON`; a single scalar environment value cannot describe a profile. Each profile binds repository, organization, origin/path and an environment credential reference. See [standards interoperability](../features/standards-interoperability.md). |
+| `TAXONOMY_INVENTORY_PROFILES` | `taxonomy.inventory.profiles` | empty map | Operator-approved inventory source profiles. Configure the structured map through YAML or `SPRING_APPLICATION_JSON`; a single scalar environment value cannot describe a profile. Each profile binds repository, organization, approved principals, selected source IDs, projections, read budgets and environment references for credentials. Only explicitly selected authorized profiles can read a source; restored evidence does not activate grants. See [inventory comparison](https://github.com/carstenartur/Taxonomy/blob/main/docs/features/inventory-comparison.md). |
 
 ## Input, architecture, export and document limits
 

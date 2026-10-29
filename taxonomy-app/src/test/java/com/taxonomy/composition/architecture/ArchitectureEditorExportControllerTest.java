@@ -44,6 +44,21 @@ class ArchitectureEditorExportControllerTest {
             "repo-a", "workspace-a", "draft", "alice");
 
     @Test
+    void selectedAdoptionViewExportsTheSameServerDerivedMembershipAsTheEditor() throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        var commands = new com.taxonomy.dsl.command.ArchitectureDslCommands();
+        String dsl = commands.apply("",new com.taxonomy.dsl.command.ArchitectureCommand.AdoptAnalysisSnapshot(
+                "analysis-view","Frozen graph","Old text","a".repeat(64),
+                List.of(new com.taxonomy.dsl.command.ArchitectureCommand.SnapshotElement("system","System","Included title","")),List.of(),java.util.Map.of())).dsl();
+        dsl = commands.apply(dsl,new com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureElement("outside","System",java.util.Map.of("title","Outside title"))).dsl();
+        var document = new ArchitectureEditorService.Document(Context.of(scope,HEAD,1),dsl,"READY",List.of(),List.of(),0,null,"WORKSPACE_REVISION");
+        when(service.read(scope,null,1L)).thenReturn(document);
+        var selected = exports.svg("repo-a","workspace-a","draft",null,1L,null,null,"analysis-view");
+        assertThat(selected.getBody()).contains("Included title").doesNotContain("Outside title");
+        assertThat(exports.svg("repo-a","workspace-a","draft",null,1L).getBody()).contains("Outside title");
+    }
+
+    @Test
     void exportRequiresAnExactRevisionOrVersionThroughSpringMvc() throws Exception {
         var mvc = standaloneSetup(exports).build();
 

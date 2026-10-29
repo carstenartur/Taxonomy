@@ -18,6 +18,18 @@ class FeatureAssemblyPartialContextTest {
                         .doesNotHaveBean(ArchitectureSummaryApiController.class));
     }
 
+    @Test void absentPortfolioDoesNotRegisterSnapshotAdoptionBridges() {
+        for (Set<String> installed : java.util.List.of(Set.<String>of(),Set.of("architecture","analysis"))) {
+            new ApplicationContextRunner()
+                    .withInitializer(context -> context.getBeanFactory().registerSingleton("featureSet",new FeatureAssembly.FeatureSet(installed)))
+                    .withUserConfiguration(com.taxonomy.composition.architecture.AnalysisSnapshotAdoptionController.class,
+                            com.taxonomy.composition.architecture.AnalysisSnapshotAdoptionService.class)
+                    .run(context -> assertThat(context).hasNotFailed()
+                            .doesNotHaveBean(com.taxonomy.composition.architecture.AnalysisSnapshotAdoptionController.class)
+                            .doesNotHaveBean(com.taxonomy.composition.architecture.AnalysisSnapshotAdoptionService.class));
+        }
+    }
+
     @Test void unrelatedPartialContextsDoNotStartFeatureServicesOrPersistence() {
         new ApplicationContextRunner().withConfiguration(AutoConfigurations.of(
                 com.taxonomy.templates.config.TemplatesFeatureAutoConfiguration.class,

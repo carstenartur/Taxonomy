@@ -39,6 +39,18 @@
     runtime.saveInFlight = runtime.saveInFlight || null;
     runtime.saveQueued = Boolean(runtime.saveQueued);
 
+    // Server hydration is observation, not a local edit. Rebase only a clean
+    // draft, synchronously, so typing or manual evidence changes remain dirty.
+    function observeDraftChanges(update) {
+        var clean = comparable(currentPayload()) === runtime.lastSavedComparable;
+        var result = update();
+        if (clean) {
+            runtime.lastSavedComparable = comparable(currentPayload());
+            runtime.lastObservedComparable = runtime.lastSavedComparable;
+        }
+        return result;
+    }
+
     function queueSave(delay) {
         if (runtime.restoring || runtime.invalidating || runtime.resetting
                 || runtime.conflict || runtime.serverUnconfirmed) return;
@@ -83,14 +95,16 @@
 
     function finishMutation(operation) {
         runtime.saveInFlight = operation.then(function (result) {
-            return result;
-        }).finally(function () {
             runtime.saveInFlight = null;
             if (runtime.saveQueued) {
                 runtime.saveQueued = false;
                 return saveDraft();
             }
-            return null;
+            return result;
+        }, function (error) {
+            runtime.saveInFlight = null;
+            runtime.saveQueued = false;
+            throw error;
         });
         return runtime.saveInFlight;
     }
@@ -216,6 +230,15 @@
             return false;
         });
         return finishMutation(operation);
+    }
+
+    async function saveCurrentDraft() {
+        do {
+            if (await saveDraft() !== true) return false;
+            if (runtime.restoring || runtime.invalidating || runtime.resetting
+                    || runtime.conflict || runtime.serverUnconfirmed) return false;
+        } while (comparable(currentPayload()) !== runtime.lastSavedComparable);
+        return true;
     }
 
     function revision(view) {
@@ -480,7 +503,11 @@
             window._currentProvisionalRelations = payload.provisionalRelations || [];
         }
 
-        runtime.lastSavedComparable = comparable(payload);
+        // Compare against the hydrated representation, including defaults and
+        // normalized score maps. Saving the wire payload as the baseline makes
+        // a newly opened tab immediately write its normalization back to the server.
+        // Capture before deferred rendering so later user edits are never acknowledged.
+        runtime.lastSavedComparable = comparable(currentPayload());
         runtime.lastObservedComparable = runtime.lastSavedComparable;
         restoreRenderedState(payload, 0);
     }
@@ -488,7 +515,7 @@
     function restoreRenderedState(payload, attempt) {
         if (runtime.restoredPayload !== payload) return;
         try {
-            renderRestoredState(payload, attempt);
+            observeDraftChanges(function () { renderRestoredState(payload, attempt); });
         } catch (error) {
             if (runtime.restoredPayload !== payload) return;
             runtime.restoring = false;
@@ -726,6 +753,7 @@
     document.addEventListener('change', recordInputEdit);
 
     Object.assign(C, {
+        observeDraftChanges: observeDraftChanges,
         reconcileDraft: reconcileDraft,
         serverUnavailable: serverUnavailable,
         queueSave: queueSave,
@@ -733,6 +761,7 @@
         deleteDraft: deleteDraft,
         resetDraft: resetDraft,
         saveDraft: saveDraft,
+        saveCurrentDraft: saveCurrentDraft,
         localStateIsPristine: localStateIsPristine,
         applyDraft: applyDraft,
         restoreRenderedState: restoreRenderedState,

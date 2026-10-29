@@ -13,6 +13,8 @@
 .github/scripts/analysis-session-api-routing.test.mjs
 .github/scripts/analysis-session-draft-serialization.test.mjs
 .github/scripts/analysis-session-draft.test.mjs
+.github/scripts/analysis-session-multitab.test.mjs
+.github/scripts/analysis-session-multitab.browser.test.mjs
 .github/scripts/analysis-session-startup.test.mjs
 .github/scripts/analysis-ux.browser.test.mjs
 .github/scripts/analysis-workflow-regression.test.mjs
@@ -20,6 +22,7 @@
 .github/scripts/architecture-workbench-basepath.test.mjs
 .github/scripts/architecture-workbench-fit.test.mjs
 .github/scripts/architecture-workbench-print.test.mjs
+.github/scripts/architecture-workflow.test.mjs
 .github/scripts/backup-export.test.mjs
 .github/scripts/browser-sessions-acceptance.test.mjs
 .github/scripts/browser-validation-departure.test.mjs
@@ -81,3 +84,6 @@ taxonomy-app/src/test/js/diagram-keyboard-controls.cjs
 taxonomy-app/src/test/js/preferences-analysis-workspace.cjs
 taxonomy-app/src/test/js/project-analysis-continuation.cjs
 taxonomy-app/src/test/js/ux-state-recovery.cjs
+taxonomy-app/src/test/js/contextual-help.cjs
+
+.github/scripts/analysis-snapshot-adoption.test.mjs

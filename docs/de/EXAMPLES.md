@@ -2,9 +2,11 @@
 
 Dieses Dokument zeigt ausgearbeitete Beispiele für häufige Aufgaben im Taxonomy Architecture Analyzer.
 
-Die folgenden Zahlen sind Rechen-/Anwendungsbeispiele, keine gemessenen Ergebnisse
-eines aktuellen Modelllaufs. Beibehaltene Baum-/Impact-Bilder zeigen ältere
-Beispielzustände und können andere Bewertungen oder Bedienelemente enthalten.
+Abschnitt 1 erklärt einen gespeicherten, historisch belegten Architekturstand mit
+verfassten Modellantworten. Die Zahlen und Antworten der übrigen Abschnitte sind
+illustrative Anwendungsbeispiele, keine gemessenen Ergebnisse eines aktuellen
+Modelllaufs. Beibehaltene Baum-/Impact-Bilder zeigen ältere Beispielzustände und
+können andere Bewertungen oder Bedienelemente enthalten.
 Die eingebettete Impact-Ansicht ist von der Workbench eines unveränderlichen
 Snapshots zu unterscheiden. Aktuelle Navigation steht im [Benutzerhandbuch](USER_GUIDE.md),
 versionsgebundene Nachweise in der [Szenario-Abnahme](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md).
@@ -26,66 +28,125 @@ versionsgebundene Nachweise in der [Szenario-Abnahme](https://github.com/carsten
 
 ## 1. Anforderung → Architektur
 
-**Ziel:** Eine geschäftliche Anforderung auf relevante Taxonomie-Elemente abbilden und eine Architekturansicht generieren.
+**Ziel:** Eine fachliche Anforderung in unterscheidbare Funktionen, gerichtete
+Beziehungen und ausdrücklich offene Entscheidungen überführen.
 
-### Schritt 1 — Anforderung eingeben
+### Schritt 1 — Eine nachvollziehbare Anforderung verwenden
 
-Öffnen Sie `http://localhost:8080`. Das Analyse-Panel wird auf der rechten Seite angezeigt:
+Der Referenzfall **FLOOD-001** beschreibt einen ergänzenden Hochwasserinformationsdienst:
 
-![Analyse-Panel](../images/04-analysis-panel-empty.png)
+- Veröffentlichte Warnungen, betroffene Gebiete und Wasserbeobachtungen mit Quelle
+  und Beobachtungszeit verständlich anzeigen.
+- Den Dienst administrativ betreuen; Gebietsabonnements und ausgewählte SMS-,
+  Telefon- oder E-Mail-Kanäle unterstützen.
+- Kontaktdaten ändern, Gebiete entfernen und Konten löschen können.
+- Den neuesten Beobachtungsstapel gemäß dem Originalwortlaut „at most every
+  15 minutes“ abrufen; veraltete oder nicht verfügbare Daten anzeigen und die
+  offiziellen Warnkanäle erhalten. Oberflächenwasser liegt außerhalb des Umfangs.
+- Unter der zusätzlichen **Testannahme A1** eine dauerhafte Zustellwarteschlange,
+  idempotente Wiederholungen, geschützte Abonnentendaten und eine Auditspur vorsehen.
 
-Fügen Sie folgenden Text in das Analyse-Textfeld ein:
+Den vollständigen Originaltext und die Quellen enthält die
+[Szenariodatei](https://github.com/carstenartur/Taxonomy/blob/main/taxonomy-app/src/test/resources/scenarios/flood-information.json).
+Der Dienst ersetzt keine offiziellen sicherheitskritischen Warnungen.
 
-> _„Bereitstellung einer integrierten Kommunikationsplattform für Krankenhauspersonal, die Echtzeit-Sprach- und Datenaustausch zwischen Abteilungen sowie koordiniertes Workflow-Management für klinische Teams ermöglicht."_
+### Schritt 2 — Den gespeicherten Modellstand lesen
 
-### Schritt 2 — Analysieren
+Das folgende Beispiel verwendet die **tatsächlich gespeicherte Architektur vom
+19. Oktober 2026**, Snapshot `0a4c6367-ff1d-487b-8286-d51b0834964c`:
+**50 Knoten, 36 gerichtete Beziehungen, Status `PARTIAL`**. Architektur und
+Entscheidungsbericht stammen aus demselben gespeicherten Ergebnis. Die
+Modellantworten wurden als Testdaten verfasst; die Anwendung hat Analyse,
+Persistenz und Ableitung ausgeführt. Das ist kein Live-Modellergebnis und keine
+Aussage über eine heute bestandene Abnahme.
 
-Klicken Sie auf **Analyze with AI**. Das System bewertet jeden Taxonomie-Knoten (0–100) und überlagert die Ergebnisse im Baum:
+Nachweise: [gespeicherte Architektur](https://github.com/carstenartur/Taxonomy/blob/9cd9b68f0dc55a4cd358d900cd0bbc7b206ce7bb/taxonomy-tooling/src/test/resources/scenario-documents/complete-flood-v1/architecture.json.gz),
+[Laufbeleg](https://github.com/carstenartur/Taxonomy/blob/9cd9b68f0dc55a4cd358d900cd0bbc7b206ce7bb/taxonomy-tooling/src/test/resources/scenario-documents/complete-flood-v1/run.json.gz) und
+[Entscheidungsbericht](https://github.com/carstenartur/Taxonomy/blob/9cd9b68f0dc55a4cd358d900cd0bbc7b206ce7bb/taxonomy-tooling/src/test/resources/scenario-documents/complete-flood-v1/decision.json.gz).
+Der Laufbeleg nennt den damaligen Quellstand
+`2fb5a7ae342af5c1ade5b97b65de4bed658f38f5`. Der Verzeichnisname
+`complete-flood-v1` bezeichnet den bewahrten Dokumentensatz; der Snapshot bleibt
+fachlich ein Teilergebnis.
 
-![Bewerteter Taxonomie-Baum](../images/15-scored-taxonomy-tree.png)
+| Fachliche Funktion | Im gespeicherten Modell enthaltene Begriffe |
+|---|---|
+| Veröffentlichte Informationen lesen und anzeigen | `UA-1580` Hydrographic Applications; `IP-1116` Recognized Environmental Pictures; `IP-2130` Geospatial Support Alerts |
+| Zustellungen nach Gebiet und Kanal organisieren | `BP-1535` Information Retrieval and Dissemination; `CR-1098` Message Routing Services |
+| Text-, Telefon- und E-Mail-Benachrichtigungen unterstützen | `CR-1060` Text-based Communication Services; `CO-1048` Short Messaging Access Services; `CO-1066` Voice Access Services; `CR-1037` Informal Messaging Services |
+| Kontaktdaten, Gebiete und Konten verwalten | `BP-1521` IKM Entity Management; `BP-1530` Information Disposition; `CR-1022` Digital Identity Services |
+| Zustellungen zuverlässig und nachvollziehbar bearbeiten (A1) | `CR-1097` Message Queueing Services; `CR-1198` Records Management Services |
+| Zugriff schützen und Dienstbetrieb betreuen | `CR-1006` Authentication Services; `CR-1007` Authorization and Access Control Services; `CI-1060` IT Service Management Services; `UA-1522` Service Desk Applications |
 
-| Code | Knoten | Bewertung |
-|---|---|---|
-| CP-1023 | Communication and Information System Capabilities | 92 |
-| CO-1011 | Communications Access Services | 88 |
-| CR-1047 | Infrastructure Services | 81 |
-| UA-1015 | Air Applications | 74 |
-| BP-1327 | Enable | 71 |
+### Schritt 3 — Beziehungen statt bloßer Trefferlisten prüfen
 
-### Schritt 3 — Architekturansicht generieren
+Dieser **Ausschnitt aus den 36 gespeicherten Beziehungen** zeigt die
+Zustellfunktion. Die Pfeile behalten Quelle, Typ und Ziel des Snapshots bei;
+die beschreibenden Texte sind zur Lesbarkeit auf Deutsch zusammengefasst.
 
-Das System wählt automatisch Knoten mit einer Bewertung ≥ 70 als Anker aus, propagiert die Relevanz über Taxonomie-Beziehungen und erstellt ein strukturiertes Architekturmodell:
-
-![Architekturansicht](../images/20-architecture-view.png)
-
+```mermaid
+flowchart TD
+    Text["CR-1060 · Textdienst"] -->|SUPPORTS| Delivery["BP-1535 · Informationsverbreitung"]
+    Phone["CO-1066 · Telefonzugang"] -->|SUPPORTS| Delivery
+    Email["CR-1037 · E-Mail-Dienst"] -->|SUPPORTS| Delivery
+    Delivery -->|USES| Queue["CR-1097 · Zustellwarteschlange"]
+    Delivery -->|USES| Routing["CR-1098 · Nachrichtenrouting"]
+    Delivery -->|USES| History["CR-1198 · Zustellhistorie"]
 ```
-Capability: Communication and Information System Capabilities (CP-1023)
-    ↓ supports
-Service: Communications Access Services (CO-1011)
-    ↓ realises
-Service: Infrastructure Services (CR-1047)
-    ↓ used by
-Application: Air Applications (UA-1015)
-    ↓ enables
-Process: Enable (BP-1327)
-```
 
-### Schritt 4 — Exportieren
+Weitere konkrete Beziehungen desselben Snapshots:
 
-Klicken Sie auf eine Export-Schaltfläche, um die Architektur als ArchiMate XML, Visio `.vsdx` oder Mermaid-Flussdiagramm herunterzuladen.
+| Quelle → Typ → Ziel | Fachliche Aussage im Anforderungskontext |
+|---|---|
+| `UA-1580 CONSUMES IP-1116` | Die Anwendung liest bereits vorliegende Umweltinformationen. |
+| `UA-1580 CONSUMES IP-2130` | Sie liest veröffentlichte gebietsbezogene Warnungen. |
+| `CO-1048 SUPPORTS BP-1535` | Der SMS-Zugang unterstützt die Zustellfunktion zusätzlich zum Textdienst. |
+| `BP-1521 USES CR-1022` | Kontakt- und Abonnementverwaltung verwendet die Identitätsfunktion. |
+| `BP-1530 USES CR-1022` | Kontolöschung benötigt die Identitätsverwaltung einschließlich Deprovisionierung. |
+| `UA-1522 USES CI-1060` | Die administrative Anwendung verwendet die Dienstmanagementfunktion. |
 
-![Detaillierte Architekturansicht](../images/38-architecture-view-detailed.png)
+Eine solche Beziehung bezeichnet einen begründeten Vorschlag, keine bereits
+implementierte Schnittstelle. Insbesondere macht eine Warteschlangenkategorie
+Dauerhaftigkeit oder Idempotenz noch nicht technisch wahr. Prüfen Sie die an die
+Originalklauseln gebundenen Begründungen, Bedingungen und verbleibenden Entscheidungen.
 
-<details>
-<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
+**Offen bleibt:** Ist der eingehende F5-Beobachtungsstapel bereits ein
+„Recognized Environmental Picture“, oder ist seine Produktidentität noch
+unbestimmt? Der Snapshot bewahrt diese Frage und bleibt `PARTIAL`. Die vorhandene
+Lesebeziehung zu `IP-1116` beantwortet diese separate Frage zur Eingabe nicht.
+Auch konkrete Broker, Datenverträge, Aufbewahrungs-/Löschregeln und die technische
+Umsetzung der Wiederholungen benötigen Entscheidungen. Scores messen hier
+Relevanz im Katalog, keine Vollständigkeit oder Freigabe.
 
-```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/analyze \
-  -d "businessText=Provide+integrated+communication+platform+for+hospital+staff" \
-  -d "includeArchitectureView=true"
-```
+### Schritt 4 — Den Ablauf mit einer eigenen Anforderung durchführen
 
-</details>
+1. Öffnen Sie **Projekte**, legen Sie eine Anforderung an und speichern Sie den
+   vollständigen Text als versionierten Stand.
+2. Wählen Sie die Teiltaxonomien und den vollständigen Analysemodus. Starten Sie
+   den Copilot ausdrücklich mit einem bereiten generativen Anbieter. Die
+   dokumentierte manuelle Voreinstellung ist Profil `FULL` mit einem Prüfdurchlauf;
+   die historische Szenarioabnahme verwendet `EXHAUSTIVE` mit zwei Durchläufen.
+3. Lesen Sie nach dem Lauf den tatsächlichen Status und die offenen Bewertungen.
+   Prüfen oder beantworten Sie offene Fragen, bevor Sie eine angebotene Fortsetzung
+   starten. Ein Budgetende oder eine fachliche Unklarheit ist kein negativer Befund.
+4. Öffnen Sie das gespeicherte Ergebnis und dessen **Architektur**. Prüfen Sie in
+   der Workbench die Snapshot-Identität; suchen Sie etwa `BP-1535`, wählen Sie den
+   Knoten aus und verwenden Sie den Fokusmodus für seine direkten Nachbarn.
+5. Prüfen Sie im Detailbereich Herkunft, Begründung, Bedingungen und Review-Status.
+   Verwenden Sie Druckansicht und Exportmenü für genau dieses gespeicherte Ergebnis;
+   beachten Sie bei Austauschformaten das Mapping- und Verlustmanifest.
+6. Nutzen Sie bei unklaren Anforderungen ein gespeichertes Neuformulierungsangebot.
+   Beantworten und prüfen Sie dessen Fragen; übernehmen Sie einen neuen Entwurf
+   ausdrücklich und analysieren Sie ihn anschließend gesondert.
+
+Die Schritte und aktuellen Bedienelemente erläutern
+[Benutzerhandbuch](https://github.com/carstenartur/Taxonomy/blob/main/docs/de/USER_GUIDE.md#analysis-scope-and-progress),
+[Copilot und persistierte Workbench](https://github.com/carstenartur/Taxonomy/blob/main/docs/de/COPILOT_AUTOPILOT.md#persistierte-architektur-workbench)
+und [Anforderungsklärung](https://github.com/carstenartur/Taxonomy/blob/main/docs/de/USER_GUIDE.md#requirement-clarification-workflow).
+Die [Szenarioabnahme](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) beschreibt die
+reproduzierbare Testgrenze und die Exportprüfung. Eigene Anbieterantworten und
+ein heutiger Lauf können andere Vorschläge liefern; dieses historische Beispiel
+ist kein versprochenes identisches Ergebnis.
+
 
 ---
 
@@ -113,14 +174,14 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node
 
 </details>
 
-### Beispielergebnis
+### Illustratives Beispielergebnis
 
 ```json
 {
   "sourceNode": "CR-1047",
   "sourceTitle": "Infrastructure Services",
   "impactedNodes": [
-    { "code": "UA-1015", "title": "Air Applications", "distance": 1 },
+    { "code": "UA-1574", "title": "Unified Communication Applications", "distance": 1 },
     { "code": "BP-1327", "title": "Enable", "distance": 2 }
   ]
 }
@@ -155,7 +216,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/gap
 
 </details>
 
-### Beispielergebnis
+### Illustratives Beispielergebnis
 
 ```json
 {
@@ -267,7 +328,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/rec
 
 </details>
 
-### Beispielergebnis
+### Illustratives Beispielergebnis
 
 ```json
 {
@@ -345,15 +406,19 @@ graph TD
     subgraph Kerndienste["🟠 Kerndienste"]
         CR_1047(["Infrastructure Services<br/>★ 75%"])
     end
-    CP_1023 -->|unterstützt| CO_1011
-    CO_1011 -->|realisiert| CR_1047
+    CP_1023 -->|realisiert| CO_1011
+    CP_1023 -->|realisiert| CR_1047
 ```
 
 ---
 
 ## 7. Feldservice-Überwachung — Ende-zu-Ende
 
-**Ziel:** Einen vollständigen Workflow durchlaufen — von der Anforderung bis zur exportierten Architektur.
+**Ziel:** Einen hypothetischen Workflow durchlaufen — von der Anforderung bis zur exportierten Architektur.
+
+**Illustration, kein protokollierter Modelllauf:** Die folgenden Bewertungen und
+Vorschläge sind mögliche Prüfgegenstände. Für ein tatsächlich gespeichertes Modell
+mit belegten Beziehungen verwenden Sie [Abschnitt 1](#1-anforderung--architektur).
 
 ### Anforderung
 
@@ -365,7 +430,8 @@ Fügen Sie die Anforderung in das Analyse-Panel ein und klicken Sie auf **Analyz
 
 ![Analyse-Panel](../images/04-analysis-panel-empty.png)
 
-Das System bewertet alle ca. 2.500 Taxonomie-Knoten. Top-Übereinstimmungen könnten folgende sein:
+Die Analyse untersucht passende Katalogpfade; nicht besuchte Knoten sind keine
+negativen Befunde. Hypothetische Treffer könnten folgende sein:
 
 | Code | Knoten | Bewertung |
 |---|---|---|
@@ -393,7 +459,7 @@ Die Lückenanalyse (automatisch im Reiter **Lücken**) kann folgende Ergebnisse 
 ### Schritt 4 — Beziehungsvorschläge generieren
 
 Klicken Sie im Panel „Relation Proposals" auf **Propose Relations**. Die KI könnte vorschlagen:
-- `CI-1023 REALIZES CP-1022` — „Überwachungsdienste realisieren die Aufklärungsfähigkeit"
+- `CP-1022 REALIZES CI-1023` — „Fähigkeit → Dienst gemäß der REALIZES-Konvention dieses Katalogs“
 - `CR-1047 SUPPORTS CI-1023` — „Infrastrukturdienste unterstützen die Feldüberwachung"
 
 ![Beziehungsvorschläge-Panel](../images/12-relation-proposals-panel.png)
@@ -448,7 +514,7 @@ element CI-1023 type Service {
   title: "Surveillance Services";
 }
 
-relation CI-1023 REALIZES CP-1022 {
+relation CP-1022 REALIZES CI-1023 {
   status: accepted;
   provenance: AI_PROPOSED;
 }
