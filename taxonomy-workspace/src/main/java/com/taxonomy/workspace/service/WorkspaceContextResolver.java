@@ -47,14 +47,23 @@ public class WorkspaceContextResolver {
     private final WorkspaceManager workspaceManager;
     private final SystemRepositoryService systemRepositoryService;
     private final UserWorkspaceRepository workspaceRepository;
+    private final RepositoryMembershipService repositoryMembershipService;
 
     @Autowired
     public WorkspaceContextResolver(WorkspaceManager workspaceManager,
                                     SystemRepositoryService systemRepositoryService,
-                                    UserWorkspaceRepository workspaceRepository) {
+                                    UserWorkspaceRepository workspaceRepository,
+                                    RepositoryMembershipService repositoryMembershipService) {
         this.workspaceManager = workspaceManager;
         this.systemRepositoryService = systemRepositoryService;
         this.workspaceRepository = workspaceRepository;
+        this.repositoryMembershipService = repositoryMembershipService;
+    }
+
+    /** Compatibility constructor for callers without explicit central repository/branch routing. */
+    public WorkspaceContextResolver(WorkspaceManager workspaceManager, SystemRepositoryService systemRepositoryService,
+                                    UserWorkspaceRepository workspaceRepository) {
+        this(workspaceManager,systemRepositoryService,workspaceRepository,null);
     }
 
     /** Compatibility constructor for focused unit tests without persistence. */
@@ -134,6 +143,8 @@ public class WorkspaceContextResolver {
             return context;
         }
 
+        RepositoryContext pinnedCentral = explicitlyPinnedCentralRead(user);
+        if (pinnedCentral != null) return pinnedCentral;
         SystemRepository primary = systemRepositoryService.getPrimaryRepository();
         RepositoryContext context = RepositoryContext.centralRead(
                 requireRepositoryId(primary), requireBranch(primary), user);
@@ -141,6 +152,31 @@ public class WorkspaceContextResolver {
                 "Resolved central repository context for user '{}': repository={}, branch={}",
                 user, context.repositoryId(), context.branch());
         return context;
+    }
+
+    /** Only an explicit central selection may pin a readable repository and retained source branch.
+     * Private workspaces continue to derive repository and branch from their authoritative metadata. */
+    private RepositoryContext explicitlyPinnedCentralRead(String user) {
+        if (!"".equals(requestedWorkspaceId())) return null;
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof ServletRequestAttributes servlet)) return null;
+        String repositoryId = servlet.getRequest().getParameter("repositoryId");
+        String branch = servlet.getRequest().getParameter("branch");
+        if (repositoryId == null && branch == null) return null;
+        if (repositoryMembershipService == null) throw new IllegalStateException("Explicit central routing requires repository authorization");
+        SystemRepository repository;
+        try {
+            repository = repositoryId == null ? systemRepositoryService.getPrimaryRepository()
+                    : systemRepositoryService.getRepository(repositoryId);
+        } catch (IllegalArgumentException missing) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Central source is not accessible");
+        }
+        if (!repositoryMembershipService.canRead(repository,user))
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Central source is not accessible");
+        String selectedBranch = branch == null ? requireBranch(repository) : branch.strip();
+        if (!org.eclipse.jgit.lib.Repository.isValidRefName("refs/heads/" + selectedBranch))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"An exact valid central branch is required");
+        return RepositoryContext.centralRead(requireRepositoryId(repository),selectedBranch,user);
     }
 
     private UserWorkspace resolveWorkspace(String username) {

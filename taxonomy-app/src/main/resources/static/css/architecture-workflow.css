@@ -10,3 +10,7 @@
 @media (max-width: 40rem) { .architecture-workflow { padding: .75rem; } .architecture-workflow nav a { flex: 1 1 10rem; } }
 @media print { .architecture-workflow { display: none; } }
 @media (forced-colors: active) { .architecture-workflow, .architecture-workflow nav a { color: CanvasText; background: Canvas; border-color: CanvasText; } }
+
+#snapshotAdoption { margin: 1rem 0; padding: 1rem; border: 1px solid #9aa9bd; border-radius: .5rem; }
+#snapshotAdoption pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
+#snapshotAdoption select { max-width: 100%; }

@@ -62,13 +62,19 @@ public class ArchitectureEditorController {
             @Parameter(description = "Server layout: stable (default) or reduce-crossings")
             @RequestParam(required = false) String layout,
             @Parameter(description = "Optional retained workspace revision supplying the explicit optimized ordering")
-            @RequestParam(required = false) Long layoutRevision) throws IOException {
+            @RequestParam(required = false) Long layoutRevision,
+            @RequestParam(required = false) String viewId) throws IOException {
         var strategy = com.taxonomy.diagram.DiagramLayout.Strategy.fromId(layout);
         RepositoryContext context = readContext(repositoryId, workspaceScopeKey, branch);
         var document = service.read(context, commit, revision);
         ArchitectureEditorProjection.requireLayoutRevision(document, strategy, layoutRevision);
         var reference = layoutRevision == null ? null : service.read(context, null, layoutRevision);
-        return documentResponse(document).body(projection.project(document, mayEdit(), strategy, reference));
+        return documentResponse(document).body(projection.project(document, mayEdit(), strategy, reference, viewId));
+    }
+
+    public ResponseEntity<ArchitectureEditorProjection.View> read(String repositoryId, String workspaceScopeKey,
+            String branch, String commit, Long revision, String layout, Long layoutRevision) throws IOException {
+        return read(repositoryId, workspaceScopeKey, branch, commit, revision, layout, layoutRevision, null);
     }
 
     public ResponseEntity<ArchitectureEditorProjection.View> read(String repositoryId, String workspaceScopeKey,

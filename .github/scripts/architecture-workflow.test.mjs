@@ -227,3 +227,56 @@ for (const prefix of ['', '/taxonomy', '/teams/blue/taxonomy']) {
         });
     }
 }
+
+test('adoption handoff keeps independent exact source after changing target context', () => {
+    const {api, context} = boot('', '/taxonomy');
+    const data = {...snapshot, exportProvenance: {...snapshot.exportProvenance, requirementVersionId: 77}};
+    const handoff = url(api.snapshotLinks(data).adopt);
+    assert.equal(handoff.searchParams.get('sourceRepositoryId'), 'repo-source');
+    assert.equal(handoff.searchParams.get('sourceBranch'), 'draft/source');
+    assert.equal(handoff.searchParams.get('sourceWorkspaceScopeKey'), 'private-source');
+    assert.equal(handoff.searchParams.get('sourceRequirementVersionId'), '77');
+    assert.equal(handoff.searchParams.get('adoption'), 'preview');
+    handoff.searchParams.set('workspaceId', 'new-target');
+    handoff.searchParams.set('workspaceScopeKey', 'new-target');
+    handoff.searchParams.set('branch', 'target-branch');
+    context.location.search = handoff.search;
+    const source = api.adoptionSource();
+    assert.equal(source.repositoryId, 'repo-source');
+    assert.equal(source.workspaceScopeKey, 'private-source');
+    assert.equal(source.branch, 'draft/source');
+    assert.equal(source.requirementVersionId, 77);
+    const links = api.editorSourceLinks();
+    assert.equal(url(links.snapshot).searchParams.get('repositoryId'), 'repo-source');
+    assert.equal(url(links.snapshot).searchParams.get('branch'), 'draft/source');
+    assert.equal(url(links.snapshot).searchParams.get('workspaceId'), 'private-source');
+});
+
+test('incomplete frozen identity disables adoption without disabling ordinary navigation', () => {
+    const {api} = boot();
+    assert.equal(api.snapshotLinks(snapshot).adopt, null);
+    assert.ok(api.snapshotLinks(snapshot).editor);
+});
+
+test('selected canonical source overrides entry handoff for source links without changing target pins',()=>{
+    const {api}=boot('?sourceProjectId=1&sourceRequirementId=2&sourceSnapshotId=entry-A&sourceWorkspaceId=&sourceRepositoryId=repo-A&sourceBranch=branch-A','/taxonomy');
+    const links=api.editorSourceLinks({repositoryId:'repo-B',workspaceScopeKey:'copy-B',branch:'branch-B',projectId:11,requirementId:12,snapshotId:'snapshot-B'});
+    const selected=url(links.snapshot);
+    assert.equal(selected.pathname,'/taxonomy/architecture/workbench');
+    assert.equal(selected.searchParams.get('repositoryId'),'repo-B');
+    assert.equal(selected.searchParams.get('branch'),'branch-B');
+    assert.equal(selected.searchParams.get('workspaceId'),'copy-B');
+    assert.equal(selected.searchParams.get('snapshotId'),'snapshot-B');
+    assert.equal(url(api.editorSourceLinks().snapshot).searchParams.get('snapshotId'),'entry-A');
+});
+
+test('workbench project transport retains explicit source repository branch and central scope',async()=>{
+    const {api,context,requests}=boot('?repositoryId=historical-repository&branch=retained-branch&workspaceId=','/taxonomy');
+    const scoped=url(api.scopeUrl('/taxonomy/api/projects/12/architecture-workbench/snapshot-v2'));
+    assert.equal(scoped.searchParams.get('repositoryId'),'historical-repository');
+    assert.equal(scoped.searchParams.get('branch'),'retained-branch');
+    assert.equal(scoped.searchParams.get('workspaceId'),'');
+    await context.fetch('/taxonomy/api/projects/12/snapshots/snapshot-v2');
+    assert.equal(url(requests[0].url).searchParams.get('branch'),'retained-branch');
+    assert.equal(api.scopeUrl('/taxonomy/api/projects/12?repositoryId=explicit-other'),'/taxonomy/api/projects/12?repositoryId=explicit-other');
+});

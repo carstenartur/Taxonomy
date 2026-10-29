@@ -44,6 +44,22 @@ Angenommene Editoränderungen werden als Operationen mit eigener Undo-/Redo-Hist
 gespeichert. **Checkpoint/Version erstellen** hält eine Git-Version fest.
 Element- und Historienlisten sind separat scrollbar und per Tastatur erreichbar.
 
+**Übernahme dieses Snapshots prüfen** startet die ausdrückliche Übernahme einer
+eingefrorenen Analyse. Erstellen Sie bei Bedarf eine private Arbeitskopie und wählen
+Sie **Snapshot-Übernahme prüfen**. Die Vorschau zeigt Quelle, Zielrevision sowie
+ergänzte und wiederverwendete Elemente und Beziehungen. Vorhandene Bearbeitungen,
+Zuständigkeiten und Beziehungsentscheidungen bleiben erhalten; abweichende Quellwerte
+werden zum Vergleich angezeigt. Typ- und Quellidentitätskonflikte verhindern die
+Bestätigung. Neue Beziehungen bleiben vorgeschlagen.
+
+**Diesen eingefrorenen Snapshot übernehmen** speichert eine einzelne rückgängig
+machbare Editoroperation. Die kanonische Sicht behält die exakt gespeicherten
+Beziehungen und die ursprüngliche Anforderungsversion. Spätere Textänderungen
+ersetzen diese Herkunft nicht. **Gesamte bearbeitbare Architektur** zeigt das ganze
+Modell. Die erneute Übernahme derselben Quelle öffnet die vorhandene Sicht. Der
+Quelllink führt auch nach dem Anlegen einer Arbeitskopie zum ursprünglichen
+Repository, Arbeitsbereich und Branch zurück.
+
 <a id="requirement-clarification-workflow"></a>
 ## Eine Anforderung durch Architektur und Entscheidungen klären
 

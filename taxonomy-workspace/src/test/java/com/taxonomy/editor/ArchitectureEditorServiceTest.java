@@ -26,6 +26,36 @@ class ArchitectureEditorServiceTest {
     }
     @AfterEach void close() { fixture.close(); }
 
+    @Test void frozenSnapshotAdoptionUsesTheJournalAndSupportsReplayRestartCheckpointUndoRedo() throws Exception {
+        var adoption = new AdoptAnalysisSnapshot("analysis-test", "Frozen snapshot", "Old text", "a".repeat(64),
+                List.of(new SnapshotElement("arch-existing", "System", "Recorded name", "Recorded description"),
+                        new SnapshotElement("component", "Component", "New component", "")),
+                List.of(new RelationKey("arch-existing", "CONTAINS", "component")), Map.of("x-analysis-snapshot-id", "old-snapshot"));
+        Command request = command(new SemanticCommand(adoption));
+        String head = fixture.repositories.resolveRepository(alice).getHeadCommit("draft");
+        assertThat(service.preview(alice, request).change().changedIds()).hasSize(3);
+        assertThat(fixture.journal.read(alice)).isNull();
+        var accepted = service.execute(alice, request);
+        assertThat(accepted.context().revision()).isEqualTo(1);
+        assertThat(fixture.repositories.resolveRepository(alice).getHeadCommit("draft")).isEqualTo(head);
+        var restarted = new ArchitectureEditorService(fixture.repositories, fixture.journal, new ArchitectureCheckpointWriter());
+        assertThat(restarted.execute(alice, request).replayed()).isTrue();
+        var altered = new AdoptAnalysisSnapshot(adoption.viewId(), adoption.title(), adoption.description(), adoption.graphFingerprint(),
+                List.of(new SnapshotElement("arch-existing", "System", "Different payload", ""), adoption.elements().getLast()),
+                adoption.relations(), adoption.provenance());
+        assertCode(() -> restarted.execute(alice, new Command(request.context(), request.metadata(), new SemanticCommand(altered))), "COMMAND_ID_REUSED");
+        String retained = service.read(alice, null).dsl();
+        assertThat(retained).contains("Original").doesNotContain("Recorded name");
+        var checkpoint = service.checkpoint(alice, new CreateCheckpointCommand(service.read(alice, null).context(), metadata()));
+        assertThat(fixture.repositories.resolveRepository(alice).getDslAtCommit(checkpoint.commitId())).isEqualTo(retained);
+        var undo = execute(new UndoArchitectureCommand(UUID.fromString(accepted.operationId())));
+        assertThat(service.read(alice, null).dsl()).doesNotContain("analysis-test", "element component");
+        execute(new RedoArchitectureCommand(UUID.fromString(undo.operationId())));
+        assertThat(service.read(alice, null).dsl()).isEqualTo(retained);
+        assertThat(service.preview(alice, command(new SemanticCommand(adoption))).change().changes()).isEmpty();
+        assertThat(fixture.journal.read(alice).operations()).hasSize(3);
+    }
+
     @Test void hundredMixedEditsAreJournaledWithoutMovingGitAndCheckpointsCollectTheirSnapshots() throws Exception {
         var git = fixture.repositories.resolveRepository(alice);
         String original = git.getHeadCommit("draft");

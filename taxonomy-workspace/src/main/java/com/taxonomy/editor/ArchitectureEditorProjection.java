@@ -59,6 +59,11 @@ public class ArchitectureEditorProjection {
 
     public View project(ArchitectureEditorService.Document document, boolean mayEdit, Strategy strategy,
                         ArchitectureEditorService.Document layoutReference) {
+        return project(document, mayEdit, strategy, layoutReference, null);
+    }
+
+    public View project(ArchitectureEditorService.Document document, boolean mayEdit, Strategy strategy,
+                        ArchitectureEditorService.Document layoutReference, String selectedViewId) {
         Long layoutRevision = layoutReference == null ? null : layoutReference.context().revision();
         if (layoutRevision == null && strategy == Strategy.REDUCE_CROSSINGS
                 && "WORKSPACE_REVISION".equals(document.source())) {
@@ -66,7 +71,7 @@ public class ArchitectureEditorProjection {
         }
         requireLayoutRevision(document, strategy, layoutRevision);
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());
-        DiagramModel diagram = diagram(model, document.context().branch());
+        DiagramModel diagram = selectView(diagram(model, document.context().branch()), model, selectedViewId);
         DiagramModel reference = layoutReference == null ? null : diagram(
                 new ArchitectureDslCommands().model(layoutReference.dsl()), document.context().branch());
         DiagramScene scene = layout.layout(diagram, strategy, reference);
@@ -86,6 +91,19 @@ public class ArchitectureEditorProjection {
                 || strategy != Strategy.REDUCE_CROSSINGS || !"WORKSPACE_REVISION".equals(document.source()))) {
             throw new IllegalArgumentException("Layout reference must be a retained workspace revision at or before the selected revision");
         }
+    }
+
+    private static DiagramModel selectView(DiagramModel diagram, CanonicalArchitectureModel model, String selectedViewId) {
+        if (selectedViewId == null || selectedViewId.isBlank()) return diagram;
+        var view = model.getViews().stream().filter(item -> selectedViewId.equals(item.getId())).findFirst()
+                .orElseThrow(() -> new ArchitectureDslCommands.CommandProblem("NOT_FOUND", "viewId", "Canonical view is not present in this revision", List.of()));
+        var members = new java.util.HashSet<>(view.getIncludes());
+        String recorded = view.getExtensions().get("x-analysis-relation-members");
+        var relations = recorded == null || recorded.isEmpty() ? java.util.Set.<String>of()
+                : new java.util.HashSet<>(java.util.Arrays.asList(recorded.split("\n")));
+        return new DiagramModel(view.getTitle(), diagram.nodes().stream().filter(node -> members.contains(node.id())).toList(),
+                diagram.edges().stream().filter(edge -> members.contains(edge.sourceId()) && members.contains(edge.targetId())
+                        && (recorded == null || relations.contains(edge.id()))).toList(), diagram.layout());
     }
 
     private DiagramModel diagram(CanonicalArchitectureModel model, String branch) {

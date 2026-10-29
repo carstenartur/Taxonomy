@@ -32,7 +32,7 @@ function fixture() {
         crypto: { randomUUID: () => '00000000-0000-4000-8000-000000000001' } });
     const panel = window.TaxonomyPlanningEditor.create({ t: key => key, stage: (intent) => intents.push(intent) });
     const profile = { id:'go-live', version:'1', fields:[{key:'precision',required:true,choices:['YEAR','DATE']}, {key:'value',required:true,choices:[]}] };
-    const view = { mayEdit:true, schema:{planningProfiles:[profile]}, model:{requirements:[{id:'R',title:'Original'}]}, planningInformation:{R:[]} };
+    const view = { mayEdit:true, schema:{planningProfiles:[profile]}, model:{views:[], requirements:[{id:'R',title:'Original'}]}, planningInformation:{R:[]} };
     panel.render(view); panel.setEnabled(true); ids.editorPlanningReason.value = 'Test reason';
     return { ids, panel, view, intents };
 }
@@ -98,7 +98,7 @@ async function editorFixture(conflictAt) {
     const view = { mayEdit:true, document:{context, dsl:'', projectionState:'READY', history:[], versions:[], source:'WORKSPACE_REVISION'},
         schema:{elementTypes:[], relationTypes:[], relationStatuses:[], planningProfiles:[{id:'go-live', version:'1',
             fields:[{key:'precision',required:true,choices:['YEAR','DATE']}, {key:'value',required:true,choices:[]}]}]},
-        model:{requirements:[{id:'R',title:'Original'}], elements:[], relations:[], evidence:[], packages:[]},
+        model:{views:[], requirements:[{id:'R',title:'Original'}], elements:[], relations:[], evidence:[], packages:[]},
         scene:{nodes:[],edges:[]}, searchIndex:[], planningInformation:{R:[{supported:true, entry:{id:'launch',
             profile:'go-live', version:'1', origin:'MANUAL', values:{precision:'YEAR',value:'2030'}}}]} };
     const previews = [], executions = [], loads = [];
@@ -138,6 +138,7 @@ async function editorFixture(conflictAt) {
         history:{replaceState(){},pushState(){}}});
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-focus.js'), 'utf8'), sandbox);
     vm.runInContext(source, sandbox);
+    vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/analysis-snapshot-adoption.js'), 'utf8'), sandbox);
     vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-editor.js'), 'utf8'), sandbox);
     await settleUi();
     assert.equal(loads.length, 1);

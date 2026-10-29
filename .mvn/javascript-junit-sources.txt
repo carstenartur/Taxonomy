@@ -84,3 +84,5 @@ taxonomy-app/src/test/js/diagram-keyboard-controls.cjs
 taxonomy-app/src/test/js/preferences-analysis-workspace.cjs
 taxonomy-app/src/test/js/project-analysis-continuation.cjs
 taxonomy-app/src/test/js/ux-state-recovery.cjs
+
+.github/scripts/analysis-snapshot-adoption.test.mjs

@@ -32,10 +32,16 @@ public final class ArchitectureEditorExportAdapter implements ArchitectureEditor
     @Override
     public ExportDocument read(RepositoryContext context, String commit, Long revision,
             com.taxonomy.diagram.DiagramLayout.Strategy strategy, Long layoutRevision) throws IOException {
+        return read(context, commit, revision, strategy, layoutRevision, null);
+    }
+
+    @Override
+    public ExportDocument read(RepositoryContext context, String commit, Long revision,
+            com.taxonomy.diagram.DiagramLayout.Strategy strategy, Long layoutRevision, String viewId) throws IOException {
         var document = service.read(context, commit, revision);
         ArchitectureEditorProjection.requireLayoutRevision(document, strategy, layoutRevision);
         var reference = layoutRevision == null ? null : service.read(context, null, layoutRevision);
-        var view = projection.project(document, false, strategy, reference);
+        var view = projection.project(document, false, strategy, reference, viewId);
         var provenance = document.context();
         return new ExportDocument(
                 provenance.repositoryId(),
