@@ -525,11 +525,7 @@ class PortfolioClientRoutingIT {
                 .map(status -> labelRequirement(7 + status.ordinal(), status)).toList();
         var product = labelProduct();
         var solution = labelSolution(product);
-        var conflict = new PortfolioDtos.ConflictView(51L, 42L, 7L, "REQ-7", 8L, "REQ-8",
-                PortfolioTypes.ConflictType.DATA_LOCATION, PortfolioTypes.ConflictStatus.RESOLVED,
-                "Reviewed data location", "Recorded evidence", 0.8, "Reviewed resolution",
-                LABEL_TIME, "qa-reviewer", LABEL_TIME,
-                PortfolioDtos.ConflictConfidenceBasis.UNCALIBRATED_RULE_WEIGHT);
+        var conflict = labelConflict();
         page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, List.of(project)));
         page.route("GET", prefix + "/api/projects/42/portfolio", request ->
                 PortfolioClientTestPage.json(200, labelPortfolio(project, requirements, List.of(solution), List.of(conflict))));
@@ -589,6 +585,50 @@ class PortfolioClientRoutingIT {
         assertThat(driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText())
                 .contains(german ? "Regelgewicht" : "Rule weight")
                 .contains("80 / 100");
+        String assessment = driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText();
+        assertThat(assessment).contains(german ? "keine gemessene Wahrscheinlichkeit" : "not a measured probability");
+        click(By.cssSelector("#conflictsList .conflict-review[data-status='CONFIRMED']"));
+        wait.until(ignored -> driver.findElement(By.id("guidedConflictConfidence")).isDisplayed());
+        assertThat(text("guidedConflictConfidence").replaceAll("\\s+", " "))
+                .isEqualTo(assessment.replaceAll("\\s+", " "));
+        assertThat(text("guidedConflictEvidence")).isEqualTo("Recorded evidence");
+        assertThat(driver.findElement(By.id("guidedConflictDecision")).getDomProperty("value")).isEqualTo("CONFIRMED");
+        assertThat(text("portfolioError")).isEmpty();
+    }
+
+    @ParameterizedTest(name = "Conflict rule weight retains missing/invalid/zero state [{0}]")
+    @ValueSource(strings = {"undefined", "null", "NaN", "Infinity", "-0.1", "1.1", "'0.88'", "unknown-basis", "zero"})
+    void conflictWeightStatesRemainDistinctInTheActualBrowser(String state) {
+        installRoutes("");
+        var project = labelProject(42, PortfolioTypes.ProjectStatus.ACTIVE, 0, 0);
+        page.route("GET", "/api/projects", request -> PortfolioClientTestPage.json(200, List.of(project)));
+        page.route("GET", "/api/projects/42/portfolio", request -> PortfolioClientTestPage.json(200,
+                labelPortfolio(project, List.of(), List.of(), List.of(labelConflict()))));
+        String mutation = switch (state) {
+            case "unknown-basis" -> "payload.conflicts[0].confidenceBasis = 'UNRECORDED';";
+            case "zero" -> "payload.conflicts[0].confidence = 0;";
+            default -> "payload.conflicts[0].confidence = " + state + ";";
+        };
+        // Trusted fixture input after HTTP decoding also exercises JS-only NaN/Infinity.
+        // The template, feature scripts, DOM, modal and browser remain unchanged.
+        String fixtureInput = """
+                localStorage.clear();
+                const fixtureJson = Response.prototype.json;
+                Response.prototype.json = async function () {
+                    const payload = await fixtureJson.call(this);
+                    if (new URL(this.url, location.href).pathname === '/api/projects/42/portfolio') {
+                        %s
+                    }
+                    return payload;
+                };
+                """.formatted(mutation);
+        page.open("projects", "", "/projects", "en", fixtureInput);
+        wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
+        click(By.id("conflicts-tab"));
+        wait.until(ignored -> driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).isDisplayed());
+        String assessment = driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText();
+        if (state.equals("zero")) assertThat(assessment).contains("0 / 100");
+        else assertThat(assessment).contains("—").doesNotContain("/ 100", "NaN", "Infinity", "%");
         assertThat(text("portfolioError")).isEmpty();
     }
 
@@ -699,6 +739,14 @@ class PortfolioClientRoutingIT {
         return new PortfolioDtos.ProjectView(id, "P-" + id, LABEL_TITLE, "Reviewed portfolio",
                 status, "qa-reviewer", "shared", null, null, null, null, LABEL_TIME, LABEL_TIME,
                 requirements, solutions, 0);
+    }
+
+    private static PortfolioDtos.ConflictView labelConflict() {
+        return new PortfolioDtos.ConflictView(51L, 42L, 7L, "REQ-7", 8L, "REQ-8",
+                PortfolioTypes.ConflictType.DATA_LOCATION, PortfolioTypes.ConflictStatus.RESOLVED,
+                "Reviewed data location", "Recorded evidence", 0.8, "Reviewed resolution",
+                LABEL_TIME, "qa-reviewer", LABEL_TIME,
+                PortfolioDtos.ConflictConfidenceBasis.UNCALIBRATED_RULE_WEIGHT);
     }
 
     private static PortfolioDtos.ProjectPortfolioView labelPortfolio(

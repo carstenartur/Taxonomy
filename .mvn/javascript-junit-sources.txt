@@ -43,7 +43,6 @@
 .github/scripts/playwright-apt-mirror.test.mjs
 .github/scripts/plugin-capabilities.test.mjs
 .github/scripts/plugin-distribution-artifact.test.mjs
-.github/scripts/portfolio-conflict-evidence.test.mjs
 .github/scripts/product-demo.test.mjs
 .github/scripts/product-score-streaming.test.mjs
 .github/scripts/quality-dashboard-api.test.mjs

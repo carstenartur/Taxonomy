@@ -20,8 +20,10 @@ calibrate the probability that a conflict exists. Human review is a separate sta
 
 1. Add a response test that initially fails because the basis is absent; exercise
    proposed and reviewed conflicts with real entities.
-2. Add Maven-owned JavaScript contracts that exercise the production renderers in
-   English/German, explicit zero, missing/invalid values and localized dialog data.
+2. Extend the existing JUnit/Failsafe `PortfolioClientRoutingIT` with real-browser
+   assertions for English/German, explicit zero, missing/invalid values and the
+   localized review dialog. Portfolio client contracts belong to this existing
+   owner, as required by `PortfolioTestArchitectureContractTest`.
 3. Implement the response and UI changes, run focused Maven tests, then run the
    owning module's broader tests and relevant existing evidence contracts.
 
