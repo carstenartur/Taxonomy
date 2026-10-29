@@ -16,7 +16,7 @@ product: 'Product', coverage: 'Coverage', review: 'Review', selection: 'Selectio
 source: 'Source', exclusions: 'Hard exclusions', strengths: 'Strengths', weaknesses: 'Weaknesses',
 noExclusions: 'None recorded', conflictTitle: 'Review requirement conflict',
 requirementA: 'Requirement A', requirementB: 'Requirement B', conflictType: 'Conflict type',
-confidence: 'Confidence', evidence: 'Evidence', decision: 'Decision',
+assessment: 'Rule assessment', evidence: 'Evidence', decision: 'Decision',
 proposed: 'Keep proposed', confirm: 'Confirm conflict', reject: 'Reject conflict',
 resolve: 'Resolve conflict', resolution: 'Resolution and rationale',
 resolutionHelp: 'Explain how the project resolves or accepts this conflict. The text becomes part of the audit trail.',
@@ -32,7 +32,7 @@ product: 'Produkt', coverage: 'Abdeckung', review: 'Prüfung', selection: 'Auswa
 source: 'Quelle', exclusions: 'Harte Ausschlusskriterien', strengths: 'Stärken', weaknesses: 'Schwächen',
 noExclusions: 'Keine hinterlegt', conflictTitle: 'Anforderungskonflikt prüfen',
 requirementA: 'Anforderung A', requirementB: 'Anforderung B', conflictType: 'Konflikttyp',
-confidence: 'Konfidenz', evidence: 'Evidenz', decision: 'Entscheidung',
+assessment: 'Regelbewertung', evidence: 'Evidenz', decision: 'Entscheidung',
 proposed: 'Vorgeschlagen lassen', confirm: 'Konflikt bestätigen', reject: 'Konflikt verwerfen',
 resolve: 'Konflikt lösen', resolution: 'Lösung und Begründung',
 resolutionHelp: 'Beschreiben Sie, wie das Projekt diesen Konflikt löst oder akzeptiert. Der Text wird Teil des Audit-Trails.',
@@ -201,8 +201,7 @@ const card = button.closest('.portfolio-conflict-card');
 const requirements = card?.querySelectorAll('code') || [];
 const evidence = card?.querySelector('.portfolio-evidence')?.textContent?.trim() || '';
 const title = card?.querySelector('strong')?.textContent?.trim() || '';
-const confidenceText = Array.from(card?.querySelectorAll('.small') || [])
-.map(element => element.textContent).find(value => /confidence|konfidenz/i.test(value)) || '—';
+const confidenceText = card?.querySelector('.conflict-assessment')?.textContent?.trim() || '—';
 document.getElementById('guidedConflictTitleText').textContent = title;
 document.getElementById('guidedConflictRequirementA').textContent = requirements[0]?.textContent || '—';
 document.getElementById('guidedConflictRequirementB').textContent = requirements[1]?.textContent || '—';
@@ -230,7 +229,7 @@ modal.innerHTML = '<div class="modal-dialog modal-lg"><form class="modal-content
 + '<dt>' + escapeHtml(t('requirementA')) + '</dt><dd><code id="guidedConflictRequirementA"></code></dd>'
 + '<dt>' + escapeHtml(t('requirementB')) + '</dt><dd><code id="guidedConflictRequirementB"></code></dd>'
 + '<dt>' + escapeHtml(t('conflictType')) + '</dt><dd id="guidedConflictType"></dd>'
-+ '<dt>' + escapeHtml(t('confidence')) + '</dt><dd id="guidedConflictConfidence"></dd>'
++ '<dt>' + escapeHtml(t('assessment')) + '</dt><dd id="guidedConflictConfidence"></dd>'
 + '<dt>' + escapeHtml(t('evidence')) + '</dt><dd id="guidedConflictEvidence"></dd></dl>'
 + '<div class="mb-3"><label for="guidedConflictDecision" class="form-label">'
 + escapeHtml(t('decision')) + '</label><select id="guidedConflictDecision" class="form-select">'
