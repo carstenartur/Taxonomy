@@ -62,6 +62,11 @@ class PortfolioClientRoutingIT {
     void contextualHelpOpensTheGraphSectionInANewTabAndPreservesWork(String language) throws Exception {
         String prefix = "/taxonomy";
         page.clearRoutes();
+        // The full workspace loads capabilities on startup; a missing response opens
+        // the export-error dialog and correctly blocks interaction with the page beneath it.
+        page.route("GET", prefix + "/api/capabilities", request -> PortfolioClientTestPage.json(200,
+                Map.of("revision", "contextual-help-fixture", "features", List.of("architecture", "portfolio"),
+                        "exports", List.of(), "reports", List.of())));
         page.route("GET", prefix + "/help", request -> PortfolioClientTestPage.json(200,
                 List.of(Map.of("filename", "USER_GUIDE", "title", "Guide", "icon", "", "audience", "Everyone"))));
         page.route("GET", prefix + "/help/USER_GUIDE", request -> {
