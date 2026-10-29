@@ -78,3 +78,25 @@ an already applying review either commits afterward or receives a concurrent-inp
 At most 1,000 immutable assertions per scoped product can be evaluated. The journal
 fetches one extra row and fails with `ASSERTION_LIMIT_EXCEEDED` if that bound is
 exceeded, so comparison and review never treat a truncated subset as complete.
+
+## Reviewed implementation dependencies
+
+The inventory comparison uses the existing module boundaries. Its application
+adapter implements the neutral `InventoryEvidencePort`; portfolio does not acquire
+a dependency on the interop implementation. The adapter delegates persistence and
+source reads to their existing interop owners. Backup selection uses the same
+canonical tenant identity and scope helpers as the other feature backup owners.
+
+The architecture dependency baseline records these reviewed class pairs:
+
+| Source | Cross-context dependencies | Purpose |
+|---|---|---|
+| `InventoryEvidenceAdapter` | `IntegrationJson`, `IntegrationProblem`, `InventoryJournal`, `InventorySourceHost` | Compose neutral evidence operations, deterministic fingerprints and typed failures with their interop owners. |
+| `IntegrationBackupContributor` | `BackupRowScope`, `RepositoryTenantIdentity` | Restrict inventory rows to the authorized backup selection and validate repository/branch ownership. |
+| `InventoryComparisonController` | `WorkspaceResolver` | Resolve the authenticated request identity and pass its workspace context into the portfolio service. |
+| `InventoryComparisonService` | `WorkspaceContext` | Preserve the explicit workspace identity through comparison, review and application. |
+
+`ArchitectureContextDependencyRatchetTest` checks these eight class pairs exactly,
+as well as the complete package dependency inventory. The new inventory boundary
+check fixes these cross-context dependencies exactly; the baseline update changes
+only the six package edges containing the pairs above.

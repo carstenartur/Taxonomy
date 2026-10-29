@@ -692,7 +692,14 @@
       "fromPackage": "com.taxonomy.composition.interop",
       "toContext": "interop",
       "toPackage": "com.taxonomy.interop",
-      "classDependencyCount": 9
+      "classDependencyCount": 11
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.interop",
+      "toContext": "interop",
+      "toPackage": "com.taxonomy.interop.inventory",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "app-composition",
@@ -1123,6 +1130,20 @@
     },
     {
       "fromContext": "interop",
+      "fromPackage": "com.taxonomy.interop.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.backup",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "interop",
+      "fromPackage": "com.taxonomy.interop.backup",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "interop",
       "fromPackage": "com.taxonomy.interop.config",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
@@ -1343,7 +1364,14 @@
       "fromPackage": "com.taxonomy.portfolio.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 23
+      "classDependencyCount": 24
+    },
+    {
+      "fromContext": "portfolio",
+      "fromPackage": "com.taxonomy.portfolio.inventory",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 1
     },
     {
       "fromContext": "portfolio",
