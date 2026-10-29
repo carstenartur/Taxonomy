@@ -158,3 +158,13 @@ Zusätzlich laufen CodeQL und Trivy-Prüfungen für Abhängigkeiten, Secrets und
 - [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md)
 - [Datenschutz](DATA_PROTECTION.md)
 - [Keycloak-Anleitung](KEYCLOAK_SETUP.md)
+
+<a id="user-management"></a>
+## Lokale Benutzerverwaltung
+
+Administratoren können in der **Benutzerverwaltung** lokale Konten anlegen, Rollen bearbeiten, Konten aktivieren oder deaktivieren und Kennwörter zurücksetzen. Die Bestätigungsformulare zeigen das betroffene Konto vor der Änderung. Externe Identitäten werden im Keycloak/OIDC-Modus beim Identitätsanbieter verwaltet.
+
+<a id="browser-sessions"></a>
+## Angemeldete Sitzungen
+
+Administratoren können die Sitzungsübersicht öffnen, um registrierte, nicht abgelaufene Sitzungen dieser Anwendungsinstanz nach Benutzer zu sehen. **Aktualisieren** lädt einen neuen Messstand. Der Zeitpunkt wird in UTC angezeigt. Eine registrierte Sitzung belegt nicht, dass jemand gerade eine Seite betrachtet; die Übersicht ist keine clusterweite Anwesenheitsanzeige.

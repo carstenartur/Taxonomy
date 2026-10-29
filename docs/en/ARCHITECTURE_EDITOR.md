@@ -91,3 +91,8 @@ Package updates accept only title/description; placement cannot bypass this comm
 `x-exchange-*` provenance; analysis-owned mapping headers cannot be overwritten.
 `DELETE_REQUIREMENT_MAPPING` removes an exchange-owned mapping. These operations
 never relax the architecture relation type matrix.
+
+<a id="tool-integrations"></a>
+## Tool integrations
+
+Open **Tool integrations** from the architecture editor. Select a connection and its format profile, then review the proposed changes against the selected private workspace. The preview preserves the external evidence without changing the model. Accept an import only after reviewing its changes; acceptance changes the model and creates an explicit version. Connection authority determines which exchange operations are available.

@@ -1,0 +1,28 @@
+.context-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    min-height: 2.75rem;
+    padding: .35rem .65rem;
+    border: 1px solid currentColor;
+    border-radius: .35rem;
+    color: inherit;
+    font: inherit;
+    font-size: .875rem;
+    text-decoration: none;
+}
+.navbar-dark .context-help { color: #fff; }
+.context-help:hover { color: inherit; text-decoration: underline; }
+.navbar-dark .context-help:hover { color: #fff; }
+.context-help:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+.context-help-new-tab {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+.view-help { display: flex; justify-content: flex-end; margin-bottom: .5rem; }
+#taxonomyBrowserHelp { margin-bottom: 0; }

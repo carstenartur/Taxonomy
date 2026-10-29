@@ -57,6 +57,59 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("ui-acceptance")
 @Tag("ci-app-shard-browser")
 class PortfolioClientRoutingIT {
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "de"})
+    void contextualHelpOpensTheGraphSectionInANewTabAndPreservesWork(String language) throws Exception {
+        String prefix = "/taxonomy";
+        page.clearRoutes();
+        // The full workspace loads capabilities on startup; a missing response opens
+        // the export-error dialog and correctly blocks interaction with the page beneath it.
+        page.route("GET", prefix + "/api/capabilities", request -> PortfolioClientTestPage.json(200,
+                Map.of("revision", "contextual-help-fixture", "features", List.of("architecture", "portfolio"),
+                        "exports", List.of(), "reports", List.of())));
+        page.route("GET", prefix + "/help", request -> PortfolioClientTestPage.json(200,
+                List.of(Map.of("filename", "USER_GUIDE", "title", "Guide", "icon", "", "audience", "Everyone"))));
+        page.route("GET", prefix + "/help/USER_GUIDE", request -> {
+            var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
+            try {
+                org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.forLanguageTag(language));
+                var response = new com.taxonomy.shared.controller.HelpController(new I18nConfig().messageSource()).getDoc("USER_GUIDE");
+                return new PortfolioClientTestPage.Response(response.getStatusCode().value(), "text/html; charset=utf-8", response.getBody());
+            } finally {
+                org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous);
+            }
+        });
+        page.open("index", prefix, "/", language, "localStorage.setItem('taxonomy_onboarded', 'true');");
+        awaitTranslationContinuations();
+        // Onboarding rearranges the task surface after its asynchronous account lookup.
+        // Wait for that UI to exist, then use the same native click path as other client contracts.
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.id("analysisTaskProgress")));
+        click(By.id("businessText"));
+        driver.findElement(By.id("businessText")).clear();
+        driver.findElement(By.id("businessText")).sendKeys("Unsaved contextual-help requirement");
+        click(By.cssSelector("#mainNavTabs [data-page='graph']"));
+        String original = driver.getWindowHandle();
+        var windows = driver.getWindowHandles();
+        click(By.cssSelector("#tab-graph .context-help"));
+        wait.until(web -> web.getWindowHandles().size() == windows.size() + 1);
+        String help = driver.getWindowHandles().stream().filter(handle -> !windows.contains(handle)).findFirst().orElseThrow();
+        try {
+            driver.switchTo().window(help);
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#helpDocBody p:has(> #guide-section-8) + h2")));
+            assertThat(driver.getCurrentUrl()).endsWith("/taxonomy/?lang=" + language + "#help/USER_GUIDE/guide-section-8");
+            assertThat(driver.findElement(By.id("tab-help")).isDisplayed()).isTrue();
+            assertThat(driver.findElement(By.id("tab-analyze")).isDisplayed()).isFalse();
+            assertThat(driver.executeScript("return document.activeElement.tagName")).isEqualTo("H2");
+            assertThat(driver.executeScript("const r = document.activeElement.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight;")).isEqualTo(true);
+            assertThat(driver.findElement(By.tagName("html")).getDomAttribute("lang")).isEqualTo(language);
+        } finally {
+            driver.close();
+            driver.switchTo().window(original);
+        }
+        assertThat(driver.findElement(By.id("businessText")).getDomProperty("value")).isEqualTo("Unsaved contextual-help requirement");
+        assertThat(driver.getCurrentUrl()).endsWith("#graph");
+    }
+
     private static final List<String> PREFIXES = List.of("", "/taxonomy", "/teams/blue/taxonomy");
     private static final List<PageContract> PAGES = List.of(
             new PageContract("requirement-detail", "/requirements/7", "requirementHeading", "detailError"),
@@ -910,7 +963,7 @@ class PortfolioClientRoutingIT {
         new WebDriverWait(driver, Duration.ofSeconds(20))
                 .ignoring(ElementClickInterceptedException.class)
                 .ignoring(StaleElementReferenceException.class)
-                .withMessage("Native click on " + selector)
+                .withMessage(() -> "Native click on " + selector + "; " + interactionState(selector))
                 .until(browser -> {
                     WebElement control = browser.findElement(selector);
                     if (!control.isDisplayed() || !control.isEnabled()) return false;
@@ -923,6 +976,22 @@ class PortfolioClientRoutingIT {
                     control.click();
                     return true;
                 });
+    }
+
+    private static String interactionState(By selector) {
+        var matches = driver.findElements(selector);
+        if (matches.isEmpty()) return "target missing at " + driver.getCurrentUrl();
+        return String.valueOf(driver.executeScript("""
+                const element = arguments[0], bounds = element.getBoundingClientRect();
+                const describe = node => node && ({tag: node.tagName, id: node.id, classes: node.className,
+                    hidden: node.hidden, inert: node.inert, disabled: node.disabled,
+                    display: getComputedStyle(node).display, visibility: getComputedStyle(node).visibility,
+                    bounds: node.getBoundingClientRect().toJSON()});
+                const ancestors = []; for (let node = element; node; node = node.parentElement) ancestors.push(describe(node));
+                return JSON.stringify({hash: location.hash, active: describe(document.activeElement), ancestors,
+                    covering: describe(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
+                    dialogs: Array.from(document.querySelectorAll('dialog[open], .modal.show')).map(describe)});
+                """, matches.getFirst()));
     }
 
     private static WebElement element(String id) { return driver.findElement(By.id(id)); }

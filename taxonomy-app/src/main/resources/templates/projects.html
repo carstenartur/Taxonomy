@@ -12,6 +12,7 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body class="portfolio-page bg-body-tertiary">
 <a href="#portfolioMain" class="skip-link">Skip to project portfolio</a>
@@ -32,6 +33,7 @@
             <a class="btn btn-outline-light" href="?lang=en" hreflang="en">EN</a>
             <a class="btn btn-outline-light" href="?lang=de" hreflang="de">DE</a>
         </div>
+        <a th:replace="~{fragments/context-help :: button('PROJECT_REQUIREMENT_PORTFOLIO', 'portfolio-projects')}"></a>
     </div>
 </nav>
 

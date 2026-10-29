@@ -158,3 +158,13 @@ The repository also runs CodeQL and Trivy-based dependency, secret, and configur
 - [Configuration Reference](CONFIGURATION_REFERENCE.md)
 - [Data Protection](DATA_PROTECTION.md)
 - [Keycloak Setup](KEYCLOAK_SETUP.md)
+
+<a id="user-management"></a>
+## Local user management
+
+Administrators can create local accounts, edit their roles, enable or disable accounts and reset passwords in **User management**. The confirmation forms show the affected account before a change is applied. In Keycloak/OIDC mode, manage external identities in the identity provider.
+
+<a id="browser-sessions"></a>
+## Signed-in sessions
+
+Administrators can open the session inventory to see registered, non-expired sessions for this application instance, grouped by user. **Refresh** obtains a new measurement. The timestamp is shown in UTC. A registered session does not prove that someone is currently viewing a page; the inventory is not a cluster-wide presence indicator.
