@@ -12,6 +12,7 @@
     <name>Taxonomy Application</name>
     <description>Spring Boot composition and deployment root, security and supporting application adapters</description>
     <dependencies>
+        <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-tooling</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-templates-api</artifactId><version>${project.version}</version></dependency>
         <!-- Distribution producer only; never included in the host classpath/BOOT-INF libraries. -->
         <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-mermaid-plugin</artifactId><version>${project.version}</version><scope>test</scope></dependency>

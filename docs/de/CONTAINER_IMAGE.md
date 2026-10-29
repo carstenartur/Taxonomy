@@ -232,6 +232,19 @@ Siehe [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) für alle Anwendungse
 
 ## 5. Persistenz und Backup
 
+Der [native Wiederherstellungstest](../testing/native-installation-recovery.md)
+startet die vollständige Anwendung in getrennten JVMs und prüft die kalte
+Wiederherstellung einer dateibasierten HSQL-Installation gleicher Version. Das
+bestehende Maven-Tooling bietet dafür `native-installation capture`, `verify` und
+`restore`: vollständiges Dateiverzeichnis mit Längen und SHA-256, neues isoliertes
+Ziel und Prüfung aller wiederhergestellten Dateibytes. Der Anwendungstest prüft
+gespeicherte Portfolio-/Quelldaten, Git-/Editorhistorie, Einstellungen, Vorlagen
+und Suche nach zwei Starts des wiederhergestellten Ziels. Vorher müssen
+alle schreibenden Prozesse beendet sein. Konfigurierte Quelldateiverzeichnisse
+außerhalb des Datenvolumens müssen ausdrücklich zusätzlich gesichert werden.
+Dies aktiviert weder den portablen `.taxbackup`-Import noch eine
+datenbankübergreifende Wiederherstellung; die portable Freigabe bleibt geschlossen.
+
 Der Produktions-Compose-Stack speichert veränderlichen Zustand unterhalb von `/app/data`:
 
 | Pfad | Inhalt |
