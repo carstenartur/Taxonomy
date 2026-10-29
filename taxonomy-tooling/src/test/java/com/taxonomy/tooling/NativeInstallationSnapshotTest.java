@@ -197,6 +197,73 @@ class NativeInstallationSnapshotTest {
         }
     }
 
+    @Test void restorePlanChecksAllBytesAndPathsWithoutCreatingAnyTarget() throws Exception {
+        Path source = source(), snapshot = temporary.resolve("snapshot"), target = temporary.resolve("target");
+        NativeInstallationSnapshot.capture(source, snapshot, VERSION, () -> {});
+        assertThat(command("plan", source, snapshot, target)).isZero();
+        assertThat(target).doesNotExist();
+        Files.writeString(snapshot.resolve("data/source-content/requirements.txt"), "changed");
+        assertThat(command("plan", source, snapshot, target)).isNotZero();
+        assertThat(target).doesNotExist();
+        assertThat(source.resolve("source-content/requirements.txt")).hasContent("Retain Ünicode and original\nbytes\n");
+    }
+
+    @Test void resumePublishesOnceAndRefusesToMergeChangedOrExtraTargetFiles() throws Exception {
+        Path source = source(), snapshot = temporary.resolve("snapshot"), target = temporary.resolve("target");
+        NativeInstallationSnapshot.capture(source, snapshot, VERSION, () -> {});
+        assertThat(command("resume", source, snapshot, target)).isZero();
+        var modified = Files.getLastModifiedTime(target.resolve("taxonomydb.data"));
+        assertThat(command("resume", source, snapshot, target)).isZero();
+        assertThat(Files.getLastModifiedTime(target.resolve("taxonomydb.data"))).isEqualTo(modified);
+        Files.writeString(target.resolve("extra"), "must survive");
+        assertThat(command("resume", source, snapshot, target)).isNotZero();
+        assertThat(target.resolve("extra")).hasContent("must survive");
+        Files.delete(target.resolve("extra"));
+        Files.writeString(target.resolve("taxonomydb.data"), "application changed this");
+        assertThat(command("resume", source, snapshot, target)).isNotZero();
+        assertThat(target.resolve("taxonomydb.data")).hasContent("application changed this");
+    }
+
+    @Test void postgresBundleBindsExplicitFamilyAndPreservesDumpAndExternalContent() throws Exception {
+        Path source = Files.createDirectory(temporary.resolve("postgres"));
+        // Format marker only: this tooling unit fixture does not claim pg_restore acceptance.
+        byte[] dump = "PGDMPfixture-format-marker-only".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Files.write(source.resolve("database.dump"), dump);
+        Files.createDirectory(source.resolve("source-content"));
+        Files.writeString(source.resolve("source-content/evidence.txt"), "original evidence");
+        Path snapshot = temporary.resolve("snapshot"), target = temporary.resolve("target");
+        var output = new java.io.ByteArrayOutputStream(); var stream = new java.io.PrintStream(output);
+        assertThat(TaxonomyTooling.run(new String[]{"native-installation", "capture", "--source", source.toString(),
+                "--snapshot", snapshot.toString(), "--version", VERSION, "--writers-stopped", "true", "--database-family", "POSTGRESQL"}, temporary, stream, stream))
+                .as(output.toString()).isZero();
+        assertThat(Files.readString(snapshot.resolve("manifest.json"))).contains("POSTGRESQL", "taxonomy-native-postgres-bundle-v1");
+        assertThat(command("plan", source, snapshot, target)).isZero();
+        assertThat(command("resume", source, snapshot, target)).isZero();
+        assertThat(target.resolve("database.dump")).hasBinaryContent(dump);
+        assertThat(target.resolve("source-content/evidence.txt")).hasContent("original evidence");
+        assertThat(command("resume", source, snapshot, target)).isZero();
+    }
+
+    @Test void postgresCaptureRejectsPlainSqlMissingDumpAndRawClusterDirectories() throws Exception {
+        for (String fault : List.of("missing", "plain-sql", "raw-cluster")) {
+            Path source = Files.createDirectory(temporary.resolve(fault)), snapshot = temporary.resolve(fault + "-snapshot");
+            if (!fault.equals("missing")) Files.writeString(source.resolve("database.dump"), fault.equals("plain-sql") ? "CREATE TABLE secrets" : "PGDMPfixture");
+            if (fault.equals("raw-cluster")) Files.writeString(source.resolve("PG_VERSION"), "16");
+            var output = new java.io.ByteArrayOutputStream(); var stream = new java.io.PrintStream(output);
+            assertThat(TaxonomyTooling.run(new String[]{"native-installation", "capture", "--source", source.toString(),
+                    "--snapshot", snapshot.toString(), "--version", VERSION, "--writers-stopped", "true", "--database-family", "POSTGRESQL"}, temporary, stream, stream))
+                    .isNotZero();
+            assertThat(snapshot).doesNotExist();
+        }
+    }
+
+    private int command(String operation, Path source, Path snapshot, Path target) {
+        var output = new java.io.ByteArrayOutputStream(); var stream = new java.io.PrintStream(output);
+        return TaxonomyTooling.run(new String[]{"native-installation", operation, "--source", source.toString(),
+                "--snapshot", snapshot.toString(), "--target", target.toString(), "--version", VERSION,
+                "--writers-stopped", "true"}, temporary, stream, stream);
+    }
+
     private Path source() throws Exception {
         return source(temporary.resolve(UUID.randomUUID().toString()));
     }
