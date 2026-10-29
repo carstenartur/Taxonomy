@@ -168,6 +168,11 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.DELETE, "/api/projects/**")
                 .hasAnyRole("ARCHITECT", "ADMIN");
 
+        auth.requestMatchers(HttpMethod.GET, "/api/inventory-comparisons/**").authenticated();
+        auth.requestMatchers(HttpMethod.POST, "/api/inventory-comparisons/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers("/api/inventory-comparisons/**").denyAll();
+
         auth.requestMatchers(HttpMethod.POST, "/api/solutions/**", "/api/products/**")
                 .hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PATCH, "/api/solutions/**", "/api/products/**")

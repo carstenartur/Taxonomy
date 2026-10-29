@@ -76,3 +76,8 @@ com.taxonomy.workspace.model.SyncState
 com.taxonomy.workspace.model.SystemRepository
 com.taxonomy.workspace.model.UserWorkspace
 com.taxonomy.workspace.model.WorkspaceProjection
+com.taxonomy.interop.inventory.InventoryComparisonEntity
+com.taxonomy.interop.inventory.InventoryAssertionEntity
+com.taxonomy.interop.inventory.InventoryObservationEntity
+com.taxonomy.interop.inventory.InventoryReviewEntity
+com.taxonomy.interop.inventory.InventoryMappingEntity

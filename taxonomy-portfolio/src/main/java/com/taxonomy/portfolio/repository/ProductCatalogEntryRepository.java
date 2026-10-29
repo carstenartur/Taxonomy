@@ -12,5 +12,10 @@ public interface ProductCatalogEntryRepository extends JpaRepository<ProductCata
 
     Optional<ProductCatalogEntry> findByIdAndScopeKey(Long id, String scopeKey);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_FORCE_INCREMENT)
+    @org.springframework.data.jpa.repository.Query("select p from ProductCatalogEntry p where p.id=:id and p.scopeKey=:scope")
+    Optional<ProductCatalogEntry> findByIdAndScopeKeyForUpdate(@org.springframework.data.repository.query.Param("id") Long id,
+                                                            @org.springframework.data.repository.query.Param("scope") String scope);
+
     Optional<ProductCatalogEntry> findByScopeKeyAndProductKeyIgnoreCase(String scopeKey, String productKey);
 }

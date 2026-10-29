@@ -1,6 +1,11 @@
 package com.taxonomy.interop.backup;
 
 import com.taxonomy.backup.*;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Mapping;
+import com.taxonomy.extension.api.inventory.InventoryReadContracts.Observation;
+import com.taxonomy.workspace.backup.BackupRowScope;
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
 import com.taxonomy.exchange.backup.PortableRows;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.extension.api.integration.PublicationContracts.*;
@@ -18,7 +23,7 @@ import static com.taxonomy.exchange.backup.PortableRows.*;
 /** Module-owned typed journal capture. No source mutation, worker claims, target authority or automatic dispatch. */
 public final class IntegrationBackupContributor implements BackupDataContributor {
     private static final List<String> DATASETS = List.of("connections", "identities", "checkpoints", "operations", "events",
-            "publications", "publish-items", "publish-attempts");
+            "publications", "publish-items", "publish-attempts", "inventory-comparisons", "inventory-assertions", "inventory-observations", "inventory-reviews", "inventory-mappings");
     private static final String PENDING = "e.status not in ('COMPLETED','CANCELLED')";
     private static final String PENDING_PARENT = "exists (select 1 from interop_operation o where o.id=e.operation_id and o.status not in ('COMPLETED','CANCELLED'))";
     private final PortableRows rows;
@@ -33,6 +38,7 @@ public final class IntegrationBackupContributor implements BackupDataContributor
         for (String name : List.of("IntegrationConnectionEntity", "ExternalIdentityMappingEntity", "IntegrationCheckpointEntity",
                 "IntegrationOperationEntity", "IntegrationEventEntity", "IntegrationPublicationEntity", "IntegrationPublishItemEntity", "IntegrationPublishAttemptEntity"))
             result.add("com.taxonomy.interop.persistence." + name);
+        for(String name:List.of("InventoryComparisonEntity","InventoryAssertionEntity","InventoryObservationEntity","InventoryReviewEntity","InventoryMappingEntity")) result.add("com.taxonomy.interop.inventory."+name);
         return Set.copyOf(result);
     }
     @Override public List<String> omissions(BackupProfile profile) {
@@ -99,11 +105,56 @@ public final class IntegrationBackupContributor implements BackupDataContributor
                             text(r, "actor"), date(r, "occurred_at"), text(r, "rationale"), text(r, "failure_code")));
             else datasets.header("events");
             publications(selection, sink, profile, datasets, publications);
+            inventory(snapshot,datasets);
             datasets.write();
             policy(sink, profile, "CAPTURED");
         } catch (IllegalArgumentException | NullPointerException | DateTimeException failure) {
             throw new IOException("Invalid or unsupported integration backup evidence");
         }
+    }
+
+    /** Inventory uses the canonical reversible portfolio tenant, not the connection hash. */
+    private void inventory(SnapshotContext snapshot,Capture capture) throws IOException {
+        if((snapshot.repositories().isEmpty() || (!capture.selection.hasScopes() && snapshot.repositories().keySet().stream().allMatch(k->k.workspaceId()!=null))) && !snapshot.authorization().request().profile().isInstallation()) {
+            for(String kind:List.of("inventory-comparisons","inventory-assertions","inventory-observations","inventory-reviews","inventory-mappings"))capture.header(kind);
+            return;
+        }
+        var scope=new BackupRowScope(snapshot);
+        capture.add("inventory-comparisons",inventoryQuery(scope,"inventory_comparison"),r->{
+            String key=inventoryScope(scope,r);var value=json(r,"comparison_json",Comparison.class,true);
+            if(!value.id().toString().equals(text(r,"id")) || !value.demand().scopeKey().equals(key) || !value.demand().repositoryId().equals(text(r,"repository_id")) || !value.demand().branch().equals(text(r,"branch_name")) || !value.fingerprint().equals(text(r,"fingerprint")))throw new IOException("Inventory comparison ownership differs");
+            if(!Objects.equals(value.demand().projectId(),r.getLong("project_id")) || !value.demand().snapshotId().equals(text(r,"snapshot_id")))throw new IOException("Inventory comparison demand reference differs");
+            for(var source:value.sources()) rows.requireEmpty(new Query("select e.id from inventory_comparison e where e.id=? and not exists (select 1 from inventory_observation o where o.id=? and o.repository_id=e.repository_id and o.scope_key=e.scope_key and o.branch_name=e.branch_name and o.actor=e.actor and o.profile_id=? and o.profile_revision=? and o.organization_id=? and o.status='SUCCEEDED')",
+                List.of(text(r,"id"),source.observationId(),source.profileId(),source.revision(),value.demand().question().organization())));
+            // Frozen IDs remain source provenance; they do not grant target access after restore.
+            return new InventoryComparisonData(reference(r,"interop.inventory-comparison","id"),key,value,"REAUTHORIZE_AND_REVIEW_REQUIRED");
+        });
+        capture.add("inventory-assertions",inventoryQuery(scope,"inventory_assertion"),r->{String key=inventoryScope(scope,r);var value=json(r,"assertion_json",Assertion.class,true);
+            if(!value.candidateId().equals(text(r,"candidate_id")))throw new IOException("Inventory assertion identity differs");
+            return new InventoryAssertionData(reference(r,"interop.inventory-assertion","id"),key,value);
+        });
+        capture.add("inventory-observations",inventoryQuery(scope,"inventory_observation"),r->{String key=inventoryScope(scope,r);var value=json(r,"observation_json",Observation.class,false);
+            if(value!=null && (!value.request().context().internalState().repositoryId().equals(text(r,"repository_id")) || !value.request().context().internalState().workspaceScopeKey().equals(key) || !value.request().configurationRevision().equals(text(r,"profile_revision"))))throw new IOException("Inventory observation ownership differs");
+            return new InventoryObservationData(reference(r,"interop.inventory-observation","id"),key,text(r,"profile_id"),text(r,"profile_revision"),text(r,"status"),text(r,"failure_code"),value,"SOURCE_GRANTS_NOT_RESTORED");
+        });
+        capture.add("inventory-reviews",inventoryQuery(scope,"inventory_review"),r->{String key=inventoryScope(scope,r);var value=json(r,"review_json",Reviewed.class,true);
+            if(!value.review().id().toString().equals(text(r,"id")))throw new IOException("Inventory review identity differs");
+            rows.requireEmpty(new Query("select e.id from inventory_comparison e where e.id=? and e.fingerprint<>?",List.of(text(r,"comparison_id"),value.review().comparisonFingerprint())));
+            return new InventoryReviewData(reference(r,"interop.inventory-review","id"),key,reference(r,"interop.inventory-comparison","comparison_id"),value);
+        });
+        capture.add("inventory-mappings",inventoryQuery(scope,"inventory_mapping"),r->{String key=inventoryScope(scope,r);var value=json(r,"mapping_json",Mapping.class,true);
+            if(!value.candidateId().equals(text(r,"candidate_id")) || !value.id().toString().equals(text(r,"id")))throw new IOException("Inventory mapping identity differs");
+            return new InventoryMappingData(reference(r,"interop.inventory-mapping","id"),key,value,"TARGET_PRODUCT_REVALIDATION_REQUIRED");
+        });
+        var selected=scope.tenants("e.scope_key");
+        rows.requireEmpty(new Query("select e.id from inventory_review e left join inventory_comparison p on p.id=e.comparison_id where "+selected.sql()+" and (p.id is null or p.scope_key<>e.scope_key or p.repository_id<>e.repository_id or p.branch_name<>e.branch_name)",selected.parameters()));
+    }
+    private List<Query> inventoryQuery(BackupRowScope scope,String table) {
+        var predicate=scope.tenants("e.scope_key");return List.of(new Query("select e.* from "+table+" e where "+predicate.sql()+" order by e.id",predicate.parameters()));
+    }
+    private String inventoryScope(BackupRowScope scope,ResultSet row) throws SQLException,IOException {
+        String key=text(row,"scope_key");var identity=RepositoryTenantIdentity.parse(key);
+        if(!scope.includesTenant(key) || !identity.repositoryId().equals(text(row,"repository_id")) || !identity.branch().equals(text(row,"branch_name")))throw new IOException("Inventory source scope differs");return key;
     }
 
     private void publications(IntegrationBackupSelection selection, ComponentSink sink, BackupProfile profile, Capture datasets,
@@ -241,6 +292,11 @@ public final class IntegrationBackupContributor implements BackupDataContributor
     }
     private static boolean terminal(OperationStatus status) { return status == OperationStatus.COMPLETED || status == OperationStatus.CANCELLED; }
 
+    public record InventoryComparisonData(SourceRecordId sourceId,String sourceScopeKey,Comparison evidence,String targetPolicy) { }
+    public record InventoryAssertionData(SourceRecordId sourceId,String sourceScopeKey,Assertion evidence) { }
+    public record InventoryObservationData(SourceRecordId sourceId,String sourceScopeKey,String sourceProfile,String sourceRevision,String outcome,String failureCode,Observation evidence,String targetPolicy) { }
+    public record InventoryReviewData(SourceRecordId sourceId,String sourceScopeKey,SourceRecordId comparison,Reviewed evidence) { }
+    public record InventoryMappingData(SourceRecordId sourceId,String sourceScopeKey,Mapping evidence,String targetPolicy) { }
     public record CapturePolicy(int schemaVersion, BackupProfile profile, String status, String targetExecutionPolicy, boolean automaticExecutionEnabled,
                                 String sourceIdentityPolicy, String baselinePolicy) { }
     public record ConnectionData(SourceRecordId sourceId, BackupIntegrationScope scope, String sourceOrganizationId, String displayName, String connectorId,

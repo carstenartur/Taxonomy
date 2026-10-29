@@ -422,6 +422,10 @@ public class PortfolioDecisionGitContributor {
                             valueOrDefault(block.property("createdBy"), owner),
                             now);
                 } else {
+                    // Git materialization writes the same product/coverage input aggregate.
+                    // Keep the inventory application fence until this transaction commits.
+                    product=productRepository.findByIdAndScopeKeyForUpdate(product.getId(),scopeKey)
+                            .orElseThrow(()->PortfolioException.conflict("Product inputs changed during materialization"));
                     product.update(
                             required(block, "manufacturer", product.getManufacturer()),
                             block.property("productFamily"),
@@ -631,6 +635,7 @@ public class PortfolioDecisionGitContributor {
                     block.property("selectionStatus"),
                     ProductSelectionStatus.CANDIDATE);
             String exclusions = block.property("hardExclusions");
+            if(candidate!=null && !isBlank(candidate.getInventoryHardExclusions()))exclusions=candidate.getInventoryHardExclusions();
             if (selection == ProductSelectionStatus.SELECTED
                     && (review != ReviewStatus.CONFIRMED || !isBlank(exclusions))) {
                 warnings.add(identity(block)
