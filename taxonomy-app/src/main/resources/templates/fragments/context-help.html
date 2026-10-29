@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <link th:fragment="styles" rel="stylesheet" th:href="@{/css/context-help.css}"/>
+</head>
+<body>
+<a th:fragment="button(document, section)" class="context-help"
+   th:href="@{/(lang=${#locale.language})} + '#help/' + ${document} + (${#strings.isEmpty(section)} ? '' : '/' + ${section})"
+   target="_blank" rel="noopener noreferrer" th:title="#{help.context.newTab}">
+    <span aria-hidden="true">?</span>
+    <span th:text="#{help.context.label}">Help for this view</span>
+    <span aria-hidden="true">↗</span>
+    <span class="context-help-new-tab" th:text="#{help.context.newTab}">Opens in a new tab</span>
+</a>
+</body>
+</html>

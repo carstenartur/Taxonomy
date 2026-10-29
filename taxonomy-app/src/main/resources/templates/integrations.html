@@ -5,12 +5,15 @@
     <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/><meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
     <title th:text="#{integration.title}">Tool integrations</title>
     <link rel="stylesheet" th:href="@{/css/integrations.css}" href="/css/integrations.css"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body th:attr="data-may-write=${mayWrite}">
 <a href="#integrationReview" class="skip" data-i18n="integration.skip">Skip to review</a>
 <header><a th:href="@{/}" href="/">Taxonomy</a><h1 data-i18n="integration.title">Tool integrations</h1>
     <a th:href="@{/projects}" href="/projects" data-i18n="integration.projects">Projects</a>
-    <a th:href="@{/architecture/editor}" href="/architecture/editor" data-i18n="integration.editor">Architecture editor</a></header>
+    <a th:href="@{/architecture/editor}" href="/architecture/editor" data-i18n="integration.editor">Architecture editor</a>
+    <a th:replace="~{fragments/context-help :: button('ARCHITECTURE_EDITOR', 'tool-integrations')}"></a>
+</header>
 <main>
     <p data-i18n="integration.intro">Review external changes against an exact private workspace. Preview preserves evidence; only an accepted import changes the model and creates an explicit version.</p>
     <p id="integrationStatus" role="status" aria-live="polite"></p><p id="integrationError" role="alert" hidden></p>

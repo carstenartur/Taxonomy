@@ -94,6 +94,7 @@ generative relationship or wording capabilities of a configured language model.
 
 The placeholders are replaced automatically when you navigate from a selected project or requirement.
 
+<a id="portfolio-projects"></a>
 ## 1. Create or select a project
 
 Open `/projects`.
@@ -102,6 +103,7 @@ Choose **New project** and enter a unique project key, title and optional descri
 
 The main workspace then shows requirements, taxonomy coverage, solutions, products, conflicts, snapshots and consolidated metrics.
 
+<a id="portfolio-import"></a>
 ## 2. Import and review requirements
 
 Open the selected project's **Import** action or navigate to `/projects/{projectId}/import`.
@@ -184,6 +186,7 @@ Each conflict card identifies both requirements and shows the conflict type, evi
 
 Conflict detection supports professional requirements engineering; it does not replace human approval.
 
+<a id="portfolio-matrices"></a>
 ## 8. Use the interactive matrices
 
 Open `/projects/{projectId}/matrices`.
@@ -198,6 +201,7 @@ Search, filter and sort the visible relationships. Select a non-empty cell to op
 
 Empty cells mean that no relationship is stored. They do not mean that a relationship was evaluated at zero.
 
+<a id="portfolio-versioning"></a>
 ## 9. Commit and merge reviewed portfolio states
 
 Open `/projects/{projectId}/versioning`.
@@ -214,6 +218,7 @@ You can:
 
 If the target branch changes after the preview, materialization is rejected without changing portfolio data. This prevents a stale review from overwriting newer work.
 
+<a id="portfolio-reports"></a>
 ## 10. Create reports and exports
 
 Open `/projects/{projectId}/reports`.

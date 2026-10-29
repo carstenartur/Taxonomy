@@ -8,6 +8,7 @@
     <title th:text="#{editor.title}">Architecture editor</title>
     <link rel="stylesheet" th:href="@{/css/architecture-editor.css}" href="/css/architecture-editor.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body>
 <a class="editor-skip" href="#editorForm" data-i18n="editor.skip">Skip to properties</a>
@@ -16,6 +17,7 @@
     <h1 data-i18n="editor.title">Architecture editor</h1>
     <a th:href="@{/projects}" href="/projects" data-i18n="editor.projects">Projects and snapshots</a>
     <a th:href="@{/integrations}" href="/integrations" data-i18n="integration.title">Tool integrations</a>
+    <a th:replace="~{fragments/context-help :: button('ARCHITECTURE_EDITOR', '')}"></a>
 </header>
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
 <main id="architectureEditor">

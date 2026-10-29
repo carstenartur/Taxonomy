@@ -4,7 +4,7 @@
    sanitised through DOMParser — the browser parses it in a detached document
    so no scripts execute, then we import only safe element types.
    F1 keyboard shortcut opens the Help tab.
-   Deep-linking: #help/DOC_NAME auto-loads that document.
+   Deep-linking: #help/DOC_NAME[/section] opens the document and optional section.
    ───────────────────────────────────────────────────────────────────────── */
 (function () {
     'use strict';
@@ -22,6 +22,77 @@
 
     var toc = [];
     var currentDoc = null;
+    var loadedDoc = null;
+    var requestSequence = 0;
+    var loadingKey = null;
+    var tocRequest = null;
+    var requestedTarget = parseTarget(window.location.hash) || {doc: 'USER_GUIDE', section: ''};
+
+    function updateBrowserHelp(view) {
+        if (['list', 'tabs', 'sunburst', 'tree', 'decision', 'summary'].indexOf(view) === -1) return;
+        var link = document.querySelector('#taxonomyBrowserHelp .context-help');
+        if (link) link.setAttribute('href', link.getAttribute('href').split('#')[0]
+            + '#help/USER_GUIDE/taxonomy-view-' + view);
+    }
+    document.addEventListener('taxonomy:view-rendered', function (event) {
+        updateBrowserHelp(event.detail?.view);
+    });
+    document.addEventListener('click', function (event) {
+        var button = event.target.closest('#diagramViewSelector [data-view]');
+        if (button) updateBrowserHelp(button.getAttribute('data-view'));
+    });
+
+    function parseTarget(hash) {
+        var match = /^#help\/([A-Za-z0-9_-]+)(?:\/([^/]+))?$/.exec(hash);
+        if (!match) return null;
+        try {
+            var section = decodeURIComponent(match[2] || '');
+            if (/[\s/#<>]/.test(section)) return null;
+            return {doc: match[1], section: section};
+        } catch (_) { return null; }
+    }
+
+    function targetHash(target) {
+        return '#help/' + target.doc + (target.section ? '/' + encodeURIComponent(target.section) : '');
+    }
+
+    function helpUrl(path) {
+        return TaxonomyI18n.resolveUrl(path) + '?lang=' + encodeURIComponent(TaxonomyI18n.getLocale());
+    }
+
+    function scrollToSection(section) {
+        var area = docBody.closest('.help-content-area');
+        if (area) area.scrollTop = 0;
+        if (!section) return;
+        var target = Array.from(docBody.querySelectorAll('[id]')).find(function (node) {
+            return node.getAttribute('id') === section;
+        });
+        if (!target) return;
+        // Stable explicit anchors precede translated headings.
+        if (target.tagName === 'A') {
+            var block = target.parentElement?.tagName === 'P' && !target.parentElement.textContent.trim()
+                ? target.parentElement : target;
+            if (block.nextElementSibling && /^H[1-6]$/.test(block.nextElementSibling.tagName)) {
+                target = block.nextElementSibling;
+            }
+        }
+        target.setAttribute('tabindex', '-1');
+        target.focus({preventScroll: true});
+        target.scrollIntoView({block: 'start'});
+    }
+
+    function selectTarget(target) {
+        requestedTarget = target;
+        history.replaceState(null, '', targetHash(target));
+        loadToc();
+        loadDoc(target);
+    }
+
+    function openTarget(target) {
+        requestedTarget = target;
+        if (typeof window.navigateToPage === 'function') window.navigateToPage('help');
+        selectTarget(target);
+    }
 
     /* ── Safe HTML insertion ───────────────────────────────────────────── */
     /**
@@ -71,7 +142,11 @@
                     // Block javascript: URLs
                     if ((attr.name === 'href' || attr.name === 'src') &&
                         /^\s*javascript:/i.test(attr.value)) { continue; }
-                    el.setAttribute(attr.name, attr.value);
+                    var value = attr.value;
+                    if (attr.name === 'src' && value.startsWith('/help/images/')) {
+                        value = TaxonomyI18n.resolveUrl(value);
+                    }
+                    el.setAttribute(attr.name, value);
                 }
                 // Open external links in a new tab
                 if (tag === 'A' && el.getAttribute('href') && !el.getAttribute('href').startsWith('#')) {
@@ -86,24 +161,22 @@
 
     /* ── TOC loading ───────────────────────────────────────────────────── */
     function loadToc() {
-        fetch('/help')
-            .then(function (r) { return r.json(); })
+        if (tocRequest) return tocRequest;
+        tocRequest = fetch(helpUrl('/help'))
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function (data) {
                 toc = data;
                 renderToc(data);
-                // Deep-link or auto-load User Guide
-                var hash = window.location.hash.replace('#', '');
-                if (hash.startsWith('help/')) {
-                    var docName = hash.substring(5);
-                    loadDoc(docName);
-                } else if (currentDoc === null) {
-                    loadDoc('USER_GUIDE');
-                }
             })
             .catch(function (e) {
-                tocList.innerHTML = '<li class="text-danger small p-2">' + t('help.load.failed') + '</li>';
+                tocRequest = null; // A subsequent help visit can retry.
+                tocList.textContent = t('help.load.failed');
                 console.error('Help TOC load error:', e);
             });
+        return tocRequest;
     }
 
     function renderToc(items) {
@@ -124,18 +197,34 @@
             li.appendChild(badge);
             li.addEventListener('click', function (e) {
                 e.preventDefault();
-                loadDoc(entry.filename);
-                history.replaceState(null, '', '#help/' + entry.filename);
+                openTarget({doc: entry.filename, section: ''});
             });
             tocList.appendChild(li);
         });
         if (currentDoc) { highlightActive(currentDoc); }
+        if (loadedDoc) { updateDocTitle(loadedDoc); }
+    }
+
+    function updateDocTitle(docName) {
+        var entry = toc.find(function (d) { return d.filename === docName; });
+        if (entry) {
+            docTitle.textContent = entry.icon + ' ' + entry.title;
+            docTitle.classList.remove('d-none');
+        }
     }
 
     /* ── Document loading ──────────────────────────────────────────────── */
-    function loadDoc(docName) {
-        // Validate format before sending to server
-        if (!/^[A-Za-z0-9_-]+$/.test(docName)) { return; }
+    function loadDoc(target) {
+        var docName = target.doc;
+        var key = targetHash(target);
+        if (loadingKey === key) return;
+        if (loadedDoc === docName && !loadingKey) {
+            scrollToSection(target.section);
+            return;
+        }
+        var sequence = ++requestSequence;
+        loadingKey = key;
+        loadedDoc = null;
         currentDoc = docName;
         highlightActive(docName);
         docTitle.classList.add('d-none');
@@ -143,24 +232,23 @@
             '<div class="spinner-border spinner-border-sm" role="status"></div> ' + TaxonomyUtils.escapeHtml(t('help.loading')) + '</div>');
         backToTop.classList.add('d-none');
 
-        fetch('/help/' + encodeURIComponent(docName))
+        fetch(helpUrl('/help/' + encodeURIComponent(docName)))
             .then(function (r) {
                 if (!r.ok) { throw new Error('HTTP ' + r.status); }
                 return r.text();
             })
             .then(function (html) {
-                var entry = toc.find(function (d) { return d.filename === docName; });
-                if (entry) {
-                    docTitle.textContent = entry.icon + ' ' + entry.title;
-                    docTitle.classList.remove('d-none');
-                }
+                if (sequence !== requestSequence) return;
+                loadingKey = null;
+                loadedDoc = docName;
+                updateDocTitle(docName);
                 safeSetHtml(docBody, html);
                 backToTop.classList.remove('d-none');
-                // Scroll content area back to top
-                var area = docBody.closest('.help-content-area');
-                if (area) { area.scrollTop = 0; }
+                scrollToSection(target.section);
             })
             .catch(function (e) {
+                if (sequence !== requestSequence) return;
+                loadingKey = null;
                 safeSetHtml(docBody, '<div class="alert alert-danger">Could not load document: ' +
                     escapeHtml(String(e.message)) + '</div>');
                 console.error('Help doc load error:', e);
@@ -206,30 +294,30 @@
         }
     });
 
-    /* ── Deep-link via hashchange ──────────────────────────────────────── */
-    window.addEventListener('hashchange', function () {
-        var hash = window.location.hash.replace('#', '');
-        if (hash.startsWith('help/')) {
-            var docName = hash.substring(5);
-            if (/^[A-Za-z0-9_-]+$/.test(docName)) {
-                if (typeof window.navigateToPage === 'function') {
-                    window.navigateToPage('help');
-                }
-                loadDoc(docName);
-            }
-        }
+    /* Keep section links inside the help reader, including its table of contents. */
+    docBody.addEventListener('click', function (event) {
+        var link = event.target.closest('a[href]');
+        if (!link || !docBody.contains(link) || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        var href = link.getAttribute('href');
+        if (!href || !href.startsWith('#') || href.startsWith('#help/')) return;
+        try {
+            var section = decodeURIComponent(href.slice(1));
+            if (!section) return;
+            event.preventDefault();
+            selectTarget({doc: currentDoc, section: section});
+        } catch (_) { /* Leave malformed authored links to normal browser handling. */ }
     });
 
-    // Every navigation route (link, responsive select, deep link, API) has one lifecycle.
+    window.addEventListener('hashchange', function () {
+        var target = parseTarget(window.location.hash);
+        if (target) openTarget(target);
+    });
+
+    // The navigation controller emits this after showing the pane. Its generic
+    // #help hash must not erase a document/section captured before it initialized.
     document.addEventListener('taxonomy:page-activated', function (event) {
-        if (event.detail?.page === 'help' && toc.length === 0) loadToc();
+        if (event.detail?.page === 'help') selectTarget(parseTarget(window.location.hash) || requestedTarget);
     });
     var helpTab = document.querySelector('[data-page="help"]');
-    if (helpTab && helpTab.classList.contains('active')) loadToc();
-
-    // Handle deep-link on page load
-    var initialHash = window.location.hash.replace('#', '');
-    if (initialHash.startsWith('help/')) {
-        loadToc();
-    }
+    if (helpTab && helpTab.classList.contains('active')) selectTarget(requestedTarget);
 }());

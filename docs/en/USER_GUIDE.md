@@ -484,6 +484,7 @@ An area's assessment appears separately as **Area relevance** beside its heading
 
 DOT and Mermaid tree exports represent areas as groups. CSV exports retain their values, leave their rank blank and identify them with `true` in the `TaxonomyContainer` column. Original entries have `false`; codes missing from the loaded catalogue have an empty value. Saved analyses and JSON evidence retain the complete hierarchy and recorded assessments.
 
+<a id="taxonomy-view-list"></a>
 ### List View (Default)
 
 The default view shows all taxonomy nodes as a flat, indented list. Each row contains the node name, its code, and — after analysis — a score bar and percentage.
@@ -494,12 +495,14 @@ The default view shows all taxonomy nodes as a flat, indented list. Each row con
 
 ![List view with descriptions visible](../images/09-list-view-descriptions.png)
 
+<a id="taxonomy-view-tabs"></a>
 ### Tabs View
 
 The Tabs view groups taxonomy nodes under tab headers for each top-level category. Click a tab to display only the nodes in that branch.
 
 ![Tabs view](../images/05-tabs-view.png)
 
+<a id="taxonomy-view-sunburst"></a>
 ### Sunburst View
 
 The Sunburst view renders the taxonomy as a radial sunburst chart where the centre is the root and each ring is a deeper level. After analysis, segments are coloured by their score.
@@ -517,6 +520,7 @@ List, Tabs, Sunburst, Tree, Decision and Summary share the same relevance select
 
 During an analysis, Sunburst, Tree and Decision retain their reading position when new results arrive: zoom, pan, scroll position and manually opened or closed branches are restored. Sunburst remembers its focused subtree. Each view and selected tree taxonomy has its own state, including when the tree switches between SVG and Canvas rendering. If filtering removes the selected node, a surviving ancestor becomes the selection. **Fit diagram** and **Reset zoom** explicitly change the viewport. A new analysis or a newly loaded requirement draft begins with a fresh view state.
 
+<a id="taxonomy-view-tree"></a>
 ### Tree View
 
 **Only relevant nodes (> 0)** is available directly in the diagram toolbar and applies to the view and printout. The shared relevance selector additionally distinguishes measured zeroes from unknown scores.
@@ -527,6 +531,7 @@ Tree and Decision offer **Expand all** and **Collapse all**. **Reason** shows th
 
 ![Tree view](../images/07-tree-view.png)
 
+<a id="taxonomy-view-decision"></a>
 ### Decision Map View
 
 The Decision Map view shows the taxonomy as a decision-tree style layout optimised for selecting relevant nodes based on the analysis scores.
@@ -555,6 +560,7 @@ Choose a printer supporting the selected paper size or **Save as PDF** in the br
 >
 > ![Decision Map — empty state](../images/08-decision-map-view.png)
 
+<a id="taxonomy-view-summary"></a>
 ### Summary View (📋 Summary)
 
 The Summary view appears automatically after running an analysis with the **Architecture View** checkbox enabled. It presents a layered architecture overview of your analysis results, grouping elements by their taxonomy category:

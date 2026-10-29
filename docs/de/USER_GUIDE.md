@@ -494,6 +494,7 @@ Die Bewertung eines Bereichs steht gesondert als **Bereichsrelevanz** an seiner 
 
 DOT- und Mermaid-Baumexporte stellen die Bereiche als Gruppen dar. Der CSV-Export erhält ihre Werte, lässt ihren Rang leer und kennzeichnet sie in der Spalte `TaxonomyContainer` mit `true`. Bei Originaleinträgen steht dort `false`; bei Codes, die im geladenen Katalog fehlen, bleibt die Kennzeichnung leer. Gespeicherte Analysen und JSON-Nachweise behalten die vollständige Hierarchie und die aufgezeichneten Bewertungen.
 
+<a id="taxonomy-view-list"></a>
 ### Listenansicht (Standard)
 
 Die Standardansicht zeigt alle Taxonomieknoten als flache, eingerückte Liste. Jede Zeile enthält den Knotennamen, seinen Code und — nach der Analyse — einen Bewertungsbalken und Prozentsatz.
@@ -504,12 +505,14 @@ Die Standardansicht zeigt alle Taxonomieknoten als flache, eingerückte Liste. J
 
 ![Listenansicht mit sichtbaren Beschreibungen](../images/09-list-view-descriptions.png)
 
+<a id="taxonomy-view-tabs"></a>
 ### Registerkartenansicht
 
 Die Registerkartenansicht gruppiert Taxonomieknoten unter Registerkarten-Überschriften für jede Kategorie der obersten Ebene. Klicken Sie auf eine Registerkarte, um nur die Knoten in diesem Zweig anzuzeigen.
 
 ![Registerkartenansicht](../images/05-tabs-view.png)
 
+<a id="taxonomy-view-sunburst"></a>
 ### Sunburst-Ansicht
 
 Die Sunburst-Ansicht stellt die Taxonomie als radiales Sunburst-Diagramm dar, bei dem das Zentrum der Stamm ist und jeder Ring eine tiefere Ebene darstellt. Nach der Analyse werden die Segmente entsprechend ihrer Bewertung eingefärbt.
@@ -527,6 +530,7 @@ Liste, Registerkarten, Sunburst, Baum, Entscheidungskarte und Zusammenfassung ve
 
 Während einer laufenden Analyse behalten Sunburst, Baum und Entscheidungskarte ihren Ausschnitt: Zoom, Verschiebung, Scrollposition und manuell geöffnete oder geschlossene Zweige werden bei neuen Ergebnissen wiederhergestellt. Sunburst merkt sich den geöffneten Teilbaum. Jede Ansicht und jede im Baum ausgewählte Teiltaxonomie hat ihren eigenen Zustand; auch ein Wechsel zwischen SVG- und Canvas-Darstellung erhält ihn. Wenn ein Filter den ausgewählten Knoten entfernt, wird ein noch sichtbarer Elternknoten verwendet. **Diagramm einpassen** und **Zoom zurücksetzen** ändern den Ausschnitt ausdrücklich. Eine neue Analyse oder ein neu geladener Anforderungsentwurf beginnt mit einem neuen Ansichtszustand.
 
+<a id="taxonomy-view-tree"></a>
 ### Baumansicht
 
 **Nur relevante Knoten (> 0)** ist direkt in der Diagrammleiste verfügbar und wirkt auf Ansicht und Druck. Der gemeinsame Relevanzfilter bietet zusätzlich die Unterscheidung zwischen Nullwerten und noch unbekannten Bewertungen.
@@ -537,6 +541,7 @@ Baum und Entscheidungskarte bieten **Alles ausklappen** und **Alles zuklappen**.
 
 ![Baumansicht](../images/07-tree-view.png)
 
+<a id="taxonomy-view-decision"></a>
 ### Entscheidungskarten-Ansicht
 
 Die Entscheidungskarten-Ansicht zeigt die Taxonomie als Entscheidungsbaum-Layout, das für die Auswahl relevanter Knoten basierend auf den Analysebewertungen optimiert ist.
@@ -565,6 +570,7 @@ Wählen Sie im Browser einen Drucker mit passendem Papierformat oder **Als PDF s
 >
 > ![Entscheidungskarte — leerer Zustand](../images/08-decision-map-view.png)
 
+<a id="taxonomy-view-summary"></a>
 ### Zusammenfassungsansicht (📋 Summary)
 
 Die Zusammenfassungsansicht erscheint automatisch nach Durchführung einer Analyse mit aktiviertem **Architecture View**-Kontrollkästchen. Sie präsentiert einen geschichteten Architekturüberblick Ihrer Analyseergebnisse, gruppiert nach Taxonomiekategorie:
