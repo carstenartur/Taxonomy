@@ -627,6 +627,7 @@ jobs:
             target/interoperability-products/strictdoc-dependencies.txt
             target/interoperability-products/*.reqif
             target/interoperability-products/*.xml
+            target/interoperability-products/workbench.zip
             target/interoperability-products/strictdoc-original/reqif/*.reqif
             target/interoperability-products/strictdoc-final/reqif/*.reqif
           if-no-files-found: error
