@@ -8,6 +8,7 @@ import com.taxonomy.interop.publication.PublicationDigests;
 import com.taxonomy.interop.publication.PublicationLocalAuthority;
 import com.taxonomy.interop.IntegrationJson;
 import com.taxonomy.interop.persistence.*;
+import com.taxonomy.interop.inventory.*;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.hibernate.cfg.Configuration;
 import org.hsqldb.jdbc.JDBCDataSource;
@@ -33,9 +34,33 @@ class IntegrationBackupExportTest {
     private static final RepositoryContext FOREIGN = RepositoryContext.workspace("repo-b", "private-c", "draft", "carol");
     private static final Class<?>[] ENTITIES = { IntegrationConnectionEntity.class, ExternalIdentityMappingEntity.class,
             IntegrationCheckpointEntity.class, IntegrationOperationEntity.class, IntegrationEventEntity.class,
-            IntegrationPublicationEntity.class, IntegrationPublishItemEntity.class, IntegrationPublishAttemptEntity.class };
+            IntegrationPublicationEntity.class, IntegrationPublishItemEntity.class, IntegrationPublishAttemptEntity.class, InventoryComparisonEntity.class,InventoryAssertionEntity.class,InventoryObservationEntity.class,InventoryReviewEntity.class,InventoryMappingEntity.class };
     private static final List<String> TABLES = List.of("interop_connection", "interop_identity", "interop_checkpoint", "interop_operation",
             "interop_event", "interop_publication", "interop_publish_item", "interop_publish_attempt");
+
+    @Test void inventoryComparisonCannotExportAnUncapturedObservationReference() throws Exception {
+        try(var fixture=new Fixture()) {
+            var key=new com.taxonomy.workspace.model.RepositoryTenantIdentity("repo-a","WORKSPACE:private-a","draft").scopeKey();
+            var scope=new com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope("repo-a",key,"draft","alice");
+            var journal=new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),fixture.json);
+            var demand=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Demand("repo-a",key,"draft",7L,8L,9L,"snapshot","catalog","snapshot-fingerprint",List.of("fixture:node"),new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Question(com.taxonomy.extension.api.inventory.InventoryComparisonContracts.TimeMode.EXACT_DATE,java.time.LocalDate.parse("2030-01-01"),null,"north",null));
+            var source=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.SourceEvidence("approved","v1",UUID.randomUUID().toString(),NOW,"selector","SUCCEEDED",Set.of());
+            journal.save(scope,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Comparison(UUID.randomUUID(),demand,"v1",NOW,List.of(),List.of(),List.of(source),"comparison-fingerprint"));
+            var out=new Contents();assertThatThrownBy(()->contributor(fixture,OWN).write(snapshot(BackupProfile.CURRENT_STATE,OWN),out)).isInstanceOf(IOException.class);assertThat(out.entries).isEmpty();
+        }
+    }
+
+    @Test void inventoryAssertionsHaveTypedOwnerAndExcludeSiblingScopeAndGrants() throws Exception {
+        try(var fixture=new Fixture()) {
+            var journal=new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),fixture.json);
+            var own=new com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope("repo-a",new com.taxonomy.workspace.model.RepositoryTenantIdentity("repo-a","WORKSPACE:private-a","draft").scopeKey(),"draft","alice");
+            var sibling=new com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope("repo-a",new com.taxonomy.workspace.model.RepositoryTenantIdentity("repo-a","WORKSPACE:private-b","draft").scopeKey(),"draft","bob");
+            journal.append(own,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Assertion("claim-a","product:1",com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Criterion.AVAILABILITY,null,true,null,null,"north",null,com.taxonomy.extension.api.inventory.InventoryReadContracts.AssertionKind.DECLARED,"APPROVED-OWN-EVIDENCE",NOW));
+            journal.append(sibling,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Assertion("claim-b","product:1",com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Criterion.AVAILABILITY,null,true,null,null,"north",null,com.taxonomy.extension.api.inventory.InventoryReadContracts.AssertionKind.DECLARED,"PRIVATE-SIBLING-EVIDENCE",NOW));
+            var out=new Contents();contributor(fixture,OWN).write(snapshot(BackupProfile.CURRENT_STATE,OWN),out);
+            assertThat(out.rows("inventory-assertions")).hasSize(1);assertThat(out.text()).contains("APPROVED-OWN-EVIDENCE").doesNotContain("PRIVATE-SIBLING-EVIDENCE","credentialEnvironment","principals","credential");
+        }
+    }
 
     @Test void currentRetainsAllUnreservedPreviewsAndLiveMappingsWithoutHistoricalOrForeignPayload() throws Exception {
         try (var fixture = new Fixture()) {
@@ -51,7 +76,7 @@ class IntegrationBackupExportTest {
                     .doesNotContain("SECRET", "removed-business", "PRIVATE-SIBLING", "OTHER-REPOSITORY", "\"before\"", "\"rowVersion\"");
             assertThat(out.rows("operations")).hasSize(2); assertThat(out.rows("identities")).hasSize(1);
             assertThat(out.rows("events")).isEmpty(); assertThat(out.rows("checkpoints")).isEmpty();
-            assertThat(out.entries).hasSize(9); assertThat(fixture.image()).isEqualTo(before);
+            assertThat(out.entries).hasSize(14); assertThat(fixture.image()).isEqualTo(before);
         }
     }
 
@@ -133,11 +158,11 @@ class IntegrationBackupExportTest {
     @Test void selectedVersionAndEmptyScopeDoNotReadLiveData() throws Exception {
         var selected = new IntegrationBackupContributor(noReads(), (ignored, checkpoint) -> { throw new AssertionError("No live selection"); });
         var out = new Contents(); selected.write(snapshot(BackupProfile.SELECTED_VERSION, OWN), out);
-        assertThat(out.text()).contains("OUTSIDE_SCOPE"); assertThat(out.entries).hasSize(9);
+        assertThat(out.text()).contains("OUTSIDE_SCOPE"); assertThat(out.entries).hasSize(14);
         assertThat(selected.omissions(BackupProfile.SELECTED_VERSION)).isNotEmpty();
         out = new Contents(); new IntegrationBackupContributor(noReads(), (ignored, checkpoint) -> List.of())
                 .write(snapshot(BackupProfile.CURRENT_STATE, OWN), out);
-        assertThat(out.entries).hasSize(9);
+        assertThat(out.entries).hasSize(14);
     }
 
     @Test void rejectsForeignAndDuplicateSelectionBeforeDatabaseAccessAndHonorsCancellation() throws Exception {

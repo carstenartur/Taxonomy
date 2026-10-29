@@ -38,6 +38,7 @@ class ProductCatalogPolicyContractTest {
         when(request.verifiedAt()).thenReturn(Instant.parse("2026-01-01T00:00:00Z"));
         service.createProduct(request,"alice",context);
         when(products.findByIdAndScopeKey(9L,PortfolioScope.key("alice",context))).thenReturn(Optional.of(product));
+        when(products.findByIdAndScopeKeyForUpdate(9L,PortfolioScope.key("alice",context))).thenReturn(Optional.of(product));
         when(nodes.findByCode("CP-1")).thenReturn(Optional.of(mock(TaxonomyNode.class)));
         decision=mock(ProjectSolution.class);when(decision.getId()).thenReturn(3L);
         when(decisions.findByIdAndProjectId(3L,1L)).thenReturn(Optional.of(decision));
@@ -56,7 +57,7 @@ class ProductCatalogPolicyContractTest {
         assertThat(product.getManufacturer()).isEqualTo("New Vendor");assertThat(product.getProductName()).isEqualTo("New Product");
         assertThat(product.getCostAmount()).isEqualByComparingTo("12.50");assertThat(product.getCostCurrency()).isEqualTo("EUR");
         assertThat(product.getSourceReference()).isEqualTo("New evidence");
-        verify(products,times(2)).findByIdAndScopeKey(9L,PortfolioScope.key("alice",context));
+        verify(products,times(2)).findByIdAndScopeKeyForUpdate(9L,PortfolioScope.key("alice",context));
     }
     @Test void invalidRequestsAndUnknownIdentityNeverSave() {
         assertThatThrownBy(()->service.createProduct(null,"alice",context)).isInstanceOf(PortfolioException.class);

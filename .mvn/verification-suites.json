@@ -221,6 +221,7 @@
           "com.taxonomy.acceptance.ReformulationScenarioBrowserTest",
           "com.taxonomy.acceptance.ReformulationScenarioAcceptanceTest",
           "com.taxonomy.portfolio.reformulation.ReformulationBrowserTest",
+          "com.taxonomy.portfolio.reformulation.InventoryComparisonUiIT",
           "com.taxonomy.acceptance.ReformulationAuthoredScenarioTest",
           "com.taxonomy.DerivedMetadataAndSummaryTests",
           "com.taxonomy.CoreUiAcceptanceIT",

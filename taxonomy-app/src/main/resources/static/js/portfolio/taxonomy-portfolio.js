@@ -1168,6 +1168,15 @@
                     + snapshot.warnings.map(function (warning) { return '<li>' + escapeHtml(warning) + '</li>'; }).join('')
                     + '</ul></div>' : '') + '<div class="mt-3"><button class="btn btn-sm btn-outline-secondary snapshot-compare" '
             + 'type="button">' + escapeHtml(t('action.compare.previous')) + '</button></div><div id="snapshotDiff" class="mt-3"></div>';
+        if (window.TaxonomyInventoryComparison) {
+            const exact = await window.TaxonomyPortfolioApi.getSnapshot(state.selectedProjectId, snapshotId);
+            if (state.selectedSnapshotId !== snapshotId) return;
+            const inventory = document.createElement('div');
+            inventory.id = 'inventoryComparison';
+            target.append(inventory);
+            window.TaxonomyInventoryComparison.mount(inventory, {projectId: state.selectedProjectId,
+                snapshot: exact, solutions: state.portfolio?.solutions || []});
+        }
     }
 
     async function onSnapshotDetailAction(event) {

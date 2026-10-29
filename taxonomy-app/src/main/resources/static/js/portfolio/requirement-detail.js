@@ -460,6 +460,13 @@
             + `<dt>${escapeHtml(t('baseline'))}</dt><dd><code>${escapeHtml(String(summary.taxonomyFingerprint || '').slice(0, 16))}</code> / <code>${escapeHtml(String(summary.promptFingerprint || '').slice(0, 16))}</code></dd></dl>`
             + renderDecisionReportActions(summary)
             + renderAnalysisSummary(detail);
+        if (window.TaxonomyInventoryComparison) {
+            const inventory = document.createElement('div');
+            inventory.id = 'inventoryComparison';
+            target.append(inventory);
+            window.TaxonomyInventoryComparison.mount(inventory, {projectId, snapshot: detail,
+                solutions: state.portfolio?.solutions || []});
+        }
     }
 
     function renderDecisionReportActions(summary) {

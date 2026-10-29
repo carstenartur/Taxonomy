@@ -30,6 +30,8 @@ final class IntegrationBackupSelection {
         scopes = Collections.unmodifiableMap(found);
     }
 
+    boolean hasScopes() { return !scopes.isEmpty(); }
+
     void verify() throws IOException {
         // Installation ownership cannot be reconstructed from a one-way hash. Every connection needs server proof.
         for (var query : queries("e.scope_id,e.repository_id", "interop_connection e", "1=1")) {

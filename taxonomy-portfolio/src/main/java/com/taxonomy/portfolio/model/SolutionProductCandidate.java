@@ -73,6 +73,20 @@ public class SolutionProductCandidate {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name="inventory_comparison_id",length=36)
+    private String inventoryComparisonId;
+    @Column(name="inventory_fingerprint",length=128)
+    private String inventoryFingerprint;
+    @Column(name="inventory_hard_exclusions",length=4000)
+    private String inventoryHardExclusions;
+
+    public void bindInventoryEvidence(String comparisonId,String fingerprint,String hardExclusions) {
+        inventoryComparisonId=comparisonId;inventoryFingerprint=fingerprint;inventoryHardExclusions=hardExclusions;
+    }
+    public String getInventoryComparisonId() {return inventoryComparisonId;}
+    public String getInventoryFingerprint() {return inventoryFingerprint;}
+    public String getInventoryHardExclusions() {return inventoryHardExclusions;}
+
     @Version
     @Column(name = "row_version", nullable = false)
     private long rowVersion;

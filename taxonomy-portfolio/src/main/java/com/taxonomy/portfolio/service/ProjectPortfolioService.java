@@ -409,8 +409,12 @@ public class ProjectPortfolioService {
     @Transactional
     public ArchitectureProject requireProjectForUpdate(Long projectId, String username, WorkspaceContext context) {
         if (projectId == null) throw PortfolioException.validation("projectId is required");
-        return projectRepository.findByIdAndScopeKeyForUpdate(projectId, PortfolioScope.key(username, context))
-                .orElseThrow(() -> PortfolioException.notFound("Project not found: " + projectId));
+        try {
+            return projectRepository.findByIdAndScopeKeyForUpdate(projectId, PortfolioScope.key(username, context))
+                    .orElseThrow(() -> PortfolioException.notFound("Project not found: " + projectId));
+        } catch(jakarta.persistence.OptimisticLockException | org.springframework.dao.OptimisticLockingFailureException concurrent) {
+            throw PortfolioException.conflict("Project inputs changed concurrently; retry the operation against current evidence");
+        }
     }
 
     @Transactional(readOnly = true)

@@ -97,3 +97,8 @@ external.object-storage	application	EXTERNAL_DEPENDENCY	Referenced blobs must be
 runtime.sessions-caches-browser	application	TRANSIENT	No browser-only edits, HTTP sessions, remember-me tokens, caches or executing LLM calls
 runtime.backup-barrier	application	TRANSIENT	backup_barrier_state and backup_writer_lease coordinate live processes only; restore starts a fresh fenced generation and never reactivates leases
 runtime.backup-jobs	application	TRANSIENT	backup_job_queue and backup_job are bounded export control metadata; restore never reactivates queued jobs, worker claims, download receipts or private staging files
+com.taxonomy.interop.inventory.InventoryComparisonEntity	interop	PORTABLE_PRIMARY	Typed retained inventory evidence; source grants and credentials excluded, restored reads require new authorization
+com.taxonomy.interop.inventory.InventoryAssertionEntity	interop	PORTABLE_PRIMARY	Typed retained inventory evidence; source grants and credentials excluded, restored reads require new authorization
+com.taxonomy.interop.inventory.InventoryObservationEntity	interop	PORTABLE_PRIMARY	Typed retained inventory evidence; source grants and credentials excluded, restored reads require new authorization
+com.taxonomy.interop.inventory.InventoryReviewEntity	interop	PORTABLE_PRIMARY	Typed retained inventory evidence; source grants and credentials excluded, restored reads require new authorization
+com.taxonomy.interop.inventory.InventoryMappingEntity	interop	PORTABLE_PRIMARY	Typed retained inventory evidence; source grants and credentials excluded, restored reads require new authorization
