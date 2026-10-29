@@ -12,6 +12,7 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
     <link rel="stylesheet" th:href="@{/css/requirement-reformulation.css}"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#requirementMain">Skip to requirement detail</a>
@@ -26,6 +27,7 @@
             <a class="btn btn-outline-light" href="?lang=en" hreflang="en">EN</a>
             <a class="btn btn-outline-light" href="?lang=de" hreflang="de">DE</a>
         </div>
+        <a th:replace="~{fragments/context-help :: button('PROJECT_REQUIREMENT_PORTFOLIO', 'requirement-clarification-workflow')}"></a>
     </div>
 </nav>
 

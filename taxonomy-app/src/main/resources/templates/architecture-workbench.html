@@ -13,6 +13,7 @@
     <link rel="stylesheet" th:href="@{/css/architecture-workbench.css}"
           href="/css/architecture-workbench.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body th:attr="data-project-id=${projectId},
                data-snapshot-id=${snapshotId},
@@ -25,6 +26,7 @@
 <header class="workbench-toolbar navbar navbar-dark bg-dark px-3">
     <a class="navbar-brand" th:href="@{/projects}" href="/projects" th:text="#{workbench.ui.brand}">Taxonomy Copilot Architecture</a>
     <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'architecture-source-context')}"></a>
         <button id="printArchitectureView" class="btn btn-sm btn-outline-light" type="button" disabled
                 th:title="#{workbench.ui.printTitle}" title="Print the displayed diagram, provenance and selection details"
                 th:text="#{workbench.ui.print}">Print view</button>

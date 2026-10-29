@@ -57,6 +57,49 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("ui-acceptance")
 @Tag("ci-app-shard-browser")
 class PortfolioClientRoutingIT {
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "de"})
+    void contextualHelpOpensTheGraphSectionInANewTabAndPreservesWork(String language) throws Exception {
+        String prefix = "/taxonomy";
+        page.clearRoutes();
+        page.route("GET", prefix + "/help", request -> PortfolioClientTestPage.json(200,
+                List.of(Map.of("filename", "USER_GUIDE", "title", "Guide", "icon", "", "audience", "Everyone"))));
+        page.route("GET", prefix + "/help/USER_GUIDE", request -> {
+            var previous = org.springframework.context.i18n.LocaleContextHolder.getLocaleContext();
+            try {
+                org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.forLanguageTag(language));
+                var response = new com.taxonomy.shared.controller.HelpController(new I18nConfig().messageSource()).getDoc("USER_GUIDE");
+                return new PortfolioClientTestPage.Response(response.getStatusCode().value(), "text/html; charset=utf-8", response.getBody());
+            } finally {
+                org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(previous);
+            }
+        });
+        page.open("index", prefix, "/", language, "localStorage.setItem('taxonomy_onboarded', 'true');");
+        driver.findElement(By.id("businessText")).clear();
+        driver.findElement(By.id("businessText")).sendKeys("Unsaved contextual-help requirement");
+        driver.findElement(By.cssSelector("#mainNavTabs [data-page='graph']")).click();
+        String original = driver.getWindowHandle();
+        var windows = driver.getWindowHandles();
+        driver.findElement(By.cssSelector("#tab-graph .context-help")).click();
+        wait.until(web -> web.getWindowHandles().size() == windows.size() + 1);
+        String help = driver.getWindowHandles().stream().filter(handle -> !windows.contains(handle)).findFirst().orElseThrow();
+        try {
+            driver.switchTo().window(help);
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#helpDocBody p:has(> #guide-section-8) + h2")));
+            assertThat(driver.getCurrentUrl()).endsWith("/taxonomy/?lang=" + language + "#help/USER_GUIDE/guide-section-8");
+            assertThat(driver.findElement(By.id("tab-help")).isDisplayed()).isTrue();
+            assertThat(driver.findElement(By.id("tab-analyze")).isDisplayed()).isFalse();
+            assertThat(driver.executeScript("return document.activeElement.tagName")).isEqualTo("H2");
+            assertThat(driver.executeScript("const r = document.activeElement.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight;")).isEqualTo(true);
+            assertThat(driver.findElement(By.tagName("html")).getDomAttribute("lang")).isEqualTo(language);
+        } finally {
+            driver.close();
+            driver.switchTo().window(original);
+        }
+        assertThat(driver.findElement(By.id("businessText")).getDomProperty("value")).isEqualTo("Unsaved contextual-help requirement");
+        assertThat(driver.getCurrentUrl()).endsWith("#graph");
+    }
+
     private static final List<String> PREFIXES = List.of("", "/taxonomy", "/teams/blue/taxonomy");
     private static final List<PageContract> PAGES = List.of(
             new PageContract("requirement-detail", "/requirements/7", "requirementHeading", "detailError"),

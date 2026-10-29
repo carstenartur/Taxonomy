@@ -9,12 +9,15 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#versioningMain">Skip to versioning</a>
 <div id="versioningLive" class="visually-hidden" role="status" aria-live="polite"></div>
 <nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Portfolio versioning navigation">
-    <div class="container-fluid gap-2"><a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a><span class="navbar-text text-white fw-semibold me-auto" id="versioningPageTitle">Versioning & collaboration</span><a class="btn btn-sm btn-outline-light" id="portfolioBack" href="/projects">Portfolio</a><a class="btn btn-sm btn-outline-light" id="reportsLink" href="#">Reports</a></div>
+    <div class="container-fluid gap-2"><a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a><span class="navbar-text text-white fw-semibold me-auto" id="versioningPageTitle">Versioning & collaboration</span><a class="btn btn-sm btn-outline-light" id="portfolioBack" href="/projects">Portfolio</a><a class="btn btn-sm btn-outline-light" id="reportsLink" href="#">Reports</a>
+        <a th:replace="~{fragments/context-help :: button('PROJECT_REQUIREMENT_PORTFOLIO', 'portfolio-versioning')}"></a>
+    </div>
 </nav>
 <main id="versioningMain" class="container-fluid py-3 px-lg-4">
     <div id="versioningError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>

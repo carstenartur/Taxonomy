@@ -101,6 +101,7 @@ konfigurierten Sprachmodells.
 
 Die Platzhalter werden bei der Navigation aus einem ausgewählten Projekt beziehungsweise einer Anforderung automatisch ersetzt.
 
+<a id="portfolio-projects"></a>
 ## 1. Projekt anlegen oder auswählen
 
 Öffnen Sie `/projects`.
@@ -109,6 +110,7 @@ Wählen Sie **Neues Projekt** und erfassen Sie einen eindeutigen Projektschlüss
 
 Der Hauptarbeitsbereich enthält Anforderungen, Taxonomieabdeckung, Lösungen, Produkte, Konflikte, Snapshots und konsolidierte Kennzahlen.
 
+<a id="portfolio-import"></a>
 ## 2. Anforderungen aus Dokumenten importieren
 
 Öffnen Sie die Importaktion des ausgewählten Projekts oder `/projects/{projectId}/import`.
@@ -191,6 +193,7 @@ Jede Konfliktkarte nennt beide Anforderungen und zeigt Konflikttyp, Evidenz und 
 
 Die Konflikterkennung unterstützt professionelles Requirements Engineering, ersetzt aber keine menschliche Freigabe.
 
+<a id="portfolio-matrices"></a>
 ## 8. Interaktive Matrizen verwenden
 
 Öffnen Sie `/projects/{projectId}/matrices`.
@@ -205,6 +208,7 @@ Suchen, filtern und sortieren Sie die sichtbaren Beziehungen. Eine nicht leere Z
 
 Leere Zellen bedeuten, dass keine Beziehung gespeichert ist. Sie bedeuten nicht, dass eine Beziehung mit null bewertet wurde.
 
+<a id="portfolio-versioning"></a>
 ## 9. Geprüfte Portfoliozustände committen und mergen
 
 Öffnen Sie `/projects/{projectId}/versioning`.
@@ -221,6 +225,7 @@ Sie können:
 
 Ändert sich der Zielbranch nach der Vorschau, wird die Materialisierung ohne Änderung der Portfoliodaten abgewiesen. Dadurch kann eine veraltete Prüfung keine neueren Arbeiten überschreiben.
 
+<a id="portfolio-reports"></a>
 ## 10. Berichte und Exporte erzeugen
 
 Öffnen Sie `/projects/{projectId}/reports`.

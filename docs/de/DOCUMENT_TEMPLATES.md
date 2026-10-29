@@ -4,6 +4,7 @@ Taxonomy verwaltet Word-Vorlagen als entpackte OOXML-Paketbäume im logischen
 JGit-/Hibernate-Repository `taxonomy-document-templates`. WebDAV und Downloads
 stellen daraus vollständige `.dotx`-Dateien zusammen.
 
+<a id="template-editing"></a>
 ## Oberfläche und automatisierter Downloadtest
 
 Die Administrationsseite `/admin/document-templates` zeigt die beim Erststart
@@ -99,6 +100,7 @@ Erweiterte Eigenschaften → Anpassen** ansehen. Ohne Word lässt sich
 ist mit der Vorlagenhistorie und der SHA-256-Wert mit dem zugehörigen
 `template.json`-Manifest zu vergleichen.
 
+<a id="template-versions"></a>
 ## Versions- und Konkurrenzmodell
 
 Jede Vorlage verwendet den letzten Git-Commit, der ihren eigenen OOXML-Unterbaum
@@ -116,6 +118,7 @@ Prozessneustart oder dem Ablauf einer Sperre der dauerhafte Schutz vor verlorene
 Änderungen. Für mehrere Repliken wäre zunächst ein gemeinsamer Lock-Speicher nötig,
 damit Word-Sperren ohne Unterbrechung zwischen Instanzen funktionieren.
 
+<a id="template-access"></a>
 ## Zugriff und Transport
 
 Angemeldete Benutzer dürfen vollständige Vorlagen lesen und daraus ein neues Dokument

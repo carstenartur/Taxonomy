@@ -17,6 +17,7 @@
     <!-- i18n: load translations before other scripts -->
     <script th:src="@{/js/taxonomy-i18n.js}"></script>
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body>
 <!-- Skip-Link (BITV 2.0 / WCAG 2.4.1) -->
@@ -174,6 +175,7 @@
                             <button id="viewSummary"  data-view="summary"  class="btn btn-sm btn-outline-secondary" th:title="#{view.summary.title}" title="Architecture summary after analysis" style="display:none;" th:text="#{view.summary.label}">&#128203; Summary</button>
                         </div>
                         <div class="taxonomy-view-tools">
+                        <div id="taxonomyBrowserHelp" class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'taxonomy-view-list')}"></a></div>
                         <!-- Expand / Collapse (list &amp; tabs only) -->
                         <div id="expandCollapseGroup">
                             <button id="expandAll"   class="btn btn-sm btn-outline-secondary me-1"><span th:text="#{browse.expand.all}">Expand All</span></button>
@@ -253,6 +255,7 @@
                  TAB: ANALYZE
                  ============================================================ -->
             <div id="tab-analyze" class="tab-pane-content">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-4')}"></a></div>
 
                 <!-- ViewContext: shows Git provenance for analysis data -->
                 <div id="analyzeViewContext" class="view-context-bar d-none"></div>
@@ -571,6 +574,7 @@
                 </ul>
 
                 <div id="subtab-arch-overview">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-7')}"></a></div>
                 <div class="d-flex flex-wrap gap-2 mb-3">
                     <a id="architectureLensAction" href="/architecture/editor#editorLensTitle" class="btn btn-outline-primary"
                        th:href="@{/architecture/editor} + '#editorLensTitle'" th:text="#{analysis.guide.lens}">Architecture focus lens</a>
@@ -620,6 +624,7 @@
                      ARCHITECTURE SUB-TAB: RELATIONS
                      ============================================================ -->
                 <div id="subtab-arch-relations" class="d-none">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-13')}"></a></div>
                 <div id="tab-relations">
 
                 <!-- Relation Proposals Panel -->
@@ -677,6 +682,7 @@
                      ARCHITECTURE SUB-TAB: EXPORT
                      ============================================================ -->
                 <div id="subtab-arch-export" class="d-none">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-10')}"></a></div>
                 <div id="tab-export">
 
                 <!-- ViewContext: shows Git provenance for export data -->
@@ -798,6 +804,7 @@
                  TAB: GRAPH
                  ============================================================ -->
             <div id="tab-graph" class="tab-pane-content d-none">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-8')}"></a></div>
 
                 <!-- ViewContext: shows Git provenance for graph data -->
                 <div id="graphViewContext" class="view-context-bar d-none"></div>
@@ -870,6 +877,7 @@
                  TAB: VERSIONS
                  ============================================================ -->
             <div id="tab-versions" class="tab-pane-content d-none">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-19')}"></a></div>
 
                 <!-- Context Navigation History -->
                 <details id="contextHistoryPanel" class="mb-3">
@@ -1065,6 +1073,7 @@
                  TAB: DSL EDITOR
                  ============================================================ -->
             <div id="tab-dsl-editor" class="tab-pane-content d-none">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-18')}"></a></div>
 
                 <!-- ViewContext: shows Git provenance for DSL data -->
                 <div id="dslViewContext" class="view-context-bar d-none"></div>
@@ -1167,6 +1176,7 @@
                  TAB: ADMIN
                  ============================================================ -->
             <div id="tab-admin" class="tab-pane-content d-none">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'guide-section-21')}"></a></div>
 
                 <!-- Health Overview Dashboard -->
                 <details id="healthDashboard" class="mt-0">
@@ -1404,6 +1414,7 @@
                  TAB: PREFERENCES
                  ============================================================ -->
             <div id="tab-preferences" class="tab-pane-content d-none">
+                <div class="view-help"><a th:replace="~{fragments/context-help :: button('PREFERENCES', '')}"></a></div>
 
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                     <h5 class="mb-0" th:text="#{preferences.title}">&#9881;&#65039; Application Preferences</h5>
@@ -2048,7 +2059,9 @@
 
     // Initialise from URL hash
     var initialHash = window.location.hash.replace('#', '');
-    if (PAGES.indexOf(initialHash) !== -1 || subTabMapping[initialHash]) {
+    if (/^help\/[A-Za-z0-9_-]+(?:\/[^/]+)?$/.test(initialHash)) {
+        activatePage('help');
+    } else if (PAGES.indexOf(initialHash) !== -1 || subTabMapping[initialHash]) {
         activatePage(initialHash);
     } else {
         activatePage('analyze');

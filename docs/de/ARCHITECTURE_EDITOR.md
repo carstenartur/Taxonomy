@@ -100,3 +100,8 @@ mit einem Architekturelement (`targetId`) und bewahrt Begründung und begrenzte
 `x-exchange-*`-Herkunftsdaten. Analysezuordnungen können nicht überschrieben werden.
 `DELETE_REQUIREMENT_MAPPING` entfernt eine Austauschzuordnung. Die Typregeln für
 Architekturbeziehungen bleiben unverändert.
+
+<a id="tool-integrations"></a>
+## Werkzeugintegrationen
+
+Öffnen Sie **Werkzeugintegrationen** im Architektureditor. Wählen Sie eine Verbindung mit ihrem Formatprofil und prüfen Sie die vorgeschlagenen Änderungen im ausgewählten privaten Arbeitsbereich. Die Vorschau erhält die externe Evidenz, ohne das Modell zu verändern. Übernehmen Sie einen Import erst nach der Prüfung; die Übernahme ändert das Modell und erzeugt eine explizite Version. Die Autorität der Verbindung bestimmt die verfügbaren Austauschoperationen.

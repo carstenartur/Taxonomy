@@ -10,6 +10,7 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+    <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#matrixMain">Skip to matrices</a>
@@ -23,6 +24,7 @@
             <a class="btn btn-outline-light" href="?lang=en">EN</a>
             <a class="btn btn-outline-light" href="?lang=de">DE</a>
         </div>
+        <a th:replace="~{fragments/context-help :: button('PROJECT_REQUIREMENT_PORTFOLIO', 'portfolio-matrices')}"></a>
     </div>
 </nav>
 <main id="matrixMain" class="container-fluid py-3 px-lg-4">
