@@ -161,6 +161,8 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   await page.waitForFunction(()=>new URL(location.href).searchParams.get('revision')==='1'&&document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
   await page.locator('#adoptionView').selectOption(adopted.viewId);
   await page.waitForFunction(id=>new URL(location.href).searchParams.get('viewId')===id,adopted.viewId);
+  // Historical version navigation opens a new document, so supply a fresh audit rationale.
+  await page.locator('#editorRationale').fill('Review undo and redo after historical navigation');
   async function invert(kind) {
     const preview=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/editor/preview'));
     await page.locator('#editorHistory li').filter({hasText:kind}).first().locator('button').click();

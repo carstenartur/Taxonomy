@@ -106,6 +106,64 @@ class ArchitectureContextDependencyRatchetTest {
     }
 
     @Test
+    void snapshotAdoptionBridgeRetainsOnlyItsReviewedPortfolioAndWorkspaceEdges() throws Exception {
+        ContextPolicy policy = readAndValidateContextPolicy(
+                findRepositoryRoot().resolve(".github/architecture-contexts.json"));
+        String compositionPackage = "com.taxonomy.composition.architecture.";
+        var classes = new ClassFileImporter()
+                .withImportOption(new ImportOption.DoNotIncludeTests())
+                .importPackages("com.taxonomy.composition.architecture");
+        Set<String> pairs = new TreeSet<>();
+        for (JavaClass origin : classes) {
+            if (!origin.getName().startsWith(compositionPackage + "AnalysisSnapshotAdoption")) {
+                continue;
+            }
+            for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                JavaClass target = dependency.getTargetClass();
+                ContextDefinition targetContext = contextFor(target, policy);
+                if (targetContext != null && !targetContext.id().equals("app-composition")) {
+                    pairs.add(origin.getName().substring(compositionPackage.length()) + " -> " + target.getName());
+                }
+            }
+        }
+        // Composition reads retained portfolio evidence and workspace authorization, then
+        // uses the editor command boundary. A same-count substitution must not admit
+        // portfolio repositories, direct journal writes, storage or model execution.
+        assertThat(pairs).containsExactly(
+                "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.ArchitectureCommandPort$Accepted",
+                "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.ArchitectureCommandPort$Context",
+                "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.ArchitectureCommandPort$Preview",
+                "AnalysisSnapshotAdoptionController -> com.taxonomy.editor.persistence.EditorJournal$RevisionConflict",
+                "AnalysisSnapshotAdoptionController -> com.taxonomy.portfolio.controller.PortfolioExceptionHandler",
+                "AnalysisSnapshotAdoptionController -> com.taxonomy.portfolio.service.PortfolioException",
+                "AnalysisSnapshotAdoptionController -> com.taxonomy.workspace.service.WorkspaceResolver",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureCommandPort$Command",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureCommandPort$Context",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureCommandPort$Metadata",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureCommandPort$SemanticCommand",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureEditorService",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.editor.ArchitectureEditorService$Document",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.portfolio.dto.PortfolioDtos$RequirementVersionView",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotDetail",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.portfolio.dto.PortfolioDtos$SnapshotSummary",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.portfolio.model.PortfolioTypes$AnalysisStatus",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.portfolio.service.ProjectPortfolioService",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.model.UserWorkspace",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.model.WorkspaceProvisioningStatus",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.repository.UserWorkspaceRepository",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.service.RepositoryContext",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.service.RepositoryMembershipService",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.service.RepositoryScope",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.service.SystemRepositoryService",
+                "AnalysisSnapshotAdoptionService -> com.taxonomy.workspace.service.WorkspaceContext",
+                "AnalysisSnapshotAdoptionService$Adopted -> com.taxonomy.editor.ArchitectureCommandPort$Accepted",
+                "AnalysisSnapshotAdoptionService$PreviewResult -> com.taxonomy.editor.ArchitectureCommandPort$Preview",
+                "AnalysisSnapshotAdoptionService$Request -> com.taxonomy.editor.ArchitectureCommandPort$Context",
+                "AnalysisSnapshotAdoptionService$Request -> com.taxonomy.editor.ArchitectureCommandPort$Metadata");
+    }
+
+    @Test
     void followUpProviderRetainsOnlyItsReviewedWorkspaceIdentityEdges() {
         // Both the resolver API and retained pin must bind the original workspace;
         // neither may depend on mutable workspace services or persistence implementations.

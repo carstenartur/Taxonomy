@@ -63,6 +63,7 @@ public class ArchitectureEditorController {
             @RequestParam(required = false) String layout,
             @Parameter(description = "Optional retained workspace revision supplying the explicit optimized ordering")
             @RequestParam(required = false) Long layoutRevision,
+            @Parameter(description = "Optional canonical view identity in the selected retained revision or checkpoint; omit to read the full model")
             @RequestParam(required = false) String viewId) throws IOException {
         var strategy = com.taxonomy.diagram.DiagramLayout.Strategy.fromId(layout);
         RepositoryContext context = readContext(repositoryId, workspaceScopeKey, branch);
