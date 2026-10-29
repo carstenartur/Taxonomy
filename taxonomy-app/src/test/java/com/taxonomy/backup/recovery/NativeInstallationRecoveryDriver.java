@@ -42,10 +42,14 @@ public final class NativeInstallationRecoveryDriver {
 
     public static void main(String[] args) throws Exception {
         Path data = Path.of(args[0]), oracle = Path.of(args[1]); String phase = args[2];
+        String postgresUrl = System.getenv("TAXONOMY_RECOVERY_JDBC_URL");
+        boolean postgres = postgresUrl != null;
         try (var app = new SpringApplicationBuilder(TaxonomyApplication.class).run(
-                "--spring.profiles.active=hsqldb-file", "--server.address=127.0.0.1", "--server.port=0",
-                "--spring.datasource.url=jdbc:hsqldb:file:" + data.resolve("taxonomydb") + ";hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true",
-                "--spring.datasource.username=sa", "--spring.datasource.password=", "--spring.jpa.hibernate.ddl-auto=update",
+                "--spring.profiles.active=" + (postgres ? "postgres,kubernetes" : "hsqldb-file"), "--server.address=127.0.0.1", "--server.port=0",
+                "--spring.datasource.url=" + (postgres ? postgresUrl : "jdbc:hsqldb:file:" + data.resolve("taxonomydb") + ";hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true"),
+                "--spring.datasource.username=" + (postgres ? System.getenv("TAXONOMY_RECOVERY_DB_USER") : "sa"),
+                "--spring.datasource.password=" + (postgres ? System.getenv("TAXONOMY_RECOVERY_DB_PASSWORD") : ""),
+                "--spring.jpa.hibernate.ddl-auto=" + (postgres ? "validate" : "update"),
                 "--spring.jpa.properties.hibernate.search.backend.directory.type=local-filesystem",
                 "--spring.jpa.properties.hibernate.search.backend.directory.root=" + data.resolve("lucene-index"),
                 "--taxonomy.backup.source-content-directory=" + data.resolve("source-content"),
