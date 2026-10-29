@@ -189,7 +189,7 @@ erzeugten Szenariographen über Profil v3 mit gerichteten Endpunkten, Typen und
 Taxonomy-Belegen erhalten bleiben. Das ist eine Prüfung des funktionalen Modells
 und der Austauschverträge, keine Ausführung oder Zertifizierung von Sparx EA.
 
-Die ältere [zivile Referenzprüfung](../qa/civilian-reference-review.md) beschreibt
+Die ältere [Referenzprüfung](../qa/civilian-reference-review.md) beschreibt
 den historischen Fall mit acht ausgewählten Endpunkten, 38 Graphknoten und
 44 Beziehungskandidaten sowie dem damaligen Sparx-Profil v1 mit acht lieferbaren
 Beziehungen. Diese Zahlen und damaligen F3/F4-Lücken sind historische Befunde;

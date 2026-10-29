@@ -133,8 +133,11 @@ class ArtemisCoordinatorNotificationRecoveryTest {
         var failures = new AtomicInteger();
         var coordinator = coordinator(db, failProgressSends(() -> failures.getAndIncrement() == 0));
         send(completion);
-        await(() -> coordinator.redeliveries() == 1 && messages(destinations.completion()) == 0,
-                "retry after notification send failure");
+        // The queue count can briefly reach zero during scheduled redelivery.
+        // The observer confirms that the retry's notification was committed.
+        await(() -> !observed.events.isEmpty() && coordinator.redeliveries() == 1
+                        && messages(destinations.completion()) == 0,
+                "committed notification after send retry");
         assertThat(failures.get()).isEqualTo(2);
         assertThat(coordinator.accepted()).isZero();
         assertRecovered(db, context, observed);
