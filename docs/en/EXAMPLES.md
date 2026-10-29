@@ -2,9 +2,10 @@
 
 This document shows worked examples of common tasks in the Taxonomy Architecture Analyzer.
 
-The numbers below are worked examples, not measured results from a current model
-run. Retained tree/impact-map images illustrate older example states and may show
-different scores or controls. The in-page impact map is separate from the immutable
+Section 1 explains a retained historical architecture with authored model replies.
+The numbers and responses in the other sections are illustrative worked examples,
+not measured results from a current model run. Retained tree/impact-map images
+illustrate older example states and may show different scores or controls. The in-page impact map is separate from the immutable
 snapshot workbench. Use the [user guide](USER_GUIDE.md) for current navigation and
 [scenario acceptance](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md) for version-bound evidence.
 
@@ -26,66 +27,120 @@ snapshot workbench. Use the [user guide](USER_GUIDE.md) for current navigation a
 
 ## 1. Requirement → Architecture
 
-**Goal:** Map a business requirement to relevant taxonomy elements and generate an architecture view.
+**Goal:** Turn a business requirement into distinct functions, directed
+relationships and explicit open decisions.
 
-### Step 1 — Enter the requirement
+### Step 1 — Use a traceable requirement
 
-Open `http://localhost:8080`. The analysis panel is displayed on the right side:
+Reference case **FLOOD-001** describes a supplementary flood-information service:
 
-![Analysis panel](../images/04-analysis-panel-empty.png)
+- Present published warnings, affected areas and water observations understandably,
+  including source and observation time.
+- Provide service administration, area subscriptions and selected text, phone or
+  email notification channels.
+- Allow contact-detail changes, area removal and account deletion.
+- Consume the latest observation batch “at most every 15 minutes”; show stale or
+  unavailable data and retain official warning channels. Surface-water flooding
+  is outside scope.
+- Under the additional **test design assumption A1**, provide a durable delivery
+  queue, idempotent retries, protected subscriber details and an audit trail.
 
-Paste into the analysis text area:
+The [scenario resource](https://github.com/carstenartur/Taxonomy/blob/main/taxonomy-app/src/test/resources/scenarios/flood-information.json)
+contains the full original requirement and its sources. This service is not a
+safety-critical replacement for official alerts.
 
-> _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments and coordinated workflow management for clinical teams."_
+### Step 2 — Read the saved architecture
 
-### Step 2 — Analyze
+This example uses the **actual saved architecture from 19 October 2026**,
+snapshot `0a4c6367-ff1d-487b-8286-d51b0834964c`: **50 nodes, 36 directed
+relationships, status `PARTIAL`**. The architecture and decision report come
+from the same saved result. Model responses were authored test data; the
+application performed analysis, persistence and derivation. This is not a live
+model result or a claim that today's acceptance run has passed.
 
-Click **Analyze with AI**. The system scores every taxonomy node (0–100) and overlays results on the tree:
+Evidence: [saved architecture](https://github.com/carstenartur/Taxonomy/blob/9cd9b68f0dc55a4cd358d900cd0bbc7b206ce7bb/taxonomy-tooling/src/test/resources/scenario-documents/complete-flood-v1/architecture.json.gz),
+[run receipt](https://github.com/carstenartur/Taxonomy/blob/9cd9b68f0dc55a4cd358d900cd0bbc7b206ce7bb/taxonomy-tooling/src/test/resources/scenario-documents/complete-flood-v1/run.json.gz) and
+[decision report](https://github.com/carstenartur/Taxonomy/blob/9cd9b68f0dc55a4cd358d900cd0bbc7b206ce7bb/taxonomy-tooling/src/test/resources/scenario-documents/complete-flood-v1/decision.json.gz).
+The receipt identifies historical source revision
+`2fb5a7ae342af5c1ade5b97b65de4bed658f38f5`. The directory name
+`complete-flood-v1` identifies the retained document set; the snapshot remains
+a partial architecture result.
 
-| Code | Node | Score |
-|---|---|---|
-| CP-1023 | Communication and Information System Capabilities | 92 |
-| CO-1011 | Communications Access Services | 88 |
-| CR-1047 | Infrastructure Services | 81 |
-| UA-1015 | Air Applications | 74 |
-| BP-1327 | Enable | 71 |
+| Business function | Concepts retained in the saved model |
+|---|---|
+| Read and present published information | `UA-1580` Hydrographic Applications; `IP-1116` Recognized Environmental Pictures; `IP-2130` Geospatial Support Alerts |
+| Organise delivery by area and channel | `BP-1535` Information Retrieval and Dissemination; `CR-1098` Message Routing Services |
+| Support text, phone and email notifications | `CR-1060` Text-based Communication Services; `CO-1048` Short Messaging Access Services; `CO-1066` Voice Access Services; `CR-1037` Informal Messaging Services |
+| Manage contact details, areas and accounts | `BP-1521` IKM Entity Management; `BP-1530` Information Disposition; `CR-1022` Digital Identity Services |
+| Process deliveries reliably with an audit trail (A1) | `CR-1097` Message Queueing Services; `CR-1198` Records Management Services |
+| Protect access and administer service operation | `CR-1006` Authentication Services; `CR-1007` Authorization and Access Control Services; `CI-1060` IT Service Management Services; `UA-1522` Service Desk Applications |
 
-![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
+### Step 3 — Review relationships rather than a hit list
 
-### Step 3 — Generate the architecture view
+This **subset of the 36 saved relationships** focuses on delivery. Arrows retain
+the snapshot's source, type and target; the descriptive labels are shortened
+for readability.
 
-The system automatically selects nodes with score ≥ 70 as anchors, propagates relevance through taxonomy relations, and builds a structured architecture model:
-
-![Architecture view](../images/20-architecture-view.png)
-
+```mermaid
+flowchart TD
+    Text["CR-1060 · Text service"] -->|SUPPORTS| Delivery["BP-1535 · Information dissemination"]
+    Phone["CO-1066 · Voice access"] -->|SUPPORTS| Delivery
+    Email["CR-1037 · Email service"] -->|SUPPORTS| Delivery
+    Delivery -->|USES| Queue["CR-1097 · Delivery queue"]
+    Delivery -->|USES| Routing["CR-1098 · Message routing"]
+    Delivery -->|USES| History["CR-1198 · Delivery history"]
 ```
-Capability: Communication and Information System Capabilities (CP-1023)
-    ↓ supports
-Service: Communications Access Services (CO-1011)
-    ↓ realises
-Service: Infrastructure Services (CR-1047)
-    ↓ used by
-Application: Air Applications (UA-1015)
-    ↓ enables
-Process: Enable (BP-1327)
-```
 
-### Step 4 — Export
+Other concrete relationships in the same snapshot:
 
-Click an export button to download the architecture as ArchiMate XML, Visio `.vsdx`, or Mermaid flowchart.
+| Source → type → target | Meaning within the requirement |
+|---|---|
+| `UA-1580 CONSUMES IP-1116` | The application reads existing environmental information. |
+| `UA-1580 CONSUMES IP-2130` | It reads published area-linked warnings. |
+| `CO-1048 SUPPORTS BP-1535` | Short-message access supports delivery alongside the text service. |
+| `BP-1521 USES CR-1022` | Contact and subscription management uses the identity function. |
+| `BP-1530 USES CR-1022` | Account deletion uses identity lifecycle management, including deprovisioning. |
+| `UA-1522 USES CI-1060` | The administrative application uses the service-management function. |
 
-![Detailed architecture view](../images/38-architecture-view-detailed.png)
+Each relationship is a reasoned proposal, not an implemented interface. A queue
+category does not itself implement durability or idempotency. Review rationales,
+conditions and remaining decisions against their original requirement clauses.
 
-<details>
-<summary>🔧 REST API equivalent (for automation)</summary>
+**Open question:** Is the incoming F5 observation batch already a “Recognized
+Environmental Picture”, or is its product identity unspecified? The snapshot
+retains that question and remains `PARTIAL`. The existing read relationship to
+`IP-1116` does not resolve this separate input question. Concrete brokers, data
+contracts, retention/deletion rules and retry implementation still require
+decisions. Scores describe catalogue relevance, not completeness or approval.
 
-```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/analyze \
-  -d "businessText=Provide+integrated+communication+platform+for+hospital+staff" \
-  -d "includeArchitectureView=true"
-```
+### Step 4 — Follow the workflow with your own requirement
 
-</details>
+1. Open **Projects**, create a requirement and save its complete wording as a
+   versioned record.
+2. Select taxonomy roots and full analysis mode. Explicitly start Copilot with a
+   ready generative provider. The documented manual default is profile `FULL`
+   with one verification pass; the historical scenario acceptance uses
+   `EXHAUSTIVE` with two passes.
+3. Read the actual run status and open assessments. Review or answer open
+   questions before requesting an offered continuation. A budget boundary or
+   unresolved business question is not a negative finding.
+4. Open the saved result and its **Architecture**. Check the snapshot identity
+   in the workbench; search for `BP-1535`, select it and focus on its direct neighbours.
+5. Inspect provenance, rationale, conditions and review status in the detail area.
+   Use the print view and export menu for this saved result; inspect the mapping
+   and loss manifest for exchange formats.
+6. When requirements need clarification, request a saved reformulation offer.
+   Answer and review its questions, explicitly adopt a new draft and request
+   a separate analysis of that version.
+
+See the [user guide](https://github.com/carstenartur/Taxonomy/blob/main/docs/en/USER_GUIDE.md#analysis-scope-and-progress),
+[Copilot and persisted workbench](https://github.com/carstenartur/Taxonomy/blob/main/docs/en/COPILOT_AUTOPILOT.md#persisted-architecture-workbench)
+and [requirement clarification](https://github.com/carstenartur/Taxonomy/blob/main/docs/en/USER_GUIDE.md#requirement-clarification-workflow)
+for current controls. [Scenario acceptance](https://github.com/carstenartur/Taxonomy/blob/main/docs/testing/scenario-acceptance.md)
+describes the reproducible test boundary and export checks. Your provider and a
+current run may produce different proposals; this historical example does not
+promise an identical result.
+
 
 ---
 
@@ -113,14 +168,14 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node
 
 </details>
 
-### Example result
+### Illustrative result
 
 ```json
 {
   "sourceNode": "CR-1047",
   "sourceTitle": "Infrastructure Services",
   "impactedNodes": [
-    { "code": "UA-1015", "title": "Air Applications", "distance": 1 },
+    { "code": "UA-1574", "title": "Unified Communication Applications", "distance": 1 },
     { "code": "BP-1327", "title": "Enable", "distance": 2 }
   ]
 }
@@ -155,7 +210,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/gap
 
 </details>
 
-### Example result
+### Illustrative result
 
 ```json
 {
@@ -267,7 +322,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/rec
 
 </details>
 
-### Example result
+### Illustrative result
 
 ```json
 {
@@ -345,15 +400,19 @@ graph TD
     subgraph Core_Services["🟠 Core Services"]
         CR_1047(["Infrastructure Services<br/>★ 75%"])
     end
-    CP_1023 -->|supports| CO_1011
-    CO_1011 -->|realizes| CR_1047
+    CP_1023 -->|realizes| CO_1011
+    CP_1023 -->|realizes| CR_1047
 ```
 
 ---
 
 ## 7. Field Service Monitoring — End-to-End
 
-**Goal:** Walk through a complete workflow — from requirement to exported architecture.
+**Goal:** Walk through a hypothetical workflow — from requirement to exported architecture.
+
+**Illustration, not a recorded model run:** The scores and proposals below are
+possible review subjects. For an actual saved model with evidenced relationships,
+use [section 1](#1-requirement--architecture).
 
 ### Requirement
 
@@ -365,7 +424,8 @@ Paste the requirement into the analysis panel and click **Analyze with AI**.
 
 ![Analysis panel](../images/04-analysis-panel-empty.png)
 
-The system scores all ~2,500 taxonomy nodes. Top matches might include:
+The analysis explores relevant catalogue paths; unvisited nodes are not negative
+findings. Hypothetical matches might include:
 
 | Code | Node | Score |
 |---|---|---|
@@ -393,7 +453,7 @@ The gap analysis (automatic in the **Gaps** tab) may identify:
 ### Step 4 — Generate relation proposals
 
 Click **Propose Relations** in the Relation Proposals panel. The AI might suggest:
-- `CI-1023 REALIZES CP-1022` — "Monitoring services realize the intelligence capability"
+- `CP-1022 REALIZES CI-1023` — "Capability → service under this catalogue’s REALIZES convention"
 - `CR-1047 SUPPORTS CI-1023` — "Infrastructure services support field monitoring"
 
 ![Relation proposals panel](../images/12-relation-proposals-panel.png)
@@ -448,7 +508,7 @@ element CI-1023 type Service {
   title: "Surveillance Services";
 }
 
-relation CI-1023 REALIZES CP-1022 {
+relation CP-1022 REALIZES CI-1023 {
   status: accepted;
   provenance: AI_PROPOSED;
 }
