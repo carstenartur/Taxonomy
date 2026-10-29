@@ -958,7 +958,7 @@ class PortfolioClientRoutingIT {
         new WebDriverWait(driver, Duration.ofSeconds(20))
                 .ignoring(ElementClickInterceptedException.class)
                 .ignoring(StaleElementReferenceException.class)
-                .withMessage("Native click on " + selector)
+                .withMessage(() -> "Native click on " + selector + "; " + interactionState(selector))
                 .until(browser -> {
                     WebElement control = browser.findElement(selector);
                     if (!control.isDisplayed() || !control.isEnabled()) return false;
@@ -971,6 +971,22 @@ class PortfolioClientRoutingIT {
                     control.click();
                     return true;
                 });
+    }
+
+    private static String interactionState(By selector) {
+        var matches = driver.findElements(selector);
+        if (matches.isEmpty()) return "target missing at " + driver.getCurrentUrl();
+        return String.valueOf(driver.executeScript("""
+                const element = arguments[0], bounds = element.getBoundingClientRect();
+                const describe = node => node && ({tag: node.tagName, id: node.id, classes: node.className,
+                    hidden: node.hidden, inert: node.inert, disabled: node.disabled,
+                    display: getComputedStyle(node).display, visibility: getComputedStyle(node).visibility,
+                    bounds: node.getBoundingClientRect().toJSON()});
+                const ancestors = []; for (let node = element; node; node = node.parentElement) ancestors.push(describe(node));
+                return JSON.stringify({hash: location.hash, active: describe(document.activeElement), ancestors,
+                    covering: describe(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
+                    dialogs: Array.from(document.querySelectorAll('dialog[open], .modal.show')).map(describe)});
+                """, matches.getFirst()));
     }
 
     private static WebElement element(String id) { return driver.findElement(By.id(id)); }
