@@ -5,6 +5,8 @@
     'use strict';
     var params = new URLSearchParams(window.location.search);
     var workspacePin = params.has('workspaceId') ? params.get('workspaceId') : null;
+    var repositoryPin = params.has('repositoryId') ? params.get('repositoryId') : null;
+    var branchPin = params.has('branch') ? params.get('branch') : null;
     var decoratedLinks = new WeakMap();
     function t(key) { return window.TaxonomyI18n.t(key); }
     function element(id) { return document.getElementById(id); }
@@ -30,16 +32,18 @@
             || /^\/architecture\/(?:workbench|editor)$/.test(path);
     }
     function scopeUrl(value) {
-        if (workspacePin === null || typeof value !== 'string' || value.startsWith('#')) return value;
+        if ((workspacePin === null && repositoryPin === null && branchPin === null) || typeof value !== 'string' || value.startsWith('#')) return value;
         var target;
         try { target = new URL(value, window.location.href); } catch (_) { return value; }
-        if (target.origin !== window.location.origin || !eligible(applicationPath(target))
-                || target.searchParams.has('workspaceId')) return value;
-        target.searchParams.set('workspaceId', workspacePin);
+        if (target.origin !== window.location.origin || !eligible(applicationPath(target))) return value;
+        var pins = {workspaceId:workspacePin,repositoryId:repositoryPin,branch:branchPin};
+        var keys = Object.keys(pins).filter(function (key) { return pins[key] !== null && pins[key] !== undefined; });
+        if (keys.some(function (key) { return target.searchParams.has(key) && target.searchParams.get(key) !== pins[key]; })) return value;
+        keys.forEach(function (key) { if (!target.searchParams.has(key)) target.searchParams.set(key,pins[key]); });
         return /^[a-z][a-z\d+.-]*:/i.test(value) ? target.href : target.pathname + target.search + target.hash;
     }
-    function sourceLinks(project, requirement, snapshot, workspace) {
-        var common = {workspaceId: workspace};
+    function sourceLinks(project, requirement, snapshot, workspace, repository, branch) {
+        var common = {workspaceId: workspace, repositoryId: repository || null, branch: branch || null};
         var detail = '/projects/' + project + '/requirements/' + requirement;
         return {
             requirement: pathUrl(detail, Object.assign({snapshot: snapshot}, common)),
@@ -57,25 +61,46 @@
     }
     function snapshotLinks(data, selected) {
         if (!data || !positive(data.projectId) || !positive(data.requirementId) || !snapshotId(data.snapshotId)) {
-            return {requirement: null, clarify: null, portfolio: null, snapshot: null, editor: null};
+            return {requirement: null, clarify: null, portfolio: null, snapshot: null, editor: null, adopt: null};
         }
         var workspace = data.workspaceId || '';
-        var links = sourceLinks(data.projectId, data.requirementId, data.snapshotId, workspace);
         var repository = data.exportProvenance?.repositoryId;
+        var links = sourceLinks(data.projectId, data.requirementId, data.snapshotId, workspace, repository, data.branchName);
         links.editor = repository && data.branchName ? pathUrl('/architecture/editor', {
             repositoryId: repository, workspaceScopeKey: workspace || '__shared__', workspaceId: workspace,
             branch: data.branchName, element: selected || null,
             sourceProjectId: data.projectId, sourceRequirementId: data.requirementId,
-            sourceSnapshotId: data.snapshotId, sourceWorkspaceId: workspace
+            sourceSnapshotId: data.snapshotId, sourceWorkspaceId: workspace,
+            sourceRepositoryId: repository, sourceBranch: data.branchName,
+            sourceWorkspaceScopeKey: workspace || '__shared__', sourceRequirementVersionId: data.exportProvenance?.requirementVersionId || null
         }) : null;
+        links.adopt = links.editor && positive(data.exportProvenance?.requirementVersionId)
+            ? links.editor + '&adoption=preview' : null;
         return links;
     }
-    function editorSourceLinks() {
+    function adoptionSource() {
+        var current = new URLSearchParams(window.location.search);
+        var repository = current.get('sourceRepositoryId'), branch = current.get('sourceBranch');
+        var scope = current.get('sourceWorkspaceScopeKey');
+        if (!repository || !branch || !scope || !positive(current.get('sourceProjectId'))
+                || !positive(current.get('sourceRequirementId')) || !positive(current.get('sourceRequirementVersionId'))
+                || !snapshotId(current.get('sourceSnapshotId'))) return null;
+        return {repositoryId: repository, workspaceScopeKey: scope, branch: branch,
+            projectId: Number(current.get('sourceProjectId')), requirementId: Number(current.get('sourceRequirementId')),
+            requirementVersionId: Number(current.get('sourceRequirementVersionId')), snapshotId: current.get('sourceSnapshotId')};
+    }
+    function editorSourceLinks(source) {
+        if (source) {
+            if (!positive(source.projectId) || !positive(source.requirementId) || !snapshotId(source.snapshotId)
+                    || !source.repositoryId || !source.branch || !source.workspaceScopeKey) return null;
+            return sourceLinks(source.projectId,source.requirementId,source.snapshotId,
+                source.workspaceScopeKey === '__shared__' ? '' : source.workspaceScopeKey,source.repositoryId,source.branch);
+        }
         var current = new URLSearchParams(window.location.search);
         var project = current.get('sourceProjectId'), requirement = current.get('sourceRequirementId');
         var snapshot = current.get('sourceSnapshotId');
         if (!positive(project) || !positive(requirement) || !snapshotId(snapshot) || !current.has('sourceWorkspaceId')) return null;
-        return sourceLinks(project, requirement, snapshot, current.get('sourceWorkspaceId'));
+        return sourceLinks(project, requirement, snapshot, current.get('sourceWorkspaceId'), current.get('sourceRepositoryId'), current.get('sourceBranch'));
     }
     function preferredProject(projects, preferredId, storedId) {
         var current = new URLSearchParams(window.location.search);
@@ -92,7 +117,7 @@
         else node.removeAttribute('href');
     }
     function showLinks(links) {
-        ['requirement', 'clarify', 'portfolio', 'snapshot', 'editor'].forEach(function (name) {
+        ['requirement', 'clarify', 'portfolio', 'snapshot', 'editor', 'adopt'].forEach(function (name) {
             link('workflow-' + name, links && links[name]);
         });
     }
@@ -102,6 +127,7 @@
         var links = snapshotLinks(data, selected);
         if (!links.requirement) { root.hidden = true; return; }
         workspacePin = data.workspaceId || '';
+        repositoryPin = data.exportProvenance?.repositoryId || repositoryPin; branchPin = data.branchName || branchPin;
         decorateLinks();
         showLinks(links);
         link('workflow-snapshot', null); // Already viewing this snapshot.
@@ -111,20 +137,21 @@
         element('workflowExplanation').textContent = t(links.editor ? 'workflow.snapshot.help' : 'workflow.snapshot.missingContext');
         root.hidden = false;
     }
-    function showEditor(context) {
+    function showEditor(context, source) {
         if (context && context.workspaceScopeKey !== undefined) {
             workspacePin = context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey;
+            repositoryPin = context.repositoryId; branchPin = context.branch;
         }
         decorateLinks();
         var root = element('architectureWorkflow');
         if (!root) return;
-        var links = editorSourceLinks();
+        var links = editorSourceLinks(source);
         showLinks(links);
         var current = new URLSearchParams(window.location.search);
         element('workflowIdentity').textContent = links
-            ? t('workflow.source') + ' ' + current.get('sourceProjectId') + ' / ' + current.get('sourceRequirementId')
+            ? t('workflow.source') + ' ' + (source ? source.projectId : current.get('sourceProjectId')) + ' / ' + (source ? source.requirementId : current.get('sourceRequirementId'))
             : t('workflow.editor');
-        element('workflowState').textContent = links ? t('workflow.snapshot') + ' ' + current.get('sourceSnapshotId') : '';
+        element('workflowState').textContent = links ? t('workflow.snapshot') + ' ' + (source ? source.snapshotId : current.get('sourceSnapshotId')) : '';
         element('workflowExplanation').textContent = t(links ? 'workflow.editor.help' : 'workflow.editor.standalone');
         root.hidden = false;
     }
@@ -158,7 +185,7 @@
     }
     decorateLinks();
     window.TaxonomyArchitectureWorkflow = {
-        scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
+        adoptionSource: adoptionSource, scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
         showSnapshot: showSnapshot, showEditor: showEditor, preferredProject: preferredProject,
         portfolioUrl: portfolioUrl, workbenchUrl: workbenchUrl
     };

@@ -229,6 +229,7 @@
           "com.taxonomy.PortfolioClientRoutingIT",
           "com.taxonomy.CompleteCopilotSessionIT",
           "com.taxonomy.SeleniumPostgresContainerIT",
+          "com.taxonomy.AnalysisSnapshotAdoptionUiIT",
           "com.taxonomy.ArchitectureWorkbenchUiIT",
           "com.taxonomy.PortfolioMatrixReviewIT"
         ]

@@ -12,6 +12,7 @@
     var loading = false;
     var layout = new URLSearchParams(location.search).get('layout') || 'stable';
     var layoutRevision = new URLSearchParams(location.search).get('layoutRevision');
+    var selectedView = new URLSearchParams(location.search).get('viewId');
     var formBaseline = {};
     var PAGE_SIZE = 50;
     var dialog = el('editorPreviewDialog');
@@ -28,6 +29,17 @@
         language: function () { return document.documentElement.lang === 'de' ? 'de' : 'en'; },
         accept: acceptFocus, undo: undoFocus, canUndo: canUndoFocus,
         locate: function (id) { if (view && view.model.elements.some(function (e) { return e.id === id; })) { selectElement(id); renderer.focus(); } }
+    });
+    var adoptionPanel = window.AnalysisSnapshotAdoption({t:t,api:api,
+        metadata:function () { var audit = metadata(); if (!audit.rationale.trim()) audit.rationale = t('adoption.rationale'); return audit; },
+        report:report,selectedView:function () { return selectedView; },
+        onBusy:function (value) { busy = value; permissions(); },
+        onSelectView:async function (id) { selectedView = id; await load(context(),view.document.source === 'GIT_CHECKPOINT' ? context().commit : context().revision,true); },
+        onAccepted:async function (result) {
+            selectedView = result.viewId;
+            await load(result.accepted ? result.accepted.context : context(),null);
+            renderer.fit({initial:true});
+        }
     });
     function el(id) { return document.getElementById(id); }
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
@@ -68,6 +80,7 @@
         if (view.document.source === 'GIT_CHECKPOINT') url.searchParams.set('commit', context().commit);
         else url.searchParams.set('revision', context().revision);
         if (selected) url.searchParams.set('element', selected); else url.searchParams.delete('element');
+        if (selectedView) url.searchParams.set('viewId',selectedView); else url.searchParams.delete('viewId');
         url.searchParams.set('layout', layout);
         if (layoutRevision !== null && layoutRevision !== undefined) url.searchParams.set('layoutRevision', layoutRevision);
         else url.searchParams.delete('layoutRevision');
@@ -75,6 +88,7 @@
     }
     function permissions() {
         var writable = view && view.mayEdit && !busy && !loading;
+        adoptionPanel.setLocked(busy || loading);
         planningPanel.setEnabled(writable);
         focusPanel.setLocked(busy || loading);
         el('editorArrange').disabled = busy || loading || !view;
@@ -99,7 +113,7 @@
         el('editorError').hidden = true;
         try {
             if ((view && !sameScope(scope, context())) || /^[a-f0-9]{40}$/i.test(String(commit))) layoutRevision = null;
-            var next = await api.load(scope, commit, loader.signal, layout, layoutRevision);
+            var next = await api.load(scope, commit, loader.signal, layout, layoutRevision, selectedView);
             if (ticket !== generation) return false;
             view = next;
             layout = view.schema.layoutStrategy || 'stable';
@@ -120,7 +134,8 @@
         renderPackages();
         planningPanel.render(view, preserveDraft);
         var c = context();
-        window.TaxonomyArchitectureWorkflow?.showEditor(c);
+        adoptionPanel.update(view);
+        window.TaxonomyArchitectureWorkflow?.showEditor(c,adoptionPanel.getSource());
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
@@ -133,7 +148,7 @@
         el('editorRecoverVersion').hidden = state !== 'VERSION_CHANGED';
         ['Svg', 'Pdf'].forEach(function (format) {
             var link = el('editor' + format); link.hidden = !view.model.elements.length;
-            if (!link.hidden) link.href = api.exportUrl(c, format.toLowerCase(), view.document.source, layout, layoutRevision);
+            if (!link.hidden) link.href = api.exportUrl(c, format.toLowerCase(), view.document.source, layout, layoutRevision, selectedView);
         });
         if (!preserveDraft) {
             el('editorType').replaceChildren();
@@ -287,7 +302,7 @@
         view.document.versions.forEach(function (version) {
             var row = document.createElement('li');
             var url = new URL(location.href);
-            url.searchParams.delete('revision'); url.searchParams.delete('layoutRevision'); url.searchParams.set('commit', version.commitId);
+            url.searchParams.delete('revision'); url.searchParams.delete('layoutRevision'); url.searchParams.delete('viewId'); url.searchParams.set('commit', version.commitId);
             var link = document.createElement('a'); link.href = url.href;
             link.textContent = short(version.commitId) + ' · ' + version.author + ' · ' + version.message.split('\n')[0];
             row.append(link); list.append(row);
@@ -432,6 +447,7 @@
             var accepted = await api.execute(acceptedCommand);
             if (ticket !== generation) return;
             pending = null; dialog.close();
+            if (selectedView && accepted.change?.changes?.some(function (change) { return change.id === 'view:' + selectedView && change.after == null; })) selectedView = null;
             if (acceptedCommand.kind === 'CREATE_ELEMENT') selected = 'arch-' + acceptedCommand.metadata.commandId;
             var ok = await load(accepted.context, accepted.context.revision);
             if (ok) { setStatus(t('editor.accepted', accepted.context.revision) + ' · ' + t('editor.projection.' + accepted.projectionState)); renderer.focus(); }
@@ -505,6 +521,7 @@
     window.addEventListener('popstate', function () {
         if (dialog.open) dialog.close(); pending = null;
         selected = new URLSearchParams(location.search).get('element');
+        selectedView = new URLSearchParams(location.search).get('viewId');
         layout = new URLSearchParams(location.search).get('layout') || 'stable';
         layoutRevision = new URLSearchParams(location.search).get('layoutRevision');
         load(scopeFromUrl(), new URLSearchParams(location.search).get('commit') || new URLSearchParams(location.search).get('revision')).then(function (ok) { if (ok) renderer.focus(); });

@@ -36,6 +36,22 @@
         <a id="editorPdf" hidden data-i18n="editor.pdf">Download PDF</a>
     </div>
     <p id="editorMode"></p>
+    <section id="snapshotAdoption" aria-labelledby="adoptionHeading" hidden>
+        <h2 id="adoptionHeading" data-i18n="adoption.title">Adopt a frozen analysis snapshot</h2>
+        <p id="adoptionHelp"></p>
+        <p><strong data-i18n="adoption.source">Frozen source</strong>: <span id="adoptionSource"></span></p>
+        <p><strong data-i18n="adoption.target">Editable target</strong>: <span id="adoptionTarget"></span></p>
+        <a id="adoptionSourceLink" data-i18n="workflow.backSnapshot" hidden>Return to source analysis</a>
+        <div class="editor-toolbar">
+            <button id="adoptionPreview" type="button" data-i18n="adoption.preview">Preview snapshot adoption</button>
+            <button id="adoptionAccept" type="button" data-i18n="adoption.accept" hidden>Adopt this frozen snapshot</button>
+            <button id="adoptionCancel" type="button" data-i18n="editor.cancel" hidden>Cancel</button>
+        </div>
+        <pre id="adoptionSummary" role="status" aria-live="polite" tabindex="0" hidden></pre>
+        <label for="adoptionView" data-i18n="adoption.view">Canonical architecture view</label>
+        <select id="adoptionView"></select>
+        <details><summary data-i18n="adoption.provenance">Recorded source provenance</summary><pre id="adoptionProvenance"></pre></details>
+    </section>
     <div class="editor-columns">
         <section class="editor-views" aria-labelledby="editorGraphTitle">
             <h2 id="editorGraphTitle" data-i18n="editor.graph">Architecture graph</h2>
@@ -198,6 +214,7 @@
 <script th:src="@{/js/architecture-editor-renderer.js}" src="/js/architecture-editor-renderer.js"></script>
 <script th:src="@{/js/architecture-focus.js}" src="/js/architecture-focus.js"></script>
 <script th:src="@{/js/architecture-planning.js}" src="/js/architecture-planning.js"></script>
+<script th:src="@{/js/analysis-snapshot-adoption.js}" src="/js/analysis-snapshot-adoption.js"></script>
 <script th:src="@{/js/architecture-editor.js}" src="/js/architecture-editor.js"></script>
 </body>
 </html>

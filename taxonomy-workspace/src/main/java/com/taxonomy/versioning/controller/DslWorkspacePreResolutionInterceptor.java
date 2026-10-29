@@ -44,6 +44,7 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
             "/api/projects/[0-9]+/requirements(?:/[0-9]+(?:/(?:versions|snapshots))?)?/?",
             "/api/projects/[0-9]+/(?:analysis-jobs(?:/[^/]+)?|snapshots/[^/]+|portfolio|conflicts|reports/[^/]+)/?",
             "/api/projects/[0-9]+/solutions(?:/[0-9]+/products)?/?",
+            "/api/projects/[0-9]+/architecture-workbench/[^/]+/?",
             "/api/search/graph")
             .stream().map(Pattern::compile).toList();
 

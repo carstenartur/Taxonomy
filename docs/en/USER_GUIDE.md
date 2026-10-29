@@ -42,6 +42,20 @@ edit the immutable snapshot. The editor retains **Return to source analysis**,
 even after a private workspace is created. If the source repository or branch
 is missing, the workbench explains why this editor action is unavailable.
 
+**Preview adopting this snapshot** starts an explicit frozen-analysis handoff. Create
+an editable private copy when required, then choose **Preview snapshot adoption**.
+The preview identifies the independent source and target revision and lists added
+and reused elements/relations. Existing names, descriptions, ownership and relation
+review decisions are preserved; differing recorded values are shown for comparison.
+Type or source-identity collisions block acceptance. New relations stay proposed.
+
+**Adopt this frozen snapshot** records one undoable editor operation. The named
+canonical view retains the exact recorded relation membership and source provenance,
+including the original requirement version; later requirement edits do not replace
+that evidence. Select **Full editable architecture** to work across the entire model.
+Opening the same adopted source again reuses its existing view. Its source link still
+returns to the original repository, workspace and branch after creating a copy.
+
 Accepted editor changes are durable operations with their own undo/redo history.
 Use **Create checkpoint/version** to record a Git version. The element and history
 lists scroll independently and can be focused with the keyboard.
