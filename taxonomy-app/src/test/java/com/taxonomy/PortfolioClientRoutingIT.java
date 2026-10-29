@@ -528,7 +528,8 @@ class PortfolioClientRoutingIT {
         var conflict = new PortfolioDtos.ConflictView(51L, 42L, 7L, "REQ-7", 8L, "REQ-8",
                 PortfolioTypes.ConflictType.DATA_LOCATION, PortfolioTypes.ConflictStatus.RESOLVED,
                 "Reviewed data location", "Recorded evidence", 0.8, "Reviewed resolution",
-                LABEL_TIME, "qa-reviewer", LABEL_TIME);
+                LABEL_TIME, "qa-reviewer", LABEL_TIME,
+                PortfolioDtos.ConflictConfidenceBasis.UNCALIBRATED_RULE_WEIGHT);
         page.route("GET", prefix + "/api/projects", request -> PortfolioClientTestPage.json(200, List.of(project)));
         page.route("GET", prefix + "/api/projects/42/portfolio", request ->
                 PortfolioClientTestPage.json(200, labelPortfolio(project, requirements, List.of(solution), List.of(conflict))));
@@ -585,6 +586,9 @@ class PortfolioClientRoutingIT {
         wait.until(ignored -> driver.findElement(By.cssSelector("#conflictsList .portfolio-conflict-card")).isDisplayed());
         assertThat(driver.findElements(By.cssSelector("#conflictsList .badge"))).extracting(WebElement::getText)
                 .containsExactlyElementsOf(german ? List.of("Datenstandort", "Gelöst") : List.of("Data Location", "Resolved"));
+        assertThat(driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText())
+                .contains(german ? "Regelgewicht" : "Rule weight")
+                .contains("80 / 100");
         assertThat(text("portfolioError")).isEmpty();
     }
 
