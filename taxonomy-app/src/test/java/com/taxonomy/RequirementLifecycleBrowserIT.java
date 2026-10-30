@@ -18,13 +18,17 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import static com.taxonomy.PortfolioClientTestPage.json;
@@ -60,6 +64,80 @@ class RequirementLifecycleBrowserIT {
     }
 
     @AfterAll static void closeBrowser() { if (page != null) page.close(); }
+
+    @ParameterizedTest @ValueSource(strings = {"en", "de"})
+    void initialArchitectureLoadCannotOrphanTheRequirementSubmit(String locale) throws Exception {
+        prepareProjects(1366);
+        var seen = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var overviewReads = new AtomicInteger();
+        var accepted = new AtomicBoolean();
+        String text = "Keep the same explicit requirement submission while its architecture context loads.";
+        String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+        var requirement = Map.of("id", 21, "projectId", 1, "requirementKey", "REQ-NEW", "title", "New scoped requirement",
+                "status", "DRAFT", "reviewStatus", "PROPOSED", "currentVersion",
+                Map.of("id", 121, "versionNumber", 1, "text", text, "contentHash", hash));
+        page.route("GET", "/api/architecture/lifecycle", request -> {
+            if (overviewReads.incrementAndGet() == 1) {
+                seen.countDown();
+                try {
+                    if (!release.await(20, TimeUnit.SECONDS)) return json(503, Map.of("detail", "Initial context was not released"));
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    return json(503, Map.of("detail", "Initial context interrupted"));
+                }
+            }
+            return json(200, overview(false));
+        });
+        page.route("POST", "/api/architecture/lifecycle/intake-review", request -> json(200,
+                Map.of("status", "COMPLETE", "inputHash", hash, "scope", overview(false).get("context"), "candidates", List.of())));
+        page.route("POST", "/api/architecture/editor/requirements", request -> {
+            accepted.set(true);
+            return json(201, Map.of("projectId", 1, "requirementId", 21, "requirement", requirement,
+                    "publication", Map.of("state", "CHECKPOINTED", "context", overview(false).get("context"))));
+        });
+        page.route("GET", "/api/projects/1/portfolio", request -> json(200,
+                Map.of("project", project(1), "metrics", Map.of(), "requirements", accepted.get() ? List.of(requirement) : List.of(),
+                        "solutions", List.of(), "conflicts", List.of(), "taxonomyNodes", List.of())));
+        try {
+            // An unpinned project page becomes usable before its independent architecture read finishes.
+            page.open("projects", "", "/projects", locale,
+                    "localStorage.clear();sessionStorage.clear();history.replaceState(null,'','?lang=" + locale + "&projectId=1');");
+            assertThat(seen.await(5, TimeUnit.SECONDS)).isTrue();
+            wait.until(ExpectedConditions.textToBe(By.id("selectedProjectKey"), "PROJECT"));
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
+            click(By.cssSelector("[data-bs-target='#requirementModal']"));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("requirementModal")));
+            page.driver().findElement(By.id("requirementKey")).sendKeys("REQ-NEW");
+            page.driver().findElement(By.id("requirementTitle")).sendKeys("New scoped requirement");
+            page.driver().findElement(By.id("requirementText")).sendKeys(text);
+            click(By.cssSelector("#requirementForm button[type='submit']"));
+            String loading = locale.equals("de") ? "Architekturkontext wird" : "Loading the architecture context";
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("#requirementForm .requirement-intake-review"), loading));
+            assertThat(page.requests()).filteredOn(request -> request.method().equals("POST")
+                    && (request.path().endsWith("/intake-review") || request.path().endsWith("/editor/requirements"))).isEmpty();
+            assertThat(page.driver().findElements(By.cssSelector("#requirementForm [data-intake-choice]"))).isEmpty();
+            assertThat(page.driver().findElement(By.id("requirementText")).getDomProperty("value")).isEqualTo(text);
+
+            release.countDown();
+            click(By.cssSelector("#requirementForm > .requirement-intake-review > [data-intake-choice='NEW']"));
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("requirementModal")));
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("#requirementsTable tbody"), "REQ-NEW"));
+            var reviews = page.requests().stream().filter(request -> request.path().endsWith("/intake-review")).toList();
+            assertThat(reviews).hasSize(1);
+            assertThat(query(reviews.getFirst())).containsEntry("repositoryId", "control-architecture")
+                    .containsEntry("workspaceId", "control-workspace").containsEntry("branch", "review/current");
+            var writes = page.requests().stream().filter(request -> request.method().equals("POST")
+                    && request.path().endsWith("/editor/requirements")).toList();
+            assertThat(writes).hasSize(1);
+            assertThat(writes.getFirst().header("If-Match")).isEqualTo("\"workspace-revision-4\"");
+            var command = tools.jackson.databind.json.JsonMapper.builder().build().readTree(writes.getFirst().body());
+            assertThat(command.path("context").path("workspaceScopeKey").asString()).isEqualTo("control-workspace");
+            assertThat(command.path("requirement").path("text").asString()).isEqualTo(text);
+        } finally {
+            release.countDown();
+        }
+    }
 
     @ParameterizedTest @ValueSource(strings = {"en", "de"})
     void historicalTextVersionDoesNotRelabelTheCurrentRequirement(String locale) {

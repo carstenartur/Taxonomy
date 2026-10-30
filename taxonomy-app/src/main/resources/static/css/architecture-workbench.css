@@ -57,10 +57,10 @@ body {
 }
 
 .workbench-export-content {
-    position: absolute;
+    position: fixed;
     z-index: 1100;
-    top: calc(100% + 0.5rem);
-    right: 0;
+    top: auto;
+    left: 1rem;
     display: grid;
     gap: 0.6rem;
     width: min(28rem, calc(100vw - 2rem));

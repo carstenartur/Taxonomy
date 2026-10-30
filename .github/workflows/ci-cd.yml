@@ -190,6 +190,8 @@ jobs:
           path: |
             taxonomy-app/target/archi-return-native/
             taxonomy-app/target/portfolio-context-evidence/
+            taxonomy-app/target/portfolio-workflow-evidence/
+            taxonomy-app/target/complete-copilot-session-evidence/
             taxonomy-app/target/coherent-lifecycle/evidence/
           if-no-files-found: warn
           retention-days: 7

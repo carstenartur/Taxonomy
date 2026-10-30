@@ -27,7 +27,7 @@
         target.dataset.state = normalized;
         target.dataset.tone = /^(COMPLETE|COMPLETED|CONFIRMED|CHECKPOINTED|SUCCESS|ACTIVE)$/.test(normalized) ? 'positive'
             : /^(REVIEW_REQUIRED|PARTIAL|CHECKPOINT_REQUIRED|CHECKPOINT_PENDING|PORTFOLIO_CHANGES_PENDING|VERSION_CHANGED|PROPOSED)$/.test(normalized) ? 'warning'
-            : /^(FAILED|ERROR|CONFLICT|REJECTED)$/.test(normalized) ? 'danger'
+            : /^(FAILED|ERROR|CONFLICT|REJECTED|UNAVAILABLE|INVALID_EVIDENCE)$/.test(normalized) ? 'danger'
             : /^(ARCHIVED|SUPERSEDED|HISTORICAL|READ_ONLY)$/.test(normalized) ? 'muted' : 'neutral';
         target.textContent = label || statusLabel(value);
         target.hidden = !present(value) && !present(label);
@@ -102,8 +102,10 @@
         technicalEntry(technical, 'app.context.current', 'app.context.workspace', architecture.workspaceScopeKey);
         technicalEntry(technical, 'app.context.current', 'app.context.branch', architecture.branch);
         technicalEntry(technical, 'app.context.current', 'app.context.modelStand', architecture.modelStand);
-        technicalEntry(technical, 'app.context.current', 'workbench.ui.commit', architecture.commit);
-        technicalEntry(technical, 'app.context.current', 'app.context.modelStand', architecture.revision);
+        technicalEntry(technical, 'app.context.current', present(architecture.modelStand)
+            ? 'workbench.ui.commit' : 'app.context.lastObservedCommit', architecture.commit);
+        technicalEntry(technical, 'app.context.current', present(architecture.modelStand)
+            ? 'app.context.modelStand' : 'app.context.lastObservedRevision', architecture.revision);
         technicalEntry(technical, 'app.context.current', 'app.entity.project', state.project?.id, true);
         technicalEntry(technical, 'app.context.current', 'app.entity.requirement', requirement.id, true);
         technicalEntry(technical, 'app.context.current', 'app.context.currentTextVersionId', requirement.versionId);
@@ -145,8 +147,9 @@
         var summaryStand = node('applicationContextSummaryStand');
         if (summaryStand) {
             var revision = present(architecture.revision) ? t('editor.revision', architecture.revision) : null;
-            var selectedStand = revision && architecture.modelStand === revision ? revision
-                : architecture.commit?.slice(0, 12) || architecture.modelStand;
+            var selectedStand = present(architecture.modelStand)
+                ? (revision && architecture.modelStand === revision ? revision
+                    : architecture.commit?.slice(0, 12) || architecture.modelStand) : null;
             summaryStand.textContent = [architecture.branch, selectedStand].filter(present).join(' · ');
         }
         var summaryStates = node('applicationContextSummaryStates');
@@ -155,7 +158,7 @@
             if (state.editable === false) summaryStates.append(setStatus(create('span'), 'READ_ONLY'));
             ['publicationState', 'realizationStatus'].forEach(function (key) {
                 var value = state[key];
-                if (/^(CHECKPOINT_REQUIRED|CHECKPOINT_PENDING|PORTFOLIO_CHANGES_PENDING|VERSION_CHANGED|RECONCILIATION_REQUIRED|HISTORICAL|REVIEW_REQUIRED|PARTIAL|FAILED|ERROR|CONFLICT|UNRESOLVED)$/.test(value || '')) {
+                if (/^(CHECKPOINT_REQUIRED|CHECKPOINT_PENDING|PORTFOLIO_CHANGES_PENDING|VERSION_CHANGED|RECONCILIATION_REQUIRED|HISTORICAL|REVIEW_REQUIRED|PARTIAL|FAILED|ERROR|CONFLICT|UNRESOLVED|UNAVAILABLE|INVALID_EVIDENCE)$/.test(value || '')) {
                     summaryStates.append(setStatus(create('span'), value, t('app.context.' + key) + ': ' + statusLabel(value)));
                 }
             });

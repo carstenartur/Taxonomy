@@ -462,6 +462,50 @@ class PortfolioUiAcceptanceIT {
         wait.until(textPresent(By.cssSelector("#requirementsTable tbody"), key));
     }
 
+    private static void captureModalFailure(String modalId, RuntimeException failure) {
+        try {
+            Path directory = Files.createDirectories(Path.of("target", "portfolio-workflow-evidence"));
+            String name = modalId.replaceAll("[^A-Za-z0-9_-]", "_") + "-" + System.nanoTime();
+            Files.writeString(directory.resolve(name + ".html"), driver.getPageSource());
+            Files.write(directory.resolve(name + ".png"), driver.getScreenshotAs(OutputType.BYTES));
+            String state = (String) javascript().executeScript("""
+                    const modal = document.getElementById(arguments[0]);
+                    const form = modal?.querySelector('form');
+                    const instance = modal && window.bootstrap?.Modal.getInstance(modal);
+                    const overview = window.TaxonomyArchitectureLifecycle?.state();
+                    const visible = element => Boolean(element.getClientRects().length);
+                    return JSON.stringify({
+                        url: location.href,
+                        scope: window.TaxonomyArchitectureWorkflow?.getScope(),
+                        lifecycle: overview && {
+                            context: overview.context, source: overview.source,
+                            projectionState: overview.projectionState,
+                            publicationState: overview.publicationState, mayEdit: overview.mayEdit
+                        },
+                        project: document.getElementById('selectedProjectKey')?.textContent,
+                        busy: document.getElementById('portfolioBusy')?.className,
+                        alerts: [...document.querySelectorAll('.alert,[role=alert]')]
+                            .filter(visible).map(element => element.textContent),
+                        dialog: modal && {id:modal.id, text:modal.innerText, classes:modal.className,
+                            shown:instance?._isShown, transitioning:instance?._isTransitioning},
+                        intakeCurrent: form?.id === 'requirementForm' && window.TaxonomyRequirementIntake?.isCurrent(form),
+                        fields: form && [...form.querySelectorAll('input,textarea,select')]
+                            .map(element => ({name:element.name, value:element.value,
+                                valid:element.validity.valid, validationMessage:element.validationMessage})),
+                        submits: form && [...form.querySelectorAll('[type=submit]')]
+                            .map(element => ({label:element.textContent, disabled:element.disabled, visible:visible(element)})),
+                        choices: form && [...form.querySelectorAll('[data-intake-choice]')]
+                            .map(element => ({choice:element.dataset.intakeChoice,
+                                label:element.textContent, disabled:element.disabled, visible:visible(element)}))
+                    }, null, 2);
+                    """, modalId);
+            Files.writeString(directory.resolve(name + ".json"), state);
+            failure.addSuppressed(new IllegalStateException("Modal save state: " + state));
+        } catch (Exception diagnosticFailure) {
+            failure.addSuppressed(diagnosticFailure);
+        }
+    }
+
     private static void createSolution(String solutionKey) {
         click(By.id("solutions-tab"));
         click(By.cssSelector("[data-bs-target='#solutionModal']"));
@@ -734,13 +778,18 @@ class PortfolioUiAcceptanceIT {
     }
 
     private static void waitForModalClosed(String modalId) {
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(
-                By.cssSelector(".modal-backdrop.show")));
-        wait.until(browser -> {
-            String classes = browser.findElement(By.tagName("body")).getAttribute("class");
-            return classes == null || !classes.contains("modal-open");
-        });
+        try {
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                    By.cssSelector(".modal-backdrop.show")));
+            wait.until(browser -> {
+                String classes = browser.findElement(By.tagName("body")).getAttribute("class");
+                return classes == null || !classes.contains("modal-open");
+            });
+        } catch (RuntimeException failure) {
+            captureModalFailure(modalId, failure);
+            throw failure;
+        }
     }
 
     private static void waitUntilPortfolioIdle() {

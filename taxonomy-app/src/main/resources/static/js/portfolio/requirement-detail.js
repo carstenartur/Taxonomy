@@ -919,7 +919,7 @@
             const unchanged = captured === versionDraftFingerprint();
             if (unchanged) {
                 state.versionFormDirty = false;
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('newVersionModal')).hide();
+                window.TaxonomyUtils.hideModal(document.getElementById('newVersionModal'));
             }
             showSavedRequirement(saved,command.choice==='CHANGE'?t('versionCreated'):
                 (locale==='de'?'Eine neue Anforderung wurde angelegt.':'A new requirement was created.'));

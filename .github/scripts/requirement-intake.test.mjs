@@ -13,13 +13,15 @@ class Element {
   addEventListener(name,fn) { this.listeners.set(name, [...(this.listeners.get(name)||[]),fn]); }
   dispatch(name) { for (const listener of this.listeners.get(name)||[]) listener({target:this,preventDefault(){}}); }
 }
-function harness(review) {
+function harness(review, lifecycle) {
   let scope={repositoryId:'repo',workspaceId:'work',branch:'draft'};
   const window={setTimeout:()=>1,clearTimeout(){},TaxonomyArchitectureWorkflow:{getScope:()=>scope},
-    TaxonomyArchitectureLifecycleApi:{reviewRequirementIntake:review},location:{href:'https://example.test/'}};
+    TaxonomyArchitectureLifecycleApi:{reviewRequirementIntake:review},TaxonomyArchitectureLifecycle:lifecycle,
+    location:{href:'https://example.test/'}};
   const document={documentElement:{lang:'en'},createElement:tag=>new Element(tag)};
   vm.runInNewContext(source,{window,document,TextEncoder,Uint8Array,Uint32Array,DataView,URL,URLSearchParams,Promise,Set,Map,WeakMap,console});
-  return {api:window.TaxonomyRequirementIntake,scope(value){scope=value;},form:new Element('form'),input:new Element('textarea')};
+  const form=new Element('form'),dialog=new Element('div');form.closest=()=>dialog;
+  return {api:window.TaxonomyRequirementIntake,scope(value){scope=value;},form,dialog,input:new Element('textarea')};
 }
 test('portable digest preserves raw whitespace and Unicode when WebCrypto is absent',async()=>{
   const h=harness(()=>{throw new Error('No transport expected');});
@@ -34,6 +36,63 @@ test('review alone never chooses a mutation; prepare awaits an explicit choice',
   const section=h.form.children[0]; const buttons=section.children.filter(child=>child.tagName==='button');
   buttons.find(button=>button.dataset.intakeChoice==='NEW').dispatch('click');
   const result=await prepared; assert.equal(result.choice,'NEW');assert.equal(result.projectId,7);
+});
+test('initial architecture scope resolves before intake review or the explicit save choice',async()=>{
+  let resolveContext, calls=0;
+  const ready=new Promise(resolve=>{resolveContext=resolve;});
+  const h=harness(async()=>{
+    calls++;
+    return {status:'COMPLETE',inputHash:createHash('sha256').update('candidate').digest('hex'),
+      scope:{repositoryId:'repo',workspaceId:'work',branch:'draft'},candidates:[]};
+  },{ready:()=>ready});
+  h.scope({});h.input.value='candidate';h.api.attach(h.form,{textElement:h.input,projectId:7});
+  const pending=h.api.prepare(h.form,{text:'candidate'},7);let settled=false;pending.then(()=>{settled=true;});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,0,'A project can render before its architecture context; no review may use that unresolved scope');
+  assert.equal(settled,false);
+  assert.equal(h.form.children[0].children.some(element=>element.dataset.intakeChoice),false);
+  h.scope({repositoryId:'repo',workspaceId:'work',branch:'draft'});resolveContext({context:{repositoryId:'repo'}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,1,'Automatic review and submit share the same resolved-scope read');
+  assert.equal(settled,false,'The original submit must still await its explicit choice');
+  h.form.children[0].children.find(element=>element.dataset.intakeChoice==='NEW').dispatch('click');
+  const command=await pending;assert.equal(command.choice,'NEW');assert.equal(command.projectId,7);
+  assert.equal(h.api.isCurrent(h.form),true);
+});
+test('editing while the initial architecture scope resolves cancels only the old submission',async()=>{
+  let resolveContext;
+  const ready=new Promise(resolve=>{resolveContext=resolve;});
+  const h=harness(async()=>{throw new Error('Old form data must not be reviewed');},{ready:()=>ready});
+  h.scope({});h.input.value='old';h.api.attach(h.form,{textElement:h.input,projectId:7});
+  const pending=h.api.prepare(h.form,{text:'old'},7);
+  h.input.value='new';h.input.dispatch('input');
+  h.scope({repositoryId:'repo',workspaceId:'work',branch:'draft'});resolveContext({context:{repositoryId:'repo'}});
+  assert.equal(await pending,null);
+  assert.equal(h.input.value,'new');
+  assert.equal(h.form.children[0].children.some(element=>element.dataset.intakeChoice),false);
+});
+test('an explicit branch change during initial loading cannot rebind the pending requirement',async()=>{
+  let resolveContext,calls=0;
+  const ready=new Promise(resolve=>{resolveContext=resolve;});
+  const h=harness(async()=>{calls++;throw new Error('Wrong branch must not be reviewed');},{ready:()=>ready});
+  h.input.value='candidate';h.api.attach(h.form,{textElement:h.input,projectId:7});
+  const pending=h.api.prepare(h.form,{text:'candidate'},7);
+  h.scope({repositoryId:'repo',workspaceId:'work',branch:'another'});resolveContext({context:{repositoryId:'repo'}});
+  assert.equal(await pending,null);assert.equal(calls,0);
+  assert.equal(h.form.children[0].children.some(element=>element.dataset.intakeChoice),false);
+});
+test('closing the form during initial loading cancels its waiting submission and keeps the draft',async()=>{
+  let resolveContext,calls=0;
+  const ready=new Promise(resolve=>{resolveContext=resolve;});
+  const h=harness(async()=>{calls++;return {status:'COMPLETE',inputHash:createHash('sha256').update('candidate').digest('hex'),
+    scope:{repositoryId:'repo',workspaceId:'work',branch:'draft'},candidates:[]};},{ready:()=>ready});
+  h.scope({});h.input.value='candidate';h.api.attach(h.form,{textElement:h.input,projectId:7});
+  const pending=h.api.prepare(h.form,{text:'candidate'},7);let settled=false;pending.then(()=>{settled=true;});
+  h.dialog.dispatch('hidden.bs.modal');
+  h.scope({repositoryId:'repo',workspaceId:'work',branch:'draft'});resolveContext({context:{repositoryId:'repo'}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(settled,true,'Closing the dialog must not leave an old submit waiting for a later opening');
+  assert.equal(await pending,null);assert.equal(calls,0);assert.equal(h.input.value,'candidate');
 });
 test('editing while review is in flight cancels preparation and cannot reuse old evidence',async()=>{
   let resolve; const h=harness(()=>new Promise(done=>{resolve=done;}));

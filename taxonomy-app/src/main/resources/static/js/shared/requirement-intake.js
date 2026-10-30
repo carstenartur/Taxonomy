@@ -4,16 +4,49 @@
     var forms = new WeakMap();
     var de = String(document.documentElement.lang || 'en').startsWith('de');
     function label(en, german) { return de ? german : en; }
+    function message(key, en, german) { return window.TaxonomyI18n?.t?.(key) || label(en,german); }
     function scope() { return window.TaxonomyArchitectureWorkflow?.getScope() || {}; }
     function scopeKey(value) { return JSON.stringify([value.repositoryId || '', value.workspaceScopeKey ?? (value.workspaceId || '__shared__'), value.branch || '']); }
     function project(state) { var value = typeof state.options.projectId === 'function' ? state.options.projectId() : state.options.projectId; return value ? Number(value) : null; }
-    function fingerprint(state, text, projectId) {
+    function entryFingerprint(state, text, projectId) {
         var controls=Array.from(state.form.querySelectorAll?.('input,textarea,select')||[])
             .map(control=>[control.type,control.type==='checkbox'?control.checked:control.value]);
-        return JSON.stringify([text, projectId, scopeKey(scope()),controls,state.options.versionTarget||null]);
+        return JSON.stringify([text, projectId, controls, state.options.versionTarget||null]);
+    }
+    function fingerprint(state, text, projectId) {
+        return JSON.stringify([entryFingerprint(state,text,projectId),scopeKey(scope())]);
+    }
+    function resolvesScope(before, after) {
+        if (['repositoryId','branch'].some(key=>before[key] != null && before[key] !== after[key])) return false;
+        if (before.workspaceScopeKey !== undefined || before.workspaceId !== undefined) {
+            return (before.workspaceScopeKey ?? (before.workspaceId || '__shared__'))
+                === (after.workspaceScopeKey ?? (after.workspaceId || '__shared__'));
+        }
+        return true;
+    }
+    async function awaitInitialContext(state) {
+        var captured = entryFingerprint(state,state.options.textElement.value,project(state));
+        var initialScope = scope();
+        var cancellation = state.cancellation;
+        state.section.replaceChildren(node('p',message('lifecycle.intake.contextLoading','Loading the architecture context before reviewing this requirement…',
+            'Der Architekturkontext wird vor der Anforderungsprüfung geladen…')));
+        try {
+            var context = await window.TaxonomyArchitectureLifecycle.ready();
+            if (cancellation !== state.cancellation || captured !== entryFingerprint(state,state.options.textElement.value,project(state))
+                    || !resolvesScope(initialScope,scope())) return false;
+            if (!context) throw new Error('Architecture context unavailable');
+            state.contextReady = true;
+            return true;
+        } catch (error) {
+            if (cancellation === state.cancellation && captured === entryFingerprint(state,state.options.textElement.value,project(state))) {
+                state.section.replaceChildren(node('p',message('lifecycle.intake.contextUnavailable','The architecture context is unavailable. Refresh the current stand and try again.',
+                    'Der Architekturkontext ist nicht verfügbar. Aktualisieren Sie den aktuellen Stand und versuchen Sie es erneut.')));
+            }
+            return false;
+        }
     }
     function node(tag, text) { var value = document.createElement(tag); if (text !== undefined) value.textContent = text; return value; }
-    function cancel(state) { state.selected=null; if (state.choose) { state.choose(null); state.choose = null; } }
+    function cancel(state) { state.cancellation++; state.selected=null; if (state.choose) { state.choose(null); state.choose = null; } }
     function invalidate(state) {
         state.generation++; state.response = null; state.selected = null; state.pending = null; cancel(state);
         state.section.replaceChildren(node('p', label('Review updates when the text is ready.', 'Die Prüfung wird nach der Texteingabe aktualisiert.')));
@@ -31,7 +64,7 @@
         if (!options?.textElement) throw new Error('Requirement intake needs a text field');
         var section = node('section'); section.className = 'requirement-intake-review border rounded p-3 my-3';
         section.setAttribute('aria-label', label('Requirement review', 'Anforderungsprüfung')); section.setAttribute('aria-live', 'polite');
-        var state = {form:form,options:options,section:section,generation:0,response:null,pending:null,selected:null,choose:null};
+        var state = {form:form,options:options,section:section,generation:0,cancellation:0,response:null,pending:null,selected:null,choose:null};
         forms.set(form,state); form.append(section);
         options.textElement.addEventListener('input',function () { invalidate(state); });
         form.addEventListener('input',function (event) { if(event.target!==options.textElement) invalidate(state); });
@@ -44,6 +77,9 @@
     function review(state) {
         var text = state.options.textElement.value;
         if (!text || !text.trim()) return Promise.resolve(null);
+        if (!state.contextReady && window.TaxonomyArchitectureLifecycle?.ready) {
+            return awaitInitialContext(state).then(function (ready) { return ready ? review(state) : null; });
+        }
         var projectId = project(state), capture = fingerprint(state,text,projectId);
         if (state.pending?.capture === capture) return state.pending.promise;
         if (state.response?.capture === capture) return Promise.resolve(state.response.value);
@@ -122,6 +158,7 @@
         if(!state) throw new Error(label('Requirement review is not ready.','Die Anforderungsprüfung ist nicht bereit.'));
         if(projectId!==undefined && typeof state.options.projectId!=='function') state.options.projectId=projectId;
         if(payload.text!==state.options.textElement.value) return null;
+        if (!state.contextReady && window.TaxonomyArchitectureLifecycle?.ready && !await awaitInitialContext(state)) return null;
         var capture=fingerprint(state,payload.text,project(state));
         var response=await review(state);
         if(!response||!matching(state,capture)) return null;

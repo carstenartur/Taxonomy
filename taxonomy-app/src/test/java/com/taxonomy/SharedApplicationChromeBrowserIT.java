@@ -276,8 +276,63 @@ class SharedApplicationChromeBrowserIT {
                 && (request.path().endsWith("/api/analyze") || request.path().endsWith("/api/copilot")));
     }
 
-    @ParameterizedTest @ValueSource(ints = {1920, 1366, 1024, 390})
-    void loadedWorkbenchReservesDiagramSpaceWithCurrentAndSourceContext(int width) throws IOException {
+    @ParameterizedTest @ValueSource(ints = {503, 404})
+    void collapsedContextShowsUnavailableStandWithoutReusingTheLastLoadedCommit(int status) {
+        String locale = status == 503 ? "en" : "de";
+        var view = status == 503 ? new View("projects", "/projects", "projects", "projectFilter")
+                : new View("index", "/", "analysis", "fileMenuButton");
+        open(view, locale, 390);
+        page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
+                "context", Map.of("repositoryId", "architecture-a", "workspaceScopeKey", "private-a",
+                        "branch", "review/current", "commit", COMPACT_COMMIT, "revision", 4),
+                "architectureTitle", "Loaded architecture A", "source", "GIT_CHECKPOINT", "projectionState", "READY",
+                "publicationState", "CHECKPOINTED", "mayEdit", false,
+                "projects", List.of(), "dependencies", List.of(), "requirements", List.of(Map.ofEntries(
+                        Map.entry("id", "authored-requirement-7"), Map.entry("projectId", 42), Map.entry("projectKey", "P-42"),
+                        Map.entry("requirementId", 7), Map.entry("requirementKey", "REQ-7"), Map.entry("title", "Access requirement"),
+                        Map.entry("version", 2), Map.entry("versionId", 22), Map.entry("contentHash", "fixture-hash"),
+                        Map.entry("text", "Authored fixture requirement"), Map.entry("realization", Map.of("state", "INVALID_EVIDENCE")),
+                        Map.entry("contributors", List.of()), Map.entry("links", List.of()))))));
+        page.driver().executeAsyncScript("""
+                const done=arguments[arguments.length-1];
+                TaxonomyAppChrome.updateContext({requirement:{id:7,key:'REQ-7',title:'Access requirement',version:2}});
+                TaxonomyArchitectureLifecycle.refresh().then(done);
+                """);
+        var context = page.driver().findElement(By.id("applicationContextDisclosure"));
+        var summary = page.driver().findElement(By.id("applicationContextSummary"));
+        assertThat(context.getDomProperty("open")).isEqualTo("false");
+        assertThat(summary.getText()).contains("Loaded architecture A", COMPACT_COMMIT.substring(0, 12));
+        String loadedStates = page.driver().findElement(By.id("applicationContextSummaryStates")).getText();
+
+        page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(status,
+                Map.of("error", status == 404 ? "Selected architecture does not exist" : "Architecture service unavailable")));
+        page.driver().executeAsyncScript("""
+                const done=arguments[arguments.length-1];TaxonomyArchitectureLifecycle.refresh().then(done);
+                """);
+        assertThat(page.driver().executeScript("return TaxonomyAppChrome.getContext().architecture.modelStand;")).isNull();
+        assertThat(context.getDomProperty("open")).isEqualTo("false");
+        org.assertj.core.api.SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(summary.getText()).as("A failed GET cannot present the previous commit as the selected stand")
+                    .doesNotContain(COMPACT_COMMIT.substring(0, 12));
+            softly.assertThat(page.driver().findElement(By.id("applicationContextSummaryStates")).getText())
+                    .as("The unavailable stand stays visible while the business context is collapsed")
+                    .contains(status == 503 ? "Publication: Unavailable" : "Veröffentlichung: Nicht verfügbar");
+            softly.assertThat(loadedStates).as("Invalid review evidence is a visible localized problem before the read failure")
+                    .contains(status == 503 ? "Realization: Invalid evidence" : "Realisierung: Ungültige Nachweise");
+        });
+        summary.sendKeys(Keys.ENTER);
+        var technical = page.driver().findElement(By.id("applicationTechnicalContext"));
+        technical.findElement(By.tagName("summary")).sendKeys(Keys.ENTER);
+        assertThat(technical.getText()).as("Last observed raw identities remain available in technical details")
+                .contains(COMPACT_COMMIT, status == 503 ? "Last observed commit" : "Zuletzt beobachteter Commit",
+                        status == 503 ? "Last observed workspace revision" : "Zuletzt beobachtete Workspace-Revision");
+        assertThat(page.driver().findElement(By.id("applicationCurrentContext")).getText())
+                .doesNotContain(COMPACT_COMMIT.substring(0, 12));
+        assertThat(page.driver().findElements(By.cssSelector("#applicationContextSummaryStates .taxonomy-status[data-state='UNAVAILABLE']")))
+                .singleElement().satisfies(badge -> assertThat(badge.isDisplayed()).isTrue());
+    }
+
+    private static void openLoadedWorkbench(int width) {
         page.clearRoutes(); page.clearRequests();
         viewport(width, width == 1920 ? 1080 : width == 390 ? 844 : 768);
         page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
@@ -315,6 +370,11 @@ class SharedApplicationChromeBrowserIT {
                 return c?.architecture?.title==='Communication architecture' && c?.source?.snapshotId==='qa-locale';
                 """)));
         assertThat(page.driver().findElement(By.id("architectureAlert")).isDisplayed()).isFalse();
+    }
+
+    @ParameterizedTest @ValueSource(ints = {1920, 1366, 1024, 390})
+    void loadedWorkbenchReservesDiagramSpaceWithCurrentAndSourceContext(int width) throws IOException {
+        openLoadedWorkbench(width);
         var geometry = (Map<?, ?>) page.driver().executeScript("""
                 const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();
                     return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
@@ -336,6 +396,46 @@ class SharedApplicationChromeBrowserIT {
         assertThat(geometry.get("valid")).as("The fully loaded snapshot keeps the existing CI diagram and inspector viewport gates: %s", geometry).isEqualTo(true);
         assertThat(page.driver().findElement(By.id("requirementText")).getText()).contains("Original authored requirement detail");
         assertThat(page.driver().findElement(By.id("architectureProvenance")).getText()).contains("qa-locale");
+    }
+
+    @Test void workbenchExportMenuStaysOnscreenAndEveryFormatRemainsKeyboardReachable() throws IOException {
+        openLoadedWorkbench(1024);
+        for (int width : List.of(1024, 390, 320)) {
+            viewport(width, 844);
+            var disclosure = page.driver().findElement(By.id("architectureExportOptions"));
+            var summary = disclosure.findElement(By.tagName("summary"));
+            summary.sendKeys(Keys.ENTER);
+            wait.until(driver -> "true".equals(disclosure.getDomProperty("open")));
+            page.driver().executeAsyncScript("const done=arguments[arguments.length-1];requestAnimationFrame(()=>requestAnimationFrame(done));");
+            var geometry = (Map<?, ?>) page.driver().executeScript("""
+                    const r=document.querySelector('.workbench-export-content').getBoundingClientRect();
+                    return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,innerWidth,innerHeight,
+                        valid:r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight};
+                    """);
+            if (!Boolean.TRUE.equals(geometry.get("valid"))) {
+                Path evidence = Path.of("target", "coherent-lifecycle", "workbench-exports-" + width);
+                Files.createDirectories(evidence);
+                Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+                Files.writeString(evidence.resolve("geometry.json"), PortfolioClientTestPage.json(geometry));
+                Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
+            }
+            assertThat(geometry.get("valid")).as("The export popup fits the viewport independently of the wrapped trigger: %s", geometry).isEqualTo(true);
+            var controls = disclosure.findElements(By.cssSelector("select, button:not([disabled])"));
+            assertThat(controls).extracting(control -> control.getDomAttribute("id")).contains(
+                    "workbenchDocumentLanguage", "downloadArchitectureSvg", "downloadArchitecturePdf",
+                    "downloadArchitectureWord", "downloadDecisionWord", "downloadArchitectureArchiMate", "downloadArchitectureVisio");
+            for (var control : controls) {
+                new Actions(page.driver()).sendKeys(Keys.TAB).perform();
+                assertThat(page.driver().switchTo().activeElement()).isEqualTo(control);
+                assertThat(page.driver().executeScript("""
+                        const r=arguments[0].getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+                        return r.top>=0 && r.bottom<=innerHeight && (hit===arguments[0] || arguments[0].contains(hit));
+                        """, control)).as("%s is reachable through the real popup scroll area at %spx", control.getDomAttribute("id"), width).isEqualTo(true);
+            }
+            new Actions(page.driver()).sendKeys(Keys.ESCAPE).perform();
+            assertThat(disclosure.getDomProperty("open")).isEqualTo("false");
+            assertThat(page.driver().switchTo().activeElement()).isEqualTo(summary);
+        }
     }
 
     @Test void languageAndSourceReturnKeepTheCompleteSelection() {

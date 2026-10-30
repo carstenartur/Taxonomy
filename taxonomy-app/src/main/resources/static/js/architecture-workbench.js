@@ -1044,6 +1044,30 @@
 
     const exportOptions = document.getElementById('architectureExportOptions');
     if (exportOptions) {
+        const exportMenu = exportOptions.querySelector('.workbench-export-content');
+        const exportTrigger = exportOptions.querySelector('summary');
+        function positionExportMenu() {
+            if (!exportOptions.open || !exportMenu) return;
+            const margin = 16, gap = 8;
+            const trigger = exportTrigger.getBoundingClientRect();
+            const below = Math.max(0, window.innerHeight - trigger.bottom - gap - margin);
+            const above = Math.max(0, trigger.top - gap - margin);
+            const openAbove = below < Math.min(exportMenu.scrollHeight, window.innerHeight * 0.7) && above > below;
+            exportMenu.style.maxHeight = Math.max(44, Math.min(window.innerHeight * 0.7,
+                window.innerHeight - margin * 2, openAbove ? above : below)) + 'px';
+            const menu = exportMenu.getBoundingClientRect();
+            exportMenu.style.left = Math.max(margin,
+                Math.min(trigger.left, window.innerWidth - menu.width - margin)) + 'px';
+            exportMenu.style.right = 'auto';
+            const top = openAbove ? trigger.top - gap - menu.height : trigger.bottom + gap;
+            exportMenu.style.top = Math.max(margin,
+                Math.min(top, window.innerHeight - menu.height - margin)) + 'px';
+        }
+        exportOptions.addEventListener('toggle', positionExportMenu);
+        window.addEventListener('resize', positionExportMenu);
+        document.addEventListener('scroll', function (event) {
+            if (!exportMenu || !exportMenu.contains(event.target)) positionExportMenu();
+        }, true);
         exportOptions.addEventListener('keydown', function (event) {
             if (event.key === 'Escape' && exportOptions.open) {
                 event.preventDefault();

@@ -1,55 +1,66 @@
 # Coherent architecture lifecycle verification
 
-Status: reconstruction is under fresh verification. This report intentionally does not reuse successful results from the lost checkout.
+The implementation is in [PR #1348](https://github.com/carstenartur/Taxonomy/pull/1348). This report records checks executed against the reconstructed branch; no result from the lost checkout is counted. The [PR checks](https://github.com/carstenartur/Taxonomy/pull/1348/checks) carry the final result for its exact head commit.
 
-## Acceptance obligations
+## Acceptance evidence
 
-| Scenario | Required observation | Owner |
+| Scenario | Verified behavior | Evidence |
 | --- | --- | --- |
-| Requirement 9 changes after 10 completes | Current v2, reviewed v1, REVIEW_REQUIRED; 10 remains COMPLETE | Lifecycle service and real browser acceptance |
-| Requirements 11 and 12 | Visible as OPEN without invented realization evidence | Lifecycle integration and browser |
-| Historical commit and semantic revision | Original source and versions, no current database overlay, read-only actions | Service and stand-selection browser contracts |
-| Retry older accepted intent | Same immutable result and original checkpoint after a later change, no duplicate writes | Lifecycle service and editor idempotency |
-| Pending checkpoint | Retained intent, exact command retry, no false success | Editor and browser dialog contracts |
-| Incoming portfolio reconciliation | Canonical/portable consistency and transaction rollback on immutable collisions | Workspace and application reconciliation tests |
-| Native history | Captured HEAD, actual ancestry/parents/signatures, bounded truthful coverage | JGit storage, history and sync tests |
-| Intake outage or stale suggestion | Manual choice stays available; scope/input/version changes invalidate advice | Intake service and browser contracts |
-| Shared presentation | Same entity/status vocabulary, readable business context, technical disclosure, contextual help | Six-view browser checks |
-| Layout | Desktop first requirement remains reachable, mobile overflow controlled, 44px controls | Shared chrome and portfolio context browser checks |
+| Architecture survives its project | Independent repository identity and retained project contributions; later projects can reuse it | Creation recovery, lifecycle integration and project portfolio tests |
+| Requirement 9 changes after 10 completes | Current v2 requires review against reviewed v1; requirement 10 remains COMPLETE | Lifecycle integration and complete twelve-requirement native browser journey |
+| Requirements 11 and 12 | OPEN, with no invented realization evidence | Same integration and native browser journey |
+| Historical commit and semantic revision | Original text and review versions remain readable; historical actions are read-only | Native browser journey and 34 stand-selection browser cases |
+| Persistence recovery | Versions, realization evidence and searchable native history survive reload and file-backed application-context restart | Twelve-requirement browser journey; separate native installation recovery test |
+| Retry an older accepted command | Original immutable result and checkpoint after later edits, without duplicate writes | Lifecycle, editor idempotency and publication-proof tests |
+| Pending publication or reconciliation | Exact request identity and draft survive; unpublished work is not shown as a completed save | Service contracts and stand-selection browser tests |
+| Immutable imports | Invalid fields, forged hashes and normalized identity aliases are rejected before database or Git ref mutation | 12 atomicity cases and 6 reconciliation cases |
+| Native Git history | Actual ancestry, parents and signatures at a captured HEAD; bounded scans and truthful continuation | Native history/transfer tests, 205 workspace tests and CI JGit consumer contract |
+| Intake advice | Bounded authorized candidates, validated quotations, fresh scope checks and explicit NEW / CHANGE / LINK decisions | 29 intake tests, frontend contracts and native lifecycle browser tests |
+| Background reads | Late responses preserve newer drafts; page departure aborts polling without inventing job failure | 72 routing browser cases, 9 review browser cases and 5 job-lifecycle JUnit cases |
+| Shared presentation | Common navigation, business context, selected stand, technical disclosure and direct view help | 35 shared-chrome browser cases and 4 server-rendered help tests |
+| Archi round trip | Reviewed return is applied and reopened in its independent architecture repository | Native ArchiMateReturnUiIT and CI interoperability products |
 
-## Fresh execution log
+The native twelve-requirement scenario starts with requirements 1–9 COMPLETE, creates requirement 10 and reviews it PARTIAL then COMPLETE, creates 11/12 OPEN, and changes requirement 9 to version 2. It checks both an earlier Git commit and semantic revision before reloading and restarting the file-backed application context. The complete scenario passed in the successful 49-case native run, together with both portfolio viewport checks and the full portfolio workflow.
 
-- First reconstructed backend run: DSL realization/trace 7 tests passed. Compilation then caught a missing exhaustive fingerprint arm for the newly reconstructed semantic review command. The arm was restored before repeating the run.
-- Fresh backend checks passed: realization/trace DSL 7, reconciliation validation 9, native history/transfer/monitor/ancestry 22, workspace reconciliation/idempotency 26, intake candidate/controller/matcher/service 29, lifecycle service 8, and the full twelve-requirement lifecycle integration 1.
-- The lifecycle integration verified requirements 1–9, requirement 10 PARTIAL→COMPLETE, requirements 11/12 OPEN, then requirement 9/v2 requiring review while its v1 review remains readable. Source comments and earlier operation/checkpoint receipts are preserved after subsequent edits.
-- Native browser round1: session 14 and lifecycle 8 passed. Shared chrome 24 exposed five failures; stand selection 28 exposed five timeouts. Diagnoses included context pins cleared during initial project loading, historical business-key fallback, mobile layout, unknown-response retries and a busy overlay blocking an explicit intake choice. Fixes and a more diagnostic mobile assertion are under round2 verification; these failures are not counted as passes.
-- Remaining backend regression round exposed forged current/historical content hashes, moved history HEAD translated as 503, failed architecture creation recovery, and immutable portfolio collisions after Git refs moved. Source/DB preflight,409 translation and exact creation recovery are now implemented; fresh verification is pending. The sync fixture also required unique workspace names between parameter cases.
-- Fresh JavaScript contracts: 1,630 passed. The source ownership gate caught the newly added lifecycle test before its owner registration was completed; registration has been added. Full rerun remains required. Independent lifecycle/API replay contracts passed 16 cases after demonstrating unknown-response and later-checkpoint retry failures.
-- Boundary review rejected direct portfolio→workspace repository access. A workspace-owned discovery API now supplies immutable authorized source metadata;14 justified existing-direction package-edge counts were reviewed individually. Fresh ratchet verification is pending.
-- Canonical Maven verification, broader native acceptance, final review and existing CI checks remain pending.
+## Executed verification
 
-### Follow-up verification
+- Application proof: 97 tests passed, including original checkpoint reachability after Undo, retained source annotations, immutable import preflight, creation recovery and authorization freshness; the same reactor passed 29 intake tests.
+- Backend follow-up: all 39 cases passed (native installation recovery 1, normalized-identity atomicity 12, conditional feature assembly 5, project portfolio 11, reformulation adoption/restart 3, portfolio Git 7).
+- Workspace regression: all 205 tests passed, including fresh source authority, transfer/merge/ref concurrency, provisioning, source discovery and native history.
+- Focused checks passed: realization/trace 7, reconciliation validation 9, native history/transfer/monitor/ancestry 22 and workspace reconciliation/idempotency 26.
+- JavaScript: 1,654 Maven-owned contracts and 2 source-ownership checks passed. The 5 portfolio polling cases now run as application JUnit tests with their application-owned resource, preserving the root tooling ownership rule.
+- Final shared/portfolio native run: all 49 browser cases passed (lifecycle 10, shared chrome 35, portfolio acceptance 4), plus 23 unit cases (browser session 14, contextual help 4, background-job lifecycle 5).
+- Final modal/Copilot native run: all 21 browser cases passed (lifecycle 10, fast modal save 1, complete Copilot session 1, requirement review 9), plus 14 browser-session cases. The complete Copilot session also passed independently before the modal fix.
+- Routing 72 and native Archi return 1 passed in the preceding focused run. The additional modal-transition regression was first observed failing after a successful POST and then passed with the shared close helper.
+- Earlier broad native regression passed all version review 13, matrix 10, recovery 42 and stand-selection 34 cases, plus 14 browser-session cases.
+- Existing API/documentation regressions passed: analysis session 10, REST documentation 3, generated OpenAPI 1, reformulation positive-review guard 26 and contextual help 4.
+- Documentation 7 and mandatory module-graph 141, module-extraction 2, plugin-boundary 4 and selector-synchronization 77 checks passed (231 total). Fourteen English/German guides also passed static table/link/anchor/route validation.
 
-- Native round2 passed 59 of 64 cases (lifecycle 8, shared chrome 23/24, stand selection 28/32), plus browser-session 14. All previously failing source pins, historical identity and lost-response retry cases passed. Four new stand failures covered incomplete creation recovery and a confirmed pending review after another checkpoint. Their fixes are awaiting native verification.
-- The mobile diagnostic showed a missing AI-policy fixture triggering error focus and a 514 px page scroll. The fixture now supplies the real policy/latest-operation reads. Independently, measured 38 px requirement actions were raised to 44 px and added to the existing geometry assertion.
-- A fresh 205-test workspace run passed, covering native synchronization, current source authority, merge preflight, provisioning, source discovery and history. The same reactor passed 1,650 JavaScript contracts and both JavaScript ownership checks.
-- Creation recovery 14, canonical/portable reconciliation 6 (including forged hashes), lifecycle 8, twelve-requirement integration 1, history HTTP 4 and fresh persistence-context authorization 3 passed in the application regression run.
-- Additional real regressions demonstrated five invalid import fields moving Git refs before rejection, loss of unknown managed-source properties, and an old checkpoint receipt falsely reporting publication after supported Undo. Shared input validation, source retention and actual checkpoint reachability fixes are now under verification. Two extra invalid new-identity metadata cases extend the preflight contract.
-- Documentation 7 and mandatory module-graph 141, module-extraction 2, plugin-boundary 4 and selector-synchronization 77 checks passed (231 total). CI had caught a second module-shaped documentation table; the explanation now names concrete APIs, preserving the authoritative inventory and its gate.
-- The independent review's five concrete findings are tracked through those regressions and the retained `RECONCILIATION_REQUIRED` frontend outcome. Unpublished changes must retain their exact request identity and drafts and offer the existing reconciliation dialog; they are not reported as completed saves.
-- Draft [PR #1348](https://github.com/carstenartur/Taxonomy/pull/1348) starts the unchanged GitHub checks. On its first checkpoint, native JGit consumer, production Docker, security, UI contracts and interoperability checks passed. Open CI findings include the documented inventory issue, forced-colors menu contrast, workbench canvas allocation, a scenario driver missing the explicit NEW choice and a PostgreSQL recovery child-process failure whose phase log was absent from the artifact. The existing PostgreSQL job now retains those logs and bounded failure diagnostics; its underlying cause has not yet been established.
+## Corrected regressions and review
 
-## Evidence limits
+Independent source review found and closed invalid import fields/identity aliases moving refs before rejection, lost managed-source annotations, stale authorization after transfer, and a checkpoint receipt falsely proving publication after Undo. Their regression suites preserve the original database, ref and retained-evidence assertions.
 
-### Reconstructed branch: later verification
+The final UI corrections were verified against actual rendered geometry and native interactions:
 
-- Fresh application proof run passed 97 tests plus 29 intake tests, including original checkpoint reachability after Undo, retained annotations, immutable import preflight, creation recovery and authorization freshness.
-- Native broad verification ran 220 browser cases and 14 browser-session cases. The complete twelve-requirement browser journey passed, including the earlier Git checkpoint, semantic revision and the file-backed application-context restart. Stand selection passed all 34 cases; lifecycle 8, version review 13, matrix 10, recovery 42 and shared chrome 29 also passed. The run remained red for 12 exact-link expectations, two portfolio viewport checks and three local error-message checks; these are not reported as a successful overall run.
-- Three additional real synchronization regressions first demonstrated that differently spelled aliases of the same business identity could move refs before failing. Shared owner normalization now rejects project, requirement and version aliases before any publication or materialization. The fresh 12-case atomicity suite passes without changing its ref, database or metadata assertions.
-- Fresh backend follow-up passed all 39 application cases: native installation recovery 1, atomicity 12, conditional feature assembly 5, project portfolio 11, reformulation adoption/restart 3 and portfolio Git 7. Its Maven-owned JavaScript verification passed 1,655 contracts and both source-ownership checks.
-- The unmodified canonical `verify -Pci -DrunOnnxTests=true` command was attempted. The pinned ONNX bundle downloaded and passed its checksum validation. It stopped in tooling: seven nested Maven fixture cases lacked this environment's proxy/repository routing, and four newly added polling regressions were still at RED. The polling fix is now included in the 1,655 passing contracts; nested Maven runtime routing was corrected outside repository sources. This attempt is not a successful canonical verification.
-- CI at `22025e1` passed native JGit consumer, security, Docker image, document report E2E, interoperability, performance, Kubernetes, SQL Server, Oracle and the reformulation transport workflow. Remaining findings from its full suites are being resolved: compact context layout, physically absent optional portfolio JARs, exact recovery text, stale navigation/help fixtures, explicit intake decisions in older browser drivers and missing API descriptions. Final CI must be read at the final PR head.
+- The portfolio's first requirement row is visible in the 1366 × 768 initial viewport, with full metric labels and requirement text retained.
+- A wrapped export trigger opens a viewport-bounded menu. Native Enter/Tab/Escape checks at 1024, 390 and 320 px reach every export format, including through the menu's own scroll area.
+- A failed lifecycle refresh shows UNAVAILABLE in the collapsed context and cannot relabel an old commit as the selected stand. INVALID_EVIDENCE is also visible. Preserved raw commits and revisions are explicitly labeled as last observed. Both HTTP 503/404 native regressions were observed failing before the fix and then passed.
+- Requirement intake shares the initial lifecycle read before freezing its scope. Four deterministic regressions cover late initialization, edits, explicit scope changes and cancellation; native English/German cases hold the first GET and verify a single correctly scoped review/save after release.
+- Fast successful saves during Bootstrap's opening transition now close after its public shown event. Native regression proves that the response arrives before shown and that the next opening remains open; no product timer, private Bootstrap state or shortened assertion was introduced.
+- Older Copilot/scenario browser drivers now perform the explicit NEW/CHANGE choice and open the shared technical disclosure to check the same exact repository, workspace and branch identities. The full Copilot test retains its PostgreSQL/container default; the explicit local adapter uses the existing BrowserSession and a real Spring/HSQLDB application.
 
-The full application browser scenario uses native browser forms and the initialized catalogue. Its explicit local mode restarts the Spring application context against the same file-backed HSQLDB/JGit data; this is not described as a separate operating-system process restart. Existing production persistence tests own their container/process coverage.
+Independent final review found no remaining concrete source issue in the corrected context, intake, modal, layout or driver changes. Failure-only DOM, screenshot and bounded state diagnostics remain available in the existing browser evidence job.
 
-Configured-provider contracts are validated without paid live-provider calls. Docker, database-container, security, coverage and deployment checks remain owned by the existing repository gates; report their actual results before marking this work complete.
+## CI evidence
+
+At checkpoint `cf94d7e`, [database compatibility](https://github.com/carstenartur/Taxonomy/actions/runs/40993254721) passed PostgreSQL, SQL Server and Oracle. Native JGit consumer, security, document-report E2E, production Docker image, interoperability products, performance, plugin packaging, Kubernetes, reformulation transport, application recovery, application scenario and the full core reactor also passed. Five of six UI shards passed; the viewport/popup and stale-driver findings from that checkpoint are addressed above.
+
+CodeQL intentionally skips duplicate same-repository pull-request runs; its authoritative [push run at that checkpoint](https://github.com/carstenartur/Taxonomy/actions/runs/40993247983) passed. Final verification inspects push runs and all check runs as well as pull-request-triggered workflows. Previous checkpoints are not substituted for the exact final head's CI result.
+
+## Canonical command and evidence limits
+
+The unchanged canonical command is `./mvnw -B verify -Pci -DrunOnnxTests=true`. The first local attempt verified the pinned ONNX checksums, then stopped on nested Maven runtime routing and the new polling regressions. After runtime-only proxy/cache routing was corrected and the polling behavior fixed, the repeated canonical run completed 2,145 tooling cases with no failures/errors (5 existing skips), including all 1,654 JavaScript contracts. It then completed 1,230 workspace cases with one environment failure: native GPG public-key import cannot connect to gpg-agent because local Unix-socket access is denied. A separate isolated import of the installed system public-key bundle reproduced exit 2 and the agent/permission error. The same native signature suite passes in the CI core reactor. This local run is not reported as a complete canonical pass. No gate, threshold or product test exclusion was added to accommodate the environment.
+
+Only one Maven reactor runs locally at a time. Focused commands select relevant existing Surefire/Failsafe cases for diagnosis; they do not replace the full repository gates. Docker/database-container, security, coverage and Kubernetes evidence comes from those existing CI jobs.
+
+The full application browser journey restarts the Spring application context against the same file-backed HSQLDB/JGit data. It is not described as a separate operating-system process restart. Native installation recovery and production database tests own their separate-process/container coverage. Configured-provider contracts run without paid live-provider calls.

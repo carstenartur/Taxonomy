@@ -627,7 +627,7 @@
         body.append(status,commands,tableContainer,historyButton,historyForm,historyList); disclosure.append(body);
         currentButton = button(t('lifecycle.currentStand'),function () { requestStand(null); }); currentButton.dataset.lifecycleCurrent = ''; currentButton.dataset.lifecycleAction = 'current'; currentButton.hidden = true;
         root.append(disclosure,currentButton);
-        if (!isEditor()) refresh(scope(),selectionFromUrl());
+        if (!isEditor()) return refresh(scope(),selectionFromUrl());
     }
     document.addEventListener('taxonomy:entity-context-changed', function () {
         var value = window.TaxonomyAppChrome?.getContext() || {};
@@ -641,7 +641,9 @@
         if (next && scopeKey(next) === scopeKey(state.context)) showPublishedCurrentStand(next);
     });
     window.addEventListener('popstate',function () { if (!isEditor()) refresh(scope(),selectionFromUrl()); });
-    window.TaxonomyArchitectureLifecycle = {state:function () { return clone(state.overview); }, refresh:refresh, beginSelection:beginSelection, observe:observe,
+    window.TaxonomyArchitectureLifecycle = {state:function () { return clone(state.overview); },
+        ready:function () { return initialized.then(function () { return clone(state.overview); }); },
+        refresh:refresh, beginSelection:beginSelection, observe:observe,
         failedSelection:failedSelection, saveRequirement:saveRequirement, showPublicationRecovery:showPublicationRecovery, openNewArchitecture:openNewArchitecture};
-    window.TaxonomyI18n.ready().then(initialize);
+    var initialized = window.TaxonomyI18n.ready().then(initialize);
 }());

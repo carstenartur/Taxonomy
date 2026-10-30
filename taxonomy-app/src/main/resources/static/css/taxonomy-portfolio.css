@@ -19,6 +19,15 @@
     overflow-y: auto;
 }
 
+/* Give requirement text the working width; the project selector grows with text zoom. */
+@media screen and (min-width: 1200px) {
+    #portfolioMain > .row > aside { flex: 0 0 clamp(15rem, 18%, 20rem); width: auto; }
+    #portfolioMain > .row > .col-xl-9 { flex: 1 1 0; width: auto; min-width: 0; }
+    #projectWorkspace:not(.d-none) { display: grid; gap: .5rem; }
+    #projectWorkspace > * { margin-bottom: 0 !important; }
+    #projectWorkspace > section.card > .card-body { padding: .75rem; }
+}
+
 #projectList .list-group-item {
     border-left: 0.25rem solid transparent;
     cursor: pointer;

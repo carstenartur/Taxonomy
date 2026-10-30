@@ -6,14 +6,16 @@ The user authorized implementation, one reviewable PR and fixing its checks. Do 
 
 ## Work and verification
 
-- [ ] Canonical realization, exact raw text versions, contribution/related-link retention and strict immutable import.
-- [ ] Atomic requirement/review operations, durable no-op receipts, retry results, Git publication proof and explicit reconciliation.
-- [ ] Native JGit search, original-object history transfer, real merge/fast-forward ancestry and ref/authority concurrency guards.
-- [ ] Configured-provider intake with bounded candidates, validated quotations, exact fallback and explicit manual choices.
-- [ ] Consistent six-view navigation, business context, status/evidence presentation, contextual help and protected asynchronous dialogs/drafts.
-- [ ] Full twelve-requirement native browser journey, historical commit/revision checks and persistence recovery.
-- [ ] Review module dependencies individually, synchronize latest main, run canonical verification and inspect existing CI checks.
-- [ ] Independent final review, update QA evidence, publish one PR and resolve failing checks.
+- [x] Canonical realization, exact raw text versions, contribution/related-link retention and strict immutable import.
+- [x] Atomic requirement/review operations, durable no-op receipts, retry results, Git publication proof and explicit reconciliation.
+- [x] Native JGit search, original-object history transfer, real merge/fast-forward ancestry and ref/authority concurrency guards.
+- [x] Configured-provider intake with bounded candidates, validated quotations, exact fallback and explicit manual choices.
+- [x] Consistent six-view navigation, business context, status/evidence presentation, contextual help and protected asynchronous dialogs/drafts.
+- [x] Full twelve-requirement native browser journey, historical commit/revision checks and persistence recovery.
+- [x] Review module dependencies individually, synchronize latest main, run canonical verification and inspect existing CI checks.
+- [x] Independent final source review, QA evidence and one PR with fixes for the observed failing checks.
+
+Final acceptance is recorded by the checks on the exact head of [PR #1348](https://github.com/carstenartur/Taxonomy/pull/1348/checks). A source-complete checklist does not substitute earlier checkpoint results for final-head CI. No merge or deployment is authorized.
 
 ## Recovery and evidence discipline
 

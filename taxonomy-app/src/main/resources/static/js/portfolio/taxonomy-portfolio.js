@@ -754,7 +754,7 @@
             const payload = formDataObject(form);
             payload.status = 'PLANNING';
             const project = await api('/api/projects', { method: 'POST', body: payload });
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('projectModal')).hide();
+            window.TaxonomyUtils.hideModal(document.getElementById('projectModal'));
             form.reset();
             showInfo(t('status.project.created'));
             await loadProjects(project.id);
@@ -786,7 +786,7 @@
                 if (command.choice === 'LINK') { showInfo(window.TaxonomyI18n.t('lifecycle.linked')); return; }
                 const requirement = saved.requirement;
                 if (!window.TaxonomyRequirementIntake.isCurrent(form)) { showInfo(t('status.requirement.created')); return; }
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('requirementModal')).hide();
+                window.TaxonomyUtils.hideModal(document.getElementById('requirementModal'));
                 form.reset();
                 state.selectedRequirementId = requirement.id;
                 showInfo(t('status.requirement.created'));
@@ -818,7 +818,7 @@
                     status: 'PROPOSED'
                 }
             });
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('solutionModal')).hide();
+            window.TaxonomyUtils.hideModal(document.getElementById('solutionModal'));
             form.reset();
             showInfo(t('status.solution.created'));
             await refreshSelectedProject(false);
@@ -833,7 +833,7 @@
             payload.productStatus = 'CANDIDATE';
             payload.verifiedAt = localDateTimeToInstant(payload.verifiedAt);
             const product = await api('/api/products', { method: 'POST', body: payload });
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('productModal')).hide();
+            window.TaxonomyUtils.hideModal(document.getElementById('productModal'));
             form.reset();
             setDefaultVerifiedAt();
             showInfo(t('status.product.created'));

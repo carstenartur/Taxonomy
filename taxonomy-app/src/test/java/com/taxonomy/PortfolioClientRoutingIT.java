@@ -821,6 +821,63 @@ class PortfolioClientRoutingIT {
         assertThat(text("portfolioError")).isEmpty();
     }
 
+    @Test void savingProjectDuringItsOpeningTransitionClosesOnlyThatOpening() {
+        installRoutes("");
+        var created = new java.util.concurrent.atomic.AtomicBoolean();
+        page.route("GET", "/api/projects", request -> PortfolioClientTestPage.json(200,
+                created.get() ? List.of(project(42), project(99)) : List.of(project(42))));
+        page.route("POST", "/api/projects", request -> {
+            created.set(true);
+            return PortfolioClientTestPage.json(201, project(99));
+        });
+        page.route("GET", "/api/projects/99/portfolio", request -> PortfolioClientTestPage.json(200, portfolio(99)));
+        page.route("GET", "/api/projects/99/analysis-jobs", request -> PortfolioClientTestPage.json(200, List.of()));
+        open("projects", "", "/projects", """
+                const timing = document.createElement('style');
+                timing.textContent = '#projectModal.fade .modal-dialog { transition-duration: 5s !important; }';
+                document.head.append(timing);
+                window.projectModalEvents = [];
+                ['show.bs.modal','shown.bs.modal','hidden.bs.modal'].forEach(name => {
+                    document.addEventListener(name, event => {
+                        if (event.target.id === 'projectModal') window.projectModalEvents.push(name);
+                    }, true);
+                });
+                const requestProject = window.fetch.bind(window);
+                window.fetch = function(input, options) {
+                    return requestProject(input, options).then(response => {
+                        if (String(options?.method).toUpperCase() === 'POST'
+                                && new URL(response.url, location.href).pathname === '/api/projects') {
+                            window.projectResponseBeforeShown = !window.projectModalEvents.includes('shown.bs.modal');
+                        }
+                        return response;
+                    });
+                };
+                """);
+        wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
+        click(By.cssSelector("[data-bs-target='#projectModal']"));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("projectModal")));
+        element("projectKey").sendKeys("P-99");
+        element("projectTitle").sendKeys("A fast saved project");
+        element("projectDescription").sendKeys("The real response arrives during the real opening transition.");
+        click(By.cssSelector("#projectForm button[type='submit']"));
+        wait.until(ignored -> text("selectedProjectKey").equals("P-99") && hidden("portfolioBusy"));
+        assertThat(driver.executeScript("return window.projectResponseBeforeShown;"))
+                .as("The successful real HTTP response arrived before Bootstrap's public shown event").isEqualTo(true);
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("projectModal")));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector(".modal-backdrop.show")));
+        assertThat(requests("POST", "/api/projects")).hasSize(1);
+
+        click(By.cssSelector("[data-bs-target='#projectModal']"));
+        wait.until(ignored -> ((Number) driver.executeScript("""
+                return window.projectModalEvents.filter(name => name === 'shown.bs.modal').length;
+                """)).intValue() == 2);
+        assertThat(element("projectModal").isDisplayed()).as("A later opening must not inherit the previous close intent").isTrue();
+        assertThat(element("projectTitle").getDomProperty("value")).isEmpty();
+        assertThat(requests("POST", "/api/projects")).hasSize(1);
+        click(By.cssSelector("#projectModal .btn-close"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("projectModal")));
+    }
+
     private static Stream<Arguments> projectCountLabels() {
         return Stream.of(
                 Arguments.of("de", List.of("0 Anforderungen · 0 Lösungen", "1 Anforderung · 2 Lösungen", "2 Anforderungen · 1 Lösung")),
