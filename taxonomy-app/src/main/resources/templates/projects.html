@@ -13,29 +13,16 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
 </head>
 <body class="portfolio-page bg-body-tertiary">
 <a href="#portfolioMain" class="skip-link">Skip to project portfolio</a>
 <div id="portfolioStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="portfolioAlert" class="visually-hidden" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
-<nav class="navbar navbar-dark bg-dark sticky-top" th:attr="aria-label=#{ui.aria.project_portfolio_navigation}" aria-label="Project portfolio navigation">
-    <div class="container-fluid gap-2">
-        <a class="navbar-brand fw-semibold" th:href="@{/}">
-            <span aria-hidden="true">🌐</span> Taxonomy
-        </a>
-        <span class="navbar-text text-white fw-semibold me-auto" data-i18n="page.title">
-            Project Requirement Portfolio
-        </span>
-        <a class="btn btn-sm btn-outline-light" th:href="@{/}" data-i18n="nav.analysis">Analysis workspace</a>
-        <a class="btn btn-sm btn-outline-light" th:href="@{/architecture/editor}" th:text="#{editor.title}">Architecture editor</a>
-        <div class="btn-group btn-group-sm" role="group" aria-label="Language">
-            <a class="btn btn-outline-light" href="?lang=en" hreflang="en">EN</a>
-            <a class="btn btn-outline-light" href="?lang=de" hreflang="de">DE</a>
-        </div>
-        <a th:replace="~{fragments/context-help :: button('PROJECT_REQUIREMENT_PORTFOLIO', 'portfolio-projects')}"></a>
-    </div>
-</nav>
+<header th:replace="~{fragments/application-chrome :: navigation('projects', ~{:: localActions}, 'PROJECT_REQUIREMENT_PORTFOLIO', 'portfolio-projects')}">
+    <th:block th:fragment="localActions"><span data-i18n="page.title">Project Requirement Portfolio</span></th:block>
+</header>
 
 <main id="portfolioMain" class="container-fluid py-3 px-lg-4">
     <div id="portfolioError" class="alert alert-danger d-none" role="alert"></div>
@@ -493,6 +480,7 @@
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}"></script>
+<th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/portfolio-api.js}"></script>
 <script th:src="@{/js/portfolio/inventory-comparison.js}"></script>
 <script th:src="@{/js/portfolio/portfolio-guided-decisions.js}"></script>

@@ -434,8 +434,10 @@
 
 /* 200–400 % zoom: allow navigation and analysis controls to reflow. */
 @media (max-width: 640px) {
+    #mainContent { padding-top: .5rem !important; }
     .analysis-task-progress {
         padding: 0.65rem;
+        margin-bottom: .5rem !important;
     }
     .navbar-brand {
         width: 100%;

@@ -37,7 +37,13 @@ import java.util.function.Function;
  * Backend persistence acceptance remains in {@link PortfolioUiAcceptanceIT}.
  */
 final class PortfolioClientTestPage implements AutoCloseable {
-    record Request(String method, String path, String query, String body) { }
+    record Request(String method, String path, String query, String body, Map<String, List<String>> headers) {
+        Request(String method, String path, String query, String body) { this(method,path,query,body,Map.of()); }
+        Request { headers = headers.entrySet().stream().collect(java.util.stream.Collectors.toUnmodifiableMap(
+                Map.Entry::getKey, entry -> List.copyOf(entry.getValue()))); }
+        String header(String name) { return headers.entrySet().stream().filter(entry -> entry.getKey().equalsIgnoreCase(name))
+                .flatMap(entry -> entry.getValue().stream()).findFirst().orElse(null); }
+    }
 
     record Response(int status, String contentType, String body, Map<String, String> headers) {
         Response(int status, String contentType, String body) {
@@ -175,7 +181,7 @@ final class PortfolioClientTestPage implements AutoCloseable {
         try (exchange) {
             var uri = exchange.getRequestURI();
             var request = new Request(exchange.getRequestMethod(), uri.getPath(), uri.getRawQuery(),
-                    new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                    new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8), exchange.getRequestHeaders());
             requests.add(request);
             Function<Request, Response> handler = routes.get(request.method() + " " + request.path());
             if (handler != null) {

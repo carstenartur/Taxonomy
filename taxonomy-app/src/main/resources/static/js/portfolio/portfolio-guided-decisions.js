@@ -268,7 +268,7 @@ await api().updateConflict(projectId, currentConflictButton.dataset.conflictId, 
 status: status,
 resolutionNote: resolution.value.trim() || null
 });
-bootstrap.Modal.getOrCreateInstance(document.getElementById('guidedConflictDialog')).hide();
+window.TaxonomyUtils.hideModal(document.getElementById('guidedConflictDialog'));
 const info = document.getElementById('portfolioInfo');
 if (info) { info.textContent = t('saved'); info.classList.remove('d-none'); }
 document.getElementById('portfolioStatus').textContent = t('saved');

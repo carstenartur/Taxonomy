@@ -18,6 +18,226 @@ Unknown API write methods are denied by default. Workspace-bound operations fail
 
 Portfolio validation, not-found and conflict errors use RFC 9457-style `ProblemDetail` JSON. Clients should primarily inspect `status`, `title` and `detail` rather than parsing human-readable text.
 
+Lifecycle/editor command errors also expose stable `code` values and, where
+applicable, `field`, dependency or revision details. Use that contract to decide
+whether to refresh, preview again or resume; do not parse translated error text.
+
+<a id="architecture-lifecycle-api"></a>
+## Architecture lifecycle, intake and realization
+
+The architecture repository is independent of project completion. A follow-up
+project contributes to the same architecture while the original project-qualified
+requirement identity remains stable. See the [user workflow](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle).
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/api/architecture/lifecycle/architectures` | List readable active architectures and the caller's own incomplete creations. |
+| POST | `/api/architecture/lifecycle/architectures` | Create or resume the exact owned private architecture creation. |
+| GET | `/api/architecture/lifecycle/architectures/{repositoryId}/workspaces` | Recover the caller's existing private working copies for that architecture. |
+| GET | `/api/architecture/lifecycle` | Read the exact selected architecture stand and its requirement realization assessments. |
+| GET | `/api/architecture/lifecycle/history` | Search actual reachable Git history with bounded coverage. |
+| POST | `/api/architecture/lifecycle/intake-review` | Review incoming text against authorized candidates without writing. |
+| POST | `/api/architecture/editor/requirements` | Apply an explicit `NEW`, `CHANGE` or `LINK` choice and prepare/publish its checkpoint. |
+| POST | `/api/architecture/lifecycle/realizations/preview` | Preview a review of an exact requirement version and architecture dependencies. |
+| POST | `/api/architecture/lifecycle/realizations` | Accept the exact review preview and prepare/publish its checkpoint. |
+
+The overview accepts optional `repositoryId`, `workspaceScopeKey` and `branch`
+assertions against the authorized context. They cannot grant access to another
+workspace. Select `commit` (full reachable Git SHA) **or** semantic `revision`,
+never both. The query selector is not inferred from a command's `context.revision`.
+
+| Selection | Source and behavior |
+|---|---|
+| Private workspace: no selector, or explicitly its current revision | `WORKSPACE_REVISION`; current portfolio contributions may be overlaid. Editing still requires the appropriate role and ready projection. |
+| Earlier retained semantic revision | `WORKSPACE_REVISION`, `projectionState=HISTORICAL`, `mayEdit=false`; stored source without today's portfolio overlay. |
+| Reachable Git commit | `GIT_CHECKPOINT`, `projectionState=HISTORICAL`, `mayEdit=false`; exact committed source. |
+| Central/fork read context without a selector | `GIT_CHECKPOINT` at its current HEAD, `mayEdit=false`; no private semantic journal revision or current portfolio overlay. |
+
+Invalid, missing or inaccessible selections fail; they do not fall back to current
+data. The response contains `context`, `architectureTitle`, `source`, `projectionState`,
+`publicationState`, `mayEdit`, `projects`, `requirements` and selectable `dependencies`.
+Each requirement's `version`, `versionId`, `contentHash` and text describe that
+selected model stand; a historical row does not overwrite the current portfolio
+requirement header. `realization`, `contributors` and `links` retain review and
+contribution provenance. Historical portable sources need not have current database IDs.
+
+### Independent architecture creation and exact recovery
+
+Creation takes `{displayName, slug, description}`: a nonblank name of at most 255
+characters, a stable slug matching `[a-z0-9][a-z0-9-]{0,99}` and an optional description
+of at most 1,000 characters. A new creation returns 201; exact recovery returns 200.
+Keep the same slug, name and description after an interrupted response. Recovery
+only matches the same caller's original private creation identity. A matching
+`ACTIVE` entry is reused; a matching `FAILED` entry can resume provisioning under
+the same repository ID. A `PROVISIONING` entry returns 409: observe/reload its status
+before retrying. A different owner, identity or creation payload conflicts rather
+than exposing or taking over another creation.
+
+The architecture response includes `repositoryId`, `displayName`, `slug`,
+`defaultBranch`, `owned`, `description` and `lifecycleState`. The list includes the
+caller's own `FAILED`/`PROVISIONING` creations so a lost response does not require
+inventing a new identity. Recovery verifies and retains an already-written initial
+Git commit; it does not delete or reinitialize logical Git storage. Different retained
+Git content returns 409 for explicit review. Recover an existing private working
+copy through the workspace-list route before creating another one. Its entries
+identify `workspaceId`, `sourceRepositoryId`, `sourceBranch`, `currentBranch`,
+`displayName` and `provisioningStatus`.
+
+### Exact context, input and publication
+
+Mutating lifecycle commands and realization previews require
+`If-Match: "workspace-revision-N"` matching the body `context.revision`; do not send
+`If-None-Match`. Missing preconditions return 428, malformed preconditions 400 and
+a moved semantic revision 412. Context/version conflicts require a fresh comparison.
+The context contains `repositoryId`, `workspaceScopeKey`, `branch`, `commit`,
+`revision`, `actor` and `writeMode`. Reads return an ETag, semantic revision and
+no-store caching policy; the overview also identifies its source in `X-Taxonomy-Source`.
+
+`metadata` contains stable UUID `commandId`, `correlationId`, `causationId` and a
+rationale. Retain the exact request and command identity for a transport retry.
+Reusing a command identity with changed intent is rejected. A successful retry
+does not create another requirement version or repeat an accepted contribution.
+
+The requirement command contains `context`, `metadata`, `choice`, `projectId`,
+`newProject`, `contributorProjectId`, `requirementId`, `requirement`,
+`expectedVersionId`, `expectedContentHash` and `inputHash`. `inputHash` is SHA-256
+of the exact UTF-8 requirement text, without trimming or normalization.
+
+| Choice | Required intent |
+|---|---|
+| `NEW` | Exactly one existing `projectId` or `newProject`, requirement creation fields and no existing `requirementId`. |
+| `CHANGE` | Existing project/requirement and exact current version ID/hash; creates a new immutable version under the original identity. |
+| `LINK` | Existing project/requirement and exact current version ID/hash; records the contribution without replacing stored text. |
+
+For `CHANGE`/`LINK`, `contributorProjectId` or a `newProject` can identify a follow-up
+project. The original project-qualified requirement remains the target. Candidate
+suggestions do not authorize cross-workspace writes. A changed current requirement
+version returns `REQUIREMENT_VERSION_CHANGED` instead of silently choosing the latest.
+
+The analysis action for saving a new requirement version additionally requires the
+loaded source context's `requirementVersionId` to match the current version. Missing
+or stale source IDs stop the action with an explicit notice before submission.
+The resulting command still binds `expectedVersionId` and `expectedContentHash`
+for server-side validation. Text typed during submission remains a separate draft;
+the saved result can be opened in another tab without discarding it. See the
+[analysis promotion workflow](USER_GUIDE.md#analysis-requirement-promotion).
+
+Realization requests contain `projectId`, `requirementId`, `expectedVersionId`,
+`expectedContentHash`, `contributorProjectId`, `status` (`OPEN`, `PARTIAL`, `COMPLETE`)
+and `dependencyIds`, alongside context and metadata. Acceptance also supplies the
+preview's `fingerprint` as `previewFingerprint`. Evidence uses existing elements,
+relations or mappings; relation endpoints and mapping targets are included in the
+assessment. Partial/complete reviews require evidence and the dependency set is
+bounded. Text or dependency changes yield `REVIEW_REQUIRED`; invalid evidence yields
+`INVALID_EVIDENCE`. The earlier reviewed version remains available. AI relevance
+scores do not determine these states.
+
+Requirement responses contain `projectId`, `requirementId`, `requirement` and
+`publication`; realization acceptance returns the publication directly. Inspect
+`publication.state`: only `CHECKPOINTED` establishes a completed checkpoint.
+`CHECKPOINT_PENDING` and `RECONCILIATION_REQUIRED` retain an accepted contribution
+without proving completed Git publication. The publication contains `context`,
+`checkpoint`, `code` and `detail`. The editor's `document.pendingCheckpointId`
+identifies a prepared write for the existing resume route. Ordinary project CRUD
+routes below remain draft operations without this lifecycle checkpoint guarantee.
+
+### Intake coverage and provider outcomes
+
+The read-only intake request requires `text`; `projectId`, `title` and
+`analysisLanguage` are optional. Its response contains `status`, `code`, `inputHash`, `scope`,
+`provider`, `coverage`, `candidates` and `manualReviewRequired`. Coverage reports
+`scanned`, `admitted` and `truncated`; project, requirement, repository, document and
+evidence-size limits bound discovery. Another user's private workspace is not a
+candidate source. Candidate actions reflect their actual authorized scope.
+
+`scope` identifies `repositoryId`, `workspaceId`, `workspaceScopeKey` and `branch`.
+Candidate kinds are `REQUIREMENT`, `PROJECT`, `ARCHITECTURE` and
+`ARCHITECTURE_REQUIREMENT`; requirement candidates retain source IDs, text version
+and content hash. The provider compares bounded authorized text candidates directly.
+The taxonomy semantic index is not a requirement-vector index.
+
+`status` is `COMPLETE`, `PARTIAL`, `UNAVAILABLE` or `FAILED`. Candidate classification
+is `DUPLICATE`, `CHANGE`, `ADDITION`, `CONFLICT` or `NONE`, with rationale and source
+quotes when assessed. A complete assessment only covers admitted candidates;
+unassessed candidates retain a null classification.
+`NONE`, truncation or an empty result is not a global novelty guarantee. Exact
+stored-text equality can be recognized deterministically even without provider
+success. Missing configuration, project provider policy, local/mock/replay providers,
+timeout and rate limits are distinct from valid negative findings. Invalid or
+incomplete model output is a failed review, not an empty successful one. Manual
+review and explicit saving remain separate from model availability.
+
+### Native Git history and continuation
+
+History accepts context assertions plus paired `projectKey`/`requirementKey`,
+optional `text`, `expectedHead`, `offset` (default 0), `limit` (default 25, maximum
+100) and `scanLimit` (default 100, maximum 500). A positive offset requires the
+captured `expectedHead`. Both query keys must be supplied together. The search uses
+native JGit over the existing `jgit-storage-hibernate` repository, not a shell Git
+command or a parallel audit store. Only ancestry reachable from the selected branch
+HEAD is searched. Changes compare each commit with its first parent while entries
+retain all actual parents; merge topology is not flattened into fabricated history.
+
+The page contains `head`, `entries`, `offset`, `nextOffset`, `scanned`, `coverage`
+and `source=LIVE_GIT`. Entries contain `commitId`, `parents`, `author`, `timestamp`,
+the full `message`, signature evidence and `changes`. Kinds include `ADDED`,
+`REMOVED`, `REQUIREMENT_CHANGED`, `REQUIREMENT_METADATA_CHANGED`, `DEPENDENCIES_CHANGED`,
+`REALIZATION_CHANGED`, `MERGE` and `GIT_CHANGE`. Coverage is `COMPLETE`, `PARTIAL`
+or `LIMIT_REACHED`. Continue with the returned offset and same HEAD. A changed HEAD
+returns HTTP 409 `HISTORY_HEAD_CHANGED`, with `branch`, `expectedHead` and `currentHead`;
+restart from the first page instead of continuing the old offset. Bounded scans may
+return no matches while more history remains.
+Authorization, storage and source-reading failures must not be presented as empty history.
+
+<a id="editor-version-reconciliation-api"></a>
+### Reconcile local contributions with a changed Git HEAD
+
+| Method | Route | Contract |
+|---|---|---|
+| POST | `/api/architecture/editor/versions/reconciliation/preview` | Compare base, accepted local and incoming Git sources without writing. |
+| POST | `/api/architecture/editor/versions/reconciliation/accept` | Accept the exact resolved preview and complete its checkpoint. |
+| POST | `/api/architecture/editor/checkpoints/resume` | Finish a prepared checkpoint after an interrupted Git write. |
+
+Both reconciliation routes require the exact revision `If-Match`. Their request is
+`{context, metadata, resolutions, headCommit, previewFingerprint}`. `resolutions`
+maps returned conflict IDs to `LOCAL` or `INCOMING`. Each selects a whole source
+block; the reserved `$document` conflict selects document metadata outside blocks.
+Preview returns `context`, `headCommit`, `fingerprint`, `baseDsl`, `localDsl`,
+`incomingDsl`, `mergedDsl`, `changes`, `conflicts` and `canAccept`. Each conflict has
+`id`, `reason`, `base`, `local`, `incoming` and `resolution`. Missing choices make
+`canAccept=false`; the combined model must also pass validation. After choosing,
+preview again. Acceptance binds the same choices, metadata, context, captured HEAD
+and `fingerprint` as `previewFingerprint`. Changed inputs require a new preview.
+
+Read-only portfolio-owner validation checks managed canonical title, text, `x-version`
+and `x-content-hash` against the portable business record and current immutable
+version. Existing local `requirementVersion` source cannot be rewritten; changed
+text requires a new version. Invalid combinations are surfaced as source conflicts
+with explicit `LOCAL`/`INCOMING` choices. Retaining the consistent local blocks
+provides the path to create a new version. Git omission cannot delete managed
+business history: choose `LOCAL` and use explicit archival. Incompatible choices
+return HTTP 409 `PORTFOLIO_RECONCILIATION_REQUIRED`.
+
+Compatibility also checks the exact target database's retained immutable versions,
+including versions absent from the local DSL. Conflicting text, hashes or supplied
+source provenance, duplicate version numbers and known content under a different
+version number are rejected rather than rewritten or renumbered. This preflight
+runs before the proposed integration advances target model or tracking references;
+matching portable source blocks alone are not sufficient.
+
+On acceptance, changed managed portfolio blocks are materialized through
+`WorkspacePortfolioGitPort` inside the journal transaction, before checkpoint intent
+and Git publication. Portfolio validation/materialization conflicts roll back that
+acceptance without new database changes, journal operations or Git checkpoints.
+An exact retry uses the retained operation without a second materialization. A later
+Git storage failure still uses pending-checkpoint recovery. Success returns existing
+`CheckpointAccepted` (`context`, `commandId`, `commitId`, `fromRevision`,
+`throughRevision`, `commitCreated`, `replayed`), not a lifecycle publication wrapper.
+Moved HEAD/revision requires a fresh preview; repeating saves does not resolve a
+branch conflict. `/api/architecture/editor/versions/recover` remains for completed
+version writes without newer uncheckpointed local changes. See the
+[editor workflow](ARCHITECTURE_EDITOR.md#editor-version-reconciliation).
+
 ## Projects
 
 ```text

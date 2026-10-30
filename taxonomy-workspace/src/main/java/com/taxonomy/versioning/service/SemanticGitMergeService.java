@@ -32,6 +32,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Executes the normal Git merge first and falls back to a block-semantic DSL
@@ -56,9 +58,20 @@ public class SemanticGitMergeService {
                                       String intoBranch,
                                       String author,
                                       String message) throws IOException {
+        return mergeBranches(repository, fromBranch, intoBranch, author, message, ignored -> { });
+    }
+
+    /** Validate the same candidate that will be signed and published, including ordinary Git merges. */
+    public MergeOutcome mergeBranches(DslGitRepository repository,
+                                      String fromBranch,
+                                      String intoBranch,
+                                      String author,
+                                      String message,
+                                      Consumer<String> validateMergedSource) throws IOException {
+        Objects.requireNonNull(validateMergedSource);
         String requestedMessage = normalizeMessage(message);
         String ordinaryCommit = repository.merge(fromBranch, intoBranch,
-                requestedMessage == null ? null : author, requestedMessage);
+                requestedMessage == null ? null : author, requestedMessage, validateMergedSource);
         if (ordinaryCommit != null) {
             return new MergeOutcome(true, ordinaryCommit, false, List.of(), null);
         }
@@ -73,6 +86,10 @@ public class SemanticGitMergeService {
             return new MergeOutcome(
                     false, null, true, merge.conflictIdentifiers(), merge);
         }
+
+        validateMergedSource.accept(merge.mergedText());
+        repository.verifyExpectedHead(fromBranch, inputs.theirsCommit().name());
+        repository.verifyExpectedHead(intoBranch, inputs.oursCommit().name());
 
         MergeCommitResult committed = createMergeCommit(
                 repository,

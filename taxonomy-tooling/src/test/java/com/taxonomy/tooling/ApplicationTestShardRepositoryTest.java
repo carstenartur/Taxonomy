@@ -16,6 +16,8 @@ class ApplicationTestShardRepositoryTest {
     Element profile(Element project, String id) { return XmlSupport.descendants(project, "profile").stream().filter(element -> id.equals(XmlSupport.childText(element, "id"))).findFirst().orElseThrow(() -> new AssertionError("Missing profile " + id)); }
     @Test void catalogueProfilesAndRealSourceTagsStaySynchronized() throws Exception {
         Map<String, Object> plan = object(read(root.resolve(".mvn/verification-suites.json")).get("applicationTestShards"));
+        assertDoesNotThrow(() -> catalogueAssignments(root.resolve("taxonomy-app/src/test/java"), plan),
+                "Every source shard tag must be registered before expensive application tests start");
         assertEquals("core", plan.get("defaultGroup")); assertFalse(plan.containsKey("allowedRepeatedClasses"));
         assertEquals(List.of(map("className", "com.taxonomy.composition.demo.ProductDemoEndToEndTest", "identities", List.of("product-demo-isolated")), map("className", "com.taxonomy.ArchitectureExceptionLedgerTest", "identities", List.of("default", "module-gate-ci-anchor"))), plan.get("requiredExecutions"));
         Element project = pom("");

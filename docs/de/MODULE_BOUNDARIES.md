@@ -96,6 +96,48 @@ Materialisierung, WebDAV-Projektion/-Sperren sowie Administrations-/Health-Vertr
 Es hängt von keiner anderen Taxonomy-Fachbibliothek ab. Vorlagenspeicher ist nicht
 das semantische Operationsjournal des Editors.
 
+## Zuständigkeiten für den Architektur-Lifecycle
+
+Die fortbestehende Architektur wird durch ihr Repository identifiziert. Projekte
+tragen Anforderungen und geprüfte Umsetzung zu dieser Identität bei. Projektabschluss
+erzeugt weder einen neuen Architektureigentümer noch entfernt er frühere Anforderungen.
+Folgebeiträge erhalten ursprüngliche Anforderungsidentität und exakte geprüfte Version.
+
+| Vertrag oder Einstieg | Zuständigkeit und Lifecycle-Verantwortung |
+|---|---|
+| `RequirementRealization`, `RequirementTrace` | `taxonomy-dsl`: frameworkfreie Versions-/Hashnachweise, Beitragsherkunft und quellenerhaltende Semantik. |
+| `RequirementIntakeService`, `PortablePortfolioGitService` | `taxonomy-portfolio`: begrenzte berechtigte Kandidaten und Providerbewertung, unveränderliche Fachversionen, portable Validierung/Materialisierung und Implementierung des Workspace-Ports. |
+| `ArchitectureEditorService`, `RequirementHistoryService` | `taxonomy-workspace`: exakte Kontexte und semantische Revisionen, Journaltransaktionen, Checkpoint-Absicht/Wiederanlauf, Abgleich und erreichbare Git-Historie über JGit/Hibernate-Speicher. |
+| `ArchitectureLifecycleService`, `ArchitectureRequirementService` | `taxonomy-app`: Lifecycle-Komposition, authentifizierter Kontext und atomare fachübergreifende Befehlskoordination. |
+| Gemeinsame Lifecycle-Navigation | Anwendungsoberfläche: ausdrückliche Intake-/Umsetzungsentscheidungen, Trennung von Quelle und gewähltem Stand sowie kontextsensitive Hilfe. |
+
+`WorkspaceSourceDiscoveryService` besitzt die begrenzte Architekturquellensuche und
+Leseberechtigung für exakte Kontexte. Portfolio-Intake verwendet diese Workspace-API
+statt auf Workspace-Repositories zuzugreifen. Dokumentzugriffe bleiben hinter
+`WorkspacePortfolioDocumentPort`; die Suche selbst materialisiert nichts und ruft
+keine Provider auf. Fachliche Portfolio-Repositories bleiben im Portfolio-Modul.
+
+`WorkspacePortfolioGitPort` hält Portfolio-Validierung/Materialisierung hinter der
+bestehenden Workspace-Grenze. Der Abgleich prüft kanonischen Anforderungstitel/Text/
+Version/Hash gegen portable aktuelle unveränderliche Versionen und verhindert das
+Umschreiben vorhandener Versionsquellen. Geänderte verwaltete Blöcke werden innerhalb
+der Journaltransaktion vor Checkpoint-Absicht/Git materialisiert; Retries verwenden
+den dauerhaften Beleg. Git-Auslassungen löschen keine verwaltete Fachhistorie.
+Es entsteht weder ein paralleler Historienspeicher noch ein neues Fachmodul. Die
+zielkontextgebundene Validierung prüft auch unveränderliche Versionen, die nur in
+der Zieldatenbank erhalten sind. Diese Kompatibilitätsprüfung erfolgt vor dem
+Fortschreiben von Zielmodell- und Tracking-Referenzen. Passende Quellen erlauben
+kein Ersetzen oder Umnummerieren einer gespeicherten Version.
+
+Die Historie verwendet tatsächliche erreichbare JGit-Commits, Elternbeziehungen und
+Signaturbelege über die vorhandene `jgit-storage-hibernate`-Fassade. Begrenzte Abdeckung
+und Speicherfehler bleiben ausdrücklich sichtbar. Das Lifecycle-Lesemodell verwendet
+das gewählte Editordokument; historische Revisionen/Checkpoints überblenden keine
+aktuellen Portfoliozeilen. Die gemeinsame Oberfläche hält aktuelle Anforderungsversion
+getrennt von historischem Modell und Snapshot-Quellversion. Siehe den
+[API-Katalog](PROJECT_PORTFOLIO_API.md#architecture-lifecycle-api) und
+[Benutzerablauf](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle).
+
 ## Bewusst noch nicht extrahierte Kontexte
 
 Provenance/Dokumentimport und Preferences bleiben anwendungslokal. Ihre Zuständigkeiten

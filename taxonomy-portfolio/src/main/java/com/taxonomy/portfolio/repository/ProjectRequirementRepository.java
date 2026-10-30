@@ -57,6 +57,15 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
     List<ProjectRequirementReadRow> findReadRowsByProjectIdAndScopeKey(
             @Param("projectId") Long projectId, @Param("scopeKey") String scopeKey);
 
+    /** Intake bounds its scalar current-version evidence in the database before provider work. */
+    @Query(READ_ROW + """
+             where requirement.scopeKey = :scopeKey
+               and (:projectId is null or requirement.projectId = :projectId)
+             order by requirement.requirementKey asc, requirement.id asc
+            """)
+    Slice<ProjectRequirementReadRow> findIntakeRows(
+            @Param("scopeKey") String scopeKey, @Param("projectId") Long projectId, Pageable pageable);
+
     @Query(READ_ROW + """
              where requirement.projectId = :projectId and requirement.scopeKey = :scopeKey
                and requirement.status = :status

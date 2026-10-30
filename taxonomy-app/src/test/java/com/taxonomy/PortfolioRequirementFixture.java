@@ -23,6 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 final class PortfolioRequirementFixture {
     static final String ROOT = "/api/projects/1";
     static final String REQUIREMENT = ROOT + "/requirements/2";
+    static final String SAVE_REQUIREMENT = "/api/architecture/editor/requirements";
+    static final String INTAKE_REVIEW = "/api/architecture/lifecycle/intake-review";
     static final List<String> VERSION_FIELDS =
             List.of("versionText", "changeReason", "sourceSection", "sourcePage", "sourceOriginal");
     static final List<String> DRAFT =
@@ -48,6 +50,25 @@ final class PortfolioRequirementFixture {
                 Map.of("requirements", List.of(requirement.get()), "solutions", List.of())));
         page.route("GET", "/api/account/me", request -> json(200,
                 Map.of("username", "qa-client", "architectureMutationAllowed", true)));
+        page.route("GET", "/api/architecture/lifecycle", request -> {
+            assertScope(request);
+            return json(200, Map.of("context", lifecycleContext(), "architectureTitle", "Control architecture",
+                    "source", "WORKSPACE_REVISION", "projectionState", "CURRENT", "publicationState", "CURRENT",
+                    "mayEdit", true, "projects", List.of(project()), "requirements", List.of(), "dependencies", List.of()));
+        });
+        page.route("POST", INTAKE_REVIEW, request -> {
+            assertScope(request);
+            var incoming = tools.jackson.databind.json.JsonMapper.builder().build().readTree(request.body()).path("text").asString();
+            @SuppressWarnings("unchecked") var current = (Map<String,Object>) requirement.get().get("currentVersion");
+            var candidate = new com.taxonomy.portfolio.dto.RequirementIntakeDtos.Candidate("requirement:2", "REQUIREMENT",
+                    "control-architecture", "qa-copy", "draft", 1L, "PROJECT", 2L, ((Number)current.get("id")).longValue(),
+                    "REQ-2", "Pump control", (String)current.get("text"), (String)current.get("contentHash"), null, null,
+                    List.of(), List.of("NEW","CHANGE","LINK","VIEW"));
+            return json(200, new com.taxonomy.portfolio.dto.RequirementIntakeDtos.Response(
+                    com.taxonomy.portfolio.dto.RequirementIntakeDtos.Status.UNAVAILABLE, "PROVIDER_NOT_CONFIGURED", hash(incoming),
+                    new com.taxonomy.portfolio.dto.RequirementIntakeDtos.Scope("control-architecture", "qa-copy", "qa-copy", "draft"),
+                    null, new com.taxonomy.portfolio.dto.RequirementIntakeDtos.Coverage(1,1,false), List.of(candidate), true));
+        });
         page.route("POST", REQUIREMENT + "/analyses", request ->
                 json(202, Map.of("id", "qa-refresh")).withHeader("Location", ROOT + "/analysis-jobs/qa-refresh"));
         page.route("GET", ROOT + "/analysis-jobs/qa-refresh", request ->
@@ -60,7 +81,7 @@ final class PortfolioRequirementFixture {
 
     static Map<String, Object> version(int id, int number, String text) {
         return Map.of("id", id, "versionNumber", number, "text", text,
-                "contentHash", "a".repeat(64), "changeReason", number == 1 ? "First" : "Second",
+                "contentHash", hash(text), "changeReason", number == 1 ? "First" : "Second",
                 "createdBy", "qa-client", "createdAt", "2026-10-07T09:00:00Z",
                 "source", Map.of("sourceArtifactId", 91, "sourceVersionId", 92,
                         "sourceFragmentIds", List.of(93), "sectionReference", "Stored section",
@@ -101,7 +122,8 @@ final class PortfolioRequirementFixture {
 
     void open(String locale) {
         page.open("requirement-detail", "", "/projects/1/requirements/2", locale,
-                "localStorage.clear();sessionStorage.clear();");
+                "localStorage.clear();sessionStorage.clear();history.replaceState(null,'',location.pathname"
+                        + "+'?lang=" + locale + "&repositoryId=control-architecture&workspaceId=qa-copy&branch=draft');");
         wait.until(ExpectedConditions.textToBe(By.id("requirementHeading"), "Pump control"));
         idle();
         wait.until(driver -> !driver.findElements(By.id("reformulationSnapshot")).isEmpty());
@@ -175,7 +197,27 @@ final class PortfolioRequirementFixture {
     void assertDraft() { assertThat(versionValues()).containsExactlyElementsOf(DRAFT); }
 
     void submitVersion() {
-        click(By.cssSelector("#newVersionForm button[type='submit']"));
+        By choice = By.cssSelector("#newVersionForm [data-intake-choice='CHANGE']");
+        boolean alreadyVisible = page.driver().findElements(choice).stream().anyMatch(WebElement::isDisplayed);
+        if (!alreadyVisible) click(By.cssSelector("#newVersionForm button[type='submit']"));
+        click(choice);
+        if (alreadyVisible) click(By.cssSelector("#newVersionForm button[type='submit']"));
+    }
+
+    static Map<String,Object> lifecycleContext() {
+        return Map.of("repositoryId","control-architecture","workspaceScopeKey","qa-copy","branch","draft",
+                "actor","qa-client","writeMode","PRIVATE_WORKSPACE","commit","c".repeat(40),"revision",2);
+    }
+
+    Map<String,Object> saved() {
+        return Map.of("projectId",1,"requirementId",2,"requirement",requirement.get(),
+                "publication",Map.of("context",lifecycleContext(),"state","CURRENT"));
+    }
+
+    static String hash(String text) { return com.taxonomy.identity.StableIdentityHash.sha256(text); }
+
+    private static void assertScope(PortfolioClientTestPage.Request request) {
+        assertThat(request.query()).contains("repositoryId=control-architecture", "workspaceId=qa-copy", "branch=draft");
     }
 
     void closeVersionModal() {

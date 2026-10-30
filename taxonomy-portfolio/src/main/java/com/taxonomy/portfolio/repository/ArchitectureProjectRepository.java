@@ -14,6 +14,9 @@ public interface ArchitectureProjectRepository extends JpaRepository<Architectur
 
     List<ArchitectureProject> findByScopeKeyOrderByUpdatedAtDesc(String scopeKey);
 
+    org.springframework.data.domain.Slice<ArchitectureProject> findByScopeKeyOrderByUpdatedAtDesc(
+            String scopeKey, org.springframework.data.domain.Pageable pageable);
+
     Optional<ArchitectureProject> findByIdAndScopeKey(Long id, String scopeKey);
 
     @Lock(LockModeType.PESSIMISTIC_FORCE_INCREMENT)

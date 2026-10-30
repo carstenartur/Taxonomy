@@ -6,6 +6,52 @@ Several people can model requirements, solution decisions and product evaluation
 
 The workflow uses the existing workspace and branch model together with the Git-backed portfolio contract introduced by ADR 0002.
 
+## Architecture lifetime, contributions and history
+
+The repository identifies the continuing architecture, not one project's lifetime.
+Completing a project does not close or replace the architecture. A follow-up project
+can change or reuse an original requirement while retaining its project-qualified
+identity and recording the later project as a contributor. `NEW`, `CHANGE` and
+`LINK` are explicit [intake decisions](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake).
+
+Current text, immutable analysis snapshots and reviewed realization are different
+records. A realization review binds one exact text version/hash to architecture
+dependency hashes, contributor, actor and rationale. Later text or dependency
+changes require renewed review; the prior assessment remains traceable. An older
+Git checkpoint or semantic revision is read-only and uses its own source without
+today's portfolio overlay. It can show version 1 while the current requirement
+header shows version 2.
+
+The [requirement history](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-history)
+searches reachable Git ancestry through native JGit and `jgit-storage-hibernate`.
+It does not require product-side shell Git commands or a second audit database.
+The response identifies the captured HEAD, actual parents, sources, signature
+evidence and bounded coverage. Continue using the same HEAD; restart when it moves.
+An empty limited page or unavailable storage is not proof of absent history.
+
+Accepted lifecycle changes prepare a checkpoint in the same transaction as their
+business contribution and editor journal. Git publication follows that transaction.
+`CHECKPOINT_PENDING` retains the intent exposed by `pendingCheckpointId`; an exact
+retry or the existing resume operation completes it without repeating the business
+change. A changed Git HEAD can require explicit
+[version reconciliation](ARCHITECTURE_EDITOR.md#editor-version-reconciliation).
+Inspect base/local/incoming source, choose every conflict and preview the result
+again before accepting. Repeated saves alone do not resolve conflicts.
+
+Reconciliation preserves immutable requirement versions and validates canonical
+title/text/version/hash against the portable current version. Changed managed
+portfolio blocks materialize atomically with the editor journal before Git
+publication; exact retries do not materialize twice. Unsupported omission of
+business blocks requires retaining `LOCAL` and explicit archival. Conflicting
+portfolio choices roll back acceptance; later Git storage interruption remains a
+pending-checkpoint recovery case. See the [API contract](PROJECT_PORTFOLIO_API.md#editor-version-reconciliation-api).
+
+Integration also checks immutable requirement versions already retained in the
+exact target database, even when the local DSL no longer contains those versions.
+Conflicting text, hashes or supplied provenance cannot overwrite an existing version;
+known content cannot silently acquire another version number. This preflight occurs
+before the proposed integration advances target model or tracking references.
+
 ## Recommended workflow
 
 ```text

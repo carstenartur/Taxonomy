@@ -45,7 +45,7 @@ class WorkspaceInitialSyncBaseTest {
             metadata.setRepositoryId("fork-source");
             metadata.setDefaultBranch("draft");
             metadata.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
-            var catalog = mock(SystemRepositoryService.class);
+            var catalog = NativeSyncTestCatalog.create();
             when(catalog.getPrimaryRepository()).thenReturn(metadata);
             when(catalog.getRepository("fork-source")).thenReturn(metadata);
             var workspace = new UserWorkspace();

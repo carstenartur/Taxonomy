@@ -84,6 +84,30 @@ window.TaxonomyUtils = (function () {
         document.head.appendChild(link);
     }
 
+    var pendingModalCloses = new WeakMap();
+
+    /** Bootstrap ignores hide() while opening; finish this close intent at its public shown event. */
+    function hideModal(element) {
+        if (!element || !window.bootstrap?.Modal || !element.classList.contains('show')) return;
+        if (pendingModalCloses.has(element)) return;
+        var modal = window.bootstrap.Modal.getOrCreateInstance(element);
+        function cleanup() {
+            element.removeEventListener('shown.bs.modal', afterOpening);
+            element.removeEventListener('hide.bs.modal', cleanup);
+            element.removeEventListener('hidden.bs.modal', cleanup);
+            pendingModalCloses.delete(element);
+        }
+        function afterOpening() {
+            cleanup();
+            if (window.bootstrap.Modal.getInstance(element) === modal && element.classList.contains('show')) modal.hide();
+        }
+        pendingModalCloses.set(element, cleanup);
+        element.addEventListener('shown.bs.modal', afterOpening);
+        element.addEventListener('hide.bs.modal', cleanup);
+        element.addEventListener('hidden.bs.modal', cleanup);
+        modal.hide();
+    }
+
     document.addEventListener('shown.bs.modal', function (event) {
         event.target.setAttribute('data-modal-visible', 'true');
     }, true);
@@ -555,6 +579,7 @@ window.TaxonomyUtils = (function () {
         isTaxonomyContainer: isTaxonomyContainer,
         contentRoots: contentRoots,
         copyText: copyText,
+        hideModal: hideModal,
         showMessage: showMessage,
         requestScore: requestScore,
         syncTreeItemAccessibility: syncTreeItemAccessibility,

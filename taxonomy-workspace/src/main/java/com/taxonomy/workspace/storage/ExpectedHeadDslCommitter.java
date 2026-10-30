@@ -51,6 +51,7 @@ public final class ExpectedHeadDslCommitter {
             if (!ObjectId.zeroId().equals(expectedHead)) {
                 commit.setParentId(expectedHead);
             }
+            for (String parent : request.additionalParents()) commit.addParentId(ObjectId.fromString(parent));
 
             dslRepository.signCommit(commit, request.branch());
             ObjectId commitId = inserter.insert(commit);
@@ -198,7 +199,12 @@ public final class ExpectedHeadDslCommitter {
             String dslText,
             String author,
             String message,
-            CommitProvenance provenance) {
+            CommitProvenance provenance,
+            java.util.List<String> additionalParents) {
+
+        public CommitRequest(String branch, String expectedHeadCommit, String dslText, String author, String message, CommitProvenance provenance) {
+            this(branch, expectedHeadCommit, dslText, author, message, provenance, java.util.List.of());
+        }
 
         public CommitRequest(String branch, String expectedHeadCommit, String dslText, String author, String message) {
             this(branch, expectedHeadCommit, dslText, author, message, null);
@@ -218,6 +224,12 @@ public final class ExpectedHeadDslCommitter {
             message = message == null || message.isBlank()
                     ? "DSL update"
                     : message.strip();
+            additionalParents = java.util.List.copyOf(additionalParents);
+            if (additionalParents.size() > 1) throw new IllegalArgumentException("Only one exact incoming history is supported");
+            for (String parent : additionalParents) {
+                ObjectId.fromString(parent);
+                if (parent.equals(expectedHeadCommit)) throw new IllegalArgumentException("Duplicate merge parent");
+            }
         }
 
         ObjectId expectedHeadObjectId() {

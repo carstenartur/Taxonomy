@@ -125,7 +125,12 @@ async function editorFixture(conflictAt) {
             return {context:structuredClone(context),projectionState:'READY'};
         }
     };
-    const document = {getElementById:id => {
+    const documentEvents = new Map();
+    const document = {
+        addEventListener(type, callback) { if (!documentEvents.has(type)) documentEvents.set(type, new Set()); documentEvents.get(type).add(callback); },
+        removeEventListener(type, callback) { documentEvents.get(type)?.delete(callback); },
+        dispatchEvent(event) { for (const callback of documentEvents.get(event.type) || []) callback(event); return true; },
+        getElementById:id => {
         assert.ok(ids[id], `Production template is missing ${id}`);
         return ids[id];
     }, createElement:tag => new Element(tag), querySelectorAll:() => [], documentElement:{lang:'en'}, activeElement:null};

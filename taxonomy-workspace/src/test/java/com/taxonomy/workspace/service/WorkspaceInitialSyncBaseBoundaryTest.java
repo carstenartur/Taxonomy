@@ -10,6 +10,7 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.mockito.MockedStatic;
@@ -25,10 +26,12 @@ import static org.mockito.Mockito.*;
 
 class WorkspaceInitialSyncBaseBoundaryTest {
     private MockedStatic<CommitProvenance> provenanceCapture;
+    private MockedStatic<GitHistoryTransfer> historyTransfer;
     @BeforeEach void mockObjectEvidenceForMetadataOnlyFixtures() {
         provenanceCapture = mockStatic(CommitProvenance.class);
+        historyTransfer = mockStatic(GitHistoryTransfer.class);
     }
-    @AfterEach void closeProvenanceCapture() { provenanceCapture.close(); }
+    @AfterEach void closeProvenanceCapture() { provenanceCapture.close(); historyTransfer.close(); }
 
     enum BaseState { MISSING_SNAPSHOT, BLANK_SNAPSHOT, EXISTING_TRACKING }
     private static final String CAPTURED = "1".repeat(40);
@@ -71,7 +74,7 @@ class WorkspaceInitialSyncBaseBoundaryTest {
         sourceMetadata.setDefaultBranch("draft");
         var rows = mock(UserWorkspaceRepository.class);
         when(rows.findByWorkspaceId("workspace-id")).thenReturn(Optional.of(workspace));
-        var catalog = mock(SystemRepositoryService.class);
+        var catalog = NativeSyncTestCatalog.create();
         when(catalog.getRepository("source-id")).thenReturn(sourceMetadata);
         var syncRows = mock(SyncStateRepository.class);
         when(syncRows.findByUsername("base-owner")).thenReturn(Optional.of(new SyncState()));

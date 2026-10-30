@@ -74,6 +74,8 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         new Select(modal.findElement(By.id("requirementType"))).selectByValue("FUNCTIONAL");
         fill(modal, "requirementText", fixture.at("/requirement/text").asText());
         modal.findElement(By.cssSelector("button[type='submit']")).click();
+        wait.until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#requirementModal [data-intake-choice='NEW']"))).click();
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("requirementModal")));
         var row = wait.until(browser -> browser.findElements(By.cssSelector("#requirementsTable tbody tr")).stream()
                 .filter(element -> element.getText().contains("FLOOD-001")).findFirst().orElse(null));
@@ -344,24 +346,22 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
             assertThat(value).as("Native fixture editor context %s", key).isNotBlank();
             editorScope.add(key + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8));
         }
-        String expectedContext = editorContext.path("repositoryId").asText() + " / "
-                + editorContext.path("workspaceScopeKey").asText() + " / " + editorContext.path("branch").asText() + " · ";
         String packageId = context.path("packageId").asText();
         assertThat(packageId).as("Native fixture package identity").isNotBlank();
         ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Emulation.clearDeviceMetricsOverride", Map.of());
         driver.get(origin + "/architecture/editor" + editorScope + "&lang=en");
-        selectNativePackage(expectedContext, packageId);
+        selectNativePackage(editorContext, packageId);
         var title = driver.findElement(By.id("editorPackageTitle")); title.clear(); title.sendKeys("Browser reviewed package");
         var rationale = driver.findElement(By.id("editorRationale")); rationale.clear(); rationale.sendKeys("Review native package through keyboard-accessible controls");
         click(By.id("editorSavePackage"));
         wait.until(ExpectedConditions.elementToBeClickable(By.id("editorAccept"))).click();
         wait.until(browser -> browser.findElement(By.id("editorPackages")).getText().contains("Browser reviewed package"));
-        selectNativePackage(expectedContext, packageId);
+        selectNativePackage(editorContext, packageId);
         assertThat(driver.findElement(By.id("editorPackageTitle")).getDomProperty("value")).isEqualTo("Browser reviewed package");
         showNativePackagePanel();
         inventory("native-package-en"); screenshot("78-native-package-en.png");
         driver.get(origin + "/architecture/editor" + editorScope + "&lang=de");
-        selectNativePackage(expectedContext, packageId);
+        selectNativePackage(editorContext, packageId);
         wait.until(browser -> browser.findElement(By.id("editorPackagesHeading")).getText().equals("Pakete"));
         assertThat(driver.findElement(By.id("editorPackageFields")).isEnabled()).isTrue();
         assertThat(driver.findElement(By.id("editorPackageTitle")).getDomProperty("value")).isEqualTo("Browser reviewed package");
@@ -466,10 +466,30 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         assertThat((Boolean) driver.executeScript("return ['editorPackageTitle','editorSavePackage','editorDeletePackage','editorMovePackage','editorPlaceElement','editorDetachElement'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});")).as("Saved package controls are inside the actual screenshot viewport").isTrue();
     }
 
-    private void selectNativePackage(String expectedContext, String packageId) {
+    private void selectNativePackage(JsonNode expectedContext, String packageId) {
         wait.until(ExpectedConditions.attributeToBe(By.id("architectureEditor"), "aria-busy", "false"));
         assertThat(driver.findElement(By.id("editorError")).isDisplayed()).as("Native editor loaded without errors").isFalse();
-        assertThat(driver.findElement(By.id("editorContext")).getText()).as("Exact native workspace").startsWith(expectedContext);
+        var context = driver.findElement(By.id("applicationContextDisclosure"));
+        if (!"true".equals(context.getDomProperty("open"))) {
+            context.findElement(By.tagName("summary")).sendKeys(Keys.ENTER);
+        }
+        var technical = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("applicationTechnicalContext")));
+        boolean wasOpen = "true".equals(technical.getDomProperty("open"));
+        if (!wasOpen) technical.findElement(By.tagName("summary")).sendKeys(Keys.ENTER);
+        for (var field : Map.of("app.entity.architecture", "repositoryId",
+                "app.context.workspace", "workspaceScopeKey", "app.context.branch", "branch").entrySet()) {
+            String label = (String) driver.executeScript("""
+                    return TaxonomyI18n.t('app.context.current') + ' · ' + TaxonomyI18n.t(arguments[0])
+                        + (arguments[0] === 'app.entity.architecture' ? ' ID' : '');
+                    """, field.getKey());
+            var rows = technical.findElements(By.cssSelector("#applicationTechnicalDetails > dt")).stream()
+                    .filter(term -> term.getText().equals(label)).toList();
+            assertThat(rows).as("Visible current native workspace field %s", label).hasSize(1);
+            assertThat(rows.getFirst().findElement(By.xpath("following-sibling::*[1][self::dd]")).getText())
+                    .as("Exact native workspace field %s", field.getValue())
+                    .isEqualTo(expectedContext.path(field.getValue()).asText());
+        }
+        if (!wasOpen) technical.findElement(By.tagName("summary")).sendKeys(Keys.ENTER);
         var selector = wait.withMessage("Expected native package " + packageId + " in " + expectedContext).until(browser -> {
             var element = browser.findElement(By.id("editorPackage"));
             var options = new Select(element);

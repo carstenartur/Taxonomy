@@ -93,6 +93,46 @@ Owns the separate template Git repository, OOXML safety/validation, materializat
 WebDAV projection/locking, and administration/health contracts. It does not depend on
 another Taxonomy feature library. Template storage is not the editor's semantic journal.
 
+## Architecture lifecycle ownership
+
+The continuing architecture is identified by its repository. Projects contribute
+requirements and reviewed realization to that identity; project completion does
+not create a new architecture owner or remove earlier requirements. Follow-up
+contributions retain the original requirement identity and exact reviewed version.
+
+| Contract or entry point | Owner and lifecycle responsibility |
+|---|---|
+| `RequirementRealization`, `RequirementTrace` | `taxonomy-dsl`: framework-free version/hash evidence, contribution provenance and source-preserving semantics. |
+| `RequirementIntakeService`, `PortablePortfolioGitService` | `taxonomy-portfolio`: bounded authorized candidates and provider assessment, immutable business versions, portable validation/materialization and the workspace-port implementation. |
+| `ArchitectureEditorService`, `RequirementHistoryService` | `taxonomy-workspace`: exact contexts and semantic revisions, journal transactions, checkpoint intent/recovery, reconciliation and reachable Git history through JGit/Hibernate storage. |
+| `ArchitectureLifecycleService`, `ArchitectureRequirementService` | `taxonomy-app`: lifecycle composition, authenticated context and atomic cross-feature command orchestration. |
+| Shared lifecycle navigation | Application UI: explicit intake and realization decisions, source/selected-stand distinction and contextual help. |
+
+`WorkspaceSourceDiscoveryService` owns bounded architecture-source discovery and
+exact-context read authority. Portfolio intake consumes that workspace-owned API
+instead of accessing workspace repositories. Document reads remain behind
+`WorkspacePortfolioDocumentPort`; discovery itself performs neither materialization
+nor provider calls. Portfolio business repositories remain portfolio-owned.
+
+`WorkspacePortfolioGitPort` keeps portfolio validation/materialization behind the
+existing workspace boundary. Reconciliation validates canonical requirement
+title/text/version/hash against portable immutable current versions and prevents
+rewriting existing version source. Changed managed blocks materialize inside the
+journal transaction before checkpoint intent/Git; retries reuse the durable receipt.
+Git omission cannot delete managed business history. This adds neither a parallel
+history store nor a new feature module. The target-aware validation overload also
+checks immutable versions retained only in the target database. This compatibility
+preflight precedes advancing target model and tracking references; source agreement
+does not authorize replacing or renumbering a stored version.
+
+History uses actual reachable JGit commits, parentage and signature evidence through
+the existing `jgit-storage-hibernate` facade. Bounded coverage and storage failure
+remain explicit. The lifecycle read model uses the selected editor document;
+historical revisions/checkpoints do not overlay current portfolio rows. The common
+UI retains the current requirement version separately from historical model and
+snapshot source versions. See the [API catalog](PROJECT_PORTFOLIO_API.md#architecture-lifecycle-api)
+and [user lifecycle](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle).
+
 ## Residual contexts that are deliberately not modules yet
 
 Provenance/document ingestion and preferences remain application-local. Their

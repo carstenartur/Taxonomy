@@ -92,6 +92,14 @@ class OptionalFeaturePackagedIT {
             assertThat(workspace.statusCode()).as(workspace.body() + "\n" + Files.readString(app.log())).isEqualTo(200);
             String workspaceId = new tools.jackson.databind.json.JsonMapper().readTree(workspace.body()).path("workspaceId").asText();
             assertThat(workspaceId).isNotBlank();
+            // Exercise the app-owned advice as well as the conditional route with physically absent feature JARs.
+            var history = app.request("GET", "/api/architecture/lifecycle/history?limit=0", null,
+                    Map.of("X-Taxonomy-Workspace-Id", workspaceId));
+            assertThat(history.statusCode()).as(history.body()).isEqualTo(selected.contains("portfolio") ? 400 : 404);
+            if (selected.contains("portfolio")) {
+                assertThat(new tools.jackson.databind.json.JsonMapper().readTree(history.body()).path("code").asText())
+                        .isEqualTo("INVALID_COMMAND");
+            }
             var profiles = app.request("GET", "/api/integrations/profiles", null, Map.of("X-Taxonomy-Workspace-Id", workspaceId));
             assertThat(profiles.statusCode()).as(profiles.body()).isEqualTo(selected.contains("interop") ? 200 : 404);
             if (selected.contains("templates")) {

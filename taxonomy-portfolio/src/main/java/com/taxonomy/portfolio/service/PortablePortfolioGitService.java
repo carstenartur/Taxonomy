@@ -3,6 +3,8 @@ package com.taxonomy.portfolio.service;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.requirements.RequirementRealization;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort;
@@ -91,7 +93,8 @@ public class PortablePortfolioGitService extends PortfolioGitService {
         String requirements = addPortableCurrentVersion(
                 super.contributeTo(existingDsl, username, context), username, context);
         String decisions = decisionContributor.contributeTo(requirements, username, context);
-        return reformulationEvidence.contributeTo(decisions, PortfolioScope.key(username, context));
+        String projection = reformulationEvidence.contributeTo(decisions, PortfolioScope.key(username, context));
+        return ArchitectureSemanticPatch.applyProjection(existingDsl, projection);
     }
 
     @Override
@@ -99,6 +102,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     public MaterializeResult materialize(String dsl,
                                          String username,
                                          WorkspaceContext context) {
+        validatePortfolio(null, dsl);
         var portableEvidence = reformulationEvidence.validateForMaterialization(dsl);
         MaterializeResult result = super.materialize(dsl, username, context);
         restorePortableCurrentVersions(dsl, username, context);
@@ -112,6 +116,55 @@ public class PortablePortfolioGitService extends PortfolioGitService {
                 result.requirementsCreated(),
                 result.versionsCreated(),
                 List.copyOf(warnings));
+    }
+
+    /** Read-only source checks used by reconciliation previews and the actual materialization boundary. */
+    public void validatePortfolio(String localDsl, String candidateDsl) {
+        DocumentAst source = parser.parse(candidateDsl, "portfolio-reconciliation.taxdsl");
+        validateNormalizedIdentities(source);
+        if (localDsl != null) for (var change : ArchitectureSemanticPatch.between(localDsl, candidateDsl)) {
+            if (change.before() != null && change.after() != null && change.id().startsWith(VERSION_BLOCK + ":")) {
+                BlockAst version = ArchitectureSemanticPatch.index(change.before()).values().iterator().next();
+                String number = version.getHeaderTokens().getLast();
+                throw PortfolioException.conflict("Immutable requirement version " + number
+                        + " has different source content; keep its local source and create a new requirement version for a changed decision");
+            }
+        }
+        Map<String, BlockAst> requirements = new HashMap<>(), versions = new HashMap<>();
+        for (BlockAst block : source.getBlocks()) {
+            List<String> header = block.getHeaderTokens();
+            if (REQUIREMENT_BLOCK.equals(block.getKind()) && header.size() == 2)
+                requirements.put(normalizedRequirementIdentity(header.get(0), header.get(1)), block);
+            else if (VERSION_BLOCK.equals(block.getKind()) && header.size() == 3) {
+                String text = block.property("text"), hash = block.property("contentHash");
+                if (text == null || hash != null && !hash.equals(RequirementRealization.textHash(text)))
+                    throw PortfolioException.conflict("Immutable requirement version " + String.join(" ", header)
+                            + " does not match its SHA-256 content hash");
+                versions.put(normalizedRequirementIdentity(header.get(0), header.get(1)) + '\u0000' + versionNumber(block), block);
+            }
+        }
+        for (BlockAst canonical : source.blocksOfKind("requirement")) {
+            if (!"true".equalsIgnoreCase(canonical.property(MANAGED_PROPERTY))) continue;
+            String project = canonical.property("x-project-key"), requirement = canonical.property("x-requirement-key");
+            String identity = project == null || requirement == null ? null : normalizedRequirementIdentity(project, requirement);
+            BlockAst business = requirements.get(identity);
+            Integer current = business == null ? null : parseVersionNumber(business.property(CURRENT_VERSION_NUMBER));
+            BlockAst version = current == null ? null : versions.get(identity + '\u0000' + current);
+            if (business == null || version == null || !Objects.equals(current, parseVersionNumber(canonical.property("x-version")))
+                    || !Objects.equals(canonical.property("title"), business.property("title"))
+                    || !Objects.equals(canonical.property("text"), version.property("text"))
+                    || !Objects.equals(canonical.property("x-content-hash"), version.property("contentHash")))
+                throw PortfolioException.conflict("Canonical requirement " + String.join(" ", canonical.getHeaderTokens())
+                        + " contradicts its portable current immutable version; choose matching requirement and version source blocks");
+        }
+    }
+
+    /** Source agreement alone cannot detect versions retained only in the target database. */
+    @Transactional
+    public void validatePortfolio(String localDsl, String candidateDsl, String username, WorkspaceContext context) {
+        validatePortfolio(localDsl, candidateDsl);
+        validateMaterialization(candidateDsl, username, context);
+        reformulationEvidence.validateForMaterialization(candidateDsl);
     }
 
     private String addPortableCurrentVersion(String dsl,

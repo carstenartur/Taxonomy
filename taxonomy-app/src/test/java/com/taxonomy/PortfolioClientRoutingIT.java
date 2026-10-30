@@ -239,7 +239,7 @@ class PortfolioClientRoutingIT {
         By workbenchLink = By.cssSelector("#snapshotResultOverview a[href*='/architecture/workbench']");
         wait.until(ignored -> !driver.findElements(workbenchLink).isEmpty() && hidden("detailBusy"));
         click(By.id("analyses-tab"));
-        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
+        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId + workspaceScopeAssertion(workspaceId);
         for (String snapshotId : List.of("snapshot-current", "snapshot-previous")) {
             if (snapshotId.equals("snapshot-previous")) {
                 click(By.cssSelector("#snapshotList [data-snapshot-id='snapshot-previous']"));
@@ -349,7 +349,7 @@ class PortfolioClientRoutingIT {
     void importCompletionStoresAUsableAnalysisJobAndReturnsToContext(String prefix, String workspaceId) {
         installRoutes(prefix);
         prepareImport(prefix, "/api/projects/42/analysis-jobs/job-7", workspaceId);
-        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId;
+        String workspaceQuery = workspaceId == null ? null : "workspaceId=" + workspaceId + workspaceScopeAssertion(workspaceId);
         String portfolioReturn = prefix + "/projects?projectId=42&lang=de"
                 + (workspaceQuery == null ? "" : "&" + workspaceQuery);
         assertThat(href("portfolioBack")).isEqualTo(portfolioReturn);
@@ -378,6 +378,43 @@ class PortfolioClientRoutingIT {
         wait.until(ignored -> readJobs().get(0).path("job").path("status").asText().equals("SUCCESS"));
         assertThat(requests("GET", prefix + "/api/projects/42/analysis-jobs/job-7")).hasSize(1);
         assertSameOriginCredentials(page.origin() + prefix + "/api/projects/42/analysis-jobs/job-7");
+    }
+
+    @Test void leavingPortfolioAbortsItsPendingJobReadAndRetainsTheServerJob() {
+        String prefix="/taxonomy";
+        installRoutes(prefix);
+        page.route("GET",prefix + "/left-job-page",request -> new PortfolioClientTestPage.Response(200,"text/html; charset=utf-8",
+                "<!doctype html><html lang=\"en\"><body><h1 id=\"leftJobPage\">Left portfolio</h1></body></html>"));
+        openJobPage(prefix,"""
+                sessionStorage.removeItem('portfolioPendingBody');sessionStorage.removeItem('portfolioReadAborted');
+                const jobFetch=window.fetch.bind(window);
+                window.fetch=async function(input,init){
+                    const response=await jobFetch(input,init);
+                    if(new URL(input instanceof Request?input.url:String(input),location.href).pathname.endsWith('/analysis-jobs/job-7')){
+                        init?.signal?.addEventListener('abort',()=>sessionStorage.setItem('portfolioReadAborted','true'),{once:true});
+                        const readBody=response.json.bind(response);
+                        response.json=async function(){
+                            sessionStorage.setItem('portfolioPendingBody','true');
+                            // Hold consumption after the actual HTTP response, so the
+                            // native departure deterministically owns an unfinished read.
+                            await new Promise(()=>{});return readBody();
+                        };
+                    }
+                    return response;
+                };
+                const leave=document.createElement('a');leave.id='leaveJobPage';leave.href='/taxonomy/left-job-page';
+                leave.textContent='Leave portfolio';document.body.append(leave);
+                """);
+        assertThat(registerJob("/api/projects/42/analysis-jobs/job-7",runningJob())).isTrue();
+        wait.until(ignored -> "true".equals(driver.executeScript("return sessionStorage.getItem('portfolioPendingBody');")));
+        click(By.id("leaveJobPage"));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("leftJobPage")));
+        assertThat(driver.executeScript("return sessionStorage.getItem('portfolioReadAborted');"))
+                .as("Native navigation aborts the pending portfolio job read").isEqualTo("true");
+        assertThat(readJobs().get(0).path("job").path("id").asText()).isEqualTo("job-7");
+        assertThat(readJobs().get(0).path("job").path("status").asText()).isEqualTo("RUNNING");
+        assertThat(readJobs().get(0).has("lastPollError")).isFalse();
+        assertThat(requests("GET",prefix + "/api/projects/42/analysis-jobs/job-7")).hasSize(1);
     }
 
     @Test void routeMatchingRemovesOnlyTheExactMountedPrefix() {
@@ -550,8 +587,13 @@ class PortfolioClientRoutingIT {
 
         page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
         wait.until(ignored -> text("selectedProjectKey").equals("P-40") && hidden("portfolioBusy"));
-        assertThat(driver.findElements(By.cssSelector("#projectList .project-select .badge")))
+        assertThat(driver.findElements(By.cssSelector("#projectList .project-select .taxonomy-status[data-state][data-tone]")))
                 .extracting(WebElement::getText).containsExactlyElementsOf(expected);
+        assertThat(driver.findElements(By.cssSelector("#projectList .taxonomy-status")))
+                .extracting(element -> element.getDomAttribute("data-state"))
+                .containsExactly("PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED", "ARCHIVED", "FUTURE_REVIEW");
+        assertThat(driver.findElements(By.cssSelector("#projectList .taxonomy-entity-key")))
+                .extracting(WebElement::getText).containsExactly("P-40", "P-41", "P-42", "P-43", "P-44", "P-45");
         assertThat(driver.findElements(By.cssSelector("#projectList .project-select > .small.mt-1:not(.opacity-75)")))
                 .extracting(WebElement::getText).containsOnly(LABEL_TITLE);
         assertThat(driver.findElements(By.cssSelector("#projectList pump"))).isEmpty();
@@ -561,6 +603,7 @@ class PortfolioClientRoutingIT {
             click(By.cssSelector(".project-select[data-project-id='" + projectId + "']"));
             wait.until(ignored -> text("selectedProjectKey").equals("P-" + projectId) && hidden("portfolioBusy"));
             assertThat(text("selectedProjectStatus")).isEqualTo(expected.get(index));
+            assertThat(driver.findElement(By.id("selectedProjectKey")).getDomAttribute("class")).contains("taxonomy-entity-key");
             assertThat(text("selectedProjectTitle")).isEqualTo(LABEL_TITLE);
             assertThat(driver.findElements(By.cssSelector("#selectedProjectTitle pump"))).isEmpty();
         }
@@ -586,11 +629,14 @@ class PortfolioClientRoutingIT {
         page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
         wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
 
-        assertThat(driver.findElements(By.cssSelector("#requirementsTable tbody td:nth-child(5) .badge")))
+        assertThat(driver.findElements(By.cssSelector("#requirementsTable tbody td:nth-child(5) .taxonomy-status[data-state][data-tone]")))
                 .extracting(WebElement::getText)
                 .containsExactlyElementsOf(german
                         ? List.of("Vorgeschlagen", "Bestätigt", "Verworfen")
                         : List.of("Proposed", "Confirmed", "Rejected"));
+        assertThat(driver.findElements(By.cssSelector("#requirementsTable tbody td:nth-child(5) .taxonomy-status")))
+                .extracting(element -> element.getDomAttribute("data-state"))
+                .containsExactly("PROPOSED", "CONFIRMED", "REJECTED");
 
         click(By.id("solutions-tab"));
         wait.until(ignored -> driver.findElement(By.cssSelector("#solutionsList .portfolio-solution-card")).isDisplayed());
@@ -616,14 +662,14 @@ class PortfolioClientRoutingIT {
         assertThat(driver.findElements(By.cssSelector(candidateDetails))).hasSize(1);
         click(By.cssSelector(candidateDetails + " > summary"));
         wait.until(ignored -> driver.findElement(By.cssSelector(candidateDetails + " .product-candidate-review")).isDisplayed());
-        assertThat(driver.findElement(By.cssSelector(candidateDetails + " .badge")).getText())
+        assertThat(driver.findElement(By.cssSelector(candidateDetails + " .taxonomy-status[data-state][data-tone]")).getText())
                 .isEqualTo(german ? "Bestätigt" : "Confirmed");
         assertThat(driver.findElement(By.cssSelector(candidateDetails + " .small.text-body-secondary")).getText())
                 .isEqualTo(german ? "80% · In engerer Auswahl" : "80% · Shortlisted");
 
         click(By.id("products-tab"));
         wait.until(ignored -> driver.findElement(By.cssSelector("#productsList .portfolio-product-card")).isDisplayed());
-        assertThat(driver.findElement(By.cssSelector("#productsList .badge")).getText())
+        assertThat(driver.findElement(By.cssSelector("#productsList .taxonomy-status[data-state][data-tone]")).getText())
                 .isEqualTo(german ? "Support beendet" : "End Of Support");
         assertThat(driver.findElement(By.cssSelector("#productsList .portfolio-card-meta strong")).getText())
                 .isEqualTo(german ? "SaaS" : "Saas");
@@ -633,7 +679,7 @@ class PortfolioClientRoutingIT {
 
         click(By.id("conflicts-tab"));
         wait.until(ignored -> driver.findElement(By.cssSelector("#conflictsList .portfolio-conflict-card")).isDisplayed());
-        assertThat(driver.findElements(By.cssSelector("#conflictsList .badge"))).extracting(WebElement::getText)
+        assertThat(driver.findElements(By.cssSelector("#conflictsList .taxonomy-status[data-state][data-tone]"))).extracting(WebElement::getText)
                 .containsExactlyElementsOf(german ? List.of("Datenstandort", "Gelöst") : List.of("Data Location", "Resolved"));
         assertThat(driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText())
                 .contains(german ? "Regelgewicht" : "Rule weight")
@@ -773,6 +819,63 @@ class PortfolioClientRoutingIT {
         assertThat(requests("GET", prefix + "/api/projects/63/analysis-jobs")).isNotEmpty();
         assertThat(element("projectFilter").getDomProperty("value")).isEqualTo("Emergency");
         assertThat(text("portfolioError")).isEmpty();
+    }
+
+    @Test void savingProjectDuringItsOpeningTransitionClosesOnlyThatOpening() {
+        installRoutes("");
+        var created = new java.util.concurrent.atomic.AtomicBoolean();
+        page.route("GET", "/api/projects", request -> PortfolioClientTestPage.json(200,
+                created.get() ? List.of(project(42), project(99)) : List.of(project(42))));
+        page.route("POST", "/api/projects", request -> {
+            created.set(true);
+            return PortfolioClientTestPage.json(201, project(99));
+        });
+        page.route("GET", "/api/projects/99/portfolio", request -> PortfolioClientTestPage.json(200, portfolio(99)));
+        page.route("GET", "/api/projects/99/analysis-jobs", request -> PortfolioClientTestPage.json(200, List.of()));
+        open("projects", "", "/projects", """
+                const timing = document.createElement('style');
+                timing.textContent = '#projectModal.fade .modal-dialog { transition-duration: 5s !important; }';
+                document.head.append(timing);
+                window.projectModalEvents = [];
+                ['show.bs.modal','shown.bs.modal','hidden.bs.modal'].forEach(name => {
+                    document.addEventListener(name, event => {
+                        if (event.target.id === 'projectModal') window.projectModalEvents.push(name);
+                    }, true);
+                });
+                const requestProject = window.fetch.bind(window);
+                window.fetch = function(input, options) {
+                    return requestProject(input, options).then(response => {
+                        if (String(options?.method).toUpperCase() === 'POST'
+                                && new URL(response.url, location.href).pathname === '/api/projects') {
+                            window.projectResponseBeforeShown = !window.projectModalEvents.includes('shown.bs.modal');
+                        }
+                        return response;
+                    });
+                };
+                """);
+        wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
+        click(By.cssSelector("[data-bs-target='#projectModal']"));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("projectModal")));
+        element("projectKey").sendKeys("P-99");
+        element("projectTitle").sendKeys("A fast saved project");
+        element("projectDescription").sendKeys("The real response arrives during the real opening transition.");
+        click(By.cssSelector("#projectForm button[type='submit']"));
+        wait.until(ignored -> text("selectedProjectKey").equals("P-99") && hidden("portfolioBusy"));
+        assertThat(driver.executeScript("return window.projectResponseBeforeShown;"))
+                .as("The successful real HTTP response arrived before Bootstrap's public shown event").isEqualTo(true);
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("projectModal")));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector(".modal-backdrop.show")));
+        assertThat(requests("POST", "/api/projects")).hasSize(1);
+
+        click(By.cssSelector("[data-bs-target='#projectModal']"));
+        wait.until(ignored -> ((Number) driver.executeScript("""
+                return window.projectModalEvents.filter(name => name === 'shown.bs.modal').length;
+                """)).intValue() == 2);
+        assertThat(element("projectModal").isDisplayed()).as("A later opening must not inherit the previous close intent").isTrue();
+        assertThat(element("projectTitle").getDomProperty("value")).isEmpty();
+        assertThat(requests("POST", "/api/projects")).hasSize(1);
+        click(By.cssSelector("#projectModal .btn-close"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("projectModal")));
     }
 
     private static Stream<Arguments> projectCountLabels() {
@@ -935,6 +1038,10 @@ class PortfolioClientRoutingIT {
         wait.until(ignored -> !hidden("reviewStep"));
         click(By.id("reviewSummaryButton"));
         wait.until(ignored -> !hidden("summaryStep"));
+    }
+
+    private static String workspaceScopeAssertion(String workspaceId) {
+        return "&workspaceScopeKey=" + (workspaceId.isEmpty() ? "__shared__" : workspaceId);
     }
 
     private static String workspaceSetup(String workspaceId) {

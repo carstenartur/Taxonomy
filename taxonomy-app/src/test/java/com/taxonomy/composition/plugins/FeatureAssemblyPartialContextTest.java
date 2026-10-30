@@ -1,6 +1,7 @@
 package com.taxonomy.composition.plugins;
 
 import com.taxonomy.composition.architecture.ArchitectureSummaryApiController;
+import com.taxonomy.composition.architecture.ArchitectureLifecycleExceptionHandler;
 import com.taxonomy.shared.features.FeatureAssembly;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -28,6 +29,26 @@ class FeatureAssemblyPartialContextTest {
                             .doesNotHaveBean(com.taxonomy.composition.architecture.AnalysisSnapshotAdoptionController.class)
                             .doesNotHaveBean(com.taxonomy.composition.architecture.AnalysisSnapshotAdoptionService.class));
         }
+    }
+
+    @Test void absentPortfolioDoesNotRegisterLifecycleExceptionAdvice() {
+        for (Set<String> installed : java.util.List.of(Set.<String>of(), Set.of("architecture", "analysis"))) {
+            new ApplicationContextRunner()
+                    .withInitializer(context -> context.getBeanFactory().registerSingleton(
+                            "featureSet", new FeatureAssembly.FeatureSet(installed)))
+                    .withUserConfiguration(ArchitectureLifecycleExceptionHandler.class)
+                    .run(context -> assertThat(context).hasNotFailed()
+                            .doesNotHaveBean(ArchitectureLifecycleExceptionHandler.class));
+        }
+    }
+
+    @Test void installedPortfolioRegistersLifecycleExceptionAdvice() {
+        new ApplicationContextRunner()
+                .withInitializer(context -> context.getBeanFactory().registerSingleton("featureSet",
+                        FeatureAssembly.validate(Set.of("templates", "architecture", "reporting", "analysis", "portfolio"))))
+                .withUserConfiguration(ArchitectureLifecycleExceptionHandler.class)
+                .run(context -> assertThat(context).hasNotFailed()
+                        .hasSingleBean(ArchitectureLifecycleExceptionHandler.class));
     }
 
     @Test void unrelatedPartialContextsDoNotStartFeatureServicesOrPersistence() {

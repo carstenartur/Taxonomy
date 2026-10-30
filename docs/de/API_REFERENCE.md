@@ -3,12 +3,12 @@
 > **📌 Diese Referenz richtet sich an Entwickler und Integratoren.** Für die tägliche Arbeit
 > verwenden Sie die grafische Oberfläche (siehe [Benutzerhandbuch](USER_GUIDE.md)).
 
-Alle Endpunkte erfordern **HTTP-Basic-Authentifizierung**, sofern nicht als öffentlich gekennzeichnet.
-CSRF ist für `/api/**` deaktiviert — REST-Clients benötigen keine CSRF-Tokens.
-
-> **⚠️ Sicherheit:** Die folgenden Beispiele verwenden `-u admin:admin` (das Standard-Entwicklungspasswort).
-> Für jede nicht-lokale Bereitstellung setzen Sie `TAXONOMY_ADMIN_PASSWORD`, bevor Sie die Anwendung exponieren.
-> Siehe [Sicherheit](SECURITY.md) für Details.
+Geschützte API-Operationen verwenden die für die Bereitstellung konfigurierte
+Authentifizierung. Browser-Sitzungen behalten CSRF-Schutz für Schreibzugriffe.
+Explizite HTTP-Basic- oder Bearer-Protokollclients gelten als zustandslos;
+`/api/**` ist keine pauschale CSRF-Ausnahme. Konfigurierte Zugangsdaten verwenden;
+ein wiederverwendbares Standard-Administratorkennwort existiert nicht.
+Profile und Berechtigungen beschreibt [Sicherheit](SECURITY.md).
 
 Interaktive Dokumentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (wenn die Anwendung läuft).
 
@@ -19,6 +19,7 @@ Interaktive Dokumentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui
 ## Inhaltsverzeichnis
 
 - [Authentifizierung](#authentifizierung)
+- [Architektur-Lifecycle](#architecture-lifecycle-api)
 - [Analyse](#analyse)
 - [Suche](#suche)
 - [Graph-Exploration](#graph-exploration)
@@ -36,7 +37,7 @@ Interaktive Dokumentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui
 
 ## Authentifizierung
 
-Alle `/api/**`-Endpunkte erfordern Authentifizierung über **HTTP Basic**:
+Für einen geschützten Endpunkt bei aktiviertem HTTP Basic:
 
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" http://localhost:8080/api/taxonomy
@@ -47,6 +48,40 @@ Verwenden Sie das über `TAXONOMY_ADMIN_PASSWORD` konfigurierte Passwort. Bleibt
 Details zur rollenbasierten Zugriffskontrolle finden Sie unter [SECURITY.md](SECURITY.md).
 
 ---
+
+<a id="architecture-lifecycle-api"></a>
+## Architektur-Lifecycle
+
+Eine Architektur behält ihre Repository-Identität über Projektabschluss und spätere
+Projektbeiträge hinweg. Aktueller Anforderungstext, gewählter Architekturstand und
+geprüfte Umsetzungsversion bleiben getrennt.
+
+| Methode | Route | Zweck |
+|---|---|---|
+| GET | `/api/architecture/lifecycle` | Gewählter aktueller Workspace, historische semantische Revision oder Git-Checkpoint mit Umsetzungsstand. |
+| GET | `/api/architecture/lifecycle/history` | Begrenzte berechtigte Suche in tatsächlich erreichbarer Git-Ancestry. |
+| POST | `/api/architecture/lifecycle/intake-review` | Schreibfreie Kandidatenbewertung vor einer ausdrücklichen Anforderungsentscheidung. |
+| POST | `/api/architecture/editor/requirements` | `NEW`, `CHANGE` oder `LINK` mit exakten Eingabe-/Versionsvorbedingungen und Veröffentlichungszustand. |
+| POST | `/api/architecture/lifecycle/realizations/preview` | Exakte Textversions-/Abhängigkeitsprüfung vorschauen. |
+| POST | `/api/architecture/lifecycle/realizations` | Exakte Prüfung annehmen und checkpointen. |
+
+Die Übersicht akzeptiert `commit` oder semantische `revision`, niemals beide.
+Frühere Revisionen und Git-Checkpoints sind schreibgeschützt und ohne Überblendung
+durch das heutige Portfolio. Historischer Modelltext ersetzt weder aktuellen
+Anforderungskopf noch eingefrorene Analysequelle. Schreibanfragen enthalten exakten
+Kontext, stabile Befehlsidentität und `If-Match: "workspace-revision-N"`.
+Veröffentlichungszustand prüfen: Ein erhaltener Beitrag mit `CHECKPOINT_PENDING`
+oder `RECONCILIATION_REQUIRED` ist kein abgeschlossener Git-Checkpoint.
+
+Der ausdrückliche Editorabgleich verwendet
+`/api/architecture/editor/versions/reconciliation/preview` und `/accept`, beide POST,
+mit vollständigen `LOCAL`-/`INCOMING`-Blockentscheidungen und erneut geprüftem
+Ergebnis. Portfolio-Invarianten gelten weiterhin; Git-Auslassungen löschen keine
+unveränderliche Fachhistorie. Der vollständige
+[Lifecycle-/Intake-/Historienvertrag](PROJECT_PORTFOLIO_API.md#architecture-lifecycle-api)
+und [Abgleichvertrag](PROJECT_PORTFOLIO_API.md#editor-version-reconciliation-api)
+beschreiben DTOs, Berechtigung, Wiederholung, Abdeckung und Wiederherstellung.
+Siehe den [Benutzerablauf](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle).
 
 ## Analyse
 

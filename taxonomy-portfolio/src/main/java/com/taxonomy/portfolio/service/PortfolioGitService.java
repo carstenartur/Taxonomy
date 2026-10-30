@@ -5,6 +5,9 @@ import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.MetaAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.ast.SourceLocation;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+import com.taxonomy.dsl.requirements.RequirementTrace;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort.DocumentHandle;
@@ -38,9 +41,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,6 +71,17 @@ public class PortfolioGitService {
 
     private static final Set<String> OWNED_BLOCKS =
             Set.of(PROJECT_BLOCK, REQUIREMENT_BLOCK, VERSION_BLOCK);
+    private static final Map<String, Set<String>> OWNED_PROPERTIES = Map.of(
+            PROJECT_BLOCK, Set.of("title", "description", "status", "owner", "workspaceId", "targetArchitecture",
+                    "targetDate", "budgetAmount", "budgetCurrency", MANAGED_PROPERTY),
+            REQUIREMENT_BLOCK, Set.of("title", "status", "priority", "criticality", "requirementType", "reviewStatus", "owner",
+                    "currentVersionId", "currentVersionNumber", "currentSnapshotId", MANAGED_PROPERTY),
+            VERSION_BLOCK, Set.of("text", "contentHash", "changeReason", "createdBy", "createdAt", "sourceArtifactId",
+                    "sourceVersionId", "sourceFragmentIds", "sectionReference", "pageNumber", "originalText", MANAGED_PROPERTY),
+            "requirement", Set.of("title", "text", MANAGED_PROPERTY, "x-project-key", "x-requirement-key", "x-version",
+                    "x-content-hash", "x-review-status", "x-owner"),
+            "mapping", Set.of("score", "source", MANAGED_PROPERTY, "x-relevance", "x-confidence", "x-origin", "x-review-status",
+                    "x-action-status", "x-evidence", "x-decision-by", "x-decision-at", "x-decision-comment"));
     private static final SourceLocation GENERATED =
             new SourceLocation("portfolio-projection", 1, 1);
 
@@ -115,6 +131,7 @@ public class PortfolioGitService {
     @Transactional(readOnly = true)
     public String contributeTo(String existingDsl, String username, WorkspaceContext context) {
         DocumentAst existing = parseOrEmpty(existingDsl);
+        Map<String, BlockAst> sourceBlocks = ArchitectureSemanticPatch.index(existingDsl);
         List<BlockAst> blocks = new ArrayList<>();
         for (BlockAst block : existing.getBlocks()) {
             if (!isPortfolioManaged(block)) blocks.add(block);
@@ -131,19 +148,33 @@ public class PortfolioGitService {
                 header.set(0, identities.getOrDefault(header.getFirst(), header.getFirst()));
                 block = new BlockAst(block.getKind(), header, block.getProperties(), block.getChildren(), block.getExtensions(), null);
             }
+            BlockAst old = sourceBlocks.get(ArchitectureSemanticPatch.key(block));
             if ("requirement".equals(block.getKind())) {
-                String requirementId = block.getHeaderTokens().getFirst();
-                BlockAst old = existing.getBlocks().stream().filter(b -> "requirement".equals(b.getKind())
-                        && requirementId.equals(b.getHeaderTokens().getFirst())).findFirst().orElse(null);
                 block = com.taxonomy.dsl.planning.PlanningInformation.retain(block, old);
+                block = RequirementRealization.retain(block, old);
+                block = RequirementTrace.retain(block, old);
             }
+            block = retainUnownedProperties(block, old);
             blocks.add(block);
         }
         MetaAst meta = existing.getMeta() != null
                 ? existing.getMeta()
                 : new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION,
                         "default", GENERATED);
-        return serializer.serialize(new DocumentAst(meta, blocks));
+        String projected = serializer.serialize(new DocumentAst(meta, blocks));
+        return existingDsl == null || existingDsl.isBlank() ? projected : ArchitectureSemanticPatch.applyProjection(existingDsl, projected);
+    }
+
+    /** Portfolio text owns its declared fields; imported/source annotations retain their original values. */
+    private static BlockAst retainUnownedProperties(BlockAst generated, BlockAst existing) {
+        if (existing == null) return generated;
+        Set<String> generatedKeys = generated.getProperties().stream().map(PropertyAst::key).collect(java.util.stream.Collectors.toSet());
+        Set<String> owned = OWNED_PROPERTIES.getOrDefault(generated.getKind(), Set.of());
+        List<PropertyAst> values = new ArrayList<>(generated.getProperties());
+        existing.getProperties().stream().filter(p -> !owned.contains(p.key()) && !generatedKeys.contains(p.key())).forEach(values::add);
+        Map<String, String> extensions = new LinkedHashMap<>(generated.getExtensions());
+        values.stream().filter(PropertyAst::isExtension).forEach(p -> extensions.put(p.key(), p.value()));
+        return new BlockAst(generated.getKind(), generated.getHeaderTokens(), values, generated.getChildren(), extensions, null);
     }
 
     /** Resolve exact business identity without mutating storage or migrating canonical references. */
@@ -219,6 +250,50 @@ public class PortfolioGitService {
         return materialize(dsl, username, context);
     }
 
+    /** Validate every prospective owner input and retained immutable identity before any Git ref can move. */
+    @Transactional
+    public void validateMaterialization(String dsl, String username, WorkspaceContext context) {
+        DocumentAst document = parser.parse(dsl, "portfolio-preflight.taxdsl");
+        validateNormalizedIdentities(document);
+        List<String> warnings = new ArrayList<>();
+        String scope = PortfolioScope.key(username, context);
+        Map<String, BlockAst> projectBlocks = keyed(document, PROJECT_BLOCK, 1, warnings);
+        Map<String, BlockAst> requirementBlocks = keyed(document, REQUIREMENT_BLOCK, 2, warnings);
+        Map<String, List<BlockAst>> versionBlocks = groupedVersions(document, warnings);
+        for (var entry : versionBlocks.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()).toList()) {
+            String[] keys = entry.getKey().split("\\u0000", -1);
+            ArchitectureProject project = projectRepository.findByScopeKeyAndProjectKeyIgnoreCase(scope, keys[0]).orElse(null);
+            ProjectRequirement requirement = project == null ? null : requirementRepository
+                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(project.getId(), scope, keys[1]).orElse(null);
+            List<ProjectPortfolioService.ImportedVersion> versions = entry.getValue().stream()
+                    .sorted(Comparator.comparingInt(this::versionNumber))
+                    .map(block -> importedVersion(block, warnings)).toList();
+            projectService.validateRequirementVersionImports(project == null ? null : project.getId(),
+                    requirement == null ? null : requirement.getId(), versions, username, context);
+        }
+        for (var entry : projectBlocks.entrySet()) {
+            var existing = projectRepository.findByScopeKeyAndProjectKeyIgnoreCase(scope, entry.getKey()).orElse(null);
+            if (existing == null) ProjectPortfolioService.validatedProjectInput(createProjectInput(entry.getKey(), entry.getValue(), warnings));
+            else ProjectPortfolioService.validatedProjectInput(updateProjectInput(entry.getValue(), existing, warnings),
+                    existing.getBudgetAmount(), existing.getBudgetCurrency());
+        }
+        for (var entry : requirementBlocks.entrySet()) {
+            String[] keys = entry.getKey().split("\\u0000", -1);
+            List<BlockAst> versions = versionBlocks.getOrDefault(entry.getKey(), List.of()).stream()
+                    .sorted(Comparator.comparingInt(this::versionNumber)).toList();
+            // Materialization deliberately does not create orphan identities or requirements without a version.
+            if (!projectBlocks.containsKey(keys[0]) || versions.isEmpty()) continue;
+            var project = projectRepository.findByScopeKeyAndProjectKeyIgnoreCase(scope, keys[0]).orElse(null);
+            var existing = project == null ? null : requirementRepository
+                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(project.getId(), scope, keys[1]).orElse(null);
+            if (existing == null) ProjectPortfolioService.validatedRequirementInput(
+                    createRequirementInput(keys[1], entry.getValue(), versions.getFirst(), username, warnings),
+                    importedVersion(versions.getFirst(), warnings));
+            else projectService.validateRequirementImportMetadata(existing, updateRequirementInput(entry.getValue(), existing, warnings));
+        }
+    }
+
     /**
      * Upsert projects, requirement identities and immutable versions from DSL.
      * Deletions are intentionally not propagated automatically; removing business
@@ -229,6 +304,7 @@ public class PortfolioGitService {
                                          String username,
                                          WorkspaceContext context) {
         DocumentAst document = parser.parse(dsl, "portfolio-materialize.taxdsl");
+        validateNormalizedIdentities(document);
         List<String> warnings = new ArrayList<>();
         Map<String, BlockAst> projectBlocks = keyed(document, PROJECT_BLOCK, 1, warnings);
         Map<String, BlockAst> requirementBlocks = keyed(document, REQUIREMENT_BLOCK, 2, warnings);
@@ -248,25 +324,10 @@ public class PortfolioGitService {
                     .orElse(null);
             ProjectView view;
             if (existing == null) {
-                view = projectService.createProject(new CreateProjectRequest(
-                        projectKey,
-                        required(block, "title", projectKey),
-                        block.property("description"),
-                        enumValue(ProjectStatus.class, block.property("status"), ProjectStatus.PLANNING),
-                        block.property("targetArchitecture"),
-                        dateValue(block.property("targetDate"), warnings, identity(block)),
-                        decimalValue(block.property("budgetAmount"), warnings, identity(block)),
-                        block.property("budgetCurrency")), username, context);
+                view = projectService.createProject(createProjectInput(projectKey, block, warnings), username, context);
                 projects++;
             } else {
-                view = projectService.updateProject(existing.getId(), new UpdateProjectRequest(
-                        required(block, "title", existing.getTitle()),
-                        block.property("description"),
-                        enumValue(ProjectStatus.class, block.property("status"), existing.getStatus()),
-                        block.property("targetArchitecture"),
-                        dateValue(block.property("targetDate"), warnings, identity(block)),
-                        decimalValue(block.property("budgetAmount"), warnings, identity(block)),
-                        block.property("budgetCurrency")), username, context);
+                view = projectService.updateProject(existing.getId(), updateProjectInput(block, existing, warnings), username, context);
             }
             materializedProjects.put(projectKey, view);
         }
@@ -303,20 +364,10 @@ public class PortfolioGitService {
             RequirementView requirementView;
             BlockAst firstVersion = versionsForRequirement.getFirst();
             if (existingRequirement == null) {
-                requirementView = projectService.createRequirement(
+                requirementView = projectService.createImportedRequirement(
                         project.id(),
-                        new CreateRequirementRequest(
-                                requirementKey,
-                                required(block, "title", requirementKey),
-                                required(firstVersion, "text", ""),
-                                enumValue(RequirementStatus.class, block.property("status"), RequirementStatus.DRAFT),
-                                intValue(block.property("priority"), 50, warnings, identity(block)),
-                                enumValue(Criticality.class, block.property("criticality"), Criticality.MEDIUM),
-                                enumValue(RequirementType.class, block.property("requirementType"), RequirementType.FUNCTIONAL),
-                                enumValue(ReviewStatus.class, block.property("reviewStatus"), ReviewStatus.PROPOSED),
-                                valueOrDefault(block.property("owner"), username),
-                                firstVersion.property("changeReason"),
-                                sourceReference(firstVersion, warnings)),
+                        createRequirementInput(requirementKey, block, firstVersion, username, warnings),
+                        importedVersion(firstVersion, warnings),
                         username,
                         context);
                 requirements++;
@@ -324,33 +375,56 @@ public class PortfolioGitService {
             } else {
                 requirementView = projectService.updateRequirement(
                         project.id(), existingRequirement.getId(),
-                        new UpdateRequirementRequest(
-                                required(block, "title", existingRequirement.getTitle()),
-                                enumValue(RequirementStatus.class, block.property("status"), existingRequirement.getStatus()),
-                                intValue(block.property("priority"), existingRequirement.getPriority(), warnings, identity(block)),
-                                enumValue(Criticality.class, block.property("criticality"), existingRequirement.getCriticality()),
-                                enumValue(RequirementType.class, block.property("requirementType"), existingRequirement.getRequirementType()),
-                                enumValue(ReviewStatus.class, block.property("reviewStatus"), existingRequirement.getReviewStatus()),
-                                valueOrDefault(block.property("owner"), existingRequirement.getOwnerUsername())),
+                        updateRequirementInput(block, existingRequirement, warnings),
                         username,
                         context);
             }
 
             for (BlockAst version : versionsForRequirement) {
-                String text = required(version, "text", "");
-                if (text.equals(requirementView.currentVersion().text())) continue;
-                projectService.addRequirementVersion(
-                        project.id(), requirementView.id(),
-                        new CreateRequirementVersionRequest(
-                                text,
-                                version.property("changeReason"),
-                                sourceReference(version, warnings)),
-                        username,
-                        context);
-                versions++;
+                int number = versionNumber(version);
+                boolean exists = versionRepository.findByRequirementIdAndScopeKeyAndVersionNumber(
+                        requirementView.id(), scopeKey, number).isPresent();
+                projectService.importRequirementVersion(project.id(), requirementView.id(),
+                        importedVersion(version, warnings), username, context);
+                if (!exists) versions++;
             }
         }
         return new MaterializeResult(projects, requirements, versions, List.copyOf(warnings));
+    }
+
+    private CreateProjectRequest createProjectInput(String key, BlockAst block, List<String> warnings) {
+        return new CreateProjectRequest(key, required(block, "title", key), block.property("description"),
+                enumValue(ProjectStatus.class, block.property("status"), ProjectStatus.PLANNING), block.property("targetArchitecture"),
+                dateValue(block.property("targetDate"), warnings, identity(block)),
+                decimalValue(block.property("budgetAmount"), warnings, identity(block)), block.property("budgetCurrency"));
+    }
+
+    private UpdateProjectRequest updateProjectInput(BlockAst block, ArchitectureProject existing, List<String> warnings) {
+        return new UpdateProjectRequest(required(block, "title", existing.getTitle()), block.property("description"),
+                enumValue(ProjectStatus.class, block.property("status"), existing.getStatus()), block.property("targetArchitecture"),
+                dateValue(block.property("targetDate"), warnings, identity(block)),
+                decimalValue(block.property("budgetAmount"), warnings, identity(block)), block.property("budgetCurrency"));
+    }
+
+    private CreateRequirementRequest createRequirementInput(String key, BlockAst block, BlockAst version,
+                                                             String username, List<String> warnings) {
+        return new CreateRequirementRequest(key, required(block, "title", key), required(version, "text", ""),
+                enumValue(RequirementStatus.class, block.property("status"), RequirementStatus.DRAFT),
+                intValue(block.property("priority"), 50, warnings, identity(block)),
+                enumValue(Criticality.class, block.property("criticality"), Criticality.MEDIUM),
+                enumValue(RequirementType.class, block.property("requirementType"), RequirementType.FUNCTIONAL),
+                enumValue(ReviewStatus.class, block.property("reviewStatus"), ReviewStatus.PROPOSED),
+                valueOrDefault(block.property("owner"), username), version.property("changeReason"), sourceReference(version, warnings));
+    }
+
+    private UpdateRequirementRequest updateRequirementInput(BlockAst block, ProjectRequirement existing, List<String> warnings) {
+        return new UpdateRequirementRequest(required(block, "title", existing.getTitle()),
+                enumValue(RequirementStatus.class, block.property("status"), existing.getStatus()),
+                intValue(block.property("priority"), existing.getPriority(), warnings, identity(block)),
+                enumValue(Criticality.class, block.property("criticality"), existing.getCriticality()),
+                enumValue(RequirementType.class, block.property("requirementType"), existing.getRequirementType()),
+                enumValue(ReviewStatus.class, block.property("reviewStatus"), existing.getReviewStatus()),
+                valueOrDefault(block.property("owner"), existing.getOwnerUsername()));
     }
 
     private List<BlockAst> portfolioBlocks(String username, WorkspaceContext context) {
@@ -497,6 +571,32 @@ public class PortfolioGitService {
         return parser.parse(dsl, "architecture.taxdsl");
     }
 
+    /** Reject source aliases before separate raw blocks can address the same owner identity. */
+    protected final void validateNormalizedIdentities(DocumentAst document) {
+        Set<String> identities = new HashSet<>();
+        for (BlockAst block : document.getBlocks()) {
+            List<String> header = block.getHeaderTokens();
+            String normalized = switch (block.getKind()) {
+                case PROJECT_BLOCK -> header.isEmpty() ? null
+                        : ProjectPortfolioService.normalizeBusinessKey(header.getFirst(), "projectKey");
+                case REQUIREMENT_BLOCK -> header.size() < 2 ? null
+                        : normalizedRequirementIdentity(header.get(0), header.get(1));
+                case VERSION_BLOCK -> header.size() < 3 ? null
+                        : normalizedRequirementIdentity(header.get(0), header.get(1)) + '\u0000' + versionNumber(block);
+                default -> null;
+            };
+            if (normalized != null && !identities.add(block.getKind() + '\u0000' + normalized)) {
+                throw PortfolioException.conflict("Duplicate normalized " + block.getKind()
+                        + " identity: " + normalized.replace('\u0000', '/'));
+            }
+        }
+    }
+
+    protected static String normalizedRequirementIdentity(String project, String requirement) {
+        return ProjectPortfolioService.normalizeBusinessKey(project, "projectKey") + '\u0000'
+                + ProjectPortfolioService.normalizeBusinessKey(requirement, "requirementKey");
+    }
+
     private Map<String, BlockAst> keyed(DocumentAst document,
                                         String kind,
                                         int headerSize,
@@ -531,12 +631,24 @@ public class PortfolioGitService {
         return result;
     }
 
-    private int versionNumber(BlockAst block) {
+    protected final int versionNumber(BlockAst block) {
         try {
-            return Integer.parseInt(block.getHeaderTokens().get(2));
+            int number = Integer.parseInt(block.getHeaderTokens().get(2));
+            if (number > 0) return number;
         } catch (RuntimeException exception) {
-            return Integer.MAX_VALUE;
+            throw PortfolioException.validation("Invalid immutable requirement version number: " + identity(block));
         }
+        throw PortfolioException.validation("Immutable requirement version number must be positive: " + identity(block));
+    }
+
+    private ProjectPortfolioService.ImportedVersion importedVersion(BlockAst block, List<String> warnings) {
+        Instant createdAt = null;
+        if (block.property("createdAt") != null) {
+            try { createdAt = Instant.parse(block.property("createdAt")); }
+            catch (java.time.DateTimeException invalid) { throw PortfolioException.validation("Invalid immutable requirement creation time"); }
+        }
+        return new ProjectPortfolioService.ImportedVersion(versionNumber(block), block.property("text"), block.property("contentHash"),
+                block.property("changeReason"), sourceReference(block, warnings), block.property("createdBy"), createdAt);
     }
 
     private SourceReference sourceReference(BlockAst block, List<String> warnings) {

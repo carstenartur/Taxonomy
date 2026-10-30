@@ -7,7 +7,7 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -21,8 +21,9 @@ import static org.mockito.Mockito.when;
 
 class GitNativeSyncPortfolioProjectionTest {
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    void availablePortfolioParticipatesInPullAndPublishWithoutOverridingAvailability(boolean pull)
+    @CsvSource({"true, false", "false, false", "true, true", "false, true"})
+    void availablePortfolioParticipatesInPullAndPublishWithoutOverridingAvailability(
+            boolean pull, boolean legacyValidation)
             throws Exception {
         try (var repository = new DslGitRepository()) {
             repository.commitDsl("draft", document("Original", "Original"), "alice", "Initial version");
@@ -37,7 +38,7 @@ class GitNativeSyncPortfolioProjectionTest {
             var repositories = mock(DslGitRepositoryFactory.class);
             when(repositories.getSystemRepository()).thenReturn(repository);
             when(repositories.getCentralRepository("repository-a")).thenReturn(repository);
-            var system = mock(SystemRepositoryService.class);
+            var system = NativeSyncTestCatalog.create();
             when(system.getSharedBranch()).thenReturn("draft");
             var sourceMetadata = new com.taxonomy.workspace.model.SystemRepository();
             sourceMetadata.setRepositoryId("repository-a");
@@ -49,7 +50,9 @@ class GitNativeSyncPortfolioProjectionTest {
             var states = mock(SyncStateRepository.class);
             when(states.findByUsername("alice")).thenReturn(Optional.of(state));
             when(states.save(any(SyncState.class))).thenAnswer(call -> call.getArgument(0));
-            var portfolio = new InMemoryPortfolio(repository, document("Original", "Local requirement"));
+            InMemoryPortfolio portfolio = legacyValidation
+                    ? new LegacyPortfolio(repository, document("Original", "Local requirement"))
+                    : new ContextAwarePortfolio(repository, document("Original", "Local requirement"));
             var versions = new WorkspaceArchitectureVersionPort() {
                 @Override
                 public <T> T version(RepositoryContext selected, String rationale, GitAction<T> action)
@@ -65,15 +68,21 @@ class GitNativeSyncPortfolioProjectionTest {
                     : service.publishToShared("alice", "review");
 
             String destination = pull ? "review" : "draft";
+            var target = new WorkspaceContext("alice", null, destination, "repository-a");
             String mergedDsl = repository.getDslAtHead(destination);
             assertThat(result).isEqualTo(repository.getHeadCommit(destination));
             assertThat(portfolio.committedContexts).containsExactly(context);
             assertThat(portfolio.materialized).singleElement().satisfies(projection -> {
                 assertThat(projection.branch()).isEqualTo(destination);
                 assertThat(projection.username()).isEqualTo("alice");
-                assertThat(projection.context()).isEqualTo(context);
+                assertThat(projection.context()).isEqualTo(target);
                 assertThat(projection.dsl()).isEqualTo(mergedDsl)
                         .contains("Shared title", "Local requirement");
+            });
+            assertThat(portfolio.validated).singleElement().satisfies(validation -> {
+                assertThat(validation.context()).isEqualTo(legacyValidation ? null : target);
+                assertThat(validation.localDsl()).isNull();
+                assertThat(validation.candidateDsl()).isEqualTo(mergedDsl);
             });
             assertThat(state.getSyncStatus()).isEqualTo("UP_TO_DATE");
             if (pull) {
@@ -88,11 +97,12 @@ class GitNativeSyncPortfolioProjectionTest {
     }
 
     /** A present portfolio persists its accepted content and records the rebuilt projection. */
-    private static final class InMemoryPortfolio implements WorkspacePortfolioGitPort {
+    private abstract static class InMemoryPortfolio implements WorkspacePortfolioGitPort {
         private final DslGitRepository repository;
         private final String acceptedDsl;
         private final List<WorkspaceContext> committedContexts = new ArrayList<>();
         private final List<Projection> materialized = new ArrayList<>();
+        final List<Validation> validated = new ArrayList<>();
 
         private InMemoryPortfolio(DslGitRepository repository, String acceptedDsl) {
             this.repository = repository;
@@ -117,6 +127,31 @@ class GitNativeSyncPortfolioProjectionTest {
             materialized.add(new Projection(branch, username, context, repository.getDslAtHead(branch)));
         }
     }
+
+    private static final class ContextAwarePortfolio extends InMemoryPortfolio {
+        private ContextAwarePortfolio(DslGitRepository repository, String acceptedDsl) {
+            super(repository, acceptedDsl);
+        }
+
+        @Override
+        public void validatePortfolio(String localDsl, String candidateDsl, String username, WorkspaceContext context) {
+            validated.add(new Validation(localDsl, candidateDsl, context));
+        }
+    }
+
+    /** Older adapters must still validate the candidate before pull or publication. */
+    private static final class LegacyPortfolio extends InMemoryPortfolio {
+        private LegacyPortfolio(DslGitRepository repository, String acceptedDsl) {
+            super(repository, acceptedDsl);
+        }
+
+        @Override
+        public void validatePortfolio(String localDsl, String candidateDsl) {
+            validated.add(new Validation(localDsl, candidateDsl, null));
+        }
+    }
+
+    private record Validation(String localDsl, String candidateDsl, WorkspaceContext context) { }
 
     private record Projection(String branch, String username, WorkspaceContext context, String dsl) { }
 

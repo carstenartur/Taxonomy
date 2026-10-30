@@ -1,6 +1,6 @@
 # Architektureditor
 
-Den **Architektureditor** über Projekte oder die Snapshot-Workbench öffnen. Die Kontextzeile zeigt Repository, Workspace, Branch, semantische Workspace-Revision, letzten Checkpoint und Benutzer. Historische Revisionen/Versionen und zentrale Lesekontexte sind schreibgeschützt. **Privaten Workspace anlegen** erstellt bei passender Repository-Mitgliedschaft eine Arbeitskopie. Zum Bearbeiten ist außerdem die Rolle ARCHITECT oder ADMIN nötig.
+Den **Architektureditor** über Projekte oder die Snapshot-Workbench öffnen. Der gemeinsame Kontext zeigt Architektur, Projekt, Anforderung und gewählten Stand. **Technische Details** enthält die exakten Repository-/Workspace-Kennungen, den vollständigen Commit und vorhandene Snapshot-/Versionskennungen. Historische Revisionen/Versionen und zentrale Lesekontexte sind schreibgeschützt. **Privaten Workspace anlegen** erstellt bei passender Repository-Mitgliedschaft eine Arbeitskopie. Zum Bearbeiten ist außerdem die Rolle ARCHITECT oder ADMIN nötig.
 
 ![Architektureditor — ausgewählter Workspace und Element](../images/architecture-editor-current-de.png)
 
@@ -25,7 +25,75 @@ SVG und Vektor-PDF verwenden das vollständige deterministische Serverlayout der
 
 Technische Entscheidung: [ADR 0005](../adr/0005-private-architecture-editor.md). [English guide](../en/ARCHITECTURE_EDITOR.md).
 
-### Brennglas und Anordnung
+<a id="editor-version-reconciliation"></a>
+## Geänderten Git-Stand mit lokaler Arbeit abgleichen
+
+Eine angenommene lokale Operation kann erhalten sein, obwohl ihr Git-Checkpoint
+noch nicht abgeschlossen ist. `CHECKPOINT_PENDING` ist keine fertige Git-Version.
+Nach einem unterbrochenen Git-Schreibvorgang neu laden und **Ausstehenden Checkpoint
+fortsetzen** mit der erhaltenen Absicht verwenden. Das Editordokument nennt diese
+als `pendingCheckpointId`. Eine exakte Wiederholung behält dieselbe Befehlsidentität
+und führt ihre fachlichen Änderungen nicht erneut aus.
+
+Bei geändertem Git-HEAD **Lokalen und eingehenden Stand abgleichen** verwenden. Wiederholtes Speichern
+entscheidet keinen Branch-Konflikt. **Abgeschlossene Version wiederherstellen**
+gilt nur, sofern keine neueren uncheckpointeten lokalen Änderungen bestehen.
+
+1. **Vorschau** wählen und Basis, lokalen Arbeitsstand, eingehende
+   Git-Quelle und vorgeschlagenes Ergebnis prüfen. Die Vorschau schreibt nichts.
+2. Jeden Konflikt lesen und **Lokal behalten** oder **Eingehend übernehmen** auswählen. Jede Entscheidung übernimmt den vollständigen Quellblock
+   samt erhaltenen Kommentaren und unbekannten Eigenschaften. Ein gesonderter
+   Quellkonflikt kann Dokumentmetadaten betreffen.
+3. Ergänzungen und Löschungen prüfen. Eine leere Seite kann einen unterstützten
+   Modellblock entfernen, aber keine verwaltete Portfoliohistorie löschen.
+4. Nach den Entscheidungen erneut **Vorschau** wählen und die resultierende
+   Quelle prüfen. Spätere Änderungen an Auswahl oder Geltungsbereich verwerfen die Annahme.
+5. Nur für diese exakte Vorschau **Geprüfte Änderung übernehmen** wählen.
+   Ändern sich Workspace-Revision oder Git-HEAD, eine neue Vorschau erstellen und prüfen.
+
+Verwalteter Anforderungstext, Titel, Version und Hash müssen zur portablen aktuellen
+unveränderlichen Version passen. Die Quelle einer vorhandenen unveränderlichen
+Version darf nicht umgeschrieben werden. Lokale Blöcke behalten und für geänderten
+Text eine neue Anforderungsversion anlegen. Lässt die eingehende Quelle verwaltete
+Fachblöcke weg, **Lokal behalten** und den ausdrücklichen Archivierungsablauf
+verwenden. Unverträgliche Entscheidungen werden abgewiesen; sie ergeben kein
+teilweise angenommenes Portfolio. Angenommene Portfolioänderungen und Editorstand
+werden zusammen gespeichert, bevor der Git-Checkpoint veröffentlicht wird. Ein
+späterer Git-Speicherfehler verwendet weiterhin die oben beschriebene Wiederaufnahme.
+
+Der [API-Vertrag](PROJECT_PORTFOLIO_API.md#editor-version-reconciliation-api)
+beschreibt die Bindung an exakte Revision, HEAD und Vorschau-Fingerprint.
+
+<a id="requirement-realization"></a>
+## Anforderungsumsetzung prüfen
+
+**Anforderungen, Realisierung und Historie** aufklappen. **Textversion im gewählten Stand** ist
+die Anforderungsversion im geladenen Modell; die geprüfte Version ist die exakt
+gegen Abhängigkeiten bewertete Fassung. Der aktuelle Anforderungskopf kann daher
+Version 2 zeigen, während ein historisches Modell noch Version 1 enthält.
+Snapshot-Quellversionen bleiben davon getrennt.
+
+Im aktuellen bearbeitbaren Workspace ursprüngliche Anforderung, beitragendes
+Projekt, `OPEN`, `PARTIAL` oder `COMPLETE`, unterstützende Architekturabhängigkeiten
+und Begründung wählen. Vorschauen, exakte Version und Änderungen vergleichen und
+ausdrücklich annehmen. Teilweise und vollständige Prüfungen benötigen Nachweise.
+Relationsendpunkte und Mappingziele werden in die Abhängigkeitsprüfung aufgenommen.
+Eine spätere Text- oder Abhängigkeitsänderung ergibt `REVIEW_REQUIRED`; fehlerhafte
+Nachweise ergeben `INVALID_EVIDENCE`. Die frühere geprüfte Version bleibt erhalten.
+Weder ein KI-Relevanzwert noch ein Projektabschluss ersetzt diese Prüfung.
+
+Dieser angenommene Lifecycle-Beitrag besitzt eine ausdrückliche Git-Checkpoint-Grenze.
+Den Veröffentlichungszustand prüfen, bevor er als abgeschlossene Version behandelt
+wird. Eine frühere semantische Revision oder ein Git-Checkpoint ist schreibgeschützt
+und ohne Überblendung durch das heutige Portfolio. Lifecycle-Bereich, Editor und
+gemeinsamer Kontext folgen derselben Standwahl, auch bei Zurück/Vorwärts im Browser.
+**Aktuellen Arbeitsstand anzeigen** und **Aktualisieren** laden das zugehörige
+Editordokument ebenfalls neu.
+
+Siehe [Architektur-Lifecycle](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle)
+und [Anforderungshistorie](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-history).
+
+## Brennglas und Anordnung
 
 Über **Projekte → Architektureditor** öffnen und unter dem Graphen sowie den
 Anordnungsreglern zum Bereich **Architektur-Brennglas** scrollen. Dort das
@@ -75,7 +143,7 @@ dadurch Positionen und Ausschnitt bei. Erneutes Anordnen berücksichtigt später
 dieselbe Serveranordnung mit dem aktuell angezeigten Modell. Vorschlagspfeile
 werden nicht exportiert.
 
-### Neutrale Pakete und Anforderungszuordnungen
+## Neutrale Pakete und Anforderungszuordnungen
 
 Der Bereich **Pakete** erstellt, benennt, beschreibt, verschiebt und löscht
 Organisationsgrenzen ohne Taxonomieelemente oder `CONTAINS`-Beziehungen. Vorschau,

@@ -25,7 +25,7 @@ class GitNativeSyncMetadataBoundaryTest {
     @EnumSource(InvalidMetadata.class)
     void rejectsInvalidMetadataForBothExplicitSynchronizationDirections(InvalidMetadata invalid) {
         var rows = mock(UserWorkspaceRepository.class);
-        var catalog = mock(SystemRepositoryService.class);
+        var catalog = NativeSyncTestCatalog.create();
         var factory = mock(DslGitRepositoryFactory.class);
         var syncStates = mock(SyncStateRepository.class);
         var merger = mock(SemanticGitMergeService.class);

@@ -11,12 +11,11 @@
 > **Swagger/OpenAPI** (`/swagger-ui.html`) is the authoritative, always-up-to-date
 > API documentation. This static reference provides an overview and usage examples.
 
-All endpoints require **HTTP Basic authentication** unless listed as public.
-CSRF is disabled for `/api/**` — REST clients do not need CSRF tokens.
-
-> **⚠️ Security:** The examples below use `-u admin:admin` (the default development password).
-> For any non-local deployment, set `TAXONOMY_ADMIN_PASSWORD` before exposing the application.
-> See [Security](SECURITY.md) for details.
+Authenticated API operations use the authentication configured for the deployment.
+Browser sessions retain CSRF protection for writes. Explicit HTTP Basic or Bearer
+protocol clients are treated as stateless; `/api/**` is not a blanket CSRF exemption.
+Use configured credentials; no reusable default administrator password exists.
+See [Security](SECURITY.md) for profiles and permissions.
 
 Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (when the app is running).
 
@@ -27,6 +26,7 @@ Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (w
 ## Table of Contents
 
 - [Authentication](#authentication)
+- [Architecture lifecycle](#architecture-lifecycle-api)
 - [Analysis](#analysis)
 - [Search](#search)
 - [Graph Exploration](#graph-exploration)
@@ -44,7 +44,7 @@ Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (w
 
 ## Authentication
 
-All `/api/**` endpoints require authentication via **HTTP Basic**:
+For a protected endpoint in a deployment with HTTP Basic enabled:
 
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" http://localhost:8080/api/taxonomy
@@ -55,6 +55,38 @@ Use the password configured through `TAXONOMY_ADMIN_PASSWORD`. When it is intent
 For role-based access details, see [SECURITY.md](SECURITY.md).
 
 ---
+
+<a id="architecture-lifecycle-api"></a>
+## Architecture lifecycle
+
+An architecture keeps its repository identity across project completion and later
+project contributions. Current requirement text, the selected architecture stand
+and the reviewed realization version remain distinct.
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/api/architecture/lifecycle` | Selected current workspace, historical semantic revision or Git checkpoint, with realization state. |
+| GET | `/api/architecture/lifecycle/history` | Bounded, authorized search of actual reachable Git ancestry. |
+| POST | `/api/architecture/lifecycle/intake-review` | Read-only candidate assessment before an explicit requirement choice. |
+| POST | `/api/architecture/editor/requirements` | `NEW`, `CHANGE` or `LINK` with exact input/version preconditions and publication state. |
+| POST | `/api/architecture/lifecycle/realizations/preview` | Preview the exact text-version/dependency review. |
+| POST | `/api/architecture/lifecycle/realizations` | Accept the exact review and checkpoint it. |
+
+Overview accepts `commit` or semantic `revision`, never both. Earlier revisions and
+Git checkpoints are read-only and exclude today's portfolio overlay. Historical
+model text does not replace the current requirement header or frozen analysis source.
+Mutation requests carry the exact context, stable command identity and
+`If-Match: "workspace-revision-N"`. Inspect publication state: a retained contribution
+with `CHECKPOINT_PENDING` or `RECONCILIATION_REQUIRED` is not a completed Git checkpoint.
+
+Explicit editor reconciliation uses
+`/api/architecture/editor/versions/reconciliation/preview` and `/accept`, both POST,
+with whole-block `LOCAL`/`INCOMING` decisions and a freshly reviewed result. Managed
+portfolio invariants still apply; Git omission cannot delete immutable business
+history. The full [lifecycle/intake/history contract](PROJECT_PORTFOLIO_API.md#architecture-lifecycle-api)
+and [reconciliation contract](PROJECT_PORTFOLIO_API.md#editor-version-reconciliation-api)
+describe DTOs, authorization, retries, coverage and recovery. See the
+[user workflow](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle).
 
 ## Analysis
 

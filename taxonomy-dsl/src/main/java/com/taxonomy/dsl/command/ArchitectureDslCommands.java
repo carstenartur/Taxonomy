@@ -53,6 +53,29 @@ public final class ArchitectureDslCommands {
         return new AstToModelMapper().map(new TaxDslParser().parse(source));
     }
 
+    /** Validate a reconciled final state with the strict semantic command invariants. */
+    public void validateReconciledSource(String source) {
+        // The import parser is tolerant; source ranges enforce complete, unambiguous edited blocks.
+        ArchitectureSemanticPatch.between("", source);
+        Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(source);
+        for (BlockAst block : blocks.values()) {
+            if ("relation".equals(block.getKind())) {
+                validateRelation(blocks, relationKey(block));
+                requireStatus(block.property("status"));
+            } else if ("mapping".equals(block.getKind())) validateMappingReferences(blocks, block);
+            else if ("view".equals(block.getKind())) {
+                for (String member : block.propertyValues("include")) require(blocks, "element:" + member);
+            }
+            // These are the same retained references that prevent unsafe relation deletion and undo.
+            if (block.property("for-relation") != null) require(blocks, "relation:" + block.property("for-relation"));
+            for (String member : AnalysisSnapshotAdoption.relationMembers(block)) require(blocks, "relation:" + member);
+        }
+        validateContainment(blocks);
+        validatePackages(source);
+        try { com.taxonomy.dsl.planning.PlanningInformation.validateReferences(source); }
+        catch (IllegalArgumentException invalid) { throw problem("INVALID_REFERENCE", "source", invalid.getMessage()); }
+    }
+
     public Change apply(String source, ArchitectureCommand command) {
         String next = transformDsl(source, command);
         return new Change(next, ArchitectureSemanticPatch.between(source, next));
@@ -72,6 +95,8 @@ public final class ArchitectureDslCommands {
         Objects.requireNonNull(source, "source");
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(source);
         return switch (command) {
+            case ReviewRequirementRealization review -> com.taxonomy.dsl.requirements.RequirementRealization.record(
+                    source, review.requirementId(), review.review());
             case AdoptAnalysisSnapshot adoption -> AnalysisSnapshotAdoption.apply(this, source, adoption);
             case SetRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), false);
             case ImportRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), true);
@@ -105,6 +130,7 @@ public final class ArchitectureDslCommands {
                 && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
                 && !change.id().startsWith("mapping:")
                 && !AnalysisSnapshotAdoption.isAdoptionView(change)
+                && !com.taxonomy.dsl.requirements.RequirementRealization.reviewOnlyChange(before, after, change.id())
                 && !com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, change.id()))) {
             throw problem("NOT_UNDOABLE", "targetOperationId", "Target contains unsupported semantic objects");
         }
@@ -128,15 +154,19 @@ public final class ArchitectureDslCommands {
                     || changed.contains("element:" + key.targetId())) validateRelation(blocks, key);
         }
         for (BlockAst mapping : blocks.values()) if ("mapping".equals(mapping.getKind()) && changed.contains(ArchitectureSemanticPatch.key(mapping))) {
-            List<String> header = mapping.getHeaderTokens();
-            if (header.size() != 3 || !"->".equals(header.get(1))) throw problem("INVALID_HEADER", "mapping", "Malformed requirement mapping");
-            require(blocks, "requirement:" + header.get(0)); require(blocks, "element:" + header.get(2));
+            validateMappingReferences(blocks, mapping);
         }
         validateContainment(blocks);
         validatePackages(next);
         if (original.stream().anyMatch(c -> com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, c.id())))
             com.taxonomy.dsl.planning.PlanningInformation.validateReferences(next);
         return new Change(next, ArchitectureSemanticPatch.between(current, next));
+    }
+
+    private static void validateMappingReferences(Map<String, BlockAst> blocks, BlockAst mapping) {
+        List<String> header = mapping.getHeaderTokens();
+        if (header.size() != 3 || !"->".equals(header.get(1))) throw problem("INVALID_HEADER", "mapping", "Malformed requirement mapping");
+        require(blocks, "requirement:" + header.get(0)); require(blocks, "element:" + header.get(2));
     }
 
     private void validatePackages(String dsl) {

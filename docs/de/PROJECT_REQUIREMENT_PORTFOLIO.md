@@ -18,8 +18,137 @@ Der Arbeitsbereich unterstützt insbesondere:
 
 Alle nachfolgend beschriebenen Arbeitsschritte sind über die Weboberfläche erreichbar. Technische Integrationsbeispiele stehen getrennt in [PROJECT_PORTFOLIO_API.md](PROJECT_PORTFOLIO_API.md).
 
+<a id="architecture-lifecycle"></a>
+## Eine Architektur über mehrere Projekte weiterführen
+
+Eine Architektur besitzt eine stabile Repository-Identität. Ein Projektabschluss
+beendet, löscht oder ersetzt diese Architektur nicht. Ein späteres Projekt kann
+neue Anforderungen beitragen, eine vorhandene Anforderung ändern oder sie in
+derselben Architektur wiederverwenden. Die ursprüngliche projektqualifizierte
+Anforderungsidentität bleibt erhalten. Das Folgeprojekt wird als Beitrag erfasst;
+es wird nicht stillschweigend zum ursprünglichen Projekt der Anforderung. Ähnliche
+Formulierungen bedeuten nicht automatisch dieselbe Anforderung.
+
+Die gemeinsame Navigation verbindet Analyse, Projekte, Anforderungsdetail,
+gespeicherte Architekturansicht, Architektureditor und Versionierung. Der Kontext
+verbindet Architektur, Projekt, Anforderung und gewählten Modellstand. Projektübersicht
+und Analyse zeigen ihn zunächst auf allen Bildschirmgrößen eingeklappt.
+Architekturtitel, aktuelle Auswahl, gewählter Stand sowie Schreibschutz- oder Problemhinweise
+bleiben sichtbar. Diese Zeile für Kontextdetails und Lifecycle-Aktionen öffnen. Lesbare Namen und
+Fachschlüssel stehen im Vordergrund. **Technische Details** zeigt innerhalb des
+Kontexts bei Bedarf Repository-, Workspace-, vollständige Commit-, Snapshot- und Versionskennungen,
+soweit vorhanden. Die bestehenden Hilfelinks führen zum passenden Abschnitt dieses
+Handbuchs oder zur [Editorhilfe](ARCHITECTURE_EDITOR.md).
+
+**Anforderungen, Realisierung und Historie** aufklappen und **Textversion im gewählten Stand**
+mit **Geprüfte Textversion** vergleichen. Drei Datensätze haben verschiedene
+Bedeutungen:
+
+| Datensatz | Bedeutung |
+|---|---|
+| Aktueller Anforderungstext | Neueste unveränderliche Textversion im Portfolio; eine Textänderung erzeugt eine neue Version. |
+| Gewählter Architekturstand | Aktueller Workspace, frühere semantische Revision oder Git-Checkpoint; der dortige Anforderungstext gehört zu diesem Stand. |
+| Geprüfte Umsetzung | Menschliche Bewertung einer exakten Textversion samt Hash gegen gespeicherte Architekturabhängigkeiten. |
+
+Der aktuelle Anforderungskopf kann Version 2 zeigen, während ein früher gewähltes
+Modell Version 1 enthält. Die Tabelle beschreibt dieses ältere Modell und benennt
+nicht die aktuelle Portfolioversion um. Auch ein Analysesnapshot behält seine eigene
+Quellversion. Eine Textänderung, eine Analyse oder der Projektabschluss beweist nicht,
+dass die Architektur den neuen Text umsetzt.
+
+| Zustand | Bedeutung |
+|---|---|
+| `OPEN` | Keine anwendbare teilweise oder vollständige Umsetzungsprüfung gespeichert. |
+| `PARTIAL` | Ein Mensch hat einen Teil der exakten Anforderung anhand ausgewählter Nachweise geprüft. |
+| `COMPLETE` | Vollständige Umsetzung für die geprüfte Version und ihre Abhängigkeiten dokumentiert. |
+| `REVIEW_REQUIRED` | Anforderung oder gespeicherte Abhängigkeit seit der Prüfung geändert; die frühere geprüfte Version bleibt sichtbar. |
+| `INVALID_EVIDENCE` | Die gespeicherten Nachweise erlauben keine gültige Bewertung und müssen korrigiert werden. |
+
+Beitragendes Projekt, Status, Architekturabhängigkeiten und Begründung wählen,
+vorschauen und die Prüfung ausdrücklich annehmen. Teilweise und vollständige
+Bewertungen benötigen Nachweise. Relevanzwerte sind keine Umsetzungsprozente.
+Siehe [Anforderungsumsetzung prüfen](ARCHITECTURE_EDITOR.md#requirement-realization).
+
+Eine frühere Workspace-Revision oder erreichbare Git-Version zeigt das Modell
+schreibgeschützt. Historische Stände verwenden ihre gespeicherte Quelle ohne
+Überblendung durch das heutige Portfolio. Eine ausdrücklich ausgewählte aktuelle
+Revision bleibt der aktuelle Arbeitsstand. Editor, Lifecycle-Bereich und Kontextkopf
+teilen dieselbe Auswahl, auch bei Zurück/Vorwärts im Browser. **Aktuellen Arbeitsstand
+anzeigen** führt zum laufenden Modell; **Aktualisieren** lädt den gewählten
+Stand neu. Ein fehlender oder unzugänglicher Stand ergibt einen Fehler statt
+stillschweigend aktuelle Daten anzuzeigen.
+
+Ein angenommener Beitrag und ein abgeschlossener Git-Checkpoint sind getrennte
+Ergebnisse. `CHECKPOINT_PENDING` bedeutet, dass die Änderung erhalten ist, ihr
+Git-Schreibvorgang aber noch abgeschlossen werden muss. `RECONCILIATION_REQUIRED`
+erfordert den Vergleich des lokalen und eingehenden Stands. Für eine exakte
+Wiederholung dieselbe Befehlsidentität behalten; geänderte Eingaben benötigen eine
+neue Prüfung. Siehe [Stände abgleichen](ARCHITECTURE_EDITOR.md#editor-version-reconciliation).
+
+<a id="requirement-history"></a>
+## Anforderungs- und Umsetzungshistorie nachvollziehen
+
+Die Historie in **Anforderungen, Realisierung und Historie** öffnen. Sie durchsucht tatsächlich
+erreichbare Git-Commits der gewählten Architektur und ihres Zweigs mit nativem JGit
+und dem datenbankgestützten Git-Repository. Sie ist vom Operationsjournal des Editors
+und der Liste unveränderlicher Textversionen getrennt. Lokale Git-Kommandos sind
+dafür nicht erforderlich.
+
+Text unter **Git-Protokoll durchsuchen** eingeben und **Suchen** wählen oder mit der
+Historienaktion einer Anforderungszeile auf deren ursprüngliche Projekt- und
+Anforderungsidentität eingrenzen. Ein Folgeprojektbeitrag ändert diesen ursprünglichen
+Filter nicht. Die
+Einträge unterscheiden Text-, Metadaten-, Abhängigkeits- und Umsetzungsänderungen
+sowie Ergänzungen, Entfernungen und relevante Merges. Der Commit-Betreff hält die
+Liste lesbar. **Commitdetails** zeigt die vollständige Nachricht, Commit-ID,
+tatsächliche Eltern, Autor, Zeitpunkt und verfügbare Signaturbelege. Die Vorgänger
+beschreiben echte Ancestry, keine erfundene Folge von Anforderungsversionen.
+
+Das Ergebnis nennt Git-Quelle und erfassten HEAD. Jede Seite durchsucht einen
+begrenzten Bereich. Teilweise Abdeckung oder eine leere begrenzte Seite beweist
+nicht, dass ältere passende Änderungen fehlen. Solange angeboten, weitere Seiten
+laden. Nach einer Änderung des Branch-HEAD die Suche neu beginnen. Speicher- oder
+Berechtigungsfehler sind keine leere Historie; unzugängliche Zweige und private
+Workspaces anderer Benutzer werden nicht durchsucht. Ein historischer Treffer
+öffnet seinen schreibgeschützten Modellstand.
+
+<a id="requirement-intake"></a>
+## Eingehenden Text vor dem Speichern prüfen
+
+Die Eingangsprüfung beim Speichern einer neuen Anforderung oder beim Übertragen
+einer Analyse in ein Projekt verwenden. Sie kann Duplikate, Änderungen, Ergänzungen
+oder Konflikte unter den zugelassenen Kandidaten vorschlagen. Quellauszüge und
+Herkunft prüfen und eine ausdrückliche Entscheidung treffen:
+
+| Auswahl | Ergebnis |
+|---|---|
+| `NEW` | Anforderung mit eigener Identität im gewählten oder neuen Projekt anlegen. |
+| `CHANGE` | Neue unveränderliche Textversion der ausgewählten bestehenden Anforderung anlegen; ihre ursprüngliche Identität bleibt erhalten. |
+| `LINK` | Ausgewählte Anforderung wiederverwenden und Beitrag speichern, ohne ihren Text zu ersetzen. |
+
+Ein Folgeprojekt kann über `CHANGE` oder `LINK` beitragen. Ursprüngliche Anforderung
+und beitragendes Projekt getrennt prüfen. Ein Treffer in einer anderen Architektur
+ist ein prüfbarer Hinweis, keine Berechtigung zur Änderung dieser Architektur.
+Die angebotenen Aktionen berücksichtigen den Geltungsbereich des Kandidaten.
+
+Suche und Providerbewertung sind begrenzt. Abdeckung und Providerzustand beachten:
+Ein ungeprüfter Kandidat, nicht verfügbarer Provider, Timeout oder fehlgeschlagene
+Antwort ist kein Nachweis fehlender Duplikate oder Konflikte. Exakte Textgleichheit
+kann ohne Aussage über semantische Gleichwertigkeit erkannt werden. Manuelle Prüfung
+und ausdrückliche Auswahl bleiben bei nicht verfügbarer KI möglich. Lokale Embeddings
+und simulierte Provider belegen keine Qualität einer realen generativen Bewertung.
+
+Geänderter Text oder Kontext macht die vorherige Prüfung ungültig. `CHANGE` und
+`LINK` binden an ausgewählte aktuelle Version und Hash. Bei geänderter Version neu
+laden, vergleichen und erneut entscheiden. Das bloße Öffnen der Prüfung legt nichts
+an, verknüpft nichts und überschreibt nichts. Siehe
+[Eingangsprüfung und Veröffentlichung](PROJECT_PORTFOLIO_API.md#architecture-lifecycle-api).
+
 <a id="requirement-clarification-workflow"></a>
 ## Eine Anforderung anhand ihres Architekturkontexts klären
+
+Für neuen Eingangstext mit der [Intake-Entscheidung](#requirement-intake) beginnen.
+Bei einem Folgeprojekt die [fortbestehende Architektur](#architecture-lifecycle) beibehalten.
 
 Verwenden Sie die Anforderungsdetailseite, wenn die Ausgangsformulierung Entscheidungen
 offenlässt. Ein gespeichertes Neuformulierungsangebot ist von Quellanforderung und
@@ -103,6 +232,9 @@ Die Platzhalter werden bei der Navigation aus einem ausgewählten Projekt bezieh
 
 <a id="portfolio-projects"></a>
 ## 1. Projekt anlegen oder auswählen
+
+Für ein Folgeprojekt die bestehende Architektur beibehalten und im
+[Lifecycle-Ablauf](#architecture-lifecycle) Anforderungen neu anlegen, ändern oder verknüpfen.
 
 Öffnen Sie `/projects`.
 
@@ -210,6 +342,10 @@ Leere Zellen bedeuten, dass keine Beziehung gespeichert ist. Sie bedeuten nicht,
 
 <a id="portfolio-versioning"></a>
 ## 9. Geprüfte Portfoliozustände committen und mergen
+
+Für Anforderungsänderungen und tatsächliche Git-Ancestry die
+[Anforderungshistorie](#requirement-history) verwenden. Bei geändertem HEAD und
+angenommener lokaler Arbeit dem [ausdrücklichen Abgleich](ARCHITECTURE_EDITOR.md#editor-version-reconciliation) folgen.
 
 Öffnen Sie `/projects/{projectId}/versioning`.
 

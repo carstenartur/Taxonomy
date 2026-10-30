@@ -50,7 +50,12 @@ class AnalysisSessionFrontendContractTest {
                 .doesNotContain("className: 'btn btn-sm btn-outline-danger'")
                 .contains("/api/projects/")
                 .contains("/requirements")
-                .contains("/versions");
+                .contains("saveAsRequirementVersion(context, businessTextElement().value)")
+                .contains("TaxonomyRequirementIntake.prepareVersion(form,payload,projectId,target.requirementId,target.requirementVersionId,target.contentHash)")
+                .contains("TaxonomyArchitectureLifecycle.saveRequirement(attempt.command)");
+        assertThat(resource("/static/js/api/architecture-lifecycle-api.js"))
+                .contains("saveRequirement:function (request)")
+                .contains("write('/api/architecture/editor/requirements', request, true)");
     }
 
     @Test

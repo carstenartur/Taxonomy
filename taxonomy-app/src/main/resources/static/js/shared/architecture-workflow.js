@@ -4,7 +4,7 @@
 (function () {
     'use strict';
     var params = new URLSearchParams(window.location.search);
-    var workspacePin = params.has('workspaceId') ? params.get('workspaceId') : null;
+    var workspacePin = params.has('workspaceId') ? params.get('workspaceId') : params.has('workspaceScopeKey') ? (params.get('workspaceScopeKey') === '__shared__' ? '' : params.get('workspaceScopeKey')) : null;
     var repositoryPin = params.has('repositoryId') ? params.get('repositoryId') : null;
     var branchPin = params.has('branch') ? params.get('branch') : null;
     var decoratedLinks = new WeakMap();
@@ -29,14 +29,37 @@
     }
     function eligible(path) {
         return path === '/' || /^\/(?:api\/)?projects(?:\/|$)/.test(path)
-            || /^\/architecture\/(?:workbench|editor)$/.test(path);
+            || /^\/architecture\/(?:workbench|editor)$/.test(path)
+            || /^\/api\/architecture\/(?:lifecycle|editor)(?:\/|$)/.test(path);
+    }
+    function getScope() {
+        var current = new URLSearchParams(window.location.search);
+        var value = {};
+        if (repositoryPin !== null) value.repositoryId = repositoryPin;
+        if (branchPin !== null) value.branch = branchPin;
+        if (workspacePin !== null) {
+            value.workspaceId = workspacePin;
+            value.workspaceScopeKey = workspacePin || '__shared__';
+        } else if (current.has('workspaceScopeKey')) {
+            value.workspaceScopeKey = current.get('workspaceScopeKey');
+            value.workspaceId = value.workspaceScopeKey === '__shared__' ? '' : value.workspaceScopeKey;
+        }
+        return value;
+    }
+    function setScope(context) {
+        if (!context) return;
+        if (context.repositoryId !== undefined) repositoryPin = context.repositoryId;
+        if (context.branch !== undefined) branchPin = context.branch;
+        if (context.workspaceScopeKey !== undefined) workspacePin = context.workspaceScopeKey === '__shared__' ? '' : context.workspaceScopeKey;
+        else if (context.workspaceId !== undefined) workspacePin = context.workspaceId;
+        decorateLinks();
     }
     function scopeUrl(value) {
         if ((workspacePin === null && repositoryPin === null && branchPin === null) || typeof value !== 'string' || value.startsWith('#')) return value;
         var target;
         try { target = new URL(value, window.location.href); } catch (_) { return value; }
         if (target.origin !== window.location.origin || !eligible(applicationPath(target))) return value;
-        var pins = {workspaceId:workspacePin,repositoryId:repositoryPin,branch:branchPin};
+        var pins = {workspaceId:workspacePin,repositoryId:repositoryPin,branch:branchPin,workspaceScopeKey:workspacePin === null ? null : workspacePin || '__shared__'};
         var keys = Object.keys(pins).filter(function (key) { return pins[key] !== null && pins[key] !== undefined; });
         if (keys.some(function (key) { return target.searchParams.has(key) && target.searchParams.get(key) !== pins[key]; })) return value;
         keys.forEach(function (key) { if (!target.searchParams.has(key)) target.searchParams.set(key,pins[key]); });
@@ -164,7 +187,7 @@
         if (typeof input === 'string') {
             try {
                 var target = new URL(input, window.location.href);
-                if (/^\/api\/projects(?:\/|$)/.test(applicationPath(target))) scoped = scopeUrl(input);
+                if (/^\/api\/(?:projects|architecture\/(?:lifecycle|editor))(?:\/|$)/.test(applicationPath(target))) scoped = scopeUrl(input);
             } catch (_) { /* Let the normal transport report malformed URLs. */ }
         }
         return nativeFetch.call(window, scoped, options);
@@ -185,7 +208,7 @@
     }
     decorateLinks();
     window.TaxonomyArchitectureWorkflow = {
-        adoptionSource: adoptionSource, scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
+        getScope: getScope, setScope: setScope, adoptionSource: adoptionSource, scopeUrl: scopeUrl, snapshotLinks: snapshotLinks, editorSourceLinks: editorSourceLinks,
         showSnapshot: showSnapshot, showEditor: showEditor, preferredProject: preferredProject,
         portfolioUrl: portfolioUrl, workbenchUrl: workbenchUrl
     };

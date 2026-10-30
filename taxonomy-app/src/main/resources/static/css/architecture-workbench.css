@@ -57,14 +57,18 @@ body {
 }
 
 .workbench-export-content {
-    position: absolute;
+    --workbench-export-width: min(28rem, calc(100vw - 2rem));
+    --workbench-export-height-limit: min(70dvh, calc(100dvh - 2rem), var(--workbench-export-preferred-height, 70dvh));
+    position: fixed;
     z-index: 1100;
-    top: calc(100% + 0.5rem);
-    right: 0;
+    /* Bounds remain valid before the asynchronous details toggle/resize handlers. */
+    top: clamp(1rem, var(--workbench-export-preferred-top, 1rem), calc(100dvh - var(--workbench-export-height-limit) - 1rem));
+    left: clamp(1rem, var(--workbench-export-preferred-left, 1rem), calc(100vw - var(--workbench-export-width) - 1rem));
+    right: auto;
     display: grid;
     gap: 0.6rem;
-    width: min(28rem, calc(100vw - 2rem));
-    max-height: 70dvh;
+    width: var(--workbench-export-width);
+    max-height: var(--workbench-export-height-limit);
     overflow: auto;
     padding: 1rem;
     border: 1px solid #64748b;
@@ -539,10 +543,6 @@ body {
         position: static;
     }
 
-    .workbench-export-content {
-        right: 1rem;
-    }
-
     .workbench-toolbar .navbar-brand {
         font-size: 1rem;
     }
@@ -725,4 +725,33 @@ body {
     #architectureWarnings {
         overflow-wrap: anywhere;
     }
+}
+
+/* The snapshot canvas remains reachable when the shared lifecycle disclosure grows. */
+.workbench-context { flex: 0 0 auto; max-height: 50dvh; overflow-y: auto; scrollbar-gutter: stable; }
+
+/* Keep snapshot provenance beside the diagram so loaded context cannot consume its workspace. */
+@media screen {
+    .workbench-canvas-panel { display: contents; }
+    .workbench-grid { grid-template-rows: auto minmax(0, 1fr); }
+    .workbench-heading { grid-column: 2; grid-row: 1; overflow: auto; background: var(--workbench-panel); }
+    .workbench-detail-panel { grid-column: 2; grid-row: 2; contain: size; }
+    .architecture-workbench { grid-column: 1; grid-row: 1 / 3; }
+    .architecture-canvas-shell { contain: size; }
+}
+
+@media screen and (min-width: 901px) {
+    .workbench-context { flex: 0 1 auto; min-height: 0; }
+    .workbench-grid { min-height: min-content; }
+    .architecture-workbench { grid-template-rows: auto minmax(50dvh, 1fr); }
+}
+
+@media screen and (max-width: 900px) {
+    .workbench-context { max-height: 35dvh; }
+    .workbench-grid { grid-template-rows: auto auto auto; }
+    .architecture-workbench { grid-column: 1; grid-row: 1; }
+    .workbench-heading { grid-column: 1; grid-row: 2; overflow: visible; }
+    .workbench-detail-panel { grid-column: 1; grid-row: 3; contain: none; }
+    .architecture-control, .architecture-toggle, .architecture-search, .taxonomy-app-local .btn { min-height: 44px; }
+    .architecture-control.icon-only { min-width: 44px; }
 }

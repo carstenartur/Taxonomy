@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.portfolio.dto.PortfolioDtos.*;
 import com.taxonomy.portfolio.dto.PortfolioGitDtos.ExportedPortfolioDsl;
+import com.taxonomy.portfolio.dto.RequirementIntakeDtos;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import tools.jackson.databind.ObjectMapper;
 
@@ -15,9 +16,13 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +46,8 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     static final long PROJECT_A = 739101;
     static final long PROJECT_B = 739102;
     static final long REQUIREMENT_A = 7391011;
+    static final String SCOPE_QUERY = "workspaceId=qa-context-workspace&repositoryId=qa-architecture"
+            + "&branch=qa-context-main&workspaceScopeKey=qa-context-workspace";
     static final List<String> BRANCHES = List.of("qa-context-main", "qa-context-review", "qa-context-candidate");
     static final String ZERO_EVIDENCE = "QA: bewusst geprüfte Abdeckung von 0 %.";
     static final String CONFLICT = "QA: Diese Anforderung wurde inzwischen geändert. Bitte den Entwurf prüfen und erneut versuchen.";
@@ -188,6 +195,37 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
                 String relative = inContext ? path.substring(context.length()) : null;
                 String versionPath = "/api/projects/" + PROJECT_A + "/requirements/" + REQUIREMENT_A + "/versions";
                 if (!Set.of("GET", "HEAD", "OPTIONS").contains(method)) {
+                    if (method.equals("POST") && exactScope(exchange)) {
+                        if ("/api/architecture/lifecycle/intake-review".equals(relative)) {
+                            var input = json.readTree(exchange.getRequestBody());
+                            if (input.path("projectId").asLong() != PROJECT_A) {
+                                reject(exchange, "Only the QA requirement draft may be reviewed"); return;
+                            }
+                            sendJson(exchange, 200, intakeReview(input.path("text").asText()));
+                            return;
+                        }
+                        if ("/api/architecture/editor/requirements".equals(relative)) {
+                            var command = json.readTree(exchange.getRequestBody());
+                            var selection = command.path("context");
+                            var current = primaryRequirement(PROJECT_A).currentVersion();
+                            if (!command.path("choice").asText().equals("CHANGE")
+                                    || command.path("projectId").asLong() != PROJECT_A
+                                    || command.path("requirementId").asLong() != REQUIREMENT_A
+                                    || command.path("expectedVersionId").asLong() != current.id()
+                                    || !command.path("expectedContentHash").asText().equals(current.contentHash())
+                                    || !selection.path("repositoryId").asText().equals("qa-architecture")
+                                    || !selection.path("workspaceScopeKey").asText().equals("qa-context-workspace")
+                                    || !selection.path("branch").asText().equals(BRANCHES.getFirst())) {
+                                reject(exchange, "Only the exact reviewed QA requirement version may be submitted"); return;
+                            }
+                            var draft = command.path("requirement");
+                            submittedVersions.add(new CreateRequirementVersionRequest(draft.path("text").asText(),
+                                    draft.path("changeReason").asText(), json.convertValue(draft.get("source"), SourceReference.class)));
+                            sendJson(exchange, 409, Map.of("type", "about:blank", "title", "Conflict", "status", 409,
+                                    "detail", CONFLICT, "instance", context + "/api/architecture/editor/requirements"));
+                            return;
+                        }
+                    }
                     if (method.equals("POST") && versionPath.equals(relative)
                             && exchange.getRequestURI().getRawQuery() == null) {
                         submittedVersions.add(json.readValue(exchange.getRequestBody(), CreateRequirementVersionRequest.class));
@@ -252,6 +290,7 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
 
     private static boolean fixturePath(String path) {
         return path.equals("/api/projects") || path.equals("/api/products") || path.equals("/api/git/state")
+                || path.endsWith("/api/architecture/lifecycle")
                 || path.equals("/api/projects/git/export")
                 || path.matches(".*/api/projects/(739101|739102)(/.*)?")
                 || path.endsWith("/api/projects") || path.endsWith("/api/products")
@@ -259,6 +298,7 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     }
 
     private Object payload(String path) {
+        if (path.equals("/api/architecture/lifecycle")) return lifecycleOverview();
         if (path.equals("/api/projects")) return projectsAvailable ? projects : List.of();
         if (path.equals("/api/products")) return List.of();
         if (path.equals("/api/git/state")) return new RepositoryState(BRANCHES.getFirst(), head, TIME,
@@ -290,6 +330,47 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
             }
         }
         return null;
+    }
+
+    private static boolean exactScope(HttpExchange exchange) {
+        String query = exchange.getRequestURI().getRawQuery();
+        return query != null && query.split("&").length == 4
+                && Set.copyOf(Arrays.asList(query.split("&"))).equals(Set.copyOf(Arrays.asList(SCOPE_QUERY.split("&"))));
+    }
+
+    private Object lifecycleOverview() {
+        var items = requirements.stream().map(requirement -> Map.<String, Object>ofEntries(
+                Map.entry("id", "qa-requirement-" + requirement.id()),
+                Map.entry("projectId", requirement.projectId()),
+                Map.entry("projectKey", requirement.projectId() == PROJECT_A ? "QA-CONTEXT-A" : "QA-CONTEXT-B"),
+                Map.entry("requirementId", requirement.id()), Map.entry("requirementKey", requirement.requirementKey()),
+                Map.entry("title", requirement.title()), Map.entry("version", requirement.currentVersion().versionNumber()),
+                Map.entry("versionId", requirement.currentVersionId()), Map.entry("contentHash", requirement.currentVersion().contentHash()),
+                Map.entry("text", requirement.currentVersion().text()), Map.entry("realization", Map.of("state", "OPEN")),
+                Map.entry("contributors", List.of()), Map.entry("links", List.of()))).toList();
+        return Map.of("context", Map.of("repositoryId", "qa-architecture", "workspaceScopeKey", "qa-context-workspace",
+                        "branch", BRANCHES.getFirst(), "actor", "qa-fixture", "writeMode", "WORKSPACE", "revision", 4, "commit", head),
+                "architectureTitle", "QA context architecture", "source", "WORKSPACE_AND_PORTFOLIO", "projectionState", "READY",
+                "publicationState", "CHECKPOINTED", "mayEdit", true, "projects", projects,
+                "requirements", projectsAvailable ? items : List.of(), "dependencies", List.of());
+    }
+
+    private RequirementIntakeDtos.Response intakeReview(String text) {
+        var item = primaryRequirement(PROJECT_A);
+        var current = item.currentVersion();
+        var scope = new RequirementIntakeDtos.Scope("qa-architecture", "qa-context-workspace", "qa-context-workspace", BRANCHES.getFirst());
+        var candidate = new RequirementIntakeDtos.Candidate("requirement:" + REQUIREMENT_A, "REQUIREMENT",
+                scope.repositoryId(), scope.workspaceId(), scope.branch(), PROJECT_A, "QA-CONTEXT-A", REQUIREMENT_A,
+                current.id(), item.requirementKey(), item.title(), current.text(), current.contentHash(), null, null,
+                List.of(), List.of("NEW", "CHANGE", "LINK", "VIEW"));
+        return new RequirementIntakeDtos.Response(RequirementIntakeDtos.Status.UNAVAILABLE, "PROVIDER_NOT_CONFIGURED",
+                textHash(text), scope, null, new RequirementIntakeDtos.Coverage(1, 1, false), List.of(candidate), true);
+    }
+
+    private static String textHash(String text) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 
     private List<RequirementView> requirements(long projectId) {
@@ -337,7 +418,7 @@ final class PortfolioContextHttpFixture implements AutoCloseable {
     private static RequirementView requirement(long id, long project, String key, String title) {
         var source = new SourceReference(7391901L, 7391902L, List.of(7391903L), "4.2", 12, "Originaltext der geprüften Anforderung.");
         var version = new RequirementVersionView(id * 10, 4, title + ".\nDie Prüfung muss nachvollziehbar bleiben.",
-                "a".repeat(64), "Geprüfter Ausgangsstand", "qa-fixture", TIME, source);
+                textHash(title + ".\nDie Prüfung muss nachvollziehbar bleiben."), "Geprüfter Ausgangsstand", "qa-fixture", TIME, source);
         return new RequirementView(id, project, key, title, RequirementStatus.DRAFT, 50, Criticality.HIGH,
                 RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, "qa-fixture", version.id(), null, TIME, TIME, version);
     }

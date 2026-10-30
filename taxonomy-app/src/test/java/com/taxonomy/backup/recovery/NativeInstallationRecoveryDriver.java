@@ -146,9 +146,14 @@ public final class NativeInstallationRecoveryDriver {
         var projects = app.getBean(ProjectPortfolioService.class);
         assertThat(projects.getProject(project, ACTOR, context).title()).isEqualTo("Recovery portfolio");
         var versions = projects.listRequirementVersions(project, requirement, ACTOR, context);
-        // Requirement entry intentionally strips surrounding whitespace; retained source bytes do not.
-        assertThat(versions).hasSize(2); assertThat(versions).extracting(RequirementVersionView::text).containsExactly(TEXT.strip(), "Initial requirement");
-        assertThat(projects.getRequirement(project, requirement, ACTOR, context).currentVersion().source().sourceVersionId()).isEqualTo(Long.parseLong(expected.getProperty("sourceVersion")));
+        // Immutable requirement text and its hash retain the exact supplied content, including the final newline.
+        assertThat(versions).hasSize(2); assertThat(versions).extracting(RequirementVersionView::text).containsExactly(TEXT, "Initial requirement");
+        assertThat(versions).extracting(RequirementVersionView::contentHash)
+                .containsExactly(hash(TEXT.getBytes(StandardCharsets.UTF_8)), hash("Initial requirement".getBytes(StandardCharsets.UTF_8)));
+        var currentVersion = projects.getRequirement(project, requirement, ACTOR, context).currentVersion();
+        assertThat(currentVersion.text()).isEqualTo(TEXT);
+        assertThat(currentVersion.source().sourceVersionId()).isEqualTo(Long.parseLong(expected.getProperty("sourceVersion")));
+        assertThat(currentVersion.source().originalText()).isEqualTo(TEXT);
         String snapshotId = expected.getProperty("snapshot");
         var detail = app.getBean(ProjectRequirementAnalysisService.class).getSnapshot(project, snapshotId, ACTOR, context);
         assertThat(detail.analysis().getScores()).containsEntry("CP", 80d);

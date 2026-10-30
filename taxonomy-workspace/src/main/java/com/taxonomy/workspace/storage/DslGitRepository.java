@@ -51,6 +51,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Taxonomy-specific facade around a JGit repository that versions one DSL document.
@@ -272,6 +273,59 @@ public class DslGitRepository implements AutoCloseable {
         return new ExpectedHeadDslCommitter().verifyExpectedHead(this, branch, expectedHead);
     }
 
+    /** Publish a semantically reviewed tree while retaining the exact imported source history. */
+    public String commitMergeDslIfHeadMatches(String branch, String expectedHead, String incomingHead, String dslText,
+                                              String author, String message, CommitProvenance provenance) throws IOException {
+        // Share the transfer/checkpoint monitor across facades, keeping pack insertion and
+        // ref publication together. Expected-head CAS still protects independent processes.
+        synchronized (gitRepo) {
+            verifyExpectedHead(branch, expectedHead);
+            verifyIncoming(incomingHead, expectedHead);
+            return new ExpectedHeadDslCommitter().commit(this, new ExpectedHeadDslCommitter.CommitRequest(
+                    branch, expectedHead, dslText, author, message, provenance, List.of(incomingHead))).commitId();
+        }
+    }
+
+    public boolean isAncestor(String ancestor, String descendant) throws IOException {
+        if (ancestor == null || descendant == null) return false;
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            return walk.isMergedInto(walk.parseCommit(ObjectId.fromString(ancestor)), walk.parseCommit(ObjectId.fromString(descendant)));
+        }
+    }
+
+    /** Adopt an already verified descendant with a compare-and-set ref update, without manufacturing another commit. */
+    public String fastForwardIfHeadMatches(String branch, String expectedHead, String incomingHead, String author, String message) throws IOException {
+        if (!Repository.isValidRefName(Constants.R_HEADS + branch)) throw new IllegalArgumentException("Invalid branch");
+        // A ref-only publication must not overlap a transfer/checkpoint pack flush either.
+        synchronized (gitRepo) {
+            verifyExpectedHead(branch, expectedHead);
+            verifyIncoming(incomingHead, expectedHead);
+            if (expectedHead != null && !isAncestor(expectedHead, incomingHead)) throw new IOException("Incoming history is not a descendant");
+            RefUpdate update = gitRepo.updateRef(Constants.R_HEADS + branch);
+            update.setExpectedOldObjectId(expectedHead == null ? ObjectId.zeroId() : ObjectId.fromString(expectedHead));
+            update.setNewObjectId(ObjectId.fromString(incomingHead)); update.setForceUpdate(false);
+            update.setRefLogIdent(personIdent(author)); update.setRefLogMessage(message, true);
+            RefUpdate.Result result = update.update();
+            if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.FAST_FORWARD || result == RefUpdate.Result.NO_CHANGE) return incomingHead;
+            if (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH)
+                throw new com.taxonomy.workspace.service.BranchHeadConflictException(branch, expectedHead, getHeadCommit(branch), "Branch changed during history integration");
+            throw new IOException("History integration failed: " + result);
+        }
+    }
+
+    /** Bounded immutable-document read used by native history queries. */
+    public String getDslAtCommit(String commitId, int maximumBytes) throws IOException {
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            var commit = walk.parseCommit(ObjectId.fromString(commitId));
+            try (TreeWalk tree = TreeWalk.forPath(gitRepo, DSL_FILENAME, commit.getTree())) {
+                if (tree == null) return "";
+                ObjectLoader blob = gitRepo.open(tree.getObjectId(0), Constants.OBJ_BLOB);
+                if (blob.getSize() > maximumBytes) throw new IOException("Historical DSL exceeds the document byte budget");
+                return new String(blob.getBytes(maximumBytes), StandardCharsets.UTF_8);
+            }
+        }
+    }
+
     // ── Read operations ─────────────────────────────────────────────
 
     /** Read DSL text at a specific commit. */
@@ -487,17 +541,23 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Supply final merge metadata before signing and publishing the single new object. */
     public String merge(String fromBranch, String intoBranch, String author, String message) throws IOException {
-        return merge(fromBranch, intoBranch, author, message, null);
+        return merge(fromBranch, intoBranch, author, message, null, ignored -> { });
+    }
+
+    /** Check the exact candidate DSL before the captured merge can publish a ref. */
+    public String merge(String fromBranch, String intoBranch, String author, String message,
+                        Consumer<String> validateMergedSource) throws IOException {
+        return merge(fromBranch, intoBranch, author, message, null, Objects.requireNonNull(validateMergedSource));
     }
 
     /** Merge transport history using only the locally accepted heads captured before fetching. */
     public String mergeFromAcceptedHeads(String fromBranch, String intoBranch,
                                          Collection<String> acceptedHeads) throws IOException {
-        return merge(fromBranch, intoBranch, null, null, List.copyOf(acceptedHeads));
+        return merge(fromBranch, intoBranch, null, null, List.copyOf(acceptedHeads), ignored -> { });
     }
 
     private String merge(String fromBranch, String intoBranch, String author, String message,
-                         Collection<String> acceptedHeads) throws IOException {
+                         Collection<String> acceptedHeads, Consumer<String> validateMergedSource) throws IOException {
         String fromRefName = Constants.R_HEADS + fromBranch;
         String intoRefName = Constants.R_HEADS + intoBranch;
         Ref fromRef = gitRepo.getRefDatabase().exactRef(fromRefName);
@@ -519,11 +579,13 @@ public class DslGitRepository implements AutoCloseable {
             }
 
             if (walk.isMergedInto(fromCommit, intoCommit)) {
+                validateMergeSource(validateMergedSource, intoCommit.getTree(), fromBranch, fromCommit, intoBranch, intoCommit);
                 log.info("Already merged: '{}' is ancestor of '{}'", fromBranch, intoBranch);
                 return intoCommit.name();
             }
 
             if (walk.isMergedInto(intoCommit, fromCommit)) {
+                validateMergeSource(validateMergedSource, fromCommit.getTree(), fromBranch, fromCommit, intoBranch, intoCommit);
                 updateRef(
                         intoRefName,
                         fromCommit,
@@ -541,6 +603,9 @@ public class DslGitRepository implements AutoCloseable {
                 log.warn("Merge conflict: '{}' into '{}'", fromBranch, intoBranch);
                 return null;
             }
+
+            validateMergeSource(validateMergedSource, walk.parseTree(merger.getResultTreeId()),
+                    fromBranch, fromCommit, intoBranch, intoCommit);
 
             try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
                 CommitBuilder mergeCommit = new CommitBuilder();
@@ -566,6 +631,15 @@ public class DslGitRepository implements AutoCloseable {
                 return mergeCommitId.name();
             }
         }
+    }
+
+    private void validateMergeSource(Consumer<String> validation, RevTree tree, String fromBranch,
+                                     RevCommit fromCommit, String intoBranch, RevCommit intoCommit) throws IOException {
+        String dsl = readDslFromTree(tree);
+        // Application preflight may read its database; never hold the Repository monitor here.
+        validation.accept(dsl == null ? "" : dsl);
+        verifyExpectedHead(fromBranch, fromCommit.name());
+        verifyExpectedHead(intoBranch, intoCommit.name());
     }
 
     /** Model-content merges exclude the reserved, transfer-specific metadata path. */

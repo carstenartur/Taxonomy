@@ -71,13 +71,13 @@ class ArchiMateReturnUiIT {
                         driver.get(session.origin() + "/?lang=en" + (attempt < 2 ? pin : "&workspaceId=&repositoryId=" + secondary.getRepositoryId() + "&branch=main"));
                         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
                         var dismiss = driver.findElements(By.id("onboardingDismiss"));
-                        if (!dismiss.isEmpty() && dismiss.getFirst().isDisplayed()) dismiss.getFirst().click();
-                        driver.findElement(By.cssSelector("#mainNavTabs [data-page='architecture']")).click();
-                        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#architectureSubTabs [data-subtab='arch-export']"))).click();
-                        wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#archiReturnPanel summary"))).click();
+                        if (!dismiss.isEmpty() && dismiss.getFirst().isDisplayed()) click(driver, wait, "onboardingDismiss");
+                        click(driver, wait, By.cssSelector("#mainNavTabs [data-page='architecture']"));
+                        click(driver, wait, By.cssSelector("#architectureSubTabs [data-subtab='arch-export']"));
+                        click(driver, wait, By.cssSelector("#archiReturnPanel summary"));
                         driver.findElement(By.id("archiReturnOriginal")).sendKeys(fixtures.resolve("workbench-original.xml").toString());
                         driver.findElement(By.id("archiReturnFile")).sendKeys(fixtures.resolve("archi-5.10-returned.xml").toString());
-                        wait.until(ExpectedConditions.elementToBeClickable(By.id("archiReturnPreview"))).click();
+                        click(driver, wait, "archiReturnPreview");
                         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("archiReturnStatus"), "Matched elements:"));
                         if (attempt == 2) {
                             assertThat(driver.findElement(By.id("archiReturnStatus")).getText()).contains("editable working copy", "existing duplicates: 0");
@@ -107,16 +107,78 @@ class ArchiMateReturnUiIT {
                     assertThat(relations.findByRepositoryIdAndWorkspaceId(primary.getRepositoryId(), workspace.getWorkspaceId())).isEmpty();
                     Files.write(evidence.resolve("reviewed-return.png"), driver.getScreenshotAs(OutputType.BYTES));
                 } catch (RuntimeException | AssertionError failure) {
-                    Files.write(evidence.resolve("failure.png"), driver.getScreenshotAs(OutputType.BYTES));
-                    Files.writeString(evidence.resolve("failure.txt"), driver.getCurrentUrl() + "\n" + driver.findElement(By.id("archiReturnStatus")).getText());
+                    captureFailure(driver, evidence, failure);
                     throw failure;
                 }
             }
         }
     }
     private static void click(RemoteWebDriver driver, WebDriverWait wait, String id) {
-        var element = wait.until(ExpectedConditions.elementToBeClickable(By.id(id)));
-        driver.executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center'});", element);
-        element.click();
+        click(driver, wait, By.id(id));
+    }
+
+    private static void click(RemoteWebDriver driver, WebDriverWait wait, By locator) {
+        try {
+            wait.until(browser -> {
+                try {
+                    var element = browser.findElement(locator);
+                    if (!element.isDisplayed() || !element.isEnabled()) return false;
+                    driver.executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});", element);
+                    boolean ready = Boolean.TRUE.equals(driver.executeAsyncScript("""
+                            const target=arguments[0],done=arguments[arguments.length-1];
+                            const before=target.getBoundingClientRect();
+                            requestAnimationFrame(()=>requestAnimationFrame(()=>{
+                                const after=target.getBoundingClientRect();
+                                const x=after.left+after.width/2,y=after.top+after.height/2;
+                                const hit=document.elementFromPoint(x,y);
+                                const stable=['left','top','width','height'].every(key=>Math.abs(before[key]-after[key])<1);
+                                done(target.isConnected && stable && after.width>0 && after.height>0
+                                    && x>0 && x<innerWidth && y>0 && y<innerHeight
+                                    && Boolean(hit && (hit===target || target.contains(hit))));
+                            }));
+                            """, element));
+                    if (!ready) return false;
+                    // The driver still performs the user action; scripts only scroll and observe readiness.
+                    element.click();
+                    return true;
+                } catch (StaleElementReferenceException | ElementNotInteractableException transientLayout) {
+                    return false;
+                }
+            });
+        } catch (TimeoutException failure) {
+            throw new AssertionError("Native click did not reach a stable, unobscured target: " + locator, failure);
+        }
+    }
+
+    private static void captureFailure(RemoteWebDriver driver, Path evidence, Throwable failure) {
+        try {
+            Files.write(evidence.resolve("failure.png"), driver.getScreenshotAs(OutputType.BYTES));
+        } catch (Exception capture) { failure.addSuppressed(capture); }
+        try {
+            Files.writeString(evidence.resolve("failure.html"), driver.getPageSource());
+        } catch (Exception capture) { failure.addSuppressed(capture); }
+        try {
+            String status = driver.findElements(By.id("archiReturnStatus")).stream()
+                    .map(WebElement::getText).findFirst().orElse("Return status is absent");
+            Files.writeString(evidence.resolve("failure.txt"), driver.getCurrentUrl() + "\n" + status + "\n" + failure);
+        } catch (Exception capture) { failure.addSuppressed(capture); }
+        try {
+            String geometry = (String) driver.executeScript("""
+                    const selectors=['#mainNavTabs [data-page="architecture"]',
+                        '#architectureSubTabs [data-subtab="arch-export"]','#archiReturnPanel summary',
+                        '#archiReturnPreview','#archiReturnAccept','#archiReturnApply'];
+                    return JSON.stringify({url:location.href,readyState:document.readyState,innerWidth,innerHeight,
+                        scrollX,scrollY,activeElement:document.activeElement?.id,
+                        contextOpen:document.getElementById('applicationContextDisclosure')?.open,
+                        targets:selectors.map(selector=>{
+                            const target=document.querySelector(selector);
+                            if(!target)return {selector,missing:true};
+                            const r=target.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+                            return {selector,disabled:target.disabled,rect:{left:r.left,top:r.top,width:r.width,height:r.height},
+                                hit:hit?{tag:hit.tagName,id:hit.id,className:String(hit.className)}:null};
+                        })},null,2);
+                    """);
+            Files.writeString(evidence.resolve("failure-geometry.json"), geometry);
+        } catch (Exception capture) { failure.addSuppressed(capture); }
     }
 }

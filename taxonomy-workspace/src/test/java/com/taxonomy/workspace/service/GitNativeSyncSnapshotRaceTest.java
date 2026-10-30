@@ -92,16 +92,18 @@ class GitNativeSyncSnapshotRaceTest {
             assertEquals("main", published.sources().getFirst().branch());
             assertEquals(localHead, published.sources().getFirst().commitId());
             assertEquals(previousSource, published.sources().getFirst().baseCommitId());
-            var integrated = fixture.local.getProvenance(fixture.local.getHeadCommit("main"));
-            assertEquals("pull", integrated.operation());
-            assertEquals(sourceHead, integrated.sources().getFirst().commitId());
+            assertEquals(sourceHead, fixture.local.getHeadCommit("main"));
+            assertTrue(fixture.source.isAncestor(localHead, sourceHead));
+            assertTrue(fixture.source.isAncestor(previousSource, sourceHead));
+            assertEquals("publish", fixture.local.getProvenance(sourceHead).operation());
+            assertEquals(localHead, fixture.local.getProvenance(sourceHead).sources().getFirst().commitId());
             assertEquals(sourceHead, fixture.workspace.getLastIntegratedCommit());
         }
     }
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
-    void matchingSnapshotsDoNotCreateContentCommitsSolelyForProvenance(boolean publish) throws Exception {
+    void matchingSnapshotsJoinIndependentAncestryAndRepeatedIntegrationIsANoOp(boolean publish) throws Exception {
         try (var fixture = new Fixture()) {
             fixture.local.commitDsl("main", "remote", "owner", "Already matches source");
             String sourceHead = fixture.source.getHeadCommit("draft");
@@ -109,10 +111,14 @@ class GitNativeSyncSnapshotRaceTest {
             when(fixture.merger.mergeContent(anyString(), anyString(), anyString()))
                     .thenReturn(new TaxDslMergeResult("remote", List.of()));
             fixture.sync(publish);
-            assertEquals(sourceHead, fixture.source.getHeadCommit("draft"));
-            assertEquals(localHead, fixture.local.getHeadCommit("main"));
-            assertNull(fixture.source.getProvenance(sourceHead));
-            assertNull(fixture.local.getProvenance(localHead));
+            String integrated = fixture.local.getHeadCommit("main");
+            assertNotEquals(localHead, integrated);
+            assertTrue(fixture.local.isAncestor(localHead, integrated));
+            assertTrue(fixture.local.isAncestor(sourceHead, integrated));
+            assertEquals(publish ? integrated : sourceHead, fixture.source.getHeadCommit("draft"));
+            fixture.sync(publish);
+            assertEquals(integrated, fixture.local.getHeadCommit("main"));
+            assertEquals(publish ? integrated : sourceHead, fixture.source.getHeadCommit("draft"));
         }
     }
 
@@ -208,9 +214,19 @@ class GitNativeSyncSnapshotRaceTest {
         var signer = new GitCommitSignatureService(properties);
         fixture.source.withSignatureService(signer, "source");
         fixture.local.withSignatureService(signer, "workspace:workspace");
-        fixture.source.commitDsl("draft", "remote", "owner", "Trusted source checkpoint");
-        fixture.local.commitDsl("main", "local", "owner", "Trusted workspace checkpoint");
+        // Incoming ancestry is now preserved and verified, so model roots must be signed too.
+        // The separate, already accepted sync-base remains unsigned bookkeeping.
+        replaceWithSignedFixtureRoot(fixture.source, "draft", "remote");
+        replaceWithSignedFixtureRoot(fixture.local, "main", "local");
         return signer;
+    }
+
+    private static void replaceWithSignedFixtureRoot(DslGitRepository repository, String branch, String dsl) throws IOException {
+        var update = repository.getGitRepository().updateRef("refs/heads/" + branch);
+        update.setExpectedOldObjectId(org.eclipse.jgit.lib.ObjectId.fromString(repository.getHeadCommit(branch)));
+        update.setForceUpdate(true);
+        assertEquals(org.eclipse.jgit.lib.RefUpdate.Result.FORCED, update.delete());
+        repository.commitDsl(branch, dsl, "owner", "Trusted model root");
     }
 
     private static void insertInvalidSignature(DslGitRepository repository, String branch) throws IOException {
@@ -249,7 +265,7 @@ class GitNativeSyncSnapshotRaceTest {
             workspace.setSourceRepositoryId("source"); workspace.setCurrentBranch("main");
             when(rows.findByWorkspaceId("workspace")).thenReturn(Optional.of(workspace));
             when(rows.save(any())).thenAnswer(call -> call.getArgument(0));
-            var catalog = mock(SystemRepositoryService.class);
+            var catalog = NativeSyncTestCatalog.create();
             var metadata = new SystemRepository(); metadata.setRepositoryId("source"); metadata.setDefaultBranch("draft");
             when(catalog.getRepository("source")).thenReturn(metadata);
             var syncRows = mock(SyncStateRepository.class);

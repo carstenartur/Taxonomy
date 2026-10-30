@@ -1,0 +1,85 @@
+/* Shared application chrome. No Bootstrap dependency: the editor uses the same components. */
+.taxonomy-app-chrome { flex: 0 0 auto; min-width: 0; font: 1rem/1.5 system-ui, sans-serif; }
+.taxonomy-app-chrome *, .taxonomy-entity *, .taxonomy-entity-details * { box-sizing: border-box; }
+.taxonomy-app-chrome [hidden], .taxonomy-entity [hidden] { display: none !important; }
+.taxonomy-app-navigation { padding: .45rem 1.25rem; color: #fff; background: #17243a; }
+.taxonomy-app-mainrow { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1.25rem; min-width: 0; }
+.taxonomy-app-brand { color: #fff; font-size: 1.05rem; font-weight: 750; text-decoration: none; padding: .5rem 0; }
+.taxonomy-app-primary { display: flex; flex-wrap: wrap; gap: .25rem; min-width: 0; }
+.taxonomy-app-primary a, .taxonomy-app-languages a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: .45rem .75rem; border: 1px solid transparent; border-radius: .35rem; color: #f8fafc; font-size: .95rem; font-weight: 600; line-height: 1.35; text-decoration: none; }
+.taxonomy-app-primary a[aria-current="page"] { color: #17243a; background: #fff; border-color: #fff; }
+.taxonomy-app-primary a:hover, .taxonomy-app-languages a:hover { text-decoration: underline; background: #31425c; color: #fff; }
+.taxonomy-app-primary a[aria-current="page"]:hover { color: #17243a; background: #eaf0fa; }
+.taxonomy-app-utilities, .taxonomy-app-languages { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
+.taxonomy-app-utilities { margin-inline-start: auto; gap: .5rem; }
+.taxonomy-app-languages a { padding-inline: .4rem; font-size: .8rem; }
+.taxonomy-app-languages a[aria-current="true"] { border-color: #b8c7dc; }
+.taxonomy-app-navigation .context-help, .taxonomy-app-local > div > a, .taxonomy-app-local > a { color: #fff; }
+.taxonomy-app-navigation a:focus-visible, .taxonomy-app-navigation button:focus-visible, .taxonomy-app-navigation summary:focus-visible { outline: 3px solid #ffcf71; outline-offset: 3px; }
+.taxonomy-app-local { border-top: 1px solid #ffffff35; padding-top: .45rem; margin-top: .35rem; }
+.taxonomy-app-local > div { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+.taxonomy-app-local-title { margin: 0 auto 0 0; font-size: 1rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.taxonomy-app-local .workbench-toolbar { padding: 0; min-height: 44px; }
+.taxonomy-app-local .editor-header { background: transparent; padding: 0; gap: .5rem 1rem; }
+.taxonomy-app-local .editor-header h1 { font-size: 1rem; }
+.taxonomy-app-context { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .5rem 1rem; padding: .55rem 1.25rem; border-bottom: 1px solid #c8d1dd; background: #f5f7fb; color: #17243a; }
+.taxonomy-app-context-group { flex: 2 1 34rem; min-width: 0; }
+.taxonomy-app-context-title { margin: 0 0 .25rem; font-size: .8rem; font-weight: 750; color: #46566b; }
+.taxonomy-app-source { flex: 1.5 1 24rem; border-inline-start: 3px solid #9babc3; padding-inline-start: .75rem; }
+.taxonomy-app-technical { flex: 0 1 auto; max-width: 100%; margin: 0 0 0 auto; font-size: .875rem; }
+.taxonomy-app-technical > summary { min-height: 44px; padding: .65rem .5rem; cursor: pointer; white-space: nowrap; }
+.taxonomy-app-technical[open] { flex-basis: 100%; width: 100%; margin-inline-start: 0; }
+.taxonomy-app-technical[open] > summary { border-bottom: 1px solid #c8d1dd; }
+.taxonomy-app-technical > summary:focus-visible { outline: 3px solid #ac5100; outline-offset: 2px; }
+.taxonomy-entity { min-width: 0; color: var(--bs-body-color, #17243a); font: 1rem/1.5 system-ui, sans-serif; }
+.taxonomy-entity-kind { margin: 0 0 .25rem; color: #526174; font-size: .8rem; font-weight: 700; }
+.taxonomy-entity-badges { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.taxonomy-entity-key, .taxonomy-entity-version, .taxonomy-entity-status { display: inline-flex; align-items: center; max-width: 100%; padding: .2rem .5rem; border: 1px solid #b9c7d8; border-radius: .3rem; font: 600 .8rem/1.4 system-ui, sans-serif; overflow-wrap: anywhere; color: #253b59; background: #eef3fa; }
+.taxonomy-entity-key { font-family: ui-monospace, monospace; }
+.taxonomy-entity-status[data-tone="positive"] { color: #15583a; background: #e5f4eb; border-color: #90bca2; }
+.taxonomy-entity-status[data-tone="warning"] { color: #704500; background: #fff3d6; border-color: #d8b873; }
+.taxonomy-entity-status[data-tone="danger"] { color: #8e281d; background: #fcebe8; border-color: #daa096; }
+.taxonomy-entity-status[data-tone="muted"] { color: #495563; background: #eef0f3; border-color: #bbc1ca; }
+.taxonomy-entity-title { margin: .45rem 0 .25rem; font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
+.taxonomy-entity-description { margin: .25rem 0 .5rem; color: var(--bs-secondary-color, #526174); overflow-wrap: anywhere; }
+.taxonomy-entity-details { display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr); column-gap: .75rem; row-gap: .25rem; margin: .4rem 0 0; font: .875rem/1.45 system-ui, sans-serif; }
+.taxonomy-entity-details dt { margin: 0; color: var(--bs-secondary-color, #526174); font-weight: 600; }
+.taxonomy-entity-details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.taxonomy-app-context-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .25rem 1rem; margin: 0 0 .4rem; }
+.taxonomy-app-context-field { display: flex; align-items: baseline; gap: .35rem; min-width: 0; }
+.taxonomy-app-context-field dt { flex: 0 1 auto; }
+.taxonomy-app-context-field dd { flex: 1 1 0; }
+.taxonomy-app-context .taxonomy-entity-details dt { color: #526174; }
+.taxonomy-app-context .taxonomy-entity-details dd { color: #17243a; }
+.taxonomy-app-context-disclosure > summary { display: none; }
+.taxonomy-app-context-disclosure[data-compact-context] > summary { display: list-item; }
+.taxonomy-app-context-disclosure > summary { min-height: 44px; padding: .5rem 1.25rem; cursor: pointer; background: #f5f7fb; color: #17243a; border-bottom: 1px solid #c8d1dd; overflow-wrap: anywhere; }
+.taxonomy-app-context-disclosure > summary strong { font-weight: 650; }
+#applicationContextSummarySelection:not(:empty)::before, #applicationContextSummaryStand:not(:empty)::before { content: ' · '; }
+.taxonomy-app-summary-statuses { display: inline-flex; flex-wrap: wrap; gap: .35rem; vertical-align: middle; }
+.taxonomy-app-context-disclosure > summary:focus-visible { outline: 3px solid #ac5100; outline-offset: -3px; }
+@media (max-width: 640px) {
+    .taxonomy-app-context-disclosure > summary { padding: .5rem .65rem; }
+}
+@media (max-width: 42rem) {
+    .taxonomy-app-navigation { padding: .4rem .65rem; }
+    .taxonomy-app-mainrow { gap: .3rem .25rem; }
+    .taxonomy-app-primary { order: 3; width: 100%; }
+    .taxonomy-app-primary a { flex: 1 1 0; padding-inline: .4rem; font-size: .9rem; }
+    .taxonomy-app-utilities, .taxonomy-app-languages { gap: 0; }
+    .taxonomy-app-navigation .context-help { font-size: .75rem; padding-inline: .4rem; }
+    .taxonomy-app-context { padding: .55rem .65rem; gap: .35rem; }
+    .taxonomy-app-context-group { flex-basis: 100%; }
+    .taxonomy-app-source { padding-inline-start: .6rem; }
+    .taxonomy-app-technical { margin-inline-start: 0; }
+    .taxonomy-entity-details { grid-template-columns: minmax(5.5rem, 35%) minmax(0, 1fr); column-gap: .5rem; }
+    .taxonomy-app-context-details { grid-template-columns: minmax(0, 1fr); }
+    .taxonomy-app-context-field dt { flex: 0 1 35%; }
+}
+@media print { .taxonomy-app-chrome { display: none; } }
+@media (forced-colors: active) {
+    .taxonomy-app-navigation, .taxonomy-app-context, .taxonomy-app-context-disclosure > summary, .taxonomy-entity-status, .taxonomy-entity-key, .taxonomy-entity-version { color: CanvasText; background: Canvas; border-color: CanvasText; }
+    .taxonomy-app-navigation .btn-outline-light { color: ButtonText !important; background-color: ButtonFace !important; border-color: ButtonText !important; }
+    .taxonomy-app-primary a, .taxonomy-app-languages a, .taxonomy-app-brand, .taxonomy-app-navigation .context-help { color: LinkText; }
+    .taxonomy-app-primary a[aria-current="page"] { color: HighlightText; background: Highlight; }
+}

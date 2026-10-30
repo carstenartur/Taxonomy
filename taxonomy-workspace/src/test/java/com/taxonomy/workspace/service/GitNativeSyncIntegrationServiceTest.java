@@ -3,6 +3,7 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.signing.CommitSignature;
 import org.junit.jupiter.api.AfterEach;
 import org.mockito.MockedStatic;
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -42,7 +44,7 @@ class GitNativeSyncIntegrationServiceTest {
 
     private final SyncStateRepository syncStateRepository = mock(SyncStateRepository.class);
     private final UserWorkspaceRepository workspaceRepository = mock(UserWorkspaceRepository.class);
-    private final SystemRepositoryService systemRepositoryService = mock(SystemRepositoryService.class);
+    private final SystemRepositoryService systemRepositoryService = NativeSyncTestCatalog.create();
     private final DslGitRepositoryFactory repositoryFactory = mock(DslGitRepositoryFactory.class);
     private final SemanticGitMergeService semanticMergeService = mock(SemanticGitMergeService.class);
     private final WorkspacePortfolioGitPort portfolioGitPort = mock(WorkspacePortfolioGitPort.class);
@@ -58,13 +60,18 @@ class GitNativeSyncIntegrationServiceTest {
 
     // Routing/lifecycle fixtures have no Git objects; real provenance is covered by snapshot tests.
     private MockedStatic<CommitProvenance> provenanceCapture;
+    private MockedStatic<GitHistoryTransfer> historyTransfer;
 
     @AfterEach
-    void closeProvenanceCapture() { if (provenanceCapture != null) provenanceCapture.close(); }
+    void closeProvenanceCapture() {
+        if (provenanceCapture != null) provenanceCapture.close();
+        if (historyTransfer != null) historyTransfer.close();
+    }
 
     @BeforeEach
     void setUp() throws Exception {
         provenanceCapture = org.mockito.Mockito.mockStatic(CommitProvenance.class);
+        historyTransfer = org.mockito.Mockito.mockStatic(GitHistoryTransfer.class);
         when(repositoryFactory.getSystemRepository()).thenReturn(primaryRepository);
 
         service = new GitNativeSyncIntegrationService(
@@ -123,6 +130,9 @@ class GitNativeSyncIntegrationServiceTest {
                         workspace.getCurrentBranch()));
         when(isolatedWorkspaceRepository.verifyExpectedHead(any(String.class), eq("workspace-head")))
                 .thenReturn("workspace-head");
+        when(isolatedWorkspaceRepository.isAncestor(eq("workspace-head"), any(String.class))).thenReturn(true);
+        when(isolatedWorkspaceRepository.fastForwardIfHeadMatches(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
     }
 
     @Test
@@ -140,8 +150,8 @@ class GitNativeSyncIntegrationServiceTest {
         when(sourceRepository.getDslAtHead("draft")).thenReturn(theirs);
         when(semanticMergeService.mergeContent(base, ours, theirs))
                 .thenReturn(new TaxDslMergeResult(merged, List.of()));
-        when(isolatedWorkspaceRepository.commitDslIfHeadMatches(
-                eq("feature/alice"), eq("workspace-head"), eq(merged), eq("alice"), any(String.class)))
+        when(isolatedWorkspaceRepository.commitMergeDslIfHeadMatches(
+                eq("feature/alice"), eq("workspace-head"), eq("source-head"), eq(merged), eq("alice"), any(String.class), isNull()))
                 .thenReturn("local-merge-commit");
         when(isolatedWorkspaceRepository.commitDsl(
                 eq("sync-base"), eq(merged), eq("alice"), any(String.class)))
@@ -184,8 +194,8 @@ class GitNativeSyncIntegrationServiceTest {
         when(sourceRepository.getDslAtHead("draft")).thenReturn(theirs);
         when(semanticMergeService.mergeContent(base, ours, theirs))
                 .thenReturn(new TaxDslMergeResult(merged, List.of()));
-        when(isolatedWorkspaceRepository.commitDslIfHeadMatches(
-                eq("main"), eq("workspace-head"), eq(merged), eq("alice"), any(String.class)))
+        when(isolatedWorkspaceRepository.commitMergeDslIfHeadMatches(
+                eq("main"), eq("workspace-head"), eq("source-head"), eq(merged), eq("alice"), any(String.class), isNull()))
                 .thenReturn("main-merge-commit");
         when(isolatedWorkspaceRepository.commitDsl(
                 eq("sync-base"), eq(merged), eq("alice"), any(String.class)))
@@ -218,12 +228,9 @@ class GitNativeSyncIntegrationServiceTest {
         when(isolatedWorkspaceRepository.getDslAtHead("feature/alice")).thenReturn(local);
         when(semanticMergeService.mergeContent(base, shared, local))
                 .thenReturn(new TaxDslMergeResult(merged, List.of()));
-        when(sourceRepository.commitDslIfHeadMatches(
-                eq("draft"), eq("source-head"), eq(merged), eq("alice"), any(String.class)))
+        when(sourceRepository.commitMergeDslIfHeadMatches(
+                eq("draft"), eq("source-head"), eq("workspace-head"), eq(merged), eq("alice"), any(String.class), isNull()))
                 .thenReturn("source-merge-commit");
-        when(isolatedWorkspaceRepository.commitDslIfHeadMatches(
-                eq("feature/alice"), eq("workspace-head"), eq(merged), eq("alice"), any(String.class)))
-                .thenReturn("workspace-sync-commit");
         when(isolatedWorkspaceRepository.commitDsl(
                 eq("sync-base"), eq(merged), eq("alice"), any(String.class)))
                 .thenReturn("tracking-commit");
@@ -231,8 +238,8 @@ class GitNativeSyncIntegrationServiceTest {
         String commit = service.publishToShared("alice", "feature/alice");
 
         assertThat(commit).isEqualTo("source-merge-commit");
-        verify(sourceRepository).commitDslIfHeadMatches(
-                eq("draft"), eq("source-head"), eq(merged), eq("alice"), any(String.class));
+        verify(sourceRepository).commitMergeDslIfHeadMatches(
+                eq("draft"), eq("source-head"), eq("workspace-head"), eq(merged), eq("alice"), any(String.class), isNull());
         verify(primaryRepository, never()).commitDsl(any(), any(), any(), any());
         verify(primaryRepository, never()).commitDslIfHeadMatches(any(), any(), any(), any(), any());
         verify(portfolioGitPort).materializePortfolio(
@@ -243,7 +250,7 @@ class GitNativeSyncIntegrationServiceTest {
                 eq(new WorkspaceContext(
                         "alice", "workspace-a", "feature/alice", "repo-a")));
         assertThat(state.getLastPublishedCommitId()).isEqualTo("source-merge-commit");
-        assertThat(workspace.getCurrentCommit()).isEqualTo("workspace-sync-commit");
+        assertThat(workspace.getCurrentCommit()).isEqualTo("source-merge-commit");
     }
 
     @Test
@@ -261,8 +268,8 @@ class GitNativeSyncIntegrationServiceTest {
         when(isolatedWorkspaceRepository.getDslAtHead("feature/alice")).thenReturn(local);
         when(semanticMergeService.mergeContent(base, base, local))
                 .thenReturn(new TaxDslMergeResult(local, List.of()));
-        when(sourceRepository.commitDslIfHeadMatches(
-                eq("main"), eq("source-head"), eq(local), eq("alice"), any(String.class)))
+        when(sourceRepository.commitMergeDslIfHeadMatches(
+                eq("main"), eq("source-head"), eq("workspace-head"), eq(local), eq("alice"), any(String.class), isNull()))
                 .thenReturn("repo-a-head");
         when(isolatedWorkspaceRepository.getHeadCommit("feature/alice"))
                 .thenReturn("workspace-head");
@@ -294,8 +301,8 @@ class GitNativeSyncIntegrationServiceTest {
         when(sourceRepository.getDslAtHead("draft")).thenReturn(shared);
         when(semanticMergeService.mergeContent(base, local, shared))
                 .thenReturn(new TaxDslMergeResult(merged, List.of()));
-        when(isolatedWorkspaceRepository.commitDslIfHeadMatches(
-                eq("main"), eq("workspace-head"), eq(merged), eq("alice"), any(String.class)))
+        when(isolatedWorkspaceRepository.commitMergeDslIfHeadMatches(
+                eq("main"), eq("workspace-head"), eq("source-head"), eq(merged), eq("alice"), any(String.class), isNull()))
                 .thenReturn("local-head");
         when(isolatedWorkspaceRepository.commitDsl(
                 eq("sync-base"), eq(merged), eq("alice"), any(String.class)))
@@ -339,7 +346,7 @@ class GitNativeSyncIntegrationServiceTest {
                         "repo-a", "draft", "alice"));
         when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
         when(semanticMergeService.mergeBranches(
-                sourceRepository, "draft", "draft", "alice"))
+                eq(sourceRepository), eq("draft"), eq("draft"), eq("alice"), isNull(), any()))
                 .thenReturn(new SemanticGitMergeService.MergeOutcome(
                         true, "central-head", false, List.of(), null));
         when(sourceRepository.getHeadCommit("draft")).thenReturn("central-head");

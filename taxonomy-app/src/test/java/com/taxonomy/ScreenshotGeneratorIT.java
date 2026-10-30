@@ -920,7 +920,7 @@ class ScreenshotGeneratorIT {
     @Order(14)
     void captureAdminSettings() throws IOException {
         showAdminSettings();
-        WebElement navbar = driver.findElement(By.cssSelector("nav.navbar"));
+        WebElement navbar = driver.findElement(By.id("applicationNavigation"));
         saveElementScreenshot(navbar, "14-navbar-settings.png");
         driver.findElement(By.cssSelector("#applicationSettings > summary")).click();
     }

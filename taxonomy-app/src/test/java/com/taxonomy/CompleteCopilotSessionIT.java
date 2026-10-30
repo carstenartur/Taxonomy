@@ -4,6 +4,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.awaitility.Awaitility;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.ElementClickInterceptedException;
@@ -17,6 +19,8 @@ import org.openqa.selenium.support.ui.ExpectedCondition;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -25,6 +29,10 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,16 +55,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>The test uses the packaged application, PostgreSQL, the real browser UI
  * and the deterministic mock LLM. It does not inject result HTML or fabricate
- * successful terminal data. The injected faults are limited to public browser
+ * successful terminal data. Explicit {@code -Ptest-local} runs the same complete
+ * scenario against real Spring/HSQLDB and the repository's local browser adapter.
+ * The injected faults are limited to public browser
  * API boundaries and prove cancellation, reconnecting and consolidated failure
  * presentation around real persisted operations.</p>
  */
 @Tag("ui-acceptance")
-@Tag("docker-required")
+@Tag("browser")
 @Tag("ci-app-shard-browser")
 class CompleteCopilotSessionIT {
 
     private static final String ADMIN_PASSWORD = "Complete-Copilot-Session-2026!";
+    private static final Duration UI_WAIT_TIMEOUT = Duration.ofMinutes(5);
     private static final String REQUIREMENT_SENTENCE =
             "Provide traceable resilient command communication with auditable architecture decisions.";
 
@@ -65,11 +76,36 @@ class CompleteCopilotSessionIT {
     private static PostgreSQLContainer database;
     private static GenericContainer<?> application;
     private static ContainerTestUtils.BrowserSession browserSession;
+    private static com.taxonomy.testsupport.BrowserSession localBrowserSession;
+    private static ConfigurableApplicationContext localApplication;
+    @TempDir private static Path localData;
+    private static String browserOrigin;
     private static RemoteWebDriver driver;
     private static WebDriverWait wait;
 
     @BeforeAll
-    static void startPersistentApplicationAndBrowser() {
+    static void startPersistentApplicationAndBrowser() throws Exception {
+        boolean localRuntime = switch (System.getProperty("taxonomy.test.browser", "")) {
+            case "local" -> true;
+            case "", "container" -> false;
+            default -> throw new IllegalArgumentException("Expected taxonomy.test.browser=local or container");
+        };
+        if (localRuntime) {
+            startLocalApplication();
+            int port = localApplication.getEnvironment().getRequiredProperty("local.server.port", Integer.class);
+            localBrowserSession = com.taxonomy.testsupport.BrowserSession.open(port,
+                    Path.of("target", "complete-copilot-session-evidence", "downloads"));
+            browserOrigin = localBrowserSession.origin();
+            driver = localBrowserSession.driver();
+        } else {
+            startContainerApplicationAndBrowser();
+        }
+        driver.manage().window().setSize(new Dimension(1440, 1000));
+        wait = new WebDriverWait(driver, UI_WAIT_TIMEOUT);
+        login();
+    }
+
+    private static void startContainerApplicationAndBrowser() {
         network = Network.newNetwork();
         database = ContainerTestUtils.postgresContainer(network);
         database.start();
@@ -87,15 +123,58 @@ class CompleteCopilotSessionIT {
         application.start();
 
         browserSession = ContainerTestUtils.startBrowser(network);
+        browserOrigin = ContainerTestUtils.APP_ORIGIN;
         driver = browserSession.driver();
-        driver.manage().window().setSize(new Dimension(1440, 1000));
-        wait = new WebDriverWait(driver, Duration.ofMinutes(5));
-        login();
+    }
+
+    private static void startLocalApplication() throws IOException {
+        Path data = Files.createDirectories(localData.resolve("application"));
+        localApplication = new SpringApplicationBuilder(TaxonomyApplication.class).run(
+                "--server.port=0", "--spring.profiles.active=hsqldb",
+                "--spring.datasource.url=jdbc:hsqldb:file:" + data.resolve("db").toAbsolutePath() + ";shutdown=true",
+                "--spring.datasource.username=SA", "--spring.datasource.password=",
+                "--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver",
+                "--spring.jpa.hibernate.ddl-auto=update",
+                "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
+                "--taxonomy.admin-password=" + ADMIN_PASSWORD,
+                "--taxonomy.security.require-password-change=false",
+                "--embedding.enabled=false", "--embedding.allow-download=false",
+                "--taxonomy.init.async=true", "--spring.thymeleaf.cache=false",
+                "--taxonomy.ai.max-architecture-nodes=100", "--llm.mock=true");
+        URI origin = URI.create("http://127.0.0.1:"
+                + localApplication.getEnvironment().getRequiredProperty("local.server.port"));
+        String authorization = "Basic " + Base64.getEncoder().encodeToString(
+                ("admin:" + ADMIN_PASSWORD).getBytes(StandardCharsets.UTF_8));
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            Awaitility.await("Complete Copilot application readiness and asynchronous taxonomy initialization")
+                    .atMost(UI_WAIT_TIMEOUT).pollInterval(Duration.ofSeconds(1)).untilAsserted(() -> {
+                        var health = client.send(HttpRequest.newBuilder(origin.resolve("/actuator/health/readiness"))
+                                .timeout(Duration.ofSeconds(5)).GET().build(), HttpResponse.BodyHandlers.ofString());
+                        assertThat(health.statusCode()).as("Actual application readiness endpoint").isEqualTo(200);
+                        var startup = client.send(HttpRequest.newBuilder(origin.resolve("/api/status/startup"))
+                                .header("Authorization", authorization).timeout(Duration.ofSeconds(5)).GET().build(),
+                                HttpResponse.BodyHandlers.ofString());
+                        assertThat(startup.statusCode()).as("Actual authenticated startup endpoint").isEqualTo(200);
+                        assertThat(json.readTree(startup.body()).path("initialized").asBoolean())
+                                .as("INIT_ASYNC must finish before browser actions").isTrue();
+                    });
+        }
     }
 
     @AfterAll
     static void stopPersistentApplicationAndBrowser() throws Exception {
-        ContainerTestUtils.closeAll(browserSession, application, database, network);
+        // Local cleanup must not initialize ContainerTestUtils and its packaged image.
+        Exception failure = null;
+        for (AutoCloseable resource : new AutoCloseable[]{localBrowserSession, browserSession,
+                localApplication, application, database, network}) {
+            if (resource == null) continue;
+            try { resource.close(); }
+            catch (Exception exception) {
+                if (failure == null) failure = exception; else failure.addSuppressed(exception);
+            }
+        }
+        if (failure != null) throw failure;
     }
 
     @Test
@@ -522,6 +601,7 @@ class CompleteCopilotSessionIT {
                 """, textField, oversizedText);
         fill(modal, "changeReason", "Exercise the real prompt-budget rejection contract.");
         modal.findElement(By.cssSelector("button[type='submit']")).click();
+        chooseIntakeAction("newVersionModal", "CHANGE");
         waitForModalClosed("newVersionModal");
         wait.until(textPresent(By.id("detailInfo"), "immutable version"));
         wait.until(browser -> ((Number) javascript().executeScript(
@@ -588,13 +668,13 @@ class CompleteCopilotSessionIT {
     }
 
     private static void login() {
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
+        driver.get(browserOrigin + "/login");
         wait.until(ExpectedConditions.presenceOfElementLocated(By.name("username")))
                 .sendKeys("admin");
         driver.findElement(By.name("password")).sendKeys(ADMIN_PASSWORD);
         driver.findElement(By.cssSelector("form")).submit();
         wait.until(browser -> !browser.getCurrentUrl().contains("/login"));
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
+        driver.get(browserOrigin + "/");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
         dismissOnboardingWhenShown();
     }
@@ -621,6 +701,7 @@ class CompleteCopilotSessionIT {
         new Select(modal.findElement(By.id("requirementType"))).selectByValue("SECURITY");
         fill(modal, "requirementText", text);
         modal.findElement(By.cssSelector("button[type='submit']")).click();
+        chooseIntakeAction("requirementModal", "NEW");
         waitForModalClosed("requirementModal");
         wait.until(textPresent(By.cssSelector("#requirementsTable tbody"), key));
     }
@@ -651,14 +732,77 @@ class CompleteCopilotSessionIT {
     }
 
     private static void open(String path, By readyElement) {
-        driver.get(ContainerTestUtils.APP_ORIGIN + path);
+        driver.get(browserOrigin + path);
         wait.until(ExpectedConditions.visibilityOfElementLocated(readyElement));
     }
 
     private static void waitForModalClosed(String modalId) {
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(
-                By.cssSelector(".modal-backdrop.show")));
+        try {
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                    By.cssSelector(".modal-backdrop.show")));
+        } catch (RuntimeException failure) {
+            captureModalFailure(modalId, failure);
+            throw failure;
+        }
+    }
+
+    private static void chooseIntakeAction(String modalId, String action) {
+        By choice = By.cssSelector("#" + modalId + " .requirement-intake-review > [data-intake-choice='" + action + "']");
+        try {
+            new WebDriverWait(driver, UI_WAIT_TIMEOUT)
+                    .ignoring(ElementClickInterceptedException.class)
+                    .ignoring(StaleElementReferenceException.class)
+                    .withMessage("Explicit requirement intake choice " + action + " in " + modalId)
+                    .until(browser -> {
+                        WebElement element = browser.findElement(choice);
+                        if (!element.isDisplayed() || !element.isEnabled()) return false;
+                        javascript().executeScript("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", element);
+                        element.click();
+                        return true;
+                    });
+        } catch (RuntimeException failure) {
+            captureModalFailure(modalId, failure);
+            throw failure;
+        }
+    }
+
+    private static void captureModalFailure(String modalId, RuntimeException failure) {
+        try {
+            Path directory = Files.createDirectories(Path.of("target", "complete-copilot-session-evidence"));
+            String name = modalId.replaceAll("[^A-Za-z0-9_-]", "_") + "-" + System.nanoTime();
+            String state = (String) javascript().executeScript("""
+                    const modal = document.getElementById(arguments[0]);
+                    const form = modal?.querySelector('form');
+                    const instance = modal && window.bootstrap?.Modal.getInstance(modal);
+                    const overview = window.TaxonomyArchitectureLifecycle?.state();
+                    const visible = element => Boolean(element.getClientRects().length);
+                    return JSON.stringify({
+                        url: location.href,
+                        lifecycle: overview && {context:overview.context, source:overview.source,
+                            projectionState:overview.projectionState, publicationState:overview.publicationState},
+                        focus: document.activeElement?.id,
+                        busy: [...document.querySelectorAll('.portfolio-busy')].map(element => ({id:element.id,visible:visible(element)})),
+                        alerts: [...document.querySelectorAll('.alert,[role=alert]')].filter(visible)
+                            .map(element => ({id:element.id,text:element.textContent.slice(0,1000)})).slice(0,8),
+                        dialog: modal && {id:modal.id, classes:modal.className,
+                            shown:instance?._isShown, transitioning:instance?._isTransitioning},
+                        review: form && [...form.querySelectorAll('.requirement-intake-review > h3,.requirement-intake-review > p')]
+                            .map(element => element.textContent.slice(0,1000)).slice(0,8),
+                        fields: form && [...form.querySelectorAll('input,textarea,select')]
+                            .map(element => ({id:element.id,length:element.value.length,
+                                valid:element.validity.valid,validationMessage:element.validationMessage.slice(0,250)})),
+                        controls: form && [...form.querySelectorAll('[type=submit],[data-intake-choice]')]
+                            .map(element => ({choice:element.dataset.intakeChoice,label:element.textContent.slice(0,150),
+                                disabled:element.disabled,visible:visible(element)})).slice(0,30)
+                    }, null, 2);
+                    """, modalId);
+            Files.writeString(directory.resolve(name + ".json"), state);
+            failure.addSuppressed(new IllegalStateException("Modal save state: " + state));
+            Files.write(directory.resolve(name + ".png"), driver.getScreenshotAs(OutputType.BYTES));
+        } catch (Exception diagnosticFailure) {
+            failure.addSuppressed(diagnosticFailure);
+        }
     }
 
     private static void click(By locator) {

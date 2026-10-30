@@ -14,6 +14,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.PortablePortfolioGitService;
 import com.taxonomy.portfolio.service.PortfolioScope;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.reformulation.DecisionQuestion;
 import com.taxonomy.reformulation.ValidationReport;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -311,14 +312,26 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
         WorkspaceContext target = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
         var lowerProject = projects.createProject(new CreateProjectRequest("P", "Existing project", "Same identity", ProjectStatus.ACTIVE,
                 null, null, null, null), "architect", target);
-        var lowerRequirement = projects.createRequirement(lowerProject.id(), new CreateRequirementRequest("R", "Existing requirement",
-                ORIGINAL, RequirementStatus.DRAFT, 50, Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED,
-                "architect", "Original", null), "architect", target);
+        var originalVersion = projects.listRequirementVersions(project.id(), requirement.id(), "architect", context).stream()
+                .filter(version -> version.versionNumber() == 1).findFirst().orElseThrow();
+        // This target shares the source history: recreating v1 now would have conflicting immutable provenance.
+        var lowerRequirement = projects.createImportedRequirement(lowerProject.id(), new CreateRequirementRequest("R", "Existing requirement",
+                originalVersion.text(), RequirementStatus.DRAFT, 50, Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED,
+                "architect", originalVersion.changeReason(), originalVersion.source()),
+                new ProjectPortfolioService.ImportedVersion(originalVersion.versionNumber(), originalVersion.text(),
+                        originalVersion.contentHash(), originalVersion.changeReason(), originalVersion.source(),
+                        originalVersion.createdBy(), originalVersion.createdAt()), "architect", target);
         git.materialize(dsl, "architect", target);
         var current = projects.getRequirement(lowerProject.id(), lowerRequirement.id(), "architect", target);
+        assertThat(projects.listProjects("architect", target)).hasSize(1);
+        assertThat(projects.listRequirements(lowerProject.id(), "architect", target)).hasSize(1);
         assertThat(projects.getProject(lowerProject.id(), "architect", target).projectKey()).isEqualTo("P");
         assertThat(current.requirementKey()).isEqualTo("R");
         assertThat(current.currentVersion().versionNumber()).isEqualTo(2);
+        var history = projects.listRequirementVersions(lowerProject.id(), lowerRequirement.id(), "architect", target);
+        assertThat(history).hasSize(2);
+        assertThat(history.stream().filter(version -> version.versionNumber() == 1).findFirst().orElseThrow())
+                .isEqualTo(lowerRequirement.currentVersion());
         var stored = importedEvidence.findByScopeKeyOrderByProjectKeyAscRequirementKeyAscTargetVersionNumberAscEvidenceHashAsc(
                 PortfolioScope.key("architect", target));
         assertThat(stored).hasSize(1);

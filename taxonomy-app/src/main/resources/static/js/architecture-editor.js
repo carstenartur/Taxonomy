@@ -105,6 +105,8 @@
     async function load(scope, commit, preserveDraft) {
         var ticket = ++generation;
         loading = true;
+        window.TaxonomyArchitectureLifecycle?.beginSelection(scope, commit);
+        permissions();
         if (loader) loader.abort();
         loader = new AbortController();
         focusPanel.setLocked(true);
@@ -124,7 +126,7 @@
             linkSelection(true);
             return true;
         } catch (error) {
-            if (ticket === generation) { report(error); view = null; focusPanel.setContext(null, false); permissions(); }
+            if (ticket === generation) { report(error); view = null; window.TaxonomyArchitectureLifecycle?.failedSelection(error); focusPanel.setContext(null, false); permissions(); }
             return false;
         } finally {
             if (ticket === generation) { loading = false; el('architectureEditor').setAttribute('aria-busy', 'false'); permissions(); }
@@ -134,10 +136,13 @@
         renderPackages();
         planningPanel.render(view, preserveDraft);
         var c = context();
+        window.TaxonomyArchitectureLifecycle?.observe(view.document, view.mayEdit);
         adoptionPanel.update(view);
         window.TaxonomyArchitectureWorkflow?.showEditor(c,adoptionPanel.getSource());
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
+        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId, workspaceScopeKey:c.workspaceScopeKey, branch:c.branch, modelStand:contextLabel,commit:c.commit,revision:c.revision}, editable:Boolean(view.mayEdit), source:adoptionPanel.getSource()});
+        el('editorContext').hidden = Boolean(window.TaxonomyAppChrome);
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
         var state = view.document.projectionState;
         setStatus(t('editor.projection.' + state));
@@ -518,6 +523,21 @@
         } catch (error) { report(error); }
         finally { busy = false; permissions(); el('editorWorkspace').disabled = false; }
     };
+    document.addEventListener('taxonomy:architecture-stand-requested', function (event) {
+        if (dialog.open) dialog.close(); pending = null;
+        var selection = event.detail?.selection || {};
+        load(event.detail?.context || scopeFromUrl(), selection.commit || selection.revision || null, true);
+    });
+    function applyLifecycleChange(event) {
+        var result = event.detail?.publication || event.detail;
+        var resultContext = result?.context;
+        if (busy || loading || !view || !resultContext || !sameScope(resultContext, context())
+                || view.document.source !== 'WORKSPACE_REVISION' || view.document.projectionState === 'HISTORICAL') return;
+        // Accepted lifecycle work advances the editor journal. Keep the unrelated form draft.
+        load(resultContext, null, true);
+    }
+    document.addEventListener('taxonomy:lifecycle-changed', applyLifecycleChange);
+    document.addEventListener('taxonomy:architecture-reconciled', applyLifecycleChange);
     window.addEventListener('popstate', function () {
         if (dialog.open) dialog.close(); pending = null;
         selected = new URLSearchParams(location.search).get('element');

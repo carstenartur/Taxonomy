@@ -83,6 +83,7 @@ final class PortfolioContextBrowserChecks {
             fixtures.projectsAvailable = true;
             driver.navigate().refresh();
             pageReady("selectedProjectKey", "QA-CONTEXT-A", "portfolioBusy");
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("applicationContextSummaryTitle"), "QA context architecture"));
             verifyPortfolioSpacePriority();
             verifyProjectNavigation(1366, 768);
             verifyProjectNavigation(1920, 1080);
@@ -97,7 +98,10 @@ final class PortfolioContextBrowserChecks {
             assertThat(fixtures.submittedVersions).hasSize(1);
         } catch (IOException | RuntimeException | Error error) {
             failure = error;
-            try { screenshot("failure"); } catch (IOException | RuntimeException diagnostic) { error.addSuppressed(diagnostic); }
+            try {
+                screenshot("failure");
+                Files.writeString(evidence.resolve("failure.html"), driver.getPageSource());
+            } catch (IOException | RuntimeException diagnostic) { error.addSuppressed(diagnostic); }
             throw error;
         } finally {
             Throwable cleanupFailure = null;
@@ -164,6 +168,7 @@ final class PortfolioContextBrowserChecks {
                     """);
             Files.writeString(evidence.resolve("space-priority-" + size[0] + ".json"),
                     new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(geometry));
+            Files.writeString(evidence.resolve("space-priority-" + size[0] + ".html"), driver.getPageSource());
             screenshot("space-priority-" + size[0]);
             noOverflow();
             checks.assertThat(number(geometry, "scroll", "x")).isZero();
@@ -658,10 +663,10 @@ final class PortfolioContextBrowserChecks {
         pageReady("selectedProjectKey", project == PROJECT_A ? "QA-CONTEXT-A" : "QA-CONTEXT-B", "portfolioBusy");
         Map<String, String> tools = Map.of("Import", "import", "Matrices", "matrices", "Reports", "reports", "Versioning", "versioning");
         tools.forEach((name, suffix) -> assertThat(driver.findElement(By.id("project" + name + "Link"))
-                .getDomAttribute("href")).isEqualTo(relative("/projects/" + project + "/" + suffix + "?lang=de")));
+                .getDomAttribute("href")).isEqualTo(scopedRelative("/projects/" + project + "/" + suffix + "?lang=de")));
         var requirement = fixtures.primaryRequirement(project);
         assertThat(detailLink(project).getDomAttribute("href"))
-                .isEqualTo(relative("/projects/" + project + "/requirements/" + requirement.id() + "?lang=de"));
+                .isEqualTo(scopedRelative("/projects/" + project + "/requirements/" + requirement.id() + "?lang=de"));
         assertThat(detailLink(project).getAccessibleName()).contains(requirement.requirementKey());
     }
 
@@ -686,6 +691,7 @@ final class PortfolioContextBrowserChecks {
         click(By.cssSelector("#newVersionModal details summary"));
         for (String id : List.of("sourceSection", "sourcePage", "sourceOriginal")) fill(id, draft.get(id));
         click(By.cssSelector("#newVersionForm button[type='submit']"));
+        click(By.cssSelector("#newVersionForm [data-intake-choice='CHANGE']"));
         wait.until(browser -> fixtures.submittedVersions.size() == 1);
         hidden("detailBusy");
         wait.until(ExpectedConditions.textToBe(By.id("newVersionError"), CONFLICT));
@@ -718,7 +724,7 @@ final class PortfolioContextBrowserChecks {
         assertThat(visible("cellDetailBody").getText()).contains("0%", ZERO_EVIDENCE)
                 .doesNotContain("Es ist keine Beziehung gespeichert.");
         assertThat(driver.findElement(By.cssSelector("#cellDetailBody a")).getDomAttribute("href"))
-                .isEqualTo(relative("/projects/" + PROJECT_A + "/requirements/" + REQUIREMENT_A + "?lang=de"));
+                .isEqualTo(scopedRelative("/projects/" + PROJECT_A + "/requirements/" + REQUIREMENT_A + "?lang=de"));
         screenshot("matrix-zero"); closeCell();
         click(cellLocator("QA-REQ-EMPTY")); assertModal("cellDetail");
         assertThat(visible("cellDetailBody").getText())
@@ -818,7 +824,10 @@ final class PortfolioContextBrowserChecks {
     private void screenshot(String name) throws IOException { Files.write(evidence.resolve(name + ".png"), driver.getScreenshotAs(OutputType.BYTES)); }
     private void open(String path) { driver.get(origin + relative(path)); }
     private String relative(String path) { return context + path; }
-    private void url(String path) { wait.until(ExpectedConditions.urlToBe(origin + relative(path))); }
+    private String scopedRelative(String path) {
+        return relative(path + "&" + SCOPE_QUERY);
+    }
+    private void url(String path) { wait.until(ExpectedConditions.urlToBe(origin + scopedRelative(path))); }
     private WebElement visible(String id) { return wait.until(ExpectedConditions.visibilityOfElementLocated(By.id(id))); }
     private void hidden(String id) { wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(id))); }
     private void pageReady(String id, String text, String busy) {

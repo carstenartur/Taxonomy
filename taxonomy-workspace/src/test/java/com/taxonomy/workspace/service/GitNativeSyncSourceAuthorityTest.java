@@ -4,6 +4,7 @@ import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.*;
 import com.taxonomy.workspace.repository.*;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.access.AccessDeniedException;
@@ -15,11 +16,12 @@ import static org.mockito.Mockito.*;
 
 class GitNativeSyncSourceAuthorityTest {
     enum Operation { PULL, PUBLISH, EXPLICIT_PULL, EXPLICIT_PUBLISH, MERGE, TAKE_SHARED, KEEP_MINE }
+    enum SourcePolicyChange { ARCHIVE_BEFORE_PULL, ARCHIVE_BEFORE_PUBLISH, PUBLIC_TO_PRIVATE_BEFORE_PULL }
 
     @ParameterizedTest @EnumSource(Operation.class)
     void removedPrivateSourceMembershipBlocksEverySyncBeforeAnySideEffect(Operation operation) throws Exception {
         var rows = mock(UserWorkspaceRepository.class);
-        var catalog = mock(SystemRepositoryService.class);
+        var catalog = NativeSyncTestCatalog.create();
         var factory = mock(DslGitRepositoryFactory.class);
         var states = mock(SyncStateRepository.class);
         var merger = mock(SemanticGitMergeService.class);
@@ -76,6 +78,96 @@ class GitNativeSyncSourceAuthorityTest {
     }
 
     @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void sourceAuthorityIsRecheckedAfterCopyingHistoryBeforePublishingARef(boolean publish) throws Exception {
+        try (var fixture = new Fixture(); var transfer = mockStatic(GitHistoryTransfer.class)) {
+            String sourceHead = fixture.source.getHeadCommit("draft");
+            String localHead = fixture.local.getHeadCommit("main");
+            transfer.when(() -> GitHistoryTransfer.copyCommitClosure(any(), any(), anyString(), anyList()))
+                    .thenAnswer(call -> {
+                        Object result = call.callRealMethod();
+                        when(fixture.memberRows.findByRepositoryIdAndUsername("private-source", "alice"))
+                                .thenReturn(Optional.empty());
+                        return result;
+                    });
+            assertThrows(AccessDeniedException.class,
+                    () -> run(fixture.service, publish ? Operation.EXPLICIT_PUBLISH : Operation.EXPLICIT_PULL));
+            assertEquals(sourceHead, fixture.source.getHeadCommit("draft"));
+            assertEquals(localHead, fixture.local.getHeadCommit("main"));
+            verify(fixture.portfolio, never()).materializePortfolio(anyString(), anyString(), any());
+            verify(fixture.rows, never()).save(any());
+        }
+    }
+
+    @ParameterizedTest @EnumSource(SourcePolicyChange.class)
+    void replacementSourceMetadataRevokesAuthorityBeforeAnyTransferredHistoryIsAccepted(SourcePolicyChange change) throws Exception {
+        try (var fixture = new Fixture(); var transfer = mockStatic(GitHistoryTransfer.class)) {
+            fixture.sourceMetadata.setLifecycleState(RepositoryLifecycleState.ACTIVE);
+            if (change == SourcePolicyChange.PUBLIC_TO_PRIVATE_BEFORE_PULL) {
+                fixture.sourceMetadata.setVisibility(RepositoryVisibility.PUBLIC);
+                when(fixture.memberRows.findByRepositoryIdAndUsername("private-source", "alice"))
+                        .thenReturn(Optional.empty());
+            }
+            fixture.local.commitDsl("sync-base", dsl("Original"), "alice", "Existing accepted semantic base");
+            String sourceHead = fixture.source.getHeadCommit("draft");
+            String localHead = fixture.local.getHeadCommit("main");
+            String trackingHead = fixture.local.getHeadCommit("sync-base");
+            SystemRepository captured = fixture.sourceMetadata;
+            SystemRepository replacement = new SystemRepository();
+            replacement.setRepositoryId(captured.getRepositoryId()); replacement.setSlug(captured.getSlug());
+            replacement.setDefaultBranch(captured.getDefaultBranch()); replacement.setVisibility(RepositoryVisibility.PRIVATE);
+            replacement.setLifecycleState(change == SourcePolicyChange.PUBLIC_TO_PRIVATE_BEFORE_PULL
+                    ? RepositoryLifecycleState.ACTIVE : RepositoryLifecycleState.ARCHIVED);
+            transfer.when(() -> GitHistoryTransfer.copyCommitClosure(any(), any(), anyString(), anyList()))
+                    .thenAnswer(call -> {
+                        Object result = call.callRealMethod();
+                        // A committed catalogue update is a different entity, not a mutation of the captured fixture.
+                        when(fixture.catalog.getRepository("private-source")).thenReturn(replacement);
+                        return result;
+                    });
+
+            Throwable failure = org.assertj.core.api.Assertions.catchThrowable(() -> run(fixture.service,
+                    change == SourcePolicyChange.ARCHIVE_BEFORE_PUBLISH ? Operation.EXPLICIT_PUBLISH : Operation.EXPLICIT_PULL));
+
+            assertAll(
+                    () -> assertInstanceOf(AccessDeniedException.class, failure),
+                    () -> assertEquals(sourceHead, fixture.source.getHeadCommit("draft"), "source ref must remain unchanged after revocation"),
+                    () -> assertEquals(localHead, fixture.local.getHeadCommit("main"), "workspace ref must remain unchanged after revocation"),
+                    () -> assertEquals(trackingHead, fixture.local.getHeadCommit("sync-base"), "revoked source must not become the accepted base"),
+                    () -> assertEquals(RepositoryLifecycleState.ACTIVE, captured.getLifecycleState()),
+                    () -> assertNotSame(captured, replacement));
+            verify(fixture.portfolio, never()).materializePortfolio(anyString(), anyString(), any());
+            verify(fixture.rows, never()).save(any());
+            verify(fixture.catalog, never()).save(any());
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void successfulPublicationCannotResaveTheCapturedCatalogueEntityOverConcurrentPolicyChanges() throws Exception {
+        try (var fixture = new Fixture(); var transfer = mockStatic(GitHistoryTransfer.class)) {
+            fixture.sourceMetadata.setLifecycleState(RepositoryLifecycleState.ACTIVE);
+            SystemRepository replacement = new SystemRepository();
+            replacement.setRepositoryId("private-source"); replacement.setSlug("private-source");
+            replacement.setDefaultBranch("draft"); replacement.setLifecycleState(RepositoryLifecycleState.ACTIVE);
+            replacement.setVisibility(RepositoryVisibility.PUBLIC);
+            fixture.local.commitDsl("main", dsl("Publish current contribution"), "alice", "Local contribution");
+            transfer.when(() -> GitHistoryTransfer.copyCommitClosure(any(), any(), anyString(), anyList()))
+                    .thenAnswer(call -> {
+                        Object result = call.callRealMethod();
+                        when(fixture.catalog.getRepository("private-source")).thenReturn(replacement);
+                        return result;
+                    });
+
+            String published = fixture.service.publishFromWorkspaceToShared("alice", "old-copy");
+
+            assertEquals(published, fixture.source.getHeadCommit("draft"));
+            assertEquals(published, fixture.local.getHeadCommit("main"));
+            assertEquals(RepositoryVisibility.PRIVATE, fixture.sourceMetadata.getVisibility());
+            assertNull(fixture.sourceMetadata.getLastPushAt(), "captured metadata must not be dirtied before an ORM flush");
+            verify(fixture.catalog, never()).save(same(fixture.sourceMetadata));
+        }
+    }
+
+    @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void primaryCompatibilityAndPublicReadRulesDoNotRestorePrivateContribution(boolean primary) throws Exception {
         try (var fixture = new Fixture()) {
             fixture.sourceMetadata.setPrimaryRepo(primary);
@@ -98,7 +190,7 @@ class GitNativeSyncSourceAuthorityTest {
         final RepositoryMembershipRepository memberRows = mock(RepositoryMembershipRepository.class);
         final RepositoryMembership member = new RepositoryMembership();
         final SystemRepository sourceMetadata = new SystemRepository();
-        final SystemRepositoryService catalog = mock(SystemRepositoryService.class);
+        final SystemRepositoryService catalog = NativeSyncTestCatalog.create();
         final UserWorkspaceRepository rows = mock(UserWorkspaceRepository.class);
         final WorkspacePortfolioGitPort portfolio = mock(WorkspacePortfolioGitPort.class);
         final GitNativeSyncIntegrationService service;

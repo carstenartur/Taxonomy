@@ -994,29 +994,56 @@ test('explicit cancellation releases guidance actions and records a partial resu
 
 test('reformulation promotion preserves draft evidence and stops before creation when saving fails', async()=>{
     for(const projects of [[{id:7,title:'Safety'}],[]]) for(const saved of [true,false]){
-        const f=dom(),calls=[];
+        const f=dom(),calls=[],reviews=[],mutations=[];
         f.document.readyState='loading';
         const input=f.element('textarea','businessText');input.value='Arbeitsschutz';
-        const evidence={scores:{CI:80},businessText:input.value};
+        const evidence={scores:{CI:80},businessText:input.value,sourceDocument:{id:14,originalText:'Source evidence'}};
         const context={S:{},runtime:{},text:key=>key,language:()=> 'en',businessTextElement:()=>input,
-            currentPayload:()=>evidence,saveDraft:async()=>{calls.push('save');return saved;},
+            currentPayload:()=>evidence,comparable:value=>JSON.stringify(value),meaningful:()=>true,
+            saveDraft:async()=>{calls.push('save');return saved;},
             resetDraft:async()=>{calls.push('reset');},invalidate:()=>calls.push('invalidate'),showActionAlert(){},
             jsonRequest:async(path,options)=>{
                 if(options.method==='GET')return path==='/api/projects'?projects:[];
-                calls.push(path);return {id:path==='/api/projects'?7:9};
+                calls.push(path);throw Error('Promotion must use the atomic lifecycle command');
             }};
+        const attached=new WeakMap();
         const window={__TaxonomyAnalysisSessionContext:context,location:{assign:url=>calls.push(url)},
-            TaxonomyI18n:{resolveUrl:path=>'/taxonomy'+path}};
+            TaxonomyI18n:{resolveUrl:path=>'/taxonomy'+path},
+            TaxonomyRequirementIntake:{
+                attach(form,options){attached.set(form,options);},
+                async prepare(form,payload,projectId){
+                    assert.equal(attached.get(form).textElement.value,'Arbeitsschutz');
+                    assert.equal(payload.text,'Arbeitsschutz');
+                    reviews.push({projectId,payload:JSON.parse(JSON.stringify(payload))});
+                    return {choice:'NEW',projectId:projectId===null?null:Number(projectId),requirementId:null,
+                        expectedVersionId:null,expectedContentHash:null,
+                        inputHash:require('node:crypto').createHash('sha256').update(payload.text).digest('hex'),requirement:payload};
+                },
+                isCurrent(){return true;}
+            },
+            TaxonomyArchitectureLifecycle:{async saveRequirement(command){
+                calls.push('/api/architecture/editor/requirements');mutations.push(JSON.parse(JSON.stringify(command)));
+                return {projectId:7,requirementId:9,requirement:{id:9,projectId:7,currentVersion:{id:1,text:command.requirement.text}},
+                    publication:{state:'CURRENT',context:{repositoryId:'fixture-architecture',workspaceScopeKey:'fixture-copy',branch:'draft',revision:2}}};
+            }}};
         vm.runInNewContext(source('core/taxonomy-analysis-session-projects.js'),{window,document:f.document,URLSearchParams});
         window.TaxonomyAnalysisSession.addAsRequirement({preserveDraft:true});await tick();
         const form=f.all.find(node=>node.tagName==='form');form.reportValidity=()=>true;
         const select=f.all.find(node=>node.tagName==='select');if(select)select.value='7';
         await form.fire('submit');await tick();await tick();
-        if(saved)assert.deepEqual(calls,projects.length
-            ? ['save','/api/projects/7/requirements','/taxonomy/projects/7/requirements/9']
-            : ['save','/api/projects','/api/projects/7/requirements','/taxonomy/projects/7/requirements/9']);
-        else assert.deepEqual(calls,['save']);
+        assert.equal(reviews.length,1);
+        if(saved){
+            assert.deepEqual(calls,['save','/api/architecture/editor/requirements','/taxonomy/projects/7/requirements/9']);
+            assert.equal(mutations.length,1);
+            assert.equal(mutations[0].choice,'NEW');
+            assert.equal(mutations[0].requirement.text,'Arbeitsschutz');
+            assert.equal(mutations[0].projectId,projects.length?7:null);
+            assert.equal(Boolean(mutations[0].newProject),projects.length===0);
+            if(!projects.length){assert.equal(mutations[0].newProject.title,'Arbeitsschutz');assert.equal(mutations[0].requirement.requirementKey,'REQ-001');}
+        }else{assert.deepEqual(calls,['save']);assert.deepEqual(mutations,[]);}
+        assert.equal(calls.includes('reset'),false,'preserveDraft retains the acknowledged source draft');
+        assert.equal(calls.includes('invalidate'),false);
         assert.equal(input.value,'Arbeitsschutz');
-        assert.deepEqual(evidence.scores,{CI:80});
+        assert.deepEqual(evidence,{scores:{CI:80},businessText:'Arbeitsschutz',sourceDocument:{id:14,originalText:'Source evidence'}});
     }
 });

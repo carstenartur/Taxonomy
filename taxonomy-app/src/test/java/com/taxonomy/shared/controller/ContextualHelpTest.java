@@ -40,13 +40,16 @@ class ContextualHelpTest {
             Map.entry("browser-sessions", "SECURITY/browser-sessions"),
             Map.entry("backup-jobs", "OPERATIONS_GUIDE/portable-exports"),
             Map.entry("fragments/user-management-layout", "SECURITY/user-management"));
+    // Selection happens in the source view before Thymeleaf resolves a shared header's th:replace.
+    private static final Set<String> HEADER_VIEWS = Set.of(
+            "projects", "requirement-detail", "portfolio-versioning",
+            "architecture-editor", "architecture-workbench", "integrations");
 
     @ParameterizedTest
     @ValueSource(strings = {"en", "de"})
     void standaloneViewsOpenTheirOwnLocalizedHelpWithoutReplacingWork(String language) {
         for (var view : VIEWS.entrySet()) {
-            String selector = view.getKey().equals("architecture-editor") || view.getKey().equals("integrations")
-                    || view.getKey().equals("architecture-workbench") ? "header" : "nav";
+            String selector = HEADER_VIEWS.contains(view.getKey()) ? "header" : "nav";
             String html = render(view.getKey(), selector, language);
             assertTrue(html.contains("/taxonomy/?lang=" + language + "#help/" + view.getValue() + "\""), view.getKey());
             assertTrue(html.contains("target=\"_blank\""), view.getKey() + " must preserve unsaved work");
@@ -59,7 +62,11 @@ class ContextualHelpTest {
     @ParameterizedTest
     @ValueSource(strings = {"en", "de"})
     void workspacePanesAndAllTaxonomyModesHaveRealSectionTargets(String language) {
-        String html = render("index", ".view-help", language);
+        String header = render("index", "header", language);
+        assertTrue(header.contains("/taxonomy/?lang=" + language + "#help/USER_GUIDE/guide-section-4\""),
+                "Analysis help remains in the shared header without a duplicate pane action");
+        assertTrue(header.contains("target=\"_blank\""), "Opening analysis help must preserve the active work");
+        String html = header + render("index", ".view-help", language);
         for (String target : Set.of("USER_GUIDE/guide-section-4", "USER_GUIDE/guide-section-7",
                 "USER_GUIDE/guide-section-13", "USER_GUIDE/guide-section-10", "USER_GUIDE/guide-section-8",
                 "USER_GUIDE/guide-section-19", "USER_GUIDE/guide-section-18", "USER_GUIDE/guide-section-21", "PREFERENCES")) {

@@ -412,14 +412,14 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "portfolio",
       "toPackage": "com.taxonomy.portfolio.controller",
-      "classDependencyCount": 1
+      "classDependencyCount": 2
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "portfolio",
       "toPackage": "com.taxonomy.portfolio.dto",
-      "classDependencyCount": 3
+      "classDependencyCount": 16
     },
     {
       "fromContext": "app-composition",
@@ -433,42 +433,49 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "portfolio",
       "toPackage": "com.taxonomy.portfolio.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
-      "classDependencyCount": 21
+      "classDependencyCount": 39
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor.persistence",
-      "classDependencyCount": 1
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.architecture",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.versioning.service",
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 2
+      "classDependencyCount": 11
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.repository",
-      "classDependencyCount": 1
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 12
+      "classDependencyCount": 26
     },
     {
       "fromContext": "app-composition",
@@ -622,14 +629,14 @@
       "fromPackage": "com.taxonomy.composition.demo",
       "toContext": "portfolio",
       "toPackage": "com.taxonomy.portfolio.service",
-      "classDependencyCount": 10
+      "classDependencyCount": 12
     },
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.demo",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 4
     },
     {
       "fromContext": "app-composition",
@@ -1413,7 +1420,7 @@
       "fromPackage": "com.taxonomy.portfolio.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 24
+      "classDependencyCount": 26
     },
     {
       "fromContext": "portfolio",
@@ -1497,7 +1504,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 14
+      "classDependencyCount": 23
     },
     {
       "fromContext": "portfolio",
@@ -1553,7 +1560,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 35
+      "classDependencyCount": 43
     },
     {
       "fromContext": "portfolio",

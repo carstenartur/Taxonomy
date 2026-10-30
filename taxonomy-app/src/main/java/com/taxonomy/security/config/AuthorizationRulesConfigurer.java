@@ -50,6 +50,8 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/architecture/editor/workspaces")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/architecture/editor/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/architecture/lifecycle/intake-review").hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/architecture/lifecycle/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.GET, "/api/integrations/**", "/integrations", "/oslc/**").authenticated();
         auth.requestMatchers(HttpMethod.HEAD, "/api/integrations/**", "/integrations", "/oslc/**").authenticated();
         auth.requestMatchers(HttpMethod.OPTIONS, "/api/integrations/**").permitAll();

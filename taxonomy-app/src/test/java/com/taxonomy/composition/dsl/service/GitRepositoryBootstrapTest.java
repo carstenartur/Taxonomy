@@ -8,6 +8,15 @@ import com.taxonomy.catalog.service.AppInitializationStateService.State;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.catalog.snapshot.CatalogueRuntimePolicy;
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceManager;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,16 +27,26 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.core.env.MapPropertySource;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -261,6 +280,85 @@ class GitRepositoryBootstrapTest {
         AppInitializationStateService state = new AppInitializationStateService();
         state.update(State.READY, "Taxonomy ready before application event");
         return state;
+    }
+
+    @Test
+    void firstWorkspaceReadDuringDelayedBootstrapCanRecoverWhenTheInitialCheckpointArrives() throws Exception {
+        String owner = "bootstrap-window-owner", workspaceId = "7aacd595-9495-4091-aae3-6d5b108f4ac9";
+        var workspace = new UserWorkspace();
+        workspace.setUsername(owner);
+        workspace.setWorkspaceId(workspaceId);
+        workspace.setDefault(true);
+        workspace.setCurrentBranch("draft");
+        workspace.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        var rows = mock(UserWorkspaceRepository.class);
+        when(rows.findByUsernameAndSharedFalse(owner)).thenReturn(Optional.of(workspace));
+        when(rows.findByWorkspaceId(workspaceId)).thenReturn(Optional.of(workspace));
+        when(rows.save(any(UserWorkspace.class))).thenAnswer(call -> call.getArgument(0));
+        when(rows.claimProvisioning(eq(workspaceId), eq(owner),
+                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenAnswer(call -> {
+            if (workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.NOT_PROVISIONED) return 0;
+            workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
+            return 1;
+        });
+        var primary = new SystemRepository();
+        primary.setRepositoryId("bootstrap-window-primary");
+        primary.setPrimaryRepo(true);
+        primary.setDefaultBranch("draft");
+        primary.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
+        var catalog = mock(SystemRepositoryService.class);
+        when(catalog.getPrimaryRepository()).thenReturn(primary);
+        when(catalog.getRepository(primary.getRepositoryId())).thenReturn(primary);
+        var exportStarted = new CountDownLatch(1);
+        var releaseExport = new CountDownLatch(1);
+        var exporter = mock(TaxDslExportService.class);
+        when(exporter.exportAll("default")).thenAnswer(call -> {
+            exportStarted.countDown();
+            assertThat(releaseExport.await(10, TimeUnit.SECONDS)).as("The first workspace read releases bootstrap").isTrue();
+            return DSL;
+        });
+        var state = new AppInitializationStateService();
+        try (var factory = new DslGitRepositoryFactory(null, catalog);
+             var context = context(factory, exporter, state, Map.of())) {
+            var manager = new WorkspaceManager(rows, 50, catalog, factory);
+            var resolver = new WorkspaceContextResolver(manager, catalog, rows);
+            var executor = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
+            try {
+                var bootstrap = executor.submit(() -> state.update(State.READY, "Catalogue ready before initial checkpoint"));
+                assertThat(exportStarted.await(10, TimeUnit.SECONDS)).as("The real bootstrap listener is exporting").isTrue();
+                assertThat(state.isReady()).isTrue();
+                assertThat(factory.getSystemRepository().getHeadCommit("draft")).isNull();
+
+                Throwable firstFailure = catchThrowable(() -> resolver.resolveRepositoryContextForUser(owner));
+                var pendingStatus = workspace.getProvisioningStatus();
+                String pendingError = workspace.getProvisioningError();
+                releaseExport.countDown();
+                bootstrap.get(10, TimeUnit.SECONDS);
+                String initialCommit = factory.getSystemRepository().getHeadCommit("draft");
+                assertThat(initialCommit).matches("[0-9a-f]{40}");
+                var resolved = new AtomicReference<RepositoryContext>();
+                Throwable retryFailure = catchThrowable(() -> resolved.set(resolver.resolveRepositoryContextForUser(owner)));
+
+                org.assertj.core.api.SoftAssertions.assertSoftly(softly -> {
+                    softly.assertThat(firstFailure).as("An unseeded source denies the first repository read")
+                            .isInstanceOf(ResponseStatusException.class);
+                    if (firstFailure instanceof ResponseStatusException response) softly.assertThat(response.getStatusCode().value()).isEqualTo(409);
+                    softly.assertThat(pendingStatus).as("An early read must not poison the default workspace")
+                            .isEqualTo(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+                    softly.assertThat(pendingError).as("Waiting for bootstrap is not a failed allocation").isNull();
+                    softly.assertThat(retryFailure).as("The same implicit selection recovers after the real initial commit").isNull();
+                    softly.assertThat(resolved.get()).isEqualTo(RepositoryContext.workspace(primary.getRepositoryId(), workspaceId, "draft", owner));
+                    softly.assertThat(workspace.getProvisioningStatus()).isEqualTo(WorkspaceProvisioningStatus.READY);
+                    softly.assertThat(workspace.getBaseCommit()).isEqualTo(initialCommit);
+                });
+                assertThat(factory.openWorkspaceRepository(workspaceId).getDslAtHead("draft")).isEqualTo(DSL);
+            } finally {
+                releaseExport.countDown();
+                executor.shutdownNow();
+                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).as("Bootstrap worker terminated").isTrue();
+            }
+        }
     }
 
     private static DslGitRepositoryFactory factoryReturning(DslGitRepository repository) {

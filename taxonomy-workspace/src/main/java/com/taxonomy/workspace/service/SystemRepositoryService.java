@@ -9,12 +9,17 @@ import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /** Manages the catalog of central architecture repositories. */
@@ -109,9 +114,71 @@ public class SystemRepositoryService {
                         "Architecture repository not found: " + repositoryId));
     }
 
+    /** Read metadata and the caller's membership decision outside any retained journal persistence context. */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public void readCurrentAuthorization(String repositoryId, Consumer<SystemRepository> decision) {
+        Objects.requireNonNull(decision).accept(getRepository(repositoryId));
+    }
+
+    /** Record publication without merging an older catalogue entity over current policy. */
+    @Transactional
+    public void recordLastPush(String repositoryId, Instant publishedAt) {
+        String id = requireText(repositoryId, "repositoryId");
+        if (repository.recordLastPush(id, Objects.requireNonNull(publishedAt)) != 1)
+            throw new IllegalArgumentException("Architecture repository not found: " + id);
+    }
+
     public List<SystemRepository> listActiveRepositories() {
         return repository.findByLifecycleStateOrderByDisplayNameAsc(
                 RepositoryLifecycleState.ACTIVE);
+    }
+
+    /** Only the original personal creation is recoverable through the ordinary lifecycle. */
+    public List<SystemRepository> listOwnIncompleteCreations(String username) {
+        String owner = requireText(username, "ownerId");
+        return repository.findByOwnerTypeAndOwnerIdAndLifecycleStateInOrderByDisplayNameAsc(
+                        RepositoryOwnerType.USER, owner, List.of(RepositoryLifecycleState.FAILED, RepositoryLifecycleState.PROVISIONING))
+                .stream().filter(candidate -> isPrivateCreation(candidate, owner)).toList();
+    }
+
+    public record CreationClaim(SystemRepository repository, boolean created) {}
+
+    /** Commit the claim before any logical Git operation; a failed retry keeps its original identity. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CreationClaim claimPrivateCreation(String displayName, String requestedSlug, String description, String username) {
+        String name = requireText(displayName, "displayName");
+        String slug = normalizeSlug(requestedSlug);
+        String owner = requireText(username, "ownerId");
+        if (name.length() > 255 || slug.length() > 100 || description != null && description.length() > 1000)
+            throw new IllegalArgumentException("Creation fields exceed their storage limits");
+        SystemRepository retained = repository.findBySlugForUpdate(slug).orElse(null);
+        if (retained == null) return new CreationClaim(createCentralRepository(
+                name, slug, description, RepositoryVisibility.PRIVATE, owner, "draft"), true);
+        if (!isPrivateCreation(retained, owner) || !name.equals(retained.getDisplayName())
+                || !Objects.equals(description, retained.getDescription())) throw creationConflict();
+        if (retained.getLifecycleState() == RepositoryLifecycleState.ACTIVE) return new CreationClaim(retained, false);
+        if (retained.getLifecycleState() == RepositoryLifecycleState.PROVISIONING)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Architecture creation is still in progress; reload its status before retrying");
+        if (retained.getLifecycleState() != RepositoryLifecycleState.FAILED) throw creationConflict();
+        retained.setLifecycleState(RepositoryLifecycleState.PROVISIONING);
+        retained.setProvisioningError(null);
+        retained.setUpdatedAt(Instant.now());
+        return new CreationClaim(repository.save(retained), false);
+    }
+
+    private static boolean isPrivateCreation(SystemRepository candidate, String owner) {
+        return candidate.getOwnerType() == RepositoryOwnerType.USER && owner.equals(candidate.getOwnerId())
+                && owner.equals(candidate.getCreatedBy()) && candidate.getVisibility() == RepositoryVisibility.PRIVATE
+                && !candidate.isPrimaryRepo() && candidate.getTopologyMode() == RepositoryTopologyMode.INTERNAL_SHARED
+                && "draft".equals(candidate.getDefaultBranch()) && candidate.getUpstreamRepositoryId() == null
+                && candidate.getUpstreamBranch() == null && candidate.getForkPointCommit() == null
+                && candidate.getExternalUrl() == null
+                && ("central-" + candidate.getRepositoryId()).equals(candidate.getStorageRepositoryName());
+    }
+
+    private static ResponseStatusException creationConflict() {
+        // No private owner, lifecycle, source or description is disclosed for a mismatching slug.
+        return new ResponseStatusException(HttpStatus.CONFLICT, "This architecture slug is unavailable for this creation");
     }
 
     /**
@@ -198,6 +265,7 @@ public class SystemRepositoryService {
     @Transactional
     public SystemRepository markProvisioningReady(String repositoryId) {
         SystemRepository architectureRepository = getRepository(repositoryId);
+        requireProvisioningClaim(architectureRepository);
         architectureRepository.setLifecycleState(RepositoryLifecycleState.ACTIVE);
         architectureRepository.setProvisioningError(null);
         architectureRepository.setUpdatedAt(Instant.now());
@@ -207,10 +275,16 @@ public class SystemRepositoryService {
     @Transactional
     public SystemRepository markProvisioningFailed(String repositoryId, String reason) {
         SystemRepository architectureRepository = getRepository(repositoryId);
+        requireProvisioningClaim(architectureRepository);
         architectureRepository.setLifecycleState(RepositoryLifecycleState.FAILED);
         architectureRepository.setProvisioningError(normalizeProvisioningError(reason));
         architectureRepository.setUpdatedAt(Instant.now());
         return repository.save(architectureRepository);
+    }
+
+    private static void requireProvisioningClaim(SystemRepository architectureRepository) {
+        if (architectureRepository.getLifecycleState() != RepositoryLifecycleState.PROVISIONING)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The creation claim is no longer active; reload its status");
     }
 
     /** Return the configured primary branch, falling back during early startup. */
