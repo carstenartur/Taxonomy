@@ -12,6 +12,9 @@ import java.util.Optional;
 @Repository
 public interface SystemRepositoryRepository extends JpaRepository<SystemRepository, Long> {
 
+    org.springframework.data.domain.Slice<SystemRepository> findByLifecycleStateOrderByDisplayNameAsc(
+            com.taxonomy.workspace.model.RepositoryLifecycleState state, org.springframework.data.domain.Pageable pageable);
+
     Optional<SystemRepository> findByPrimaryRepoTrue();
 
     Optional<SystemRepository> findByRepositoryId(String repositoryId);

@@ -18,6 +18,7 @@
     <script th:src="@{/js/taxonomy-i18n.js}"></script>
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
 </head>
 <body>
 <!-- Skip-Link (BITV 2.0 / WCAG 2.4.1) -->
@@ -29,9 +30,10 @@
 <div id="a11yAlert" class="visually-hidden"
      role="alert" aria-live="assertive" aria-atomic="true"></div>
 
-<nav class="navbar navbar-dark bg-dark mb-0" id="applicationNavigation" th:attr="aria-label=#{ui.aria.main_navigation}" aria-label="Main navigation">
+<header th:replace="~{fragments/application-chrome :: navigation('analysis', ~{:: localActions}, 'USER_GUIDE', '')}">
+    <th:block th:fragment="localActions">
     <div class="container-fluid application-shell">
-        <span class="navbar-brand fw-bold">Taxonomy</span>
+        
         <div class="application-file-menus">
             <div class="dropdown">
                 <button id="fileMenuButton" class="btn btn-sm btn-outline-light dropdown-toggle"
@@ -136,7 +138,8 @@
             </div>
         </div>
     </div>
-</nav>
+</th:block>
+</header>
 <div id="databaseSetupNotice" class="alert alert-warning m-3" role="status" hidden></div>
 <!-- Status widgets are moved into the single on-demand Status menu. -->
 <div id="applicationOperationalStaging" hidden>
@@ -1628,7 +1631,9 @@
 <script th:src="@{/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js}" src="/webjars/jspdf/4.2.1/dist/jspdf.umd.min.js"></script>
 <script th:src="@{/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js}" src="/webjars/svg2pdf.js/2.2.0/dist/svg2pdf.umd.min.js"></script>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
+<script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}"></script>
+<th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/import-api.js}"></script>
 <script th:src="@{/js/api/analysis-api.js}"></script>
 <script th:src="@{/js/core/taxonomy-state.js}"></script>

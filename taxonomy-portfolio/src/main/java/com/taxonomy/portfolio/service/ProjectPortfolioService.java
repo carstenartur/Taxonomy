@@ -162,6 +162,22 @@ public class ProjectPortfolioService {
                                              CreateRequirementRequest request,
                                              String username,
                                              WorkspaceContext context) {
+        return createRequirement(projectId, request, username, context, null);
+    }
+
+    /** Frozen portable version identity; imported evidence is not attributed to the importing user. */
+    public record ImportedVersion(int versionNumber, String text, String contentHash, String changeReason,
+                                  SourceReference source, String createdBy, Instant createdAt) {}
+
+    @Transactional
+    public RequirementView createImportedRequirement(Long projectId, CreateRequirementRequest request,
+                                                      ImportedVersion version, String username, WorkspaceContext context) {
+        validateImportedVersion(version);
+        return createRequirement(projectId, request, username, context, version);
+    }
+
+    private RequirementView createRequirement(Long projectId, CreateRequirementRequest request, String username,
+                                               WorkspaceContext context, ImportedVersion imported) {
         requireNonNull(request, "requirement request");
         ArchitectureProject project = requireProjectForUpdate(projectId, username, context);
         String scopeKey = project.getScopeKey();
@@ -192,12 +208,12 @@ public class ProjectPortfolioService {
         requirementRepository.save(requirement);
         ProjectRequirementVersion version = createVersionEntity(
                 requirement,
-                requireText(request.text(), "text", 100_000),
-                request.changeReason(),
-                request.source(),
-                PortfolioScope.username(username, context),
-                1,
-                now);
+                rawText(imported == null ? request.text() : imported.text(), "text", 100_000),
+                imported == null ? request.changeReason() : imported.changeReason(),
+                imported == null ? request.source() : imported.source(),
+                imported == null || imported.createdBy() == null ? PortfolioScope.username(username, context) : imported.createdBy(),
+                imported == null ? 1 : imported.versionNumber(),
+                imported == null || imported.createdAt() == null ? now : imported.createdAt());
         versionRepository.save(version);
         requirement.pointToVersion(version.getId(), now);
         return toRequirementView(requirement, version);
@@ -326,7 +342,7 @@ public class ProjectPortfolioService {
         ProjectRequirement requirement = requireRequirementForUpdate(
                 projectId, requirementId, username, context);
         String scopeKey = requirement.getScopeKey();
-        String text = requireText(request.text(), "text", 100_000);
+        String text = rawText(request.text(), "text", 100_000);
         String contentHash = fingerprintService.contentFingerprint(text);
         ProjectRequirementVersion existing = versionRepository
                 .findByRequirementIdAndScopeKeyAndContentHash(
@@ -354,6 +370,62 @@ public class ProjectPortfolioService {
         versionRepository.save(version);
         requirement.pointToVersion(version.getId(), now);
         return toVersionView(version);
+    }
+
+    /** Import an exact immutable identity. Never renumber a collision or mutate an existing version. */
+    @Transactional
+    public RequirementVersionView importRequirementVersion(Long projectId, Long requirementId, ImportedVersion imported,
+                                                            String username, WorkspaceContext context) {
+        validateImportedVersion(imported);
+        ProjectRequirement requirement = requireRequirementForUpdate(projectId, requirementId, username, context);
+        String scope = requirement.getScopeKey();
+        ProjectRequirementVersion existing = versionRepository.findByRequirementIdAndScopeKeyAndVersionNumber(
+                requirementId, scope, imported.versionNumber()).orElse(null);
+        if (existing != null) {
+            if (!existing.getText().equals(imported.text())
+                    || !existing.getContentHash().equals(fingerprintService.contentFingerprint(imported.text()))
+                    || imported.createdBy() != null && !Objects.equals(existing.getCreatedBy(), imported.createdBy())
+                    || imported.createdAt() != null && !Objects.equals(existing.getCreatedAt(), imported.createdAt())
+                    || imported.changeReason() != null && !Objects.equals(existing.getChangeReason(), limited(imported.changeReason(), 1000, "changeReason"))
+                    || !compatibleSource(toVersionView(existing).source(), normalizedSource(imported.source())))
+                throw PortfolioException.conflict("Immutable requirement version " + imported.versionNumber() + " has different source content");
+            return toVersionView(existing);
+        }
+        if (versionRepository.findByRequirementIdAndScopeKeyAndContentHash(requirementId, scope,
+                fingerprintService.contentFingerprint(imported.text())).isPresent())
+            throw PortfolioException.conflict("Immutable requirement content already has a different version number");
+        Instant now = Instant.now();
+        ProjectRequirementVersion version = createVersionEntity(requirement, imported.text(), imported.changeReason(),
+                imported.source(), imported.createdBy() == null ? PortfolioScope.username(username, context) : imported.createdBy(),
+                imported.versionNumber(), imported.createdAt() == null ? now : imported.createdAt());
+        versionRepository.save(version);
+        requirement.pointToVersion(version.getId(), now);
+        return toVersionView(version);
+    }
+
+    private void validateImportedVersion(ImportedVersion version) {
+        if (version == null || version.versionNumber() < 1) throw PortfolioException.validation("Imported version number must be positive");
+        rawText(version.text(), "text", 100_000);
+        if (version.contentHash() != null && !version.contentHash().equals(fingerprintService.contentFingerprint(version.text())))
+            throw PortfolioException.conflict("Imported requirement content does not match its SHA-256 hash");
+        if (version.createdBy() != null) requireText(version.createdBy(), "createdBy", 160);
+    }
+
+    private static SourceReference normalizedSource(SourceReference source) {
+        return new SourceReference(source == null ? null : source.sourceArtifactId(), source == null ? null : source.sourceVersionId(),
+                sourceFragmentIds(source), source == null ? null : limited(source.sectionReference(), 500, "sectionReference"),
+                source == null ? null : source.pageNumber(), source == null ? null : nullableRawText(source.originalText(),
+                "originalText", PortfolioValueValidator.MAX_ORIGINAL_TEXT_CHARACTERS));
+    }
+
+    /** Missing private source fields in a current-state export cannot erase or contradict retained history. */
+    private static boolean compatibleSource(SourceReference existing, SourceReference incoming) {
+        return (incoming.sourceArtifactId() == null || Objects.equals(existing.sourceArtifactId(), incoming.sourceArtifactId()))
+                && (incoming.sourceVersionId() == null || Objects.equals(existing.sourceVersionId(), incoming.sourceVersionId()))
+                && (incoming.sourceFragmentIds().isEmpty() || Objects.equals(existing.sourceFragmentIds(), incoming.sourceFragmentIds()))
+                && (incoming.sectionReference() == null || Objects.equals(existing.sectionReference(), incoming.sectionReference()))
+                && (incoming.pageNumber() == null || Objects.equals(existing.pageNumber(), incoming.pageNumber()))
+                && (incoming.originalText() == null || Objects.equals(existing.originalText(), incoming.originalText()));
     }
 
     @Transactional(readOnly = true)
@@ -543,9 +615,8 @@ public class ProjectPortfolioService {
                 source != null ? limited(source.sectionReference(), 500, "sectionReference") : null,
                 pageNumber,
                 source != null
-                        ? limited(source.originalText(),
-                                PortfolioValueValidator.MAX_ORIGINAL_TEXT_CHARACTERS,
-                                "originalText")
+                        ? nullableRawText(source.originalText(), "originalText",
+                                PortfolioValueValidator.MAX_ORIGINAL_TEXT_CHARACTERS)
                         : null);
     }
 
@@ -610,6 +681,16 @@ public class ProjectPortfolioService {
             throw PortfolioException.validation(field + " exceeds " + maximumLength + " characters");
         }
         return normalized;
+    }
+
+    private static String rawText(String value, String field, int maximumLength) {
+        if (value == null || value.isBlank()) throw PortfolioException.validation(field + " must not be blank");
+        return nullableRawText(value, field, maximumLength);
+    }
+
+    private static String nullableRawText(String value, String field, int maximumLength) {
+        if (value != null && value.length() > maximumLength) throw PortfolioException.validation(field + " exceeds " + maximumLength + " characters");
+        return value;
     }
 
     static String limited(String value, int maximumLength, String field) {

@@ -13,23 +13,16 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
     <link rel="stylesheet" th:href="@{/css/requirement-reformulation.css}"/>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#requirementMain">Skip to requirement detail</a>
 <div id="requirementLive" class="visually-hidden" role="status" aria-live="polite"></div>
-<nav class="navbar navbar-dark bg-dark sticky-top" th:attr="aria-label=#{portfolio.requirement.navigation}" aria-label="Requirement navigation">
-    <div class="container-fluid gap-2">
-        <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
-        <span class="navbar-text text-white fw-semibold me-auto" id="pageTitle">Requirement detail</span>
-        <a class="btn btn-sm btn-outline-light" id="portfolioBack" href="/projects">Portfolio</a>
-        <a class="btn btn-sm btn-outline-light" id="matrixLink" href="#">Matrices</a>
-        <div class="btn-group btn-group-sm" role="group" th:attr="aria-label=#{ui.aria.language}" aria-label="Language">
-            <a class="btn btn-outline-light" href="?lang=en" hreflang="en">EN</a>
-            <a class="btn btn-outline-light" href="?lang=de" hreflang="de">DE</a>
-        </div>
-        <a th:replace="~{fragments/context-help :: button('PROJECT_REQUIREMENT_PORTFOLIO', 'requirement-clarification-workflow')}"></a>
-    </div>
-</nav>
+<header th:replace="~{fragments/application-chrome :: navigation('projects', ~{:: localActions}, 'PROJECT_REQUIREMENT_PORTFOLIO', 'requirement-clarification-workflow')}">
+    <th:block th:fragment="localActions"><span id="pageTitle">Requirement detail</span>
+        <a id="portfolioBack" href="/projects">Portfolio</a>
+        <a id="matrixLink" href="#">Matrices</a></th:block>
+</header>
 
 <main id="requirementMain" class="container-fluid py-3 px-lg-4">
     <div id="detailError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
@@ -173,6 +166,7 @@
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
+<th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/api/plugin-capabilities-api.js}" src="/js/api/plugin-capabilities-api.js"></script>
 <script th:src="@{/js/shared/plugin-capabilities.js}" src="/js/shared/plugin-capabilities.js"></script>

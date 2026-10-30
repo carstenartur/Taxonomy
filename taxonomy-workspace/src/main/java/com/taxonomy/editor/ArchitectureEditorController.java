@@ -257,6 +257,32 @@ public class ArchitectureEditorController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/api/architecture/editor/versions/reconciliation/preview")
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Preview explicit reconciliation of local edits and a moved Git version",
+            description = "Reads both original sources at the exact workspace revision. Shared block or document annotation changes require LOCAL/INCOMING choices and a fresh preview of those choices. Does not write the journal or Git.")
+    public ResponseEntity<ArchitectureEditorService.ReconciliationPreview> previewReconciliation(
+            @RequestBody ArchitectureEditorService.ReconciliationRequest request,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+        requireRevision(request.context(), ifMatch, ifNoneMatch);
+        var result = service.previewReconciliation(resolver.resolveCurrentRepositoryContext(), request);
+        return response(HttpStatus.OK, result.context()).body(result);
+    }
+
+    @PostMapping("/api/architecture/editor/versions/reconciliation/accept")
+    @ResponseBody
+    @io.swagger.v3.oas.annotations.Operation(summary = "Accept the exact previewed reconciliation and checkpoint it",
+            description = "Binds the source choices to the repository, workspace, revision, Git HEAD and preview fingerprint. Appends one durable reconciliation and checkpoints through the existing retryable publication boundary. No client-supplied replacement document is accepted.")
+    public ResponseEntity<CheckpointAccepted> acceptReconciliation(
+            @RequestBody ArchitectureEditorService.ReconciliationRequest request,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+        requireRevision(request.context(), ifMatch, ifNoneMatch);
+        var result = service.acceptReconciliation(resolver.resolveCurrentRepositoryContext(), request);
+        return response(HttpStatus.OK, result.context()).body(result);
+    }
+
     private static String etag(Context context) { return "\"workspace-revision-" + context.revision() + "\""; }
 
     private static String commitEtag(String commitId) {
@@ -333,7 +359,8 @@ public class ArchitectureEditorController {
         int status = switch (error.code()) {
             case "NOT_FOUND" -> 404;
             case "READ_ONLY" -> 403;
-            case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED", "DEPENDENCIES_EXIST", "CHECKPOINT_PENDING", "CHECKPOINT_CONFLICT", "VERSION_CHANGED" -> 409;
+            case "PORTFOLIO_UNAVAILABLE" -> 503;
+            case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED", "DEPENDENCIES_EXIST", "CHECKPOINT_PENDING", "CHECKPOINT_CONFLICT", "VERSION_CHANGED", "RECONCILIATION_CONFLICT", "PREVIEW_CHANGED", "NO_RECONCILIATION", "PORTFOLIO_RECONCILIATION_REQUIRED" -> 409;
             default -> 422;
         };
         return ResponseEntity.status(status).body(Map.of("code", error.code(), "field", error.field(),

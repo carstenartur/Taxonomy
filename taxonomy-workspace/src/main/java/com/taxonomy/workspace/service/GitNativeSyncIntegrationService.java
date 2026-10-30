@@ -4,6 +4,7 @@ import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.storage.CommitProvenance;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import com.taxonomy.workspace.signing.SignatureStatus;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.SyncState;
@@ -189,14 +190,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         workspaceGit.verifyExpectedHead(TRACKING_BRANCH, state.baseHead());
         requireSourceAuthority(username, sourceMetadata, false);
         sourceRepository.verifyExpectedHead(sourceBranch, sourceSnapshot.head());
-        String localCommit = commitIfChanged(
-                workspaceGit,
-                userBranch,
-                merge.mergedText(),
-                ours,
-                localSnapshot.head(),
-                username,
-                "Semantic pull from " + sourceMetadata.getSlug(), provenance);
+        String localCommit = integrateHistory(sourceRepository, sourceBranch, sourceSnapshot.head(),
+                workspaceGit, userBranch, localSnapshot.head(), merge.mergedText(), ours, theirs,
+                username, "Semantic pull from " + sourceMetadata.getSlug(), provenance);
         trackBase(workspaceGit, state, merge.mergedText(), username);
         portfolioGitPort.materializePortfolio(merge.mergedText(), username, context);
 
@@ -266,24 +262,14 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         workspaceGit.verifyExpectedHead(userBranch, localSnapshot.head());
 
         requireSourceAuthority(username, sourceMetadata, true);
-        String sourceCommit = commitIfChanged(
-                sourceRepository,
-                sourceBranch,
-                merge.mergedText(),
-                sourceDsl,
-                sourceSnapshot.head(),
-                username,
-                "Semantic publish from workspace " + context.workspaceId(), provenance);
+        String sourceCommit = integrateHistory(workspaceGit, userBranch, localSnapshot.head(),
+                sourceRepository, sourceBranch, sourceSnapshot.head(), merge.mergedText(), sourceDsl, workspaceDsl,
+                username, "Semantic publish from workspace " + context.workspaceId(), provenance);
         CommitProvenance published = CommitProvenance.capture("pull", sourceRepository,
                 sourceMetadata.getRepositoryId(), sourceBranch, sourceCommit, integrationBase(workspaceMetadata));
-        String workspaceCommit = commitIfChanged(
-                workspaceGit,
-                userBranch,
-                merge.mergedText(),
-                workspaceDsl,
-                localSnapshot.head(),
-                username,
-                "Integrate source changes after publish", published);
+        String workspaceCommit = integrateHistory(sourceRepository, sourceBranch, sourceCommit,
+                workspaceGit, userBranch, localSnapshot.head(), merge.mergedText(), workspaceDsl, merge.mergedText(),
+                username, "Integrate source changes after publish", published);
         trackBase(workspaceGit, state, merge.mergedText(), username);
 
         WorkspaceContext centralContext = new WorkspaceContext(
@@ -550,6 +536,27 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                    String username,
                                    String message) throws IOException {
         return commitIfChanged(repository, branch, merged, previous, expectedHead, username, message, null);
+    }
+
+    /** Keep original objects and every parent, even when two independent histories have equal content. */
+    private String integrateHistory(DslGitRepository incomingRepository, String incomingBranch, String incomingHead,
+                                    DslGitRepository destination, String branch, String expectedHead,
+                                    String merged, String previous, String incomingContent, String username,
+                                    String message, CommitProvenance provenance) throws IOException {
+        GitHistoryTransfer.copyCommitClosure(incomingRepository, destination, incomingHead,
+                expectedHead == null ? java.util.List.of() : java.util.List.of(expectedHead));
+        // Copying never changes refs. Recheck both captured inputs before the destination CAS.
+        incomingRepository.verifyExpectedHead(incomingBranch, incomingHead);
+        destination.verifyExpectedHead(branch, expectedHead);
+        if (expectedHead != null && destination.isAncestor(incomingHead, expectedHead)) {
+            return commitIfChanged(destination, branch, merged, previous, expectedHead, username, message, provenance);
+        }
+        if ((expectedHead == null || destination.isAncestor(expectedHead, incomingHead))
+                && valueOrEmpty(merged).equals(valueOrEmpty(incomingContent))) {
+            return destination.fastForwardIfHeadMatches(branch, expectedHead, incomingHead, username, message);
+        }
+        return destination.commitMergeDslIfHeadMatches(branch, expectedHead, incomingHead,
+                merged, username, message, provenance);
     }
 
     private String commitIfChanged(DslGitRepository repository, String branch, String merged,

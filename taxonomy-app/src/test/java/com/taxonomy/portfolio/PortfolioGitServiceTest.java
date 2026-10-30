@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.test.context.support.WithMockUser;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @WithMockUser(roles = "ADMIN")
@@ -30,6 +31,62 @@ class PortfolioGitServiceTest {
 
     @Autowired
     private PortablePortfolioGitService portablePortfolioGitService;
+
+    @Test
+    void fullHistoryRoundTripPreservesAnOlderCurrentVersionAndExactSource() {
+        String repository = systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        String suffix = java.util.UUID.randomUUID().toString();
+        var source = new WorkspaceContext("alice", "source-" + suffix, "draft", repository);
+        var target = new WorkspaceContext("bob", "target-" + suffix, "draft", repository);
+        var project = projectService.createProject(new CreateProjectRequest("RESTORE", "Restore selection", null, null, null, null, null, null), "alice", source);
+        var requirement = projectService.createRequirement(project.id(), new CreateRequirementRequest("REQ-1", "Exact body", "  First body\n",
+                null, null, null, null, null, "alice", "Original reason", null), "alice", source);
+        var first = requirement.currentVersion();
+        projectService.addRequirementVersion(project.id(), requirement.id(), new CreateRequirementVersionRequest("Second body", "Second reason", null), "alice", source);
+        projectService.addRequirementVersion(project.id(), requirement.id(), new CreateRequirementVersionRequest("  First body\n", "Select earlier", null), "alice", source);
+        String dsl = portfolioGitService.exportPortfolio("alice", source);
+        portfolioGitService.materialize(dsl, "bob", target);
+        var restoredProject = projectService.listProjects("bob", target).getFirst();
+        var restored = projectService.listRequirements(restoredProject.id(), "bob", target).getFirst();
+        assertThat(restored.currentVersion().versionNumber()).isEqualTo(1);
+        assertThat(restored.currentVersion().text()).isEqualTo("  First body\n");
+        assertThat(restored.currentVersion().contentHash()).isEqualTo(first.contentHash());
+        assertThat(restored.currentVersion().createdBy()).isEqualTo("alice");
+        assertThat(projectService.listRequirementVersions(restoredProject.id(), restored.id(), "bob", target))
+                .extracting(com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView::versionNumber).containsExactly(2, 1);
+        assertThat(portfolioGitService.materialize(dsl, "bob", target).versionsCreated()).isZero();
+    }
+
+    @Test
+    void currentOnlyImportKeepsItsActualVersionNumberWithoutCreatingSpuriousHistory() {
+        String repository = systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        String suffix = java.util.UUID.randomUUID().toString();
+        var source = new WorkspaceContext("alice", "current-source-" + suffix, "draft", repository);
+        var target = new WorkspaceContext("bob", "current-target-" + suffix, "draft", repository);
+        var project = projectService.createProject(new CreateProjectRequest("CURRENT", "Current only", null, null, null, null, null, null), "alice", source);
+        var requirement = projectService.createRequirement(project.id(), new CreateRequirementRequest("REQ-1", "Current", "Old body",
+                null, null, null, null, null, "alice", null, null), "alice", source);
+        projectService.addRequirementVersion(project.id(), requirement.id(), new CreateRequirementVersionRequest("Current body", "Private reason", null), "alice", source);
+        portfolioGitService.materialize(portablePortfolioGitService.exportCurrentState("alice", source), "bob", target);
+        var restoredProject = projectService.listProjects("bob", target).getFirst();
+        var restored = projectService.listRequirements(restoredProject.id(), "bob", target).getFirst();
+        assertThat(restored.currentVersion().versionNumber()).isEqualTo(2);
+        assertThat(projectService.listRequirementVersions(restoredProject.id(), restored.id(), "bob", target))
+                .extracting(com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView::versionNumber).containsExactly(2);
+    }
+
+    @Test
+    void importedVersionCollisionDoesNotRewriteTheExistingImmutableBody() {
+        String repository = systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        var scope = new WorkspaceContext("alice", "collision-" + java.util.UUID.randomUUID(), "draft", repository);
+        var project = projectService.createProject(new CreateProjectRequest("COLLISION", "Collision", null, null, null, null, null, null), "alice", scope);
+        var requirement = projectService.createRequirement(project.id(), new CreateRequirementRequest("REQ-1", "Exact version", "Saved body",
+                null, null, null, null, null, "alice", null, null), "alice", scope);
+        assertThatThrownBy(() -> projectService.importRequirementVersion(project.id(), requirement.id(),
+                new ProjectPortfolioService.ImportedVersion(1, "Different body", null, null, null, "alice", null), "alice", scope))
+                .isInstanceOf(com.taxonomy.portfolio.service.PortfolioException.class).hasMessageContaining("Immutable requirement version 1");
+        assertThat(projectService.getRequirement(project.id(), requirement.id(), "alice", scope).currentVersion().text()).isEqualTo("Saved body");
+    }
 
     @Test
     void currentStateExportsCanonicalPortfolioWithoutHistoryOrSourceMutation() {

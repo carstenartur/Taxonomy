@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"><head>
+<th:block th:fragment="styles">
+    <link rel="stylesheet" th:href="@{/css/application-chrome.css}" href="/css/application-chrome.css"/>
+    <link rel="stylesheet" th:href="@{/css/architecture-lifecycle.css}" href="/css/architecture-lifecycle.css"/>
+</th:block>
+</head><body>
+<header th:fragment="navigation(active, localActions, helpDocument, helpSection)" class="taxonomy-app-chrome">
+    <nav id="applicationNavigation" class="taxonomy-app-navigation" th:aria-label="#{app.navigation.label}" aria-label="Application navigation">
+        <div class="taxonomy-app-mainrow">
+            <a class="taxonomy-app-brand" th:href="@{/}" href="/">Taxonomy</a>
+            <div class="taxonomy-app-primary">
+                <a data-app-route="projects" data-taxonomy-feature="portfolio" th:href="@{/projects}" href="/projects"
+                   th:attr="aria-current=${active == 'projects' ? 'page' : null}" th:text="#{app.navigation.projects}">Projects</a>
+                <a data-app-route="analysis" th:href="@{/}" href="/"
+                   th:attr="aria-current=${active == 'analysis' ? 'page' : null}" th:text="#{app.navigation.analysis}">Analysis</a>
+                <a data-app-route="architecture" data-taxonomy-feature="architecture" th:href="@{/architecture/editor}" href="/architecture/editor"
+                   th:attr="aria-current=${active == 'architecture' ? 'page' : null}" th:text="#{app.navigation.architecture}">Architecture</a>
+            </div>
+            <div class="taxonomy-app-utilities">
+                <div class="taxonomy-app-languages" role="group" th:aria-label="#{lang.selector.label}" aria-label="Language">
+                    <a href="?lang=en" hreflang="en" data-app-locale="en" th:aria-label="#{language.english}">EN</a>
+                    <a href="?lang=de" hreflang="de" data-app-locale="de" th:aria-label="#{language.german}">DE</a>
+                </div>
+                <a th:replace="~{fragments/context-help :: button(${helpDocument}, ${helpSection})}"></a>
+            </div>
+        </div>
+        <div class="taxonomy-app-local"><th:block th:replace="${localActions}"></th:block></div>
+    </nav>
+    <section id="applicationContext" class="taxonomy-app-context" th:aria-label="#{app.context.label}" aria-label="Selected context" hidden>
+        <div id="applicationCurrentContext" class="taxonomy-app-context-group" aria-labelledby="applicationCurrentContextTitle" hidden>
+            <h2 id="applicationCurrentContextTitle" class="taxonomy-app-context-title" th:text="#{app.context.current}">Current selection</h2>
+            <dl id="applicationCurrentDetails" class="taxonomy-entity-details taxonomy-app-context-details"></dl>
+            <div id="applicationContextStates" class="taxonomy-entity-badges"></div>
+        </div>
+        <div id="applicationSourceContext" class="taxonomy-app-context-group taxonomy-app-source" aria-labelledby="applicationSourceContextTitle" hidden>
+            <h2 id="applicationSourceContextTitle" class="taxonomy-app-context-title" th:text="#{app.context.source}">Frozen analysis source</h2>
+            <dl id="applicationSourceDetails" class="taxonomy-entity-details taxonomy-app-context-details"></dl>
+        </div>
+        <details id="applicationTechnicalContext" class="taxonomy-app-technical" hidden>
+            <summary th:text="#{app.context.technical}">Technical details</summary>
+            <dl id="applicationTechnicalDetails" class="taxonomy-entity-details"></dl>
+        </details>
+    </section>
+    <section id="architectureLifecycle" class="taxonomy-lifecycle" hidden></section>
+</header>
+<th:block th:fragment="scripts">
+    <script th:src="@{/js/shared/application-chrome.js}" src="/js/shared/application-chrome.js"></script>
+    <script th:src="@{/js/api/architecture-lifecycle-api.js}" src="/js/api/architecture-lifecycle-api.js"></script>
+    <script th:src="@{/js/shared/architecture-lifecycle.js}" src="/js/shared/architecture-lifecycle.js"></script>
+    <script th:src="@{/js/shared/requirement-intake.js}" src="/js/shared/requirement-intake.js"></script>
+</th:block>
+</body></html>

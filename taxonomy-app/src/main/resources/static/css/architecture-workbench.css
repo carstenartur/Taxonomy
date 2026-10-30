@@ -726,3 +726,6 @@ body {
         overflow-wrap: anywhere;
     }
 }
+
+/* The snapshot canvas remains reachable when the shared lifecycle disclosure grows. */
+.taxonomy-app-chrome { flex: 0 0 auto; max-height: 50dvh; overflow-y: auto; scrollbar-gutter: stable; }

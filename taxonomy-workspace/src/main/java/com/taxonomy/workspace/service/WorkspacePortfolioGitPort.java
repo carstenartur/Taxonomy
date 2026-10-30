@@ -15,6 +15,9 @@ public interface WorkspacePortfolioGitPort {
     /** Check before any Git or database mutation, including merge-base initialization. */
     default void requireAvailable() { }
 
+    /** Read-only source validation for an explicit reconciliation; business rules remain with the portfolio owner. */
+    default void validatePortfolio(String localDsl, String candidateDsl) { }
+
     String commitPortfolio(String branch,
                            String message,
                            String username,

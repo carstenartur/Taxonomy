@@ -272,6 +272,57 @@ public class DslGitRepository implements AutoCloseable {
         return new ExpectedHeadDslCommitter().verifyExpectedHead(this, branch, expectedHead);
     }
 
+    /** Publish a semantically reviewed tree while retaining the exact imported source history. */
+    public String commitMergeDslIfHeadMatches(String branch, String expectedHead, String incomingHead, String dslText,
+                                              String author, String message, CommitProvenance provenance) throws IOException {
+        // Share the transfer/checkpoint monitor across facades, keeping pack insertion and
+        // ref publication together. Expected-head CAS still protects independent processes.
+        synchronized (gitRepo) {
+            verifyExpectedHead(branch, expectedHead);
+            verifyIncoming(incomingHead, expectedHead);
+            return new ExpectedHeadDslCommitter().commit(this, new ExpectedHeadDslCommitter.CommitRequest(
+                    branch, expectedHead, dslText, author, message, provenance, List.of(incomingHead))).commitId();
+        }
+    }
+
+    public boolean isAncestor(String ancestor, String descendant) throws IOException {
+        if (ancestor == null || descendant == null) return false;
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            return walk.isMergedInto(walk.parseCommit(ObjectId.fromString(ancestor)), walk.parseCommit(ObjectId.fromString(descendant)));
+        }
+    }
+
+    /** Adopt an already verified descendant with a compare-and-set ref update, without manufacturing another commit. */
+    public String fastForwardIfHeadMatches(String branch, String expectedHead, String incomingHead, String author, String message) throws IOException {
+        if (!Repository.isValidRefName(Constants.R_HEADS + branch)) throw new IllegalArgumentException("Invalid branch");
+        // A ref-only publication must not overlap a transfer/checkpoint pack flush either.
+        synchronized (gitRepo) {
+            verifyExpectedHead(branch, expectedHead);
+            verifyIncoming(incomingHead, expectedHead);
+            if (expectedHead != null && !isAncestor(expectedHead, incomingHead)) throw new IOException("Incoming history is not a descendant");
+            RefUpdate update = gitRepo.updateRef(Constants.R_HEADS + branch);
+            update.setExpectedOldObjectId(expectedHead == null ? ObjectId.zeroId() : ObjectId.fromString(expectedHead));
+            update.setNewObjectId(ObjectId.fromString(incomingHead)); update.setForceUpdate(false);
+            update.setRefLogIdent(personIdent(author)); update.setRefLogMessage(message, true);
+            RefUpdate.Result result = update.update();
+            if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.FAST_FORWARD || result == RefUpdate.Result.NO_CHANGE) return incomingHead;
+            if (result == RefUpdate.Result.LOCK_FAILURE || result == RefUpdate.Result.REJECTED || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH)
+                throw new com.taxonomy.workspace.service.BranchHeadConflictException(branch, expectedHead, getHeadCommit(branch), "Branch changed during history integration");
+            throw new IOException("History integration failed: " + result);
+        }
+    }
+
+    /** Bounded immutable-document read used by native history queries. */
+    public String getDslAtCommit(String commitId, int maximumBytes) throws IOException {
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            var commit = walk.parseCommit(ObjectId.fromString(commitId));
+            try (TreeWalk tree = TreeWalk.forPath(gitRepo, DSL_FILENAME, commit.getTree())) {
+                if (tree == null) return "";
+                return new String(gitRepo.open(tree.getObjectId(0), Constants.OBJ_BLOB).getBytes(maximumBytes), StandardCharsets.UTF_8);
+            }
+        }
+    }
+
     // ── Read operations ─────────────────────────────────────────────
 
     /** Read DSL text at a specific commit. */

@@ -9,15 +9,13 @@
     <link rel="stylesheet" th:href="@{/css/architecture-editor.css}" href="/css/architecture-editor.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
 </head>
 <body>
 <a class="editor-skip" href="#editorForm" data-i18n="editor.skip">Skip to properties</a>
-<header class="editor-header">
-    <a th:href="@{/}" href="/">Taxonomy</a>
-    <h1 data-i18n="editor.title">Architecture editor</h1>
-    <a th:href="@{/projects}" href="/projects" data-i18n="editor.projects">Projects and snapshots</a>
-    <a th:href="@{/integrations}" href="/integrations" data-i18n="integration.title">Tool integrations</a>
-    <a th:replace="~{fragments/context-help :: button('ARCHITECTURE_EDITOR', '')}"></a>
+<header th:replace="~{fragments/application-chrome :: navigation('architecture', ~{:: localActions}, 'ARCHITECTURE_EDITOR', '')}">
+    <th:block th:fragment="localActions"><h1 data-i18n="editor.title">Architecture editor</h1>
+        <a th:href="@{/integrations}" href="/integrations" data-i18n="integration.title">Tool integrations</a></th:block>
 </header>
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
 <main id="architectureEditor">
@@ -210,6 +208,7 @@
 <script th:src="@{/js/taxonomy-i18n.js}" src="/js/taxonomy-i18n.js"></script>
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
+<th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
 <script th:src="@{/js/architecture-editor-renderer.js}" src="/js/architecture-editor-renderer.js"></script>
 <script th:src="@{/js/architecture-focus.js}" src="/js/architecture-focus.js"></script>

@@ -5,6 +5,9 @@ import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.MetaAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.ast.SourceLocation;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.requirements.RequirementRealization;
+import com.taxonomy.dsl.requirements.RequirementTrace;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort.DocumentHandle;
@@ -38,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -136,6 +140,9 @@ public class PortfolioGitService {
                 BlockAst old = existing.getBlocks().stream().filter(b -> "requirement".equals(b.getKind())
                         && requirementId.equals(b.getHeaderTokens().getFirst())).findFirst().orElse(null);
                 block = com.taxonomy.dsl.planning.PlanningInformation.retain(block, old);
+                block = RequirementRealization.retain(block, old);
+                block = RequirementTrace.retain(block, old);
+                block = retainUnownedProperties(block, old);
             }
             blocks.add(block);
         }
@@ -143,7 +150,21 @@ public class PortfolioGitService {
                 ? existing.getMeta()
                 : new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION,
                         "default", GENERATED);
-        return serializer.serialize(new DocumentAst(meta, blocks));
+        String projected = serializer.serialize(new DocumentAst(meta, blocks));
+        return existingDsl == null || existingDsl.isBlank() ? projected : ArchitectureSemanticPatch.applyProjection(existingDsl, projected);
+    }
+
+    /** Portfolio text owns its declared fields; imported/source annotations retain their original values. */
+    private static BlockAst retainUnownedProperties(BlockAst generated, BlockAst existing) {
+        if (existing == null) return generated;
+        Set<String> generatedKeys = generated.getProperties().stream().map(PropertyAst::key).collect(java.util.stream.Collectors.toSet());
+        Set<String> owned = Set.of("title", "text", MANAGED_PROPERTY, "x-project-key", "x-requirement-key",
+                "x-version", "x-content-hash", "x-review-status", "x-owner");
+        List<PropertyAst> values = new ArrayList<>(generated.getProperties());
+        existing.getProperties().stream().filter(p -> !owned.contains(p.key()) && !generatedKeys.contains(p.key())).forEach(values::add);
+        Map<String, String> extensions = new LinkedHashMap<>(generated.getExtensions());
+        values.stream().filter(PropertyAst::isExtension).forEach(p -> extensions.put(p.key(), p.value()));
+        return new BlockAst(generated.getKind(), generated.getHeaderTokens(), values, generated.getChildren(), extensions, null);
     }
 
     /** Resolve exact business identity without mutating storage or migrating canonical references. */
@@ -303,7 +324,7 @@ public class PortfolioGitService {
             RequirementView requirementView;
             BlockAst firstVersion = versionsForRequirement.getFirst();
             if (existingRequirement == null) {
-                requirementView = projectService.createRequirement(
+                requirementView = projectService.createImportedRequirement(
                         project.id(),
                         new CreateRequirementRequest(
                                 requirementKey,
@@ -317,6 +338,7 @@ public class PortfolioGitService {
                                 valueOrDefault(block.property("owner"), username),
                                 firstVersion.property("changeReason"),
                                 sourceReference(firstVersion, warnings)),
+                        importedVersion(firstVersion, warnings),
                         username,
                         context);
                 requirements++;
@@ -337,17 +359,12 @@ public class PortfolioGitService {
             }
 
             for (BlockAst version : versionsForRequirement) {
-                String text = required(version, "text", "");
-                if (text.equals(requirementView.currentVersion().text())) continue;
-                projectService.addRequirementVersion(
-                        project.id(), requirementView.id(),
-                        new CreateRequirementVersionRequest(
-                                text,
-                                version.property("changeReason"),
-                                sourceReference(version, warnings)),
-                        username,
-                        context);
-                versions++;
+                int number = versionNumber(version);
+                boolean exists = versionRepository.findByRequirementIdAndScopeKeyAndVersionNumber(
+                        requirementView.id(), scopeKey, number).isPresent();
+                projectService.importRequirementVersion(project.id(), requirementView.id(),
+                        importedVersion(version, warnings), username, context);
+                if (!exists) versions++;
             }
         }
         return new MaterializeResult(projects, requirements, versions, List.copyOf(warnings));
@@ -533,10 +550,22 @@ public class PortfolioGitService {
 
     private int versionNumber(BlockAst block) {
         try {
-            return Integer.parseInt(block.getHeaderTokens().get(2));
+            int number = Integer.parseInt(block.getHeaderTokens().get(2));
+            if (number > 0) return number;
         } catch (RuntimeException exception) {
-            return Integer.MAX_VALUE;
+            throw PortfolioException.validation("Invalid immutable requirement version number: " + identity(block));
         }
+        throw PortfolioException.validation("Immutable requirement version number must be positive: " + identity(block));
+    }
+
+    private ProjectPortfolioService.ImportedVersion importedVersion(BlockAst block, List<String> warnings) {
+        Instant createdAt = null;
+        if (block.property("createdAt") != null) {
+            try { createdAt = Instant.parse(block.property("createdAt")); }
+            catch (java.time.DateTimeException invalid) { throw PortfolioException.validation("Invalid immutable requirement creation time"); }
+        }
+        return new ProjectPortfolioService.ImportedVersion(versionNumber(block), block.property("text"), block.property("contentHash"),
+                block.property("changeReason"), sourceReference(block, warnings), block.property("createdBy"), createdAt);
     }
 
     private SourceReference sourceReference(BlockAst block, List<String> warnings) {

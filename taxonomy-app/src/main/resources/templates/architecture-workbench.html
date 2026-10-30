@@ -14,6 +14,7 @@
           href="/css/architecture-workbench.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workflow.css}" href="/css/architecture-workflow.css"/>
     <th:block th:replace="~{fragments/context-help :: styles}"></th:block>
+    <th:block th:replace="~{fragments/application-chrome :: styles}"></th:block>
 </head>
 <body th:attr="data-project-id=${projectId},
                data-snapshot-id=${snapshotId},
@@ -23,10 +24,11 @@
                data-policy-title-trace=#{archview.policy.title.trace}">
 <a class="visually-hidden-focusable" href="#architectureCanvas" th:text="#{workbench.ui.skip}">Skip to architecture diagram</a>
 
-<header class="workbench-toolbar navbar navbar-dark bg-dark px-3">
-    <a class="navbar-brand" th:href="@{/projects}" href="/projects" th:text="#{workbench.ui.brand}">Taxonomy Copilot Architecture</a>
+<header th:replace="~{fragments/application-chrome :: navigation('architecture', ~{:: localActions}, 'USER_GUIDE', 'architecture-source-context')}">
+    <th:block th:fragment="localActions">
+    
     <div class="d-flex align-items-center gap-2 flex-wrap">
-        <a th:replace="~{fragments/context-help :: button('USER_GUIDE', 'architecture-source-context')}"></a>
+        
         <button id="printArchitectureView" class="btn btn-sm btn-outline-light" type="button" disabled
                 th:title="#{workbench.ui.printTitle}" title="Print the displayed diagram, provenance and selection details"
                 th:text="#{workbench.ui.print}">Print view</button>
@@ -66,6 +68,7 @@
             </div>
         </details>
     </div>
+</th:block>
 </header>
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
 
@@ -187,6 +190,7 @@
 <script th:src="@{/js/shared/architecture-workflow.js}" src="/js/shared/architecture-workflow.js"></script>
 <script th:src="@{/js/shared/content-language.js}" src="/js/shared/content-language.js"></script>
 <script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
+<th:block th:replace="~{fragments/application-chrome :: scripts}"></th:block>
 <script th:src="@{/js/api/architecture-workbench-api.js}"
         src="/js/api/architecture-workbench-api.js"></script>
 <script th:src="@{/js/architecture-workbench.js}"

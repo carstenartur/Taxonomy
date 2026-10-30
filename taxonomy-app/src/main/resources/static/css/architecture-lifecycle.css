@@ -1,0 +1,51 @@
+.taxonomy-lifecycle { margin: .35rem 1.25rem .5rem; padding: 0; min-width: 0; border: 1px solid #cbd5e1; border-radius: .5rem; background: #fff; color: #172033; font: 400 .9rem/1.5 system-ui, sans-serif; }
+.taxonomy-lifecycle[hidden], .taxonomy-lifecycle [hidden], .taxonomy-intake [hidden] { display: none !important; }
+.taxonomy-lifecycle > details { margin: 0; }
+.taxonomy-lifecycle > details > summary { min-height: 44px; padding: .65rem .8rem; cursor: pointer; font-weight: 650; }
+.taxonomy-lifecycle > details[open] > summary { border-bottom: 1px solid #e2e8f0; }
+.taxonomy-lifecycle__body { padding: .5rem .8rem .8rem; }
+.taxonomy-lifecycle__body > p { margin: 0 0 .4rem; }
+.taxonomy-lifecycle__commands { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-bottom: .4rem; }
+.taxonomy-lifecycle > button { margin: .35rem .8rem; }
+.taxonomy-lifecycle__table { overflow-x: auto; min-width: 0; }
+.taxonomy-lifecycle table { width: 100%; border-collapse: collapse; text-align: left; }
+.taxonomy-lifecycle th, .taxonomy-lifecycle td { padding: .6rem; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+.taxonomy-lifecycle th { background: #f1f5f9; font-size: .82rem; }
+.taxonomy-lifecycle td:first-child { min-width: 13rem; }
+.taxonomy-lifecycle__title { display: block; }
+.taxonomy-lifecycle td details { margin-top: .35rem; font-size: .85rem; }
+.taxonomy-lifecycle details p, .taxonomy-lifecycle code { overflow-wrap: anywhere; white-space: pre-wrap; }
+.taxonomy-lifecycle button, .taxonomy-lifecycle-dialog button, .taxonomy-intake button { min-height: 44px; padding: .4rem .7rem; margin: .15rem .3rem .15rem 0; border: 1px solid #a8b5c7; border-radius: .35rem; background: #f8fafc; color: #173e72; font: inherit; cursor: pointer; }
+.taxonomy-lifecycle button:hover, .taxonomy-lifecycle-dialog button:hover, .taxonomy-intake button:hover { background: #eaf1fa; }
+.taxonomy-lifecycle button:disabled, .taxonomy-intake button:disabled { opacity: .6; cursor: wait; }
+.taxonomy-lifecycle :focus-visible, .taxonomy-lifecycle-dialog :focus-visible, .taxonomy-intake :focus-visible { outline: 3px solid #2681cc; outline-offset: 2px; }
+.taxonomy-lifecycle form { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .5rem 0; }
+.taxonomy-lifecycle input[type=search] { min-height: 44px; padding: .4rem; border: 1px solid #a8b5c7; border-radius: .3rem; }
+.taxonomy-lifecycle__commits { padding-left: 1.4rem; }
+.taxonomy-lifecycle__commits li { margin: .75rem 0; }
+.taxonomy-lifecycle__commits p { margin: .15rem 0; font-size: .85rem; }
+.taxonomy-lifecycle-dialog { width: min(48rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow: auto; padding: 1.5rem; border: 1px solid #94a3b8; border-radius: .75rem; color: #172033; background: #fff; }
+.taxonomy-lifecycle-dialog::backdrop { background: rgb(15 23 42 / 45%); }
+.taxonomy-lifecycle-dialog label, .taxonomy-lifecycle-dialog select, .taxonomy-lifecycle-dialog textarea { display: block; width: 100%; }
+.taxonomy-lifecycle-dialog select, .taxonomy-lifecycle-dialog textarea { padding: .6rem; margin: .3rem 0 .8rem; border: 1px solid #a8b5c7; border-radius: .3rem; font: inherit; }
+.taxonomy-lifecycle-dialog fieldset { border: 0; padding: 0; }
+.taxonomy-lifecycle__dependencies { max-height: 16rem; overflow: auto; border: 1px solid #cbd5e1; padding: .5rem; }
+.taxonomy-lifecycle__dependencies label { display: flex; gap: .5rem; align-items: flex-start; padding: .25rem; }
+.taxonomy-lifecycle__dependencies input { flex: none; margin-top: .35rem; }
+.taxonomy-lifecycle__pending { border: 1px solid #b7791f; border-left: 4px solid #b7791f; padding: .75rem; margin-top: .75rem; background: #fffbeb; color: #713f12; }
+.taxonomy-intake { margin: .8rem 0; padding: .8rem; border: 1px solid #cbd5e1; border-radius: .5rem; background: #f8fafc; color: #172033; }
+.taxonomy-intake h3 { font-size: 1rem; margin: 0 0 .4rem; }
+.taxonomy-intake p { margin: .4rem 0; }
+.taxonomy-intake__matches { padding: 0; list-style: none; }
+.taxonomy-intake__matches > li { padding: .8rem 0; border-top: 1px solid #cbd5e1; }
+.taxonomy-intake blockquote { margin: .4rem 0; padding: .4rem .6rem; border-left: 3px solid #94a3b8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.taxonomy-lifecycle-dialog pre { max-height: 18rem; overflow: auto; padding: .6rem; background: #f1f5f9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.taxonomy-lifecycle-dialog input:not([type=checkbox]) { display: block; width: 100%; margin: .3rem 0 .8rem; padding: .6rem; border: 1px solid #a8b5c7; border-radius: .3rem; font: inherit; }
+@media (max-width: 600px) {
+    .taxonomy-lifecycle { margin: .35rem .65rem .5rem; }
+    .taxonomy-lifecycle__body { padding: .5rem .6rem .6rem; }
+    .taxonomy-lifecycle button, .taxonomy-intake button { width: 100%; margin-inline: 0; }
+    .taxonomy-lifecycle > button { width: calc(100% - 1.2rem); margin-inline: .6rem; }
+    .taxonomy-lifecycle-dialog { padding: 1rem; }
+}
+@media print { .taxonomy-lifecycle { display: none; } }

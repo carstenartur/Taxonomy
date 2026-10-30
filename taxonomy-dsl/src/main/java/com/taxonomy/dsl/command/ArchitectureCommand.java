@@ -7,6 +7,12 @@ import java.util.List;
 
 /** Renderer- and framework-independent semantic intents. Identity is never an editable property. */
 public sealed interface ArchitectureCommand {
+    /** The server supplies actor and time after exact-context authorization. */
+    record ReviewRequirementRealization(String requirementId,
+                                        com.taxonomy.dsl.requirements.RequirementRealization.Review review)
+            implements ArchitectureCommand {
+        public ReviewRequirementRealization { Objects.requireNonNull(requirementId); Objects.requireNonNull(review); }
+    }
     /** Internal frozen-source intent. The server builds this; it is absent from the public wire union. */
     record SnapshotElement(String id, String type, String title, String description) {}
     record AdoptAnalysisSnapshot(String viewId, String title, String description, String graphFingerprint,

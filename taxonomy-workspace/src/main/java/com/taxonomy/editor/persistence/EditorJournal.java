@@ -77,7 +77,8 @@ public class EditorJournal {
                 .setParameter("scope", scope(context)).getResultList().stream().map(EditorJournal::checkpoint).toList());
     }
 
-    public <T> T locked(RepositoryContext context, State initial, Function<Session, T> action) {
+    // Declare the domain rejection so Spring's repository interceptor preserves it after transaction rollback.
+    public <T> T locked(RepositoryContext context, State initial, Function<Session, T> action) throws CommandProblem {
         String scope = scope(context);
         boolean[] initializing = {false};
         // Two application instances can race on the very first accepted command.
@@ -98,7 +99,7 @@ public class EditorJournal {
     }
 
     /** Reviewed integration records and canonical edits participate in the caller's single database transaction. */
-    public <T> T joinedLocked(RepositoryContext context, State initial, Function<Session, T> action) {
+    public <T> T joinedLocked(RepositoryContext context, State initial, Function<Session, T> action) throws CommandProblem {
         if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("A durable integration transaction is required");
         return transact(joinedTransaction, context, scope(context), initial, action, new boolean[1]);
@@ -143,6 +144,14 @@ public class EditorJournal {
         public void expect(long revision) {
             if (workspace.revision != revision) throw new RevisionConflict(revision, workspace.revision);
             if (workspace.pendingCheckpoint != null) throw problem("CHECKPOINT_PENDING", "Retry the pending checkpoint before editing", List.of(workspace.pendingCheckpoint));
+        }
+        /** Only the completed receipt for this locked workspace's exact current checkpoint can prove publication. */
+        public Checkpoint currentCheckpoint() {
+            return em.createQuery("select c from EditorCheckpoint c where c.scopeId = :scope and c.completed = true "
+                            + "and c.commitId = :commit and c.revision = :revision order by c.occurredAt desc", EditorCheckpoint.class)
+                    .setParameter("scope", workspace.scopeId).setParameter("commit", workspace.checkpointCommit)
+                    .setParameter("revision", workspace.checkpointRevision).setMaxResults(1)
+                    .getResultList().stream().findFirst().map(EditorJournal::checkpoint).orElse(null);
         }
         public Entry append(Metadata metadata, String actor, String kind, String target, String fingerprint,
                             String dsl, List<String> affected) {
@@ -207,6 +216,11 @@ public class EditorJournal {
             if (checkpoint.completed) return;
             checkpoint.failureCode = "CHECKPOINT_CONFLICT";
             if (commandId.equals(workspace.pendingCheckpoint)) workspace.pendingCheckpoint = null;
+        }
+        /** Explicit reconciliation changes the next Git parent, never the completed semantic revision. */
+        public void rebaseCheckpoint(String commit) {
+            if (workspace.pendingCheckpoint != null) throw problem("CHECKPOINT_PENDING", "Resume the pending checkpoint first", List.of(workspace.pendingCheckpoint));
+            workspace.checkpointCommit = commit;
         }
         /** A version-boundary import is journaled by the caller before adopting the new Git authority. */
         public void adoptVersion(String commit, String actor, String rationale) {
