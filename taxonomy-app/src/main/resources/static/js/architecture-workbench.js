@@ -1053,15 +1053,14 @@
             const below = Math.max(0, window.innerHeight - trigger.bottom - gap - margin);
             const above = Math.max(0, trigger.top - gap - margin);
             const openAbove = below < Math.min(exportMenu.scrollHeight, window.innerHeight * 0.7) && above > below;
-            exportMenu.style.maxHeight = Math.max(44, Math.min(window.innerHeight * 0.7,
-                window.innerHeight - margin * 2, openAbove ? above : below)) + 'px';
+            exportMenu.style.setProperty('--workbench-export-preferred-height', Math.max(44, Math.min(window.innerHeight * 0.7,
+                window.innerHeight - margin * 2, openAbove ? above : below)) + 'px');
             const menu = exportMenu.getBoundingClientRect();
-            exportMenu.style.left = Math.max(margin,
-                Math.min(trigger.left, window.innerWidth - menu.width - margin)) + 'px';
-            exportMenu.style.right = 'auto';
+            exportMenu.style.setProperty('--workbench-export-preferred-left', Math.max(margin,
+                Math.min(trigger.left, window.innerWidth - menu.width - margin)) + 'px');
             const top = openAbove ? trigger.top - gap - menu.height : trigger.bottom + gap;
-            exportMenu.style.top = Math.max(margin,
-                Math.min(top, window.innerHeight - menu.height - margin)) + 'px';
+            exportMenu.style.setProperty('--workbench-export-preferred-top', Math.max(margin,
+                Math.min(top, window.innerHeight - menu.height - margin)) + 'px');
         }
         exportOptions.addEventListener('toggle', positionExportMenu);
         window.addEventListener('resize', positionExportMenu);

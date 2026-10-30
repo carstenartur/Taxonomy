@@ -400,25 +400,48 @@ class SharedApplicationChromeBrowserIT {
 
     @Test void workbenchExportMenuStaysOnscreenAndEveryFormatRemainsKeyboardReachable() throws IOException {
         openLoadedWorkbench(1024);
-        for (int width : List.of(1024, 390, 320)) {
-            viewport(width, 844);
+        page.driver().executeScript("""
+                const disclosure=document.getElementById('architectureExportOptions');
+                window.__exportOpeningFrames=[];
+                disclosure.addEventListener('toggle',()=>{
+                    if(!disclosure.open)return;
+                    const menu=disclosure.querySelector('.workbench-export-content'),r=menu.getBoundingClientRect();
+                    window.__exportOpeningFrames.push({left:r.left,right:r.right,top:r.top,bottom:r.bottom,
+                        innerWidth,innerHeight,inlineLeft:menu.style.left,inlineTop:menu.style.top,
+                        preferredLeft:menu.style.getPropertyValue('--workbench-export-preferred-left'),
+                        preferredTop:menu.style.getPropertyValue('--workbench-export-preferred-top'),
+                        valid:r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight});
+                },true);
+                """);
+        int opening = 0;
+        for (int[] size : List.of(new int[]{1024, 844}, new int[]{390, 844}, new int[]{320, 844}, new int[]{320, 450})) {
+            int width = size[0], height = size[1];
+            viewport(width, height);
             var disclosure = page.driver().findElement(By.id("architectureExportOptions"));
             var summary = disclosure.findElement(By.tagName("summary"));
             summary.sendKeys(Keys.ENTER);
             wait.until(driver -> "true".equals(disclosure.getDomProperty("open")));
-            page.driver().executeAsyncScript("const done=arguments[arguments.length-1];requestAnimationFrame(()=>requestAnimationFrame(done));");
+            int expectedOpening = ++opening;
+            wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript(
+                    "return window.__exportOpeningFrames.length===arguments[0];", expectedOpening)));
+            var firstFrame = (Map<?, ?>) page.driver().executeScript(
+                    "return window.__exportOpeningFrames[arguments[0]];", opening - 1);
             var geometry = (Map<?, ?>) page.driver().executeScript("""
                     const r=document.querySelector('.workbench-export-content').getBoundingClientRect();
                     return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,innerWidth,innerHeight,
                         valid:r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight};
                     """);
-            if (!Boolean.TRUE.equals(geometry.get("valid"))) {
-                Path evidence = Path.of("target", "coherent-lifecycle", "workbench-exports-" + width);
+            if (!Boolean.TRUE.equals(firstFrame.get("valid")) || !Boolean.TRUE.equals(geometry.get("valid"))) {
+                Path evidence = Path.of("target", "coherent-lifecycle", "workbench-exports-" + width + "x" + height);
                 Files.createDirectories(evidence);
                 Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
-                Files.writeString(evidence.resolve("geometry.json"), PortfolioClientTestPage.json(geometry));
+                Files.writeString(evidence.resolve("geometry.json"), PortfolioClientTestPage.json(
+                        Map.of("firstFrame", firstFrame, "afterToggle", geometry)));
                 Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
             }
+            assertThat(firstFrame.get("valid"))
+                    .as("The first opening frame fits before the asynchronous positioning handler, including a closed viewport resize: %s", firstFrame)
+                    .isEqualTo(true);
             assertThat(geometry.get("valid")).as("The export popup fits the viewport independently of the wrapped trigger: %s", geometry).isEqualTo(true);
             var controls = disclosure.findElements(By.cssSelector("select, button:not([disabled])"));
             assertThat(controls).extracting(control -> control.getDomAttribute("id")).contains(

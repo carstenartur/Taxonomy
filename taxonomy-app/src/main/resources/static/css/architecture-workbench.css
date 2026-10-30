@@ -57,14 +57,18 @@ body {
 }
 
 .workbench-export-content {
+    --workbench-export-width: min(28rem, calc(100vw - 2rem));
+    --workbench-export-height-limit: min(70dvh, calc(100dvh - 2rem), var(--workbench-export-preferred-height, 70dvh));
     position: fixed;
     z-index: 1100;
-    top: auto;
-    left: 1rem;
+    /* Bounds remain valid before the asynchronous details toggle/resize handlers. */
+    top: clamp(1rem, var(--workbench-export-preferred-top, 1rem), calc(100dvh - var(--workbench-export-height-limit) - 1rem));
+    left: clamp(1rem, var(--workbench-export-preferred-left, 1rem), calc(100vw - var(--workbench-export-width) - 1rem));
+    right: auto;
     display: grid;
     gap: 0.6rem;
-    width: min(28rem, calc(100vw - 2rem));
-    max-height: 70dvh;
+    width: var(--workbench-export-width);
+    max-height: var(--workbench-export-height-limit);
     overflow: auto;
     padding: 1rem;
     border: 1px solid #64748b;
@@ -537,10 +541,6 @@ body {
        to the toolbar instead of allowing right:0 to push it off the screen. */
     .workbench-export-options {
         position: static;
-    }
-
-    .workbench-export-content {
-        right: 1rem;
     }
 
     .workbench-toolbar .navbar-brand {

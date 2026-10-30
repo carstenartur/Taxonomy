@@ -136,9 +136,9 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   await page.locator('#adoptionAccept').click();
   const acceptedHttp=await acceptedResponse;assert.equal(acceptedHttp.status(),200,await acceptedHttp.text());
   const adopted=await acceptedHttp.json();assert.equal(adopted.accepted.replayed,true);assert.equal(adopted.accepted.context.revision,1);
+  await page.waitForFunction(()=>new URL(location.href).searchParams.get('revision')==='1'&&document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
   const attempts=await page.evaluate(()=>{const state=window.__snapshotRetry;window.ArchitectureEditorApi.adoptSnapshot=state.original;delete window.__snapshotRetry;return state.attempts;});
   assert.deepEqual(attempts[0],attempts[1]);
-  await page.waitForFunction(()=>new URL(location.href).searchParams.get('revision')==='1'&&document.getElementById('architectureEditor').getAttribute('aria-busy')==='false');
   assert.equal(new URL(page.url()).searchParams.get('viewId'),adopted.viewId);
   assert.equal(await page.locator('#editorHistory li').count(),1);
   await page.locator('#snapshotAdoption details > summary').click();

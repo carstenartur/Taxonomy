@@ -34,7 +34,7 @@ The native twelve-requirement scenario starts with requirements 1–9 COMPLETE, 
 - Routing 72 and native Archi return 1 passed in the preceding focused run. The additional modal-transition regression was first observed failing after a successful POST and then passed with the shared close helper.
 - Earlier broad native regression passed all version review 13, matrix 10, recovery 42 and stand-selection 34 cases, plus 14 browser-session cases.
 - Existing API/documentation regressions passed: analysis session 10, REST documentation 3, generated OpenAPI 1, reformulation positive-review guard 26 and contextual help 4.
-- Documentation 7 and mandatory module-graph 141, module-extraction 2, plugin-boundary 4 and selector-synchronization 77 checks passed (231 total). Fourteen English/German guides also passed static table/link/anchor/route validation.
+- Documentation 7, portfolio architecture contract 1 and mandatory module-graph 141, module-extraction 2, plugin-boundary 4 and selector-synchronization 77 checks passed (232 total). Fourteen English/German guides also passed static table/link/anchor/route validation.
 
 ## Corrected regressions and review
 
@@ -43,11 +43,12 @@ Independent source review found and closed invalid import fields/identity aliase
 The final UI corrections were verified against actual rendered geometry and native interactions:
 
 - The portfolio's first requirement row is visible in the 1366 × 768 initial viewport, with full metric labels and requirement text retained.
-- A wrapped export trigger opens a viewport-bounded menu. Native Enter/Tab/Escape checks at 1024, 390 and 320 px reach every export format, including through the menu's own scroll area.
+- A wrapped export trigger opens a viewport-bounded menu. Native Enter/Tab/Escape checks at 1024, 390 and 320 px reach every export format, including through the menu's own scroll area. A later CI finding exposed overflow in the first frame after resizing a closed menu. The strengthened native regression measures capture-phase geometry before the positioning handler, reproduces the failure, and passes with viewport-derived CSS clamps, including a subsequent height change to 320 × 450.
 - A failed lifecycle refresh shows UNAVAILABLE in the collapsed context and cannot relabel an old commit as the selected stand. INVALID_EVIDENCE is also visible. Preserved raw commits and revisions are explicitly labeled as last observed. Both HTTP 503/404 native regressions were observed failing before the fix and then passed.
 - Requirement intake shares the initial lifecycle read before freezing its scope. Four deterministic regressions cover late initialization, edits, explicit scope changes and cancellation; native English/German cases hold the first GET and verify a single correctly scoped review/save after release.
 - Fast successful saves during Bootstrap's opening transition now close after its public shown event. Native regression proves that the response arrives before shown and that the next opening remains open; no product timer, private Bootstrap state or shortened assertion was introduced.
 - Older Copilot/scenario browser drivers now perform the explicit NEW/CHANGE choice and open the shared technical disclosure to check the same exact repository, workspace and branch identities. The full Copilot test retains its PostgreSQL/container default; the explicit local adapter uses the existing BrowserSession and a real Spring/HSQLDB application.
+- The Firefox snapshot-retry driver now waits for its existing revision/busy-state assertion before removing its injected response fixture. CI evidence showed that observing the HTTP response alone allowed teardown while the fixture's awaited response was still completing. Exact replay, request identity, history and view assertions remain unchanged; neighboring retry fixtures already await application completion.
 
 Independent final review found no remaining concrete source issue in the corrected context, intake, modal, layout or driver changes. Failure-only DOM, screenshot and bounded state diagnostics remain available in the existing browser evidence job.
 
