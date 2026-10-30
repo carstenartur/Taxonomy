@@ -1,10 +1,16 @@
 package com.taxonomy.workspace.repository;
 
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
+import com.taxonomy.workspace.model.RepositoryOwnerType;
 import com.taxonomy.workspace.model.SystemRepository;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,6 +26,14 @@ public interface SystemRepositoryRepository extends JpaRepository<SystemReposito
     Optional<SystemRepository> findByRepositoryId(String repositoryId);
 
     Optional<SystemRepository> findBySlug(String slug);
+
+    /** Serialize a retained creation claim across application instances. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select repository from SystemRepository repository where repository.slug = :slug")
+    Optional<SystemRepository> findBySlugForUpdate(@Param("slug") String slug);
+
+    List<SystemRepository> findByOwnerTypeAndOwnerIdAndLifecycleStateInOrderByDisplayNameAsc(
+            RepositoryOwnerType ownerType, String ownerId, Collection<RepositoryLifecycleState> states);
 
     Optional<SystemRepository> findByStorageRepositoryName(String storageRepositoryName);
 

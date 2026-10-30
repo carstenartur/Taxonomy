@@ -31,6 +31,11 @@ public class PortfolioGitPortAdapter
     }
 
     @Override
+    public void validatePortfolio(String localDsl, String candidateDsl, String username, WorkspaceContext context) {
+        workspaceConflict(() -> portfolioGitService.validatePortfolio(localDsl, candidateDsl, username, context));
+    }
+
+    @Override
     public String commitPortfolio(String branch,
                                   String message,
                                   String username,

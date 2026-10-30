@@ -3,6 +3,7 @@ package com.taxonomy.composition.architecture;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
 import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
@@ -26,6 +27,16 @@ public class ArchitectureLifecycleExceptionHandler {
     public ResponseEntity<ProblemDetail> portfolio(PortfolioException failure){return new com.taxonomy.portfolio.controller.PortfolioExceptionHandler().handlePortfolioException(failure);}
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<?> invalid(IllegalArgumentException failure){return ResponseEntity.badRequest().body(Map.of("code","INVALID_COMMAND","detail",String.valueOf(failure.getMessage())));}
+    @ExceptionHandler(BranchHeadConflictException.class)
+    public ResponseEntity<?> historyHeadChanged(BranchHeadConflictException failure) {
+        var problem = new java.util.LinkedHashMap<String, Object>();
+        problem.put("code", "HISTORY_HEAD_CHANGED");
+        problem.put("detail", "The branch changed during history search; restart from the first page");
+        problem.put("branch", failure.getBranch());
+        problem.put("expectedHead", failure.getExpectedHeadCommit());
+        problem.put("currentHead", failure.getActualHeadCommit());
+        return ResponseEntity.status(409).body(problem);
+    }
     @ExceptionHandler(IOException.class)
     public ResponseEntity<?> unavailable(){return ResponseEntity.status(503).body(Map.of("code","GIT_UNAVAILABLE","detail","Storage is unavailable; retry the same command identity"));}
 }

@@ -51,6 +51,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Taxonomy-specific facade around a JGit repository that versions one DSL document.
@@ -540,17 +541,23 @@ public class DslGitRepository implements AutoCloseable {
 
     /** Supply final merge metadata before signing and publishing the single new object. */
     public String merge(String fromBranch, String intoBranch, String author, String message) throws IOException {
-        return merge(fromBranch, intoBranch, author, message, null);
+        return merge(fromBranch, intoBranch, author, message, null, ignored -> { });
+    }
+
+    /** Check the exact candidate DSL before the captured merge can publish a ref. */
+    public String merge(String fromBranch, String intoBranch, String author, String message,
+                        Consumer<String> validateMergedSource) throws IOException {
+        return merge(fromBranch, intoBranch, author, message, null, Objects.requireNonNull(validateMergedSource));
     }
 
     /** Merge transport history using only the locally accepted heads captured before fetching. */
     public String mergeFromAcceptedHeads(String fromBranch, String intoBranch,
                                          Collection<String> acceptedHeads) throws IOException {
-        return merge(fromBranch, intoBranch, null, null, List.copyOf(acceptedHeads));
+        return merge(fromBranch, intoBranch, null, null, List.copyOf(acceptedHeads), ignored -> { });
     }
 
     private String merge(String fromBranch, String intoBranch, String author, String message,
-                         Collection<String> acceptedHeads) throws IOException {
+                         Collection<String> acceptedHeads, Consumer<String> validateMergedSource) throws IOException {
         String fromRefName = Constants.R_HEADS + fromBranch;
         String intoRefName = Constants.R_HEADS + intoBranch;
         Ref fromRef = gitRepo.getRefDatabase().exactRef(fromRefName);
@@ -572,11 +579,13 @@ public class DslGitRepository implements AutoCloseable {
             }
 
             if (walk.isMergedInto(fromCommit, intoCommit)) {
+                validateMergeSource(validateMergedSource, intoCommit.getTree(), fromBranch, fromCommit, intoBranch, intoCommit);
                 log.info("Already merged: '{}' is ancestor of '{}'", fromBranch, intoBranch);
                 return intoCommit.name();
             }
 
             if (walk.isMergedInto(intoCommit, fromCommit)) {
+                validateMergeSource(validateMergedSource, fromCommit.getTree(), fromBranch, fromCommit, intoBranch, intoCommit);
                 updateRef(
                         intoRefName,
                         fromCommit,
@@ -594,6 +603,9 @@ public class DslGitRepository implements AutoCloseable {
                 log.warn("Merge conflict: '{}' into '{}'", fromBranch, intoBranch);
                 return null;
             }
+
+            validateMergeSource(validateMergedSource, walk.parseTree(merger.getResultTreeId()),
+                    fromBranch, fromCommit, intoBranch, intoCommit);
 
             try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
                 CommitBuilder mergeCommit = new CommitBuilder();
@@ -619,6 +631,15 @@ public class DslGitRepository implements AutoCloseable {
                 return mergeCommitId.name();
             }
         }
+    }
+
+    private void validateMergeSource(Consumer<String> validation, RevTree tree, String fromBranch,
+                                     RevCommit fromCommit, String intoBranch, RevCommit intoCommit) throws IOException {
+        String dsl = readDslFromTree(tree);
+        // Application preflight may read its database; never hold the Repository monitor here.
+        validation.accept(dsl == null ? "" : dsl);
+        verifyExpectedHead(fromBranch, fromCommit.name());
+        verifyExpectedHead(intoBranch, intoCommit.name());
     }
 
     /** Model-content merges exclude the reserved, transfer-specific metadata path. */

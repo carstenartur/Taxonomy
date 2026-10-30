@@ -11,10 +11,13 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.OutputType;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -357,7 +360,7 @@ class SharedApplicationChromeBrowserIT {
     }
 
     @ParameterizedTest @ValueSource(ints = {1366, 390})
-    void collapsedLifecycleLeavesTheSelectedRequirementAsThePrimaryWork(int width) {
+    void collapsedLifecycleLeavesTheSelectedRequirementAsThePrimaryWork(int width) throws IOException {
         openCompactRequirement("en", width, false);
         var lifecycle = page.driver().findElement(By.id("architectureLifecycle"));
         var disclosure = lifecycle.findElement(By.xpath("./details"));
@@ -366,16 +369,42 @@ class SharedApplicationChromeBrowserIT {
         assertThat(lifecycle.findElements(By.tagName("button")))
                 .as("Current-state lifecycle commands belong to the closed disclosure, not a second toolbar")
                 .noneMatch(button -> button.isDisplayed());
-        assertThat(page.driver().executeScript("""
+        var geometry = (Map<?, ?>) page.driver().executeScript("""
                 const summary=arguments[0].getBoundingClientRect();
                 const heading=document.getElementById('requirementHeading').getBoundingClientRect();
                 const action=document.getElementById('newVersionButton').getBoundingClientRect();
-                return summary.height>=44 && document.documentElement.scrollWidth<=innerWidth+1
+                const valid=summary.height>=44 && document.documentElement.scrollWidth<=innerWidth+1
                     && scrollY===0 && (innerWidth<1000 ||
                         (heading.top>=0 && heading.top<=innerHeight/2 && heading.bottom<=innerHeight
                             && action.top>=0 && action.bottom<=innerHeight));
-                """, summary))
-                .as("The compact context leaves the selected requirement and its action visible without shrinking touch targets")
+                const bounds=element=>{
+                    const r=element.getBoundingClientRect(),s=getComputedStyle(element);
+                    return {tag:element.tagName,id:element.id,classes:element.className,
+                        top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height,
+                        minWidth:s.minWidth,minHeight:s.minHeight,overflowX:s.overflowX,
+                        whiteSpace:s.whiteSpace,position:s.position,font:s.font};
+                };
+                return {valid,innerWidth,innerHeight,outerWidth,outerHeight,scrollX,scrollY,
+                    documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,
+                    active:document.activeElement?.id||document.activeElement?.tagName,
+                    summary:bounds(arguments[0]),heading:bounds(document.getElementById('requirementHeading')),
+                    action:bounds(document.getElementById('newVersionButton')),
+                    regions:['applicationNavigation','applicationContext','architectureLifecycle','requirementMain']
+                        .map(id=>bounds(document.getElementById(id))),
+                    overflowing:[...document.body.querySelectorAll('*')].filter(element=>{
+                        const r=element.getBoundingClientRect();
+                        return r.width>0 && r.height>0 && (r.right>innerWidth+1 || r.left< -1);
+                    }).slice(0,30).map(bounds)};
+                """, summary);
+        if (!Boolean.TRUE.equals(geometry.get("valid"))) {
+            Path evidence = Path.of("target", "coherent-lifecycle", "chrome-layout-" + width);
+            Files.createDirectories(evidence);
+            Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+            Files.writeString(evidence.resolve("geometry.json"), PortfolioClientTestPage.json(geometry));
+            Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
+        }
+        assertThat(geometry.get("valid"))
+                .as("The compact context leaves the selected requirement and its action visible without shrinking touch targets: %s", geometry)
                 .isEqualTo(true);
         summary.sendKeys(Keys.ENTER);
         assertThat(disclosure.getDomProperty("open")).isEqualTo("true");

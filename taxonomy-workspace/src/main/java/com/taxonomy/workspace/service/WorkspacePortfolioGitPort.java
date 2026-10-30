@@ -18,6 +18,11 @@ public interface WorkspacePortfolioGitPort {
     /** Read-only source validation for an explicit reconciliation; business rules remain with the portfolio owner. */
     default void validatePortfolio(String localDsl, String candidateDsl) { }
 
+    /** Read-only compatibility check against the exact target portfolio before Git publication. */
+    default void validatePortfolio(String localDsl, String candidateDsl, String username, WorkspaceContext context) {
+        validatePortfolio(localDsl, candidateDsl);
+    }
+
     String commitPortfolio(String branch,
                            String message,
                            String username,

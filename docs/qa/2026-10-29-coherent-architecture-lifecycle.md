@@ -20,7 +20,13 @@ Status: reconstruction is under fresh verification. This report intentionally do
 ## Fresh execution log
 
 - First reconstructed backend run: DSL realization/trace 7 tests passed. Compilation then caught a missing exhaustive fingerprint arm for the newly reconstructed semantic review command. The arm was restored before repeating the run.
-- Subsequent backend, browser, full JavaScript, canonical Maven and CI results are pending.
+- Fresh backend checks passed: realization/trace DSL7, reconciliation validation9, native history/transfer/monitor/ancestry22, workspace reconciliation/idempotency26, intake candidate/controller/matcher/service29, lifecycle service8, and the full twelve-requirement lifecycle integration1.
+- The lifecycle integration verified requirements1–9, requirement10 PARTIAL→COMPLETE, requirements11/12 OPEN, then requirement9/v2 requiring review while its v1 review remains readable. Source comments and earlier operation/checkpoint receipts are preserved after subsequent edits.
+- Native browser round1: session14 and lifecycle8 passed. Shared chrome24 exposed five failures; stand selection28 exposed five timeouts. Diagnoses included context pins cleared during initial project loading, historical business-key fallback, mobile layout, unknown-response retries and a busy overlay blocking an explicit intake choice. Fixes and a more diagnostic mobile assertion are under round2 verification; these failures are not counted as passes.
+- Remaining backend regression round exposed forged current/historical content hashes, moved history HEAD translated as503, failed architecture creation recovery, and immutable portfolio collisions after Git refs moved. Source/DB preflight,409 translation and exact creation recovery are now implemented; fresh verification is pending. The sync fixture also required unique workspace names between parameter cases.
+- Fresh JavaScript contracts:1630 passed. The source ownership gate caught the newly added lifecycle test before its owner registration was completed; registration has been added. Full rerun remains required. Independent lifecycle/API replay contracts passed16 cases after demonstrating unknown-response and later-checkpoint retry failures.
+- Boundary review rejected direct portfolio→workspace repository access. A workspace-owned discovery API now supplies immutable authorized source metadata;14 justified existing-direction package-edge counts were reviewed individually. Fresh ratchet verification is pending.
+- Canonical Maven verification, broader native acceptance, final review and existing CI checks remain pending.
 
 ## Evidence limits
 

@@ -187,6 +187,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 ? new TaxDslMergeResult(theirs, java.util.List.of())
                 : semanticMergeService.mergeContent(state.baseDsl(), ours, theirs);
         requireSuccess("Pull from source", merge);
+        // A deterministic portfolio rejection must precede model and tracking ref publication.
+        portfolioGitPort.validatePortfolio(ours, merge.mergedText(), username, context);
         workspaceGit.verifyExpectedHead(TRACKING_BRANCH, state.baseHead());
         requireSourceAuthority(username, sourceMetadata, false);
         sourceRepository.verifyExpectedHead(sourceBranch, sourceSnapshot.head());
@@ -257,6 +259,11 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 ? new TaxDslMergeResult(workspaceDsl, java.util.List.of())
                 : semanticMergeService.mergeContent(state.baseDsl(), sourceDsl, workspaceDsl);
         requireSuccess("Publish to source", merge);
+        WorkspaceContext centralContext = new WorkspaceContext(
+                "shared", null, sourceBranch, requireRepositoryId(sourceMetadata));
+        // Check both target databases before either repository accepts the merged history.
+        portfolioGitPort.validatePortfolio(sourceDsl, merge.mergedText(), "shared", centralContext);
+        portfolioGitPort.validatePortfolio(workspaceDsl, merge.mergedText(), username, context);
         workspaceGit.verifyExpectedHead(TRACKING_BRANCH, state.baseHead());
         // Detect a changed local input before updating the central repository.
         workspaceGit.verifyExpectedHead(userBranch, localSnapshot.head());
@@ -272,11 +279,6 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 username, "Integrate source changes after publish", published, sourceMetadata, true);
         trackBase(workspaceGit, state, merge.mergedText(), username);
 
-        WorkspaceContext centralContext = new WorkspaceContext(
-                "shared",
-                null,
-                sourceBranch,
-                requireRepositoryId(sourceMetadata));
         requireSourceAuthority(username, sourceMetadata, true);
         portfolioGitPort.materializePortfolio(
                 merge.mergedText(), "shared", centralContext);
@@ -313,10 +315,11 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         BranchSnapshot chosen = snapshot(repository, from);
         BranchSnapshot destination = snapshot(repository, into);
         String content = requiredSnapshot(chosen, "Selected conflict side has no content: " + from);
+        WorkspaceContext target = new WorkspaceContext(username, null, into, context.repositoryId());
+        portfolioGitPort.validatePortfolio(destination.dsl(), content, username, target);
         repository.verifyExpectedHead(from, chosen.head());
         String commit = commitIfChanged(repository, into, content, destination.dsl(),
                 destination.head(), username, "Resolve conflict using " + from);
-        WorkspaceContext target = new WorkspaceContext(username, null, into, context.repositoryId());
         portfolioGitPort.materializePortfolio(content, username, target);
         if (keepMine) {
             updateAfterPublish(username, commit);
@@ -344,10 +347,14 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 context);
         String from = pull ? sharedBranch() : userBranch;
         String into = pull ? userBranch : sharedBranch();
+        WorkspaceContext target = new WorkspaceContext(username, null, into, context.repositoryId());
         SemanticGitMergeService.MergeOutcome outcome = semanticMergeService.mergeBranches(
-                repository, from, into, username);
+                repository, from, into, username, null, candidate -> {
+                    portfolioGitPort.validatePortfolio(null, candidate, username, target);
+                    requireSourceAuthority(username, context, true);
+                });
         requireSuccess(pull ? "Sync" : "Publish", outcome);
-        portfolioGitPort.materializePortfolioHead(into, username, context);
+        portfolioGitPort.materializePortfolioHead(into, username, target);
         if (pull) {
             updateAfterSync(username, repository.getHeadCommit(sharedBranch()));
         } else {

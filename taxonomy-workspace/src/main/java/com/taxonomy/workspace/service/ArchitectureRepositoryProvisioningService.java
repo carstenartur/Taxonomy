@@ -7,6 +7,13 @@ import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
 
 import java.io.IOException;
 
@@ -15,6 +22,7 @@ import java.io.IOException;
 public class ArchitectureRepositoryProvisioningService {
 
     private static final String MINIMAL_DSL = "meta { language: \"taxdsl\"; }\n";
+    private static final String INITIAL_MESSAGE = "Initialize architecture repository";
 
     private final SystemRepositoryService systemRepositoryService;
     private final RepositoryMembershipService membershipService;
@@ -45,6 +53,59 @@ public class ArchitectureRepositoryProvisioningService {
                 ownerId,
                 "Initialize architecture repository",
                 "Could not initialize central repository ", null);
+    }
+
+    /** Stable-slug lifecycle creation and recovery share the catalog's durable claim. */
+    public SystemRepositoryService.CreationClaim createOrResumePrivateRepository(
+            String displayName, String slug, String description, String ownerId) {
+        var claim = systemRepositoryService.claimPrivateCreation(displayName, slug, description, ownerId);
+        SystemRepository metadata = claim.repository();
+        if (metadata.getLifecycleState() == RepositoryLifecycleState.ACTIVE) return claim;
+        String repositoryId = metadata.getRepositoryId();
+        try {
+            membershipService.assignOwner(repositoryId, ownerId);
+            DslGitRepository git = repositoryFactory.createCentralRepository(repositoryId, metadata.getStorageRepositoryName());
+            initializeOrVerifyCreation(git, metadata, ownerId);
+            return new SystemRepositoryService.CreationClaim(systemRepositoryService.markProvisioningReady(repositoryId), claim.created());
+        } catch (IOException | RuntimeException failure) {
+            // A failed catalogue completion can follow a successful Git write. Retain that exact
+            // source for the next retry; recovery must never delete existing logical Git storage.
+            try { systemRepositoryService.markProvisioningFailed(repositoryId, safeMessage(failure)); }
+            catch (RuntimeException stateFailure) { failure.addSuppressed(stateFailure); }
+            if (failure instanceof ResponseStatusException conflict) throw conflict;
+            throw new IllegalStateException("Could not initialize central repository " + repositoryId, failure);
+        }
+    }
+
+    private static void initializeOrVerifyCreation(DslGitRepository git, SystemRepository metadata, String owner) throws IOException {
+        String branch = metadata.getDefaultBranch();
+        var repository = git.getGitRepository();
+        synchronized (repository) {
+            var refs = repository.getRefDatabase().getRefsByPrefix(Constants.R_REFS);
+            String head = git.getHeadCommit(branch);
+            if (head == null) {
+                if (!refs.isEmpty()) throw retainedSourceConflict();
+                git.commitDslIfHeadMatches(branch, null, MINIMAL_DSL, owner, INITIAL_MESSAGE);
+                return;
+            }
+            if (refs.size() != 1 || !refs.getFirst().getName().equals(Constants.R_HEADS + branch)
+                    || !MINIMAL_DSL.equals(git.getDslAtCommit(head))) throw retainedSourceConflict();
+            try (var walk = new RevWalk(repository); var tree = new TreeWalk(repository)) {
+                var initial = walk.parseCommit(ObjectId.fromString(head));
+                if (initial.getParentCount() != 0 || !INITIAL_MESSAGE.equals(initial.getFullMessage())
+                        || !owner.equals(initial.getAuthorIdent().getName())
+                        || !owner.equals(initial.getCommitterIdent().getName())) throw retainedSourceConflict();
+                tree.addTree(initial.getTree());
+                if (!tree.next() || !DslGitRepository.DSL_FILENAME.equals(tree.getPathString())
+                        || !FileMode.REGULAR_FILE.equals(tree.getFileMode(0)) || tree.next()) throw retainedSourceConflict();
+            }
+            git.verifyExpectedHead(branch, head);
+        }
+    }
+
+    private static ResponseStatusException retainedSourceConflict() {
+        return new ResponseStatusException(HttpStatus.CONFLICT,
+                "This creation already retains different Git content; it was preserved and requires explicit review");
     }
 
     /** Create a durable central fork from the selected source repository/branch. */

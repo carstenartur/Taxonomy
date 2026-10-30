@@ -5,7 +5,7 @@
     var de = String(document.documentElement.lang || 'en').startsWith('de');
     function label(en, german) { return de ? german : en; }
     function scope() { return window.TaxonomyArchitectureWorkflow?.getScope() || {}; }
-    function scopeKey(value) { return JSON.stringify([value.repositoryId || '', value.workspaceScopeKey ?? value.workspaceId ?? '', value.branch || '']); }
+    function scopeKey(value) { return JSON.stringify([value.repositoryId || '', value.workspaceScopeKey ?? (value.workspaceId || '__shared__'), value.branch || '']); }
     function project(state) { var value = typeof state.options.projectId === 'function' ? state.options.projectId() : state.options.projectId; return value ? Number(value) : null; }
     function fingerprint(state, text, projectId) {
         var controls=Array.from(state.form.querySelectorAll?.('input,textarea,select')||[])
@@ -56,6 +56,7 @@
         var promise = Promise.resolve(operation).then(async function (response) {
             if (!response) throw new Error('Review unavailable');
             if (generation !== state.generation || !matching(state,capture)) return null;
+            if (!response.scope || scopeKey(response.scope) !== scopeKey(scope())) throw new Error('Review scope changed');
             if (response.inputHash !== await inputHash(text)) throw new Error('Review input changed');
             if (generation !== state.generation || !matching(state,capture)) return null;
             state.response = {capture:capture,value:response}; render(state,response,capture); return response;

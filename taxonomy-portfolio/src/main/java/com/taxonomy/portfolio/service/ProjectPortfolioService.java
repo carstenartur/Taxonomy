@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -378,6 +379,38 @@ public class ProjectPortfolioService {
                                                             String username, WorkspaceContext context) {
         validateImportedVersion(imported);
         ProjectRequirement requirement = requireRequirementForUpdate(projectId, requirementId, username, context);
+        ProjectRequirementVersion existing = compatibleImportedVersion(requirement, imported);
+        if (existing != null) return toVersionView(existing);
+        Instant now = Instant.now();
+        ProjectRequirementVersion version = createVersionEntity(requirement, imported.text(), imported.changeReason(),
+                imported.source(), imported.createdBy() == null ? PortfolioScope.username(username, context) : imported.createdBy(),
+                imported.versionNumber(), imported.createdAt() == null ? now : imported.createdAt());
+        versionRepository.save(version);
+        requirement.pointToVersion(version.getId(), now);
+        return toVersionView(version);
+    }
+
+    /** Validate a complete incoming history without writing or moving its current-version pointer. */
+    @Transactional
+    public void validateRequirementVersionImports(Long projectId, Long requirementId, List<ImportedVersion> imported,
+                                                  String username, WorkspaceContext context) {
+        ProjectRequirement requirement = requirementId == null ? null
+                : requireRequirementForUpdate(projectId, requirementId, username, context);
+        Map<Integer, ImportedVersion> numbers = new java.util.HashMap<>();
+        Map<String, Integer> hashes = new java.util.HashMap<>();
+        for (ImportedVersion version : imported) {
+            validateImportedVersion(version);
+            if (numbers.putIfAbsent(version.versionNumber(), version) != null)
+                throw PortfolioException.conflict("Duplicate immutable requirement version " + version.versionNumber());
+            Integer prior = hashes.putIfAbsent(fingerprintService.contentFingerprint(version.text()), version.versionNumber());
+            if (prior != null && prior != version.versionNumber())
+                throw PortfolioException.conflict("Immutable requirement content already has a different version number");
+            if (requirement != null) compatibleImportedVersion(requirement, version);
+        }
+    }
+
+    private ProjectRequirementVersion compatibleImportedVersion(ProjectRequirement requirement, ImportedVersion imported) {
+        Long requirementId = requirement.getId();
         String scope = requirement.getScopeKey();
         ProjectRequirementVersion existing = versionRepository.findByRequirementIdAndScopeKeyAndVersionNumber(
                 requirementId, scope, imported.versionNumber()).orElse(null);
@@ -389,18 +422,12 @@ public class ProjectPortfolioService {
                     || imported.changeReason() != null && !Objects.equals(existing.getChangeReason(), limited(imported.changeReason(), 1000, "changeReason"))
                     || !compatibleSource(toVersionView(existing).source(), normalizedSource(imported.source())))
                 throw PortfolioException.conflict("Immutable requirement version " + imported.versionNumber() + " has different source content");
-            return toVersionView(existing);
+            return existing;
         }
         if (versionRepository.findByRequirementIdAndScopeKeyAndContentHash(requirementId, scope,
                 fingerprintService.contentFingerprint(imported.text())).isPresent())
             throw PortfolioException.conflict("Immutable requirement content already has a different version number");
-        Instant now = Instant.now();
-        ProjectRequirementVersion version = createVersionEntity(requirement, imported.text(), imported.changeReason(),
-                imported.source(), imported.createdBy() == null ? PortfolioScope.username(username, context) : imported.createdBy(),
-                imported.versionNumber(), imported.createdAt() == null ? now : imported.createdAt());
-        versionRepository.save(version);
-        requirement.pointToVersion(version.getId(), now);
-        return toVersionView(version);
+        return null;
     }
 
     private void validateImportedVersion(ImportedVersion version) {
@@ -409,6 +436,8 @@ public class ProjectPortfolioService {
         if (version.contentHash() != null && !version.contentHash().equals(fingerprintService.contentFingerprint(version.text())))
             throw PortfolioException.conflict("Imported requirement content does not match its SHA-256 hash");
         if (version.createdBy() != null) requireText(version.createdBy(), "createdBy", 160);
+        limited(version.changeReason(), 1000, "changeReason");
+        normalizedSource(version.source());
     }
 
     private static SourceReference normalizedSource(SourceReference source) {

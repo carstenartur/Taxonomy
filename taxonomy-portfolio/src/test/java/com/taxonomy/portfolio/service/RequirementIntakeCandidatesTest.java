@@ -39,7 +39,7 @@ class RequirementIntakeCandidatesTest {
     private final WorkspacePortfolioDocumentPort documents=mock(WorkspacePortfolioDocumentPort.class);
     @SuppressWarnings("unchecked") private final ObjectProvider<RequirementIntakePolicy> policies=mock(ObjectProvider.class);
     private final RequirementIntakeCandidates candidates=new RequirementIntakeCandidates(
-            projects,requirements,portfolio,repositories,membership,workspaces,documents,policies);
+            projects,requirements,portfolio,new WorkspaceSourceDiscoveryService(repositories,membership,workspaces),documents,policies);
 
     @Test void canonicalCatalogueSizedDocumentRetainsItsRequirementEvidence() throws Exception {
         readable("#"+"x".repeat(1_500_000)+"\n"+CANONICAL_REQUIREMENT);
@@ -211,7 +211,7 @@ class RequirementIntakeCandidatesTest {
         var workspace=new UserWorkspace();workspace.setWorkspaceId("work");workspace.setUsername("alice");
         workspace.setSourceRepositoryId("repo");workspace.setCurrentBranch("draft");
         when(workspaces.findByWorkspaceId("work")).thenReturn(Optional.of(workspace));
-        var project=new ArchitectureProject();project.setId(7L);project.setProjectKey("PUMP");
+        var project=mock(ArchitectureProject.class);when(project.getId()).thenReturn(7L);when(project.getProjectKey()).thenReturn("PUMP");
         when(portfolio.requireProject(7L,"alice",context)).thenReturn(project);
         when(policies.orderedStream()).thenAnswer(call->Stream.empty());
         var row=mock(ProjectRequirementReadRow.class);

@@ -240,6 +240,26 @@ public class PortfolioGitService {
         return materialize(dsl, username, context);
     }
 
+    /** Check actual retained immutable identities before a Git target or tracking ref can move. */
+    @Transactional
+    public void validateImmutableVersions(String dsl, String username, WorkspaceContext context) {
+        DocumentAst document = parser.parse(dsl, "portfolio-preflight.taxdsl");
+        List<String> warnings = new ArrayList<>();
+        String scope = PortfolioScope.key(username, context);
+        for (var entry : groupedVersions(document, warnings).entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()).toList()) {
+            String[] keys = entry.getKey().split("\\u0000", -1);
+            ArchitectureProject project = projectRepository.findByScopeKeyAndProjectKeyIgnoreCase(scope, keys[0]).orElse(null);
+            ProjectRequirement requirement = project == null ? null : requirementRepository
+                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(project.getId(), scope, keys[1]).orElse(null);
+            List<ProjectPortfolioService.ImportedVersion> versions = entry.getValue().stream()
+                    .sorted(Comparator.comparingInt(this::versionNumber))
+                    .map(block -> importedVersion(block, warnings)).toList();
+            projectService.validateRequirementVersionImports(project == null ? null : project.getId(),
+                    requirement == null ? null : requirement.getId(), versions, username, context);
+        }
+    }
+
     /**
      * Upsert projects, requirement identities and immutable versions from DSL.
      * Deletions are intentionally not propagated automatically; removing business

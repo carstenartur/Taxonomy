@@ -4,6 +4,7 @@ import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.requirements.RequirementRealization;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort;
@@ -134,8 +135,13 @@ public class PortablePortfolioGitService extends PortfolioGitService {
             List<String> header = block.getHeaderTokens();
             if (REQUIREMENT_BLOCK.equals(block.getKind()) && header.size() == 2)
                 requirements.put(portableIdentity(header.get(0), header.get(1)), block);
-            else if (VERSION_BLOCK.equals(block.getKind()) && header.size() == 3)
+            else if (VERSION_BLOCK.equals(block.getKind()) && header.size() == 3) {
+                String text = block.property("text"), hash = block.property("contentHash");
+                if (text == null || hash != null && !hash.equals(RequirementRealization.textHash(text)))
+                    throw PortfolioException.conflict("Immutable requirement version " + String.join(" ", header)
+                            + " does not match its SHA-256 content hash");
                 versions.put(portableIdentity(header.get(0), header.get(1)) + '\u0000' + header.get(2), block);
+            }
         }
         for (BlockAst canonical : source.blocksOfKind("requirement")) {
             if (!"true".equalsIgnoreCase(canonical.property(MANAGED_PROPERTY))) continue;
@@ -155,6 +161,14 @@ public class PortablePortfolioGitService extends PortfolioGitService {
 
     private static String portableIdentity(String project, String requirement) {
         return composite(project, requirement).toUpperCase(Locale.ROOT);
+    }
+
+    /** Source agreement alone cannot detect versions retained only in the target database. */
+    @Transactional
+    public void validatePortfolio(String localDsl, String candidateDsl, String username, WorkspaceContext context) {
+        validatePortfolio(localDsl, candidateDsl);
+        validateImmutableVersions(candidateDsl, username, context);
+        reformulationEvidence.validateForMaterialization(candidateDsl);
     }
 
     private String addPortableCurrentVersion(String dsl,

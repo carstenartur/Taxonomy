@@ -65,15 +65,20 @@ class GitNativeSyncPortfolioProjectionTest {
                     : service.publishToShared("alice", "review");
 
             String destination = pull ? "review" : "draft";
+            var target = new WorkspaceContext("alice", null, destination, "repository-a");
             String mergedDsl = repository.getDslAtHead(destination);
             assertThat(result).isEqualTo(repository.getHeadCommit(destination));
             assertThat(portfolio.committedContexts).containsExactly(context);
             assertThat(portfolio.materialized).singleElement().satisfies(projection -> {
                 assertThat(projection.branch()).isEqualTo(destination);
                 assertThat(projection.username()).isEqualTo("alice");
-                assertThat(projection.context()).isEqualTo(context);
+                assertThat(projection.context()).isEqualTo(target);
                 assertThat(projection.dsl()).isEqualTo(mergedDsl)
                         .contains("Shared title", "Local requirement");
+            });
+            assertThat(portfolio.validated).singleElement().satisfies(projection -> {
+                assertThat(projection.context()).isEqualTo(target);
+                assertThat(projection.dsl()).isEqualTo(mergedDsl);
             });
             assertThat(state.getSyncStatus()).isEqualTo("UP_TO_DATE");
             if (pull) {
@@ -93,10 +98,16 @@ class GitNativeSyncPortfolioProjectionTest {
         private final String acceptedDsl;
         private final List<WorkspaceContext> committedContexts = new ArrayList<>();
         private final List<Projection> materialized = new ArrayList<>();
+        private final List<Projection> validated = new ArrayList<>();
 
         private InMemoryPortfolio(DslGitRepository repository, String acceptedDsl) {
             this.repository = repository;
             this.acceptedDsl = acceptedDsl;
+        }
+
+        @Override
+        public void validatePortfolio(String localDsl, String candidateDsl, String username, WorkspaceContext context) {
+            validated.add(new Projection(context.currentBranch(), username, context, candidateDsl));
         }
 
         @Override

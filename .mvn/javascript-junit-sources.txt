@@ -18,6 +18,7 @@
 .github/scripts/analysis-session-startup.test.mjs
 .github/scripts/analysis-ux.browser.test.mjs
 .github/scripts/analysis-workflow-regression.test.mjs
+.github/scripts/architecture-lifecycle.test.mjs
 .github/scripts/architecture-planning.test.mjs
 .github/scripts/architecture-workbench-basepath.test.mjs
 .github/scripts/architecture-workbench-fit.test.mjs

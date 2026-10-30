@@ -346,7 +346,7 @@ class GitNativeSyncIntegrationServiceTest {
                         "repo-a", "draft", "alice"));
         when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
         when(semanticMergeService.mergeBranches(
-                sourceRepository, "draft", "draft", "alice"))
+                eq(sourceRepository), eq("draft"), eq("draft"), eq("alice"), isNull(), any()))
                 .thenReturn(new SemanticGitMergeService.MergeOutcome(
                         true, "central-head", false, List.of(), null));
         when(sourceRepository.getHeadCommit("draft")).thenReturn("central-head");

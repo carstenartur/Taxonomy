@@ -103,7 +103,7 @@
         window.history.pushState(null, '', url); refresh(undefined, selected);
     }
     function captureStand() {
-        return {generation:state.generation, context:clone(state.overview?.context), source:state.overview?.source, selection:JSON.stringify(state.selection)};
+        return {generation:state.generation, context:clone(state.overview?.context), source:state.overview?.source, selection:JSON.stringify(state.selection), subject:subjectKey};
     }
     function matchesStand(captured, requireEditable) {
         return Boolean(captured.context && state.overview && captured.generation === state.generation
@@ -112,6 +112,17 @@
             && contextKey(state.overview.context) === contextKey(captured.context)
             && captured.source === state.overview.source && captured.selection === JSON.stringify(state.selection)
             && !historicalSelection() && (!requireEditable || state.overview.mayEdit));
+    }
+    function matchesRetryScope(captured) {
+        var current = state.overview;
+        return Boolean(captured.context && current && !historicalSelection()
+            && captured.subject === subjectKey && captured.source === current.source
+            && ['WORKSPACE_REVISION','WORKSPACE_AND_PORTFOLIO'].includes(current.source)
+            && scopeKey(scope()) === scopeKey(captured.context)
+            && scopeKey(state.context) === scopeKey(captured.context)
+            && scopeKey(current.context) === scopeKey(captured.context)
+            && current.context.actor === captured.context.actor && current.context.writeMode === captured.context.writeMode
+            && (current.mayEdit || ['CHECKPOINT_PENDING','VERSION_CHANGED','RECONCILIATION_REQUIRED'].includes(current.projectionState)));
     }
     function errorText(error) { return error?.responseBody?.detail || error?.message || t('lifecycle.failed'); }
     function staleError() { return new Error(t('lifecycle.stale')); }
@@ -270,7 +281,7 @@
     // Both reviewed realizations and reconciliation share this stand fence. Reconciliation
     // deliberately permits VERSION_CHANGED, whose mayEdit is false, but never a historical stand.
     function intentFence(captured, shell, preview, accept, editable) {
-        var pending = null;
+        var pending = null, uncertain = false;
         function recoverable() {
             return Boolean(pending?.context && state.overview && !historicalSelection()
                 && ['WORKSPACE_REVISION','WORKSPACE_AND_PORTFOLIO'].includes(state.overview.source)
@@ -278,7 +289,7 @@
                 && scopeKey(scope()) === scopeKey(captured.context)
                 && contextKey(state.overview.context) === contextKey(pending.context));
         }
-        function valid() { return matchesStand(captured, editable) || recoverable(); }
+        function valid() { return matchesStand(captured, editable) || recoverable() || (uncertain && matchesRetryScope(captured)); }
         function ensure() {
             if (valid()) return true;
             preview.disabled = true; accept.disabled = true; accept.hidden = true;
@@ -286,10 +297,12 @@
         }
         function changed() {
             if (!ensure()) return;
-            if (pending) { accept.hidden = false; accept.disabled = false; accept.textContent = t('lifecycle.retry'); }
+            if (pending || uncertain) { accept.hidden = false; accept.disabled = false; preview.disabled = true; accept.textContent = t(uncertain ? 'lifecycle.retryUnknown' : 'lifecycle.retry'); }
         }
         listeners.add(changed); shell.dialog.addEventListener('close', function () { listeners.delete(changed); });
         return {valid:valid, ensure:ensure, pending:function (publication) { pending = clone(publication); },
+            uncertain:function () { uncertain = true; changed(); },
+            rejected:function () { uncertain = false; pending = null; },
             afterSuccess:function (result, reconciled) {
                 var current = valid();
                 if (pendingPublication(result)) {
@@ -329,7 +342,7 @@
         shell.form.addEventListener('input', invalidate); shell.form.addEventListener('change', invalidate);
         function invalidate() { if (locked) return; edit++; prepared = null; accept.hidden = true; changes.textContent = ''; }
         async function previewReview() {
-            if (busy || !fence.ensure() || !shell.form.reportValidity()) return;
+            if (busy || locked || !fence.ensure() || !shell.form.reportValidity()) return;
             var ticket = edit; busy = true; preview.disabled = true; accept.hidden = true;
             var request = {context:clone(captured.context), metadata:metadata(reason.value), projectId:requirement.projectId,
                 requirementId:requirement.requirementId, expectedVersionId:version.id || requirement.versionId,
@@ -353,8 +366,13 @@
                 if (pendingPublication(result)) { locked = true; [disposition,contributor,dependencies,reason].forEach(function (input) { input.disabled = true; }); }
                 fence.afterSuccess(result, false);
             } catch (error) {
-                if (fence.ensure()) shell.message.textContent = errorText(error);
-                if ([400,403,404,409,412,422].includes(error.status)) { prepared = null; accept.hidden = true; }
+                if ([400,403,404,409,412,422].includes(error.status)) {
+                    prepared = null; accept.hidden = true; fence.rejected();
+                } else {
+                    locked = true; [disposition,contributor,dependencies,reason].forEach(function (input) { input.disabled = true; });
+                    fence.uncertain();
+                }
+                shell.message.textContent = errorText(error) + (fence.valid() ? '' : ' ' + t('lifecycle.stale'));
             } finally { busy = false; accept.disabled = !prepared || !fence.valid(); preview.disabled = locked || !fence.valid(); }
         }
         shell.dialog.showModal(); reason.focus();
@@ -373,7 +391,7 @@
         shell.form.addEventListener('input', invalidate); shell.form.addEventListener('change', invalidate);
         function invalidate() { if (locked) return; edit++; prepared = null; accept.hidden = true; }
         async function previewReconciliation() {
-            if (busy || !fence.ensure() || !shell.form.reportValidity()) return;
+            if (busy || locked || !fence.ensure() || !shell.form.reportValidity()) return;
             var ticket = edit; busy = true; preview.disabled = true; accept.hidden = true;
             var request = {context:clone(captured.context), metadata:metadata(reason.value), resolutions:clone(choices), headCommit:headCommit};
             try {
@@ -406,9 +424,14 @@
                 if (pendingPublication(result)) { locked = true; reason.disabled = true; conflicts.querySelectorAll('select').forEach(function (select) { select.disabled = true; }); }
                 fence.afterSuccess(result, true);
             } catch (error) {
-                if (fence.ensure()) shell.message.textContent = errorText(error);
-                // Unknown transport outcomes retain exactly this command ID and choices for retry.
-                if ([400,403,404,409,412,422].includes(error.status)) { prepared = null; accept.hidden = true; }
+                if ([400,403,404,409,412,422].includes(error.status)) {
+                    prepared = null; accept.hidden = true; fence.rejected();
+                } else {
+                    locked = true; reason.disabled = true; conflicts.querySelectorAll('select').forEach(function (select) { select.disabled = true; });
+                    fence.uncertain();
+                }
+                // A newer read may confirm the current stand; retry still sends this original UUID, body and revision.
+                shell.message.textContent = errorText(error) + (fence.valid() ? '' : ' ' + t('lifecycle.stale'));
             } finally { busy = false; accept.disabled = !prepared || !fence.valid(); preview.disabled = locked || !fence.valid(); }
         }
         shell.dialog.showModal(); reason.focus();
@@ -420,26 +443,25 @@
         var key = JSON.stringify([scopeKey(scope()),intent]);
         var retained = pendingRequirements.get(key);
         if (retained && command.metadata && command.metadata.commandId !== retained.request.metadata.commandId) throw new Error(t('lifecycle.pending'));
-        var recovery = Boolean(retained?.publication && !historicalSelection() && state.overview
-            && state.overview.projectionState === 'CHECKPOINT_PENDING'
-            && contextKey(state.overview.context) === contextKey(retained.publication.context)
-            && scopeKey(scope()) === scopeKey(retained.request.context));
+        var recovery = Boolean(retained && (retained.publication || retained.uncertain) && matchesRetryScope(retained.stand));
         if (!recovery && (!matchesStand(captured,true) || state.observed?.mayEdit === false)) throw staleError();
         if (!retained) {
             var request = Object.assign({},command,{context:command.context || clone(captured.context),
                 metadata:command.metadata || metadata(command.requirement?.changeReason || t('lifecycle.requirement.reason'))});
             if (contextKey(request.context) !== contextKey(captured.context)) throw staleError();
-            retained = {request:clone(request),publication:null}; pendingRequirements.set(key,retained);
+            retained = {request:clone(request),stand:captured,publication:null,uncertain:false}; pendingRequirements.set(key,retained);
         } else if (!recovery && contextKey(retained.request.context) !== contextKey(captured.context)) throw staleError();
         // Expose the captured identity to the owning form so a pending result can retry this exact intent.
         command.context = clone(retained.request.context); command.metadata = clone(retained.request.metadata);
         try {
             var result = await api.saveRequirement(retained.request);
+            retained.uncertain = false;
             if (pendingPublication(result)) retained.publication = clone(publicationOf(result)); else pendingRequirements.delete(key);
             if (matchesStand(captured,!recovery)) publishChanged(result,false);
             return result;
         } catch (error) {
             if ([400,403,404,409,412,422].includes(error.status)) pendingRequirements.delete(key);
+            else retained.uncertain = true;
             throw error;
         }
     }

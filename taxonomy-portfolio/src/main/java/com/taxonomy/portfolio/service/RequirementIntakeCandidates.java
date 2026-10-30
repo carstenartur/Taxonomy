@@ -5,10 +5,6 @@ import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.portfolio.dto.RequirementIntakeDtos.*;
 import com.taxonomy.portfolio.model.ArchitectureProject;
 import com.taxonomy.portfolio.repository.*;
-import com.taxonomy.workspace.model.RepositoryLifecycleState;
-import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
-import com.taxonomy.workspace.repository.SystemRepositoryRepository;
-import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.*;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.PageRequest;
@@ -25,18 +21,15 @@ public class RequirementIntakeCandidates {
     private final ArchitectureProjectRepository projects;
     private final ProjectRequirementRepository requirements;
     private final ProjectPortfolioService portfolio;
-    private final SystemRepositoryRepository repositories;
-    private final RepositoryMembershipService membership;
-    private final UserWorkspaceRepository workspaces;
+    private final WorkspaceSourceDiscoveryService sources;
     private final WorkspacePortfolioDocumentPort documents;
     private final ObjectProvider<RequirementIntakePolicy> policies;
 
     public RequirementIntakeCandidates(ArchitectureProjectRepository projects, ProjectRequirementRepository requirements,
-            ProjectPortfolioService portfolio, SystemRepositoryRepository repositories, RepositoryMembershipService membership,
-            UserWorkspaceRepository workspaces, WorkspacePortfolioDocumentPort documents,
+            ProjectPortfolioService portfolio, WorkspaceSourceDiscoveryService sources, WorkspacePortfolioDocumentPort documents,
             ObjectProvider<RequirementIntakePolicy> policies) {
         this.projects = projects; this.requirements = requirements; this.portfolio = portfolio;
-        this.repositories = repositories; this.membership = membership; this.workspaces = workspaces;
+        this.sources = sources;
         this.documents = documents; this.policies = policies;
     }
 
@@ -78,20 +71,19 @@ public class RequirementIntakeCandidates {
                     context.currentBranch(), row.projectId(), project.getProjectKey(), row.id(), row.versionId(), row.requirementKey(),
                     row.title(), row.text(), row.contentHash(), null, null, List.of(), List.of("NEW", "CHANGE", "LINK", "VIEW")));
         }
-        List<Repository> sources = new ArrayList<>();
+        List<Repository> sourceRepositories = new ArrayList<>();
         if (projectId == null) {
             for (var project : projectMap.values()) budget.add(new Candidate("project:" + project.getId(), "PROJECT",
                     context.repositoryId(), context.workspaceId(), context.currentBranch(), project.getId(), project.getProjectKey(),
                     null, null, null, project.getTitle(), join(project.getTitle(), project.getDescription(), project.getTargetArchitecture()),
                     null, null, null, List.of(), List.of("NEW", "VIEW")));
-            var page = repositories.findByLifecycleStateOrderByDisplayNameAsc(RepositoryLifecycleState.ACTIVE, PageRequest.of(0, 16));
-            budget.partial |= page.hasNext();
-            for (var repository : page) if (membership.canRead(repository, username))
-                sources.add(new Repository(repository.getRepositoryId(), repository.getDefaultBranch(),
-                        repository.getDisplayName(), repository.getDescription()));
+            var discovery = sources.readableSources(username);
+            budget.partial |= discovery.truncated();
+            for (var source : discovery.sources())
+                sourceRepositories.add(new Repository(source.repositoryId(), source.branch(), source.title(), source.description()));
         }
         return new Frozen(new Scope(context.repositoryId(), context.workspaceId(), WorkspaceOverlayScope.keyFor(context.workspaceId()),
-                context.currentBranch()), projectId, budget.candidates, sources, budget.coverage(), allowed);
+                context.currentBranch()), projectId, budget.candidates, sourceRepositories, budget.coverage(), allowed);
     }
 
     /** Canonical central documents are immutable observations, never another workspace's projections. */
@@ -175,22 +167,10 @@ public class RequirementIntakeCandidates {
         return policies.orderedStream().allMatch(policy -> policy.allowsProviderReview(projectId, username, context));
     }
     private void authorize(String username, WorkspaceContext context) {
-        if (context == null || !Objects.equals(username, context.username())) throw PortfolioException.notFound("Review context is unavailable");
-        if (!canRead(context.repositoryId(), username)) throw PortfolioException.notFound("Architecture is unavailable");
-        if (context.workspaceId() != null && !context.workspaceId().isBlank()) {
-            var workspace = workspaces.findByWorkspaceId(context.workspaceId())
-                    .orElseThrow(() -> PortfolioException.notFound("Workspace is unavailable"));
-            if (!Objects.equals(workspace.getUsername(), username) || workspace.isArchived() || workspace.isShared()
-                    || !Objects.equals(workspace.getSourceRepositoryId(), context.repositoryId())
-                    || !Objects.equals(workspace.getCurrentBranch(), context.currentBranch())
-                    || workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY)
-                throw PortfolioException.notFound("Workspace is unavailable");
-        }
+        if (!sources.canReadContext(username, context)) throw PortfolioException.notFound("Review context is unavailable");
     }
     private boolean canRead(String repositoryId, String username) {
-        return repositories.findByRepositoryId(repositoryId)
-                .filter(repository -> repository.getLifecycleState() == RepositoryLifecycleState.ACTIVE)
-                .filter(repository -> membership.canRead(repository, username)).isPresent();
+        return sources.canReadRepository(repositoryId, username);
     }
     private static String join(String... values) {
         return Arrays.stream(values).filter(Objects::nonNull).filter(value -> !value.isBlank()).reduce((left, right) -> left + "\n" + right).orElse("");

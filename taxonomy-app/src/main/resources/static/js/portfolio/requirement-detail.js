@@ -461,7 +461,7 @@
         if (!detail) return renderEmpty(target, t('noSnapshots'));
         const summary = detail.summary;
         window.TaxonomyAppChrome?.updateContext({source:{projectId:summary.projectId,projectKey:state.project.projectKey,
-            requirementId:summary.requirementId,requirementKey:summary.requirementKey,snapshotId:summary.id,
+            requirementId:summary.requirementId,requirementKey:summary.requirementKey || (String(summary.requirementId) === String(state.requirement.id) ? state.requirement.requirementKey : null),snapshotId:summary.id,
             requirementVersionId:summary.requirementVersionId,requirementVersion:summary.requirementVersionNumber,
             repositoryId:window.TaxonomyArchitectureWorkflow?.getScope()?.repositoryId,
             workspaceScopeKey:summary.workspaceId || '__shared__',branch:summary.branchName}});
@@ -873,7 +873,7 @@
         if (state.versionSaveInFlight) return;
         state.versionSaveInFlight = true;
         clearNewVersionError();
-        setBusy(true);
+        let saving = false;
         try {
             const form = document.getElementById('newVersionForm');
             if (!state.versionAttempt) {
@@ -901,6 +901,8 @@
                 state.versionAttempt = {command:command,captured:versionDraftFingerprint()};
             }
             const {command,captured} = state.versionAttempt;
+            saving = true;
+            setBusy(true);
             const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
             if (saved.publication?.state === 'CHECKPOINT_PENDING') {
                 versionRetryLabel(true);
@@ -931,7 +933,7 @@
             target.focus();
         } finally {
             state.versionSaveInFlight = false;
-            setBusy(false);
+            if (saving) setBusy(false);
         }
     }
 

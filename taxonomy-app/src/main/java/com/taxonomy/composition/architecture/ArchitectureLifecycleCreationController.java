@@ -24,32 +24,29 @@ public class ArchitectureLifecycleCreationController {
         public Create {
             if(displayName==null || displayName.isBlank() || displayName.length()>255 || slug==null || !slug.matches("[a-z0-9][a-z0-9-]{0,99}"))
                 throw new IllegalArgumentException("A bounded name and stable lower-case slug are required");
-            if(description!=null && description.length()>4000) throw new IllegalArgumentException("Description is too long");
+            if(description!=null && description.length()>1000) throw new IllegalArgumentException("Description must not exceed 1000 characters");
         }
     }
-    public record Architecture(String repositoryId,String displayName,String slug,String defaultBranch,boolean owned) {}
+    public record Architecture(String repositoryId,String displayName,String slug,String defaultBranch,boolean owned,
+                               String description,RepositoryLifecycleState lifecycleState) {}
     public record WorkingCopy(String workspaceId,String sourceRepositoryId,String sourceBranch,String currentBranch,
                               String displayName,WorkspaceProvisioningStatus provisioningStatus) {}
     @GetMapping
     @Operation(summary="List readable persistent architectures for requirement intake")
     public ResponseEntity<List<Architecture>> list() {
         String user=resolver.resolveCurrentUsername();
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(repositories.listActiveRepositories().stream()
-                .filter(repo->membership.canRead(repo,user)).map(repo->view(repo,user)).toList());
+        var readable=new ArrayList<>(repositories.listActiveRepositories().stream().filter(repo->membership.canRead(repo,user)).toList());
+        readable.addAll(repositories.listOwnIncompleteCreations(user));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(readable.stream()
+                .sorted(Comparator.comparing(SystemRepository::getDisplayName,String.CASE_INSENSITIVE_ORDER)).map(repo->view(repo,user)).toList());
     }
     @PostMapping
     @Operation(summary="Create an independent private architecture",description="Uses the existing logical JGit provisioning service. Keep the slug stable across a transport retry and recover the already-created owned architecture before making a working copy.")
     public ResponseEntity<Architecture> create(@RequestBody Create request) {
         String user=resolver.resolveCurrentUsername();
-        var existing=repositories.listActiveRepositories().stream().filter(repo->request.slug().equals(repo.getSlug())).findFirst();
-        if(existing.isPresent()) {
-            var repo=existing.get();
-            if(!user.equals(repo.getOwnerId()) || !request.displayName().strip().equals(repo.getDisplayName())
-                    || !Objects.equals(request.description(),repo.getDescription())) throw problem("COMMAND_ID_REUSED","This architecture slug already identifies another creation");
-            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(view(repo,user));
-        }
-        var created=provisioner.createRepository(request.displayName(),request.slug(),request.description(),RepositoryVisibility.PRIVATE,user,"draft");
-        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore()).body(view(created,user));
+        var result=provisioner.createOrResumePrivateRepository(request.displayName(),request.slug(),request.description(),user);
+        return ResponseEntity.status(result.created()?HttpStatus.CREATED:HttpStatus.OK).cacheControl(CacheControl.noStore())
+                .body(view(result.repository(),user));
     }
     @GetMapping("/{repositoryId}/workspaces")
     @Operation(summary="Recover an owned architecture working copy after an interrupted response")
@@ -60,5 +57,6 @@ public class ArchitectureLifecycleCreationController {
                 .filter(w->!w.isShared() && repositoryId.equals(w.getSourceRepositoryId()))
                 .map(w->new WorkingCopy(w.getWorkspaceId(),w.getSourceRepositoryId(),w.getSourceBranch(),w.getCurrentBranch(),w.getDisplayName(),w.getProvisioningStatus())).toList());
     }
-    private static Architecture view(SystemRepository repo,String user){return new Architecture(repo.getRepositoryId(),repo.getDisplayName(),repo.getSlug(),repo.getDefaultBranch(),user.equals(repo.getOwnerId()));}
+    private static Architecture view(SystemRepository repo,String user){return new Architecture(repo.getRepositoryId(),repo.getDisplayName(),repo.getSlug(),repo.getDefaultBranch(),
+            repo.getOwnerType()==RepositoryOwnerType.USER && user.equals(repo.getOwnerId()),repo.getDescription(),repo.getLifecycleState());}
 }

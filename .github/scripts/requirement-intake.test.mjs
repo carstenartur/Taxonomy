@@ -80,3 +80,24 @@ test('canonical candidate view opens the exact assessed commit and displays its 
   assert.ok(article.children.some(element=>element.textContent?.includes('Source version 3')&&element.textContent.includes(sourceCommit.slice(0,12))));
   assert.equal(article.children.some(element=>['CHANGE','LINK'].includes(element.dataset.intakeChoice)),false);
 });
+test('a response for another branch cannot display evidence or offer a change despite matching input text',async()=>{
+  const h=harness(async()=>({status:'COMPLETE',inputHash:createHash('sha256').update('incoming').digest('hex'),
+    scope:{repositoryId:'repo',workspaceId:'work',workspaceScopeKey:'work',branch:'other-branch'},candidates:[{
+      kind:'REQUIREMENT',repositoryId:'repo',workspaceId:'work',branch:'other-branch',projectId:7,requirementId:2,
+      requirementVersionId:12,contentHash:'a'.repeat(64),title:'Foreign draft',classification:'CHANGE',quotes:[]
+    }]}));
+  h.input.value='incoming';h.api.attach(h.form,{textElement:h.input,projectId:7});
+  await new Promise(resolve=>setImmediate(resolve));
+  const section=h.form.children[0];
+  assert.equal(section.children.some(element=>element.tagName==='article'),false);
+  assert.ok(section.children.some(element=>element.textContent?.includes('incomplete or unavailable')));
+  assert.ok(section.children.some(element=>element.dataset.intakeChoice==='NEW'));
+});
+test('central null workspace and canonical shared scope key describe the same reviewed scope',async()=>{
+  const h=harness(async()=>({status:'COMPLETE',inputHash:createHash('sha256').update('incoming').digest('hex'),
+    scope:{repositoryId:'repo',workspaceId:null,workspaceScopeKey:'__shared__',branch:'main'},candidates:[]}));
+  h.scope({repositoryId:'repo',workspaceId:'',branch:'main'});
+  h.input.value='incoming';h.api.attach(h.form,{textElement:h.input,projectId:null});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(h.form.children[0].children.some(element=>element.textContent?.startsWith('Choose how to use this text.')));
+});

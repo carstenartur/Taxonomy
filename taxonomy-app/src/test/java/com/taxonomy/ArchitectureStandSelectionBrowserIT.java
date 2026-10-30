@@ -332,7 +332,10 @@ class ArchitectureStandSelectionBrowserIT {
         fixture.openVersionModal(); fixture.assertDraft();
         fixture.click(By.cssSelector("#newVersionForm button[type='submit']"));
         if(selection.equals("current")) {
-            wait.until(driver -> countPosts(PortfolioRequirementFixture.SAVE_REQUIREMENT)==2);
+            wait.until(driver -> countPosts(PortfolioRequirementFixture.SAVE_REQUIREMENT)==2
+                    || driver.findElement(By.id("newVersionError")).getText().contains("selected architecture state has changed"));
+            assertThat(countPosts(PortfolioRequirementFixture.SAVE_REQUIREMENT))
+                    .as("Refreshing the current original scope must allow the exact uncertain command to reach the backend").isEqualTo(2);
             wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("newVersionModal")));
             assertExactRetry(PortfolioRequirementFixture.SAVE_REQUIREMENT);
         } else {
@@ -343,8 +346,8 @@ class ArchitectureStandSelectionBrowserIT {
     }
 
     @ParameterizedTest
-    @CsvSource({"review,current","review,historical","review,other","reconciliation,current","reconciliation,historical","reconciliation,other"})
-    void lostDialogResponseKeepsOnlyItsExactRetryAfterAStandRead(String kind,String selection) {
+    @CsvSource({"review,current,unknown","review,historical,unknown","review,other,unknown","reconciliation,current,unknown","reconciliation,historical,unknown","reconciliation,other,unknown","review,current,pending"})
+    void lostDialogResponseKeepsOnlyItsExactRetryAfterAStandRead(String kind,String selection,String outcome) {
         boolean reconciliation=kind.equals("reconciliation"); NEEDS_RECONCILIATION.set(reconciliation);
         currentWithHistoricalBackEntry();
         String prefix=reconciliation?"lifecycleReconciliation":"lifecycleReview";
@@ -352,24 +355,82 @@ class ArchitectureStandSelectionBrowserIT {
         if(reconciliation) { beginReconciliation(); prepareReconciliation(); } else { openReview(); prepareReview(); }
         AtomicInteger attempts=new AtomicInteger();
         page.route("POST",endpoint,request -> {
-            REVISION.set(3); NEEDS_RECONCILIATION.set(false);
+            NEEDS_RECONCILIATION.set(false);
+            if(outcome.equals("pending")) {
+                PENDING.set(attempts.getAndIncrement()==0);
+                if(PENDING.get()) REVISION.set(3);
+                return json(200,Map.of("context",context(REVISION.get()),"state",PENDING.get()?"CHECKPOINT_PENDING":"CHECKPOINTED"));
+            }
+            REVISION.set(3);
             return attempts.getAndIncrement()==0?json(503,Map.of("detail","The accepted response was lost")):json(200,publication(false));
         });
         click(By.id(prefix+"Accept"));
-        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id(prefix+"Dialog"),"The accepted response was lost"));
+        if(outcome.equals("pending")) { awaitRevision(3); REVISION.set(4); PENDING.set(false); }
+        else wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id(prefix+"Dialog"),"The accepted response was lost"));
         navigateSelection(selection.equals("historical")?"revision=1":selection.equals("other")?"repositoryId=other-architecture":"");
-        awaitRevision(selection.equals("historical")?1:3);
+        awaitRevision(selection.equals("historical")?1:outcome.equals("pending")?4:3);
         if(selection.equals("current")) {
-            wait.until(ExpectedConditions.elementToBeClickable(By.id(prefix+"Accept")));
+            var retry=page.driver().findElement(By.id(prefix+"Accept"));
+            assertThat(retry.isDisplayed() && retry.isEnabled()).as("A current read must retain the original uncertain operation retry").isTrue();
             assertThat(page.driver().findElement(By.id(prefix+"Preview")).isEnabled()).as("An unknown accepted intent cannot become a fresh preview").isFalse();
             assertThat(page.driver().findElement(By.id(prefix+"Reason")).isEnabled()).isFalse();
             click(By.id(prefix+"Accept"));
             wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(prefix+"Dialog")));
             assertExactRetry(endpoint);
+            if(outcome.equals("pending")) awaitRevision(4);
         } else {
             assertStaleDialog(prefix);
             assertThat(countPosts(endpoint)).isEqualTo(1);
         }
+    }
+
+    @Test void newArchitectureDescriptionKeepsThePersistedThousandCharacterBoundary() {
+        page.route("GET",LIFECYCLE + "/architectures",request -> json(200,List.of()));
+        open("revision=2"); awaitRevision(2); expand();
+        click(By.cssSelector("[data-lifecycle-action='new-architecture']"));
+        var description=wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("lifecycleArchitectureDescription")));
+        assertThat(description.getDomProperty("maxLength")).as("Architecture descriptions must fit the persisted field").isEqualTo("1000");
+        description.sendKeys("x".repeat(1001));
+        assertThat(description.getDomProperty("value")).hasSize(1000);
+        assertThat(countPosts(LIFECYCLE + "/architectures")).isZero();
+    }
+
+    @Test void failedArchitectureProvisioningCanResumeAfterReloadWithItsPersistedIdentity() throws Exception {
+        var failed=creationArchitecture("FAILED");
+        CountDownLatch discovered=new CountDownLatch(1);
+        page.route("GET",LIFECYCLE + "/architectures",request -> { discovered.countDown(); return json(200,List.of(failed)); });
+        page.route("POST",LIFECYCLE + "/architectures",request -> json(200,creationArchitecture("ACTIVE")));
+        page.route("POST",EDITOR + "/workspaces",request -> json(201,Map.of("workspaceId","recovered-space",
+                "sourceRepositoryId","recovered-architecture","sourceBranch","main","currentBranch","main","displayName","Recovered architecture","provisioningStatus","READY")));
+        openForCreationRecovery(); awaitRevision(2); page.driver().navigate().refresh(); awaitRevision(2); expand();
+        click(By.cssSelector("[data-lifecycle-action='new-architecture']"));
+        assertThat(discovered.await(10,TimeUnit.SECONDS)).as("Opening creation must discover owned incomplete provisioning after reload").isTrue();
+        click(By.cssSelector("[data-lifecycle-recover-architecture='recovered-architecture']"));
+        wait.until(driver -> driver.getCurrentUrl().contains("repositoryId=recovered-architecture"));
+        var creations=page.requests().stream().filter(request -> request.method().equals("POST") && request.path().equals(LIFECYCLE + "/architectures")).toList();
+        assertThat(creations).hasSize(1);
+        assertThat(JSON.readTree(creations.getFirst().body())).isEqualTo(JSON.valueToTree(Map.of(
+                "displayName","Recovered architecture","slug","architecture-stable-retry","description","The original description, retained after failure.")));
+        assertThat(page.driver().getCurrentUrl()).contains("workspaceId=recovered-space","workspaceScopeKey=recovered-space","branch=main");
+        assertThat(countPosts(EDITOR + "/workspaces")).isEqualTo(1);
+    }
+
+    @Test void runningArchitectureProvisioningRefreshesItsStateWithoutDuplicatingTheRequest() throws Exception {
+        AtomicBoolean completed=new AtomicBoolean();
+        CountDownLatch discovered=new CountDownLatch(1);
+        page.route("GET",LIFECYCLE + "/architectures",request -> {
+            discovered.countDown(); return json(200,List.of(creationArchitecture(completed.get()?"ACTIVE":"PROVISIONING")));
+        });
+        open("revision=2"); awaitRevision(2); expand(); click(By.cssSelector("[data-lifecycle-action='new-architecture']"));
+        assertThat(discovered.await(10,TimeUnit.SECONDS)).isTrue();
+        var item=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-lifecycle-provisioning-architecture='recovered-architecture']")));
+        assertThat(item.getText()).contains("Recovered architecture");
+        assertThat(item.findElements(By.cssSelector("[data-lifecycle-recover-architecture]"))).isEmpty();
+        completed.set(true); click(By.cssSelector("[data-lifecycle-refresh-architectures]"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector("[data-lifecycle-provisioning-architecture='recovered-architecture']")));
+        assertThat(countPosts(LIFECYCLE + "/architectures")).isZero();
+        assertThat(countPosts(EDITOR + "/workspaces")).isZero();
+        assertThat(page.driver().getCurrentUrl()).contains("repositoryId=fixture-architecture");
     }
 
     private static void assertExactRetry(String endpoint) {
@@ -439,6 +500,14 @@ class ArchitectureStandSelectionBrowserIT {
                 history.replaceState(null,'','/architecture/editor?lang=en&repositoryId=fixture-architecture&workspaceId=fixture-space&workspaceScopeKey=fixture-space&branch=draft&%s');
                 """.formatted(selection));
     }
+    private static void openForCreationRecovery() {
+        page.openAt("architecture-editor", "", "/architecture/editor", "en", """
+                localStorage.clear(); sessionStorage.clear();
+                if(!new URLSearchParams(location.search).has('repositoryId')) {
+                    history.replaceState(null,'','/architecture/editor?lang=en&repositoryId=fixture-architecture&workspaceId=fixture-space&workspaceScopeKey=fixture-space&branch=draft&revision=2');
+                }
+                """);
+    }
     private static void navigateSelection(String selection) {
         page.driver().executeScript("""
                 const url=new URL(location.href); url.searchParams.delete('revision');url.searchParams.delete('commit');
@@ -463,7 +532,12 @@ class ArchitectureStandSelectionBrowserIT {
     private static Map<String,Object> selectedContext(Map<String,String> query) {
         int revision=query.containsKey("commit")?1:Integer.parseInt(query.getOrDefault("revision",String.valueOf(REVISION.get())));
         var value=context(revision); value.put("repositoryId",query.getOrDefault("repositoryId","fixture-architecture"));
+        value.put("workspaceScopeKey",query.getOrDefault("workspaceScopeKey","fixture-space")); value.put("branch",query.getOrDefault("branch","draft"));
         if(query.containsKey("commit")) value.put("commit",query.get("commit")); return value;
+    }
+    private static Map<String,Object> creationArchitecture(String state) {
+        return Map.of("repositoryId","recovered-architecture","displayName","Recovered architecture","slug","architecture-stable-retry",
+                "defaultBranch","main","description","The original description, retained after failure.","owned",true,"lifecycleState",state);
     }
     private static String projection(Map<String,String> query) {
         if(query.containsKey("commit") || Integer.parseInt(query.getOrDefault("revision",String.valueOf(REVISION.get())))<REVISION.get()) return "HISTORICAL";

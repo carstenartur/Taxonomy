@@ -499,12 +499,13 @@
     }
 
     async function selectProject(projectId) {
+        const hadSelection = state.selectedProjectId !== null;
         renderProjectTools(null);
         state.selectedProjectId = projectId;
         state.selectedRequirementId = null;
         state.snapshots = [];
         state.selectedSnapshotId = null;
-        window.TaxonomyAppChrome?.updateContext({project:null, requirement:null, source:null});
+        window.TaxonomyAppChrome?.updateContext(hadSelection ? {project:null,requirement:null,source:null} : {project:null,requirement:null});
         window.localStorage.setItem('taxonomy.portfolio.projectId', String(projectId));
         renderProjectList();
         await refreshSelectedProject(false);
@@ -516,9 +517,10 @@
     }
 
     function showNoProjectSelected() {
+        const hadSelection = state.selectedProjectId !== null;
         state.selectedProjectId = null;
         state.portfolio = null;
-        window.TaxonomyAppChrome?.updateContext({project:null,requirement:null,source:null});
+        window.TaxonomyAppChrome?.updateContext(hadSelection ? {project:null,requirement:null,source:null} : {project:null,requirement:null});
         renderProjectTools(null);
         document.getElementById('projectWorkspace').classList.add('d-none');
         document.getElementById('noProjectSelected').classList.remove('d-none');
@@ -761,9 +763,11 @@
 
     async function createRequirement(event) {
         event.preventDefault();
-        requireProject();
+        if (state.requirementCreateInFlight) return;
+        state.requirementCreateInFlight = true;
         const form = event.currentTarget;
-        await withBusy(async function () {
+        try {
+            requireProject();
             const payload = formDataObject(form);
             payload.text = form.querySelector('[name="text"]').value;
             payload.status = 'DRAFT';
@@ -773,17 +777,23 @@
             payload.changeReason = 'Created in the project portfolio';
             const command = await window.TaxonomyRequirementIntake.prepare(form, payload, state.selectedProjectId);
             if (!command) return;
-            const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
-            if (saved.publication?.state === 'CHECKPOINT_PENDING') { showInfo(window.TaxonomyI18n.t('lifecycle.pending')); return; }
-            if (command.choice === 'LINK') { showInfo(window.TaxonomyI18n.t('lifecycle.linked')); return; }
-            const requirement = saved.requirement;
-            if (!window.TaxonomyRequirementIntake.isCurrent(form)) { showInfo(t('status.requirement.created')); return; }
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('requirementModal')).hide();
-            form.reset();
-            state.selectedRequirementId = requirement.id;
-            showInfo(t('status.requirement.created'));
-            await refreshSelectedProject(false);
-        }).catch(function () {});
+            await withBusy(async function () {
+                const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
+                if (saved.publication?.state === 'CHECKPOINT_PENDING') { showInfo(window.TaxonomyI18n.t('lifecycle.pending')); return; }
+                if (command.choice === 'LINK') { showInfo(window.TaxonomyI18n.t('lifecycle.linked')); return; }
+                const requirement = saved.requirement;
+                if (!window.TaxonomyRequirementIntake.isCurrent(form)) { showInfo(t('status.requirement.created')); return; }
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('requirementModal')).hide();
+                form.reset();
+                state.selectedRequirementId = requirement.id;
+                showInfo(t('status.requirement.created'));
+                await refreshSelectedProject(false);
+            }).catch(function () {});
+        } catch (error) {
+            showError(error);
+        } finally {
+            state.requirementCreateInFlight = false;
+        }
     }
 
     async function createSolution(event) {
