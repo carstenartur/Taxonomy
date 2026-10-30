@@ -28,6 +28,11 @@ final class AppTestShardVerifier {
         try {
             var args = TaxonomyTooling.Arguments.parse(raw);
             Path root = args.path("root", cwd).toAbsolutePath().normalize();
+            if (args.booleanValue("validate-catalogue", false)) {
+                Map<String, Object> plan = object(read(root.resolve(".mvn/verification-suites.json")).get("applicationTestShards"));
+                out.println("Validated test catalogue: " + catalogueAssignments(root.resolve("taxonomy-app/src/test/java"), plan).size() + " source classes.");
+                return 0;
+            }
             String commit = args.optionalOrDefault("commit", env.getOrDefault("GITHUB_SHA", ""));
             if (commit.isBlank()) commit = GitSupport.require(root, "rev-parse", "HEAD").strip();
             String tree = args.optional("source-tree");
@@ -40,7 +45,7 @@ final class AppTestShardVerifier {
                 return 0;
             }
             boolean preflight = args.booleanValue("verify-inputs", false);
-            if (!preflight && !args.booleanValue("verify", false)) throw invalid("expected --stage true, --verify-inputs true or --verify true");
+            if (!preflight && !args.booleanValue("verify", false)) throw invalid("expected --validate-catalogue true, --stage true, --verify-inputs true or --verify true");
             Map<String, Object> plan = object(read(root.resolve(".mvn/verification-suites.json")).get("applicationTestShards"));
             Map<String, Object> result = verify(root, root.resolve("taxonomy-app/src/test/java"), root.resolve("target/app-test-shards"), plan, commit, tree, preflight);
             if (preflight) {
@@ -203,6 +208,10 @@ final class AppTestShardVerifier {
         timings.sort(Comparator.comparingDouble(row -> -((Number) row.get("durationSeconds")).doubleValue()));
         if (preflight) return map("groups", requiredGroups.stream().sorted().toList(), "classes", reports.keySet().stream().sorted().toList(), "slowSuites", timings);
         return map("commit", commit, "sourceTree", tree, "tests", map("classes", reportedSources.size(), "suites", reports.size(), "reports", count, "cases", cases, "skipped", skipped, "excludedClasses", excluded), "coverage", requiredGroups, "durationSeconds", round(duration), "slowSuites", timings.stream().limit(10).toList(), "groupDurations", groupDurations, "groupStatistics", groupStatistics);
+    }
+
+    static Map<String, String> catalogueAssignments(Path sourceRoot, Map<String, Object> plan) throws IOException {
+        return assignments(sources(sourceRoot), object(plan.get("groups")), text(plan.get("defaultGroup")));
     }
 
     private static Map<String, String> assignments(Map<String, Source> sources, Map<String, Object> groups, String fallback) {

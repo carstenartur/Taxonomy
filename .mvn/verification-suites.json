@@ -206,6 +206,7 @@
           "com.taxonomy.portfolio.reformulation.ReformulationCheckpointTest",
           "com.taxonomy.portfolio.reformulation.ReformulationRestartTest",
           "com.taxonomy.portfolio.reformulation.ReformulationUsageTest",
+          "com.taxonomy.portfolio.PortfolioJobLifecycleTest",
           "com.taxonomy.OnnxRestEndpointTest",
           "com.taxonomy.PortfolioVersioningRecoveryIT",
           "com.taxonomy.workspace.service.WorkspaceRestartSelectionIT",
@@ -233,6 +234,9 @@
           "com.taxonomy.AnalysisSnapshotAdoptionUiIT",
           "com.taxonomy.ArchiMateReturnUiIT",
           "com.taxonomy.ArchitectureWorkbenchUiIT",
+          "com.taxonomy.ArchitectureStandSelectionBrowserIT",
+          "com.taxonomy.RequirementLifecycleBrowserIT",
+          "com.taxonomy.SharedApplicationChromeBrowserIT",
           "com.taxonomy.PortfolioMatrixReviewIT"
         ]
       },

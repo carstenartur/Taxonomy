@@ -217,6 +217,20 @@ class AppTestShardVerifierTest {
         plan.put("requiredExecutions", List.of(map("className", "com.taxonomy.CoreTest", "identities", List.of("default", "module-gate-ci-anchor")))); write(root.resolve(".mvn/verification-suites.json"), map("applicationTestShards", plan));
         assertEquals(1, TaxonomyTooling.run(args, root, new PrintStream(out), new PrintStream(err))); assertTrue(err.toString().contains("execution identities mismatch"));
     }
+    @Test void cataloguePreflightNeedsNoGitOrEvidenceAndRejectsAnUnregisteredShardTag() throws Exception {
+        write(root.resolve(".mvn/verification-suites.json"), map("applicationTestShards", plan));
+        delete(evidence);
+        var out = new ByteArrayOutputStream(); var err = new ByteArrayOutputStream();
+        String[] args = {"check-app-test-shards", "--root", root.toString(), "--validate-catalogue", "true"};
+        assertEquals(0, TaxonomyTooling.run(args, root, new PrintStream(out), new PrintStream(err)), err.toString());
+        assertTrue(out.toString().contains("Validated test catalogue: 2 source classes."));
+        object(object(plan.get("groups")).get("restart")).put("tests", List.of());
+        write(root.resolve(".mvn/verification-suites.json"), map("applicationTestShards", plan));
+        assertEquals(1, TaxonomyTooling.run(args, root, new PrintStream(out), new PrintStream(err)));
+        assertTrue(err.toString().contains("RestartTest shard tag is missing"), err.toString());
+        assertFalse(Files.exists(evidence), "Catalogue preflight must not create or rewrite execution evidence");
+    }
+
     @Test void actualCatalogueSelectorsResolveInActualInventory() throws Exception {
         Map<String, Object> actual = object(read(repository().resolve(".mvn/verification-suites.json")).get("applicationTestShards"));
         Set<String> inventory = new HashSet<>(discover(repository().resolve("taxonomy-app/src/test/java")));
