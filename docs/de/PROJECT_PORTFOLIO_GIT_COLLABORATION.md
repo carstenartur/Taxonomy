@@ -49,6 +49,13 @@ Unverträgliche Portfolioentscheidungen setzen die Annahme zurück; ein spätere
 Git-Speicherfehler bleibt ein Fall für die Checkpoint-Wiederaufnahme. Siehe den
 [API-Vertrag](PROJECT_PORTFOLIO_API.md#editor-version-reconciliation-api).
 
+Die Integration prüft außerdem unveränderliche Anforderungsversionen der exakten
+Zieldatenbank, selbst wenn diese Versionen nicht mehr in der lokalen DSL stehen.
+Widersprüchlicher Text, Hashes oder mitgelieferte Herkunft dürfen vorhandene Versionen
+nicht überschreiben; bekannter Inhalt erhält nicht stillschweigend eine andere
+Versionsnummer. Diese Vorprüfung erfolgt, bevor die vorgeschlagene Integration
+Zielmodell- oder Tracking-Referenzen fortschreibt.
+
 ## Empfohlener Ablauf
 
 ```text

@@ -33,6 +33,36 @@ class PortfolioGitServiceTest {
     private PortablePortfolioGitService portablePortfolioGitService;
 
     @Test
+    void unrelatedRequirementSaveRetainsProjectRequirementAndImmutableVersionSourceAnnotations() {
+        String repository=systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        var context=new WorkspaceContext("alice","source-annotations-"+java.util.UUID.randomUUID(),"draft",repository);
+        var project=projectService.createProject(new CreateProjectRequest("ANNOTATED","Annotated project",null,null,null,null,null,null),"alice",context);
+        var requirement=projectService.createRequirement(project.id(),new CreateRequirementRequest("ORIGINAL","Original requirement",
+                "Immutable original text",null,null,null,null,null,"alice","Original reviewed reason",null),"alice",context);
+        String annotated="# Original document comment\n"+portablePortfolioGitService.exportPortfolio("alice",context)
+                .replace("project ANNOTATED {","project ANNOTATED {\n  # Imported project evidence\n  x-project-evidence: \"Project source\";\n  targetArchitecture: \"Stale owned projection value\";")
+                .replace("projectRequirement ANNOTATED ORIGINAL {","projectRequirement ANNOTATED ORIGINAL {\n  # Imported requirement evidence\n  x-business-evidence: \"Requirement source\";")
+                .replace("requirementVersion ANNOTATED ORIGINAL 1 {","requirementVersion ANNOTATED ORIGINAL 1 {\n  # Immutable original provenance\n  x-version-evidence: \"Version source\";\n  sourceKind: \"Original paragraph\";");
+        projectService.createRequirement(project.id(),new CreateRequirementRequest("LATER","Later requirement","An unrelated addition",
+                null,null,null,null,null,"alice",null,null),"alice",context);
+
+        String projected=portablePortfolioGitService.contributeTo(annotated,"alice",context);
+
+        assertThat(projected).contains("# Original document comment","# Imported project evidence","# Imported requirement evidence",
+                "# Immutable original provenance","x-project-evidence: \"Project source\";","x-business-evidence: \"Requirement source\";",
+                "x-version-evidence: \"Version source\";","sourceKind: \"Original paragraph\";",
+                "requirementVersion ANNOTATED LATER 1","Immutable original text",requirement.currentVersion().contentHash())
+                .doesNotContain("Stale owned projection value");
+        assertThat(projectService.listRequirementVersions(project.id(),requirement.id(),"alice",context)).hasSize(1);
+        projectService.updateProject(project.id(),new com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectRequest(
+                "Reviewed project title",null,null,null,null,null,null),"alice",context);
+        String renamed=portablePortfolioGitService.contributeTo(projected,"alice",context);
+        assertThat(renamed).contains("title: \"Reviewed project title\";","x-project-evidence: \"Project source\";",
+                "x-business-evidence: \"Requirement source\";","x-version-evidence: \"Version source\";")
+                .doesNotContain("title: \"Annotated project\";");
+    }
+
+    @Test
     void fullHistoryRoundTripPreservesAnOlderCurrentVersionAndExactSource() {
         String repository = systemRepositoryService.getPrimaryRepository().getRepositoryId();
         String suffix = java.util.UUID.randomUUID().toString();

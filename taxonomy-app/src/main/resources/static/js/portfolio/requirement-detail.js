@@ -904,10 +904,10 @@
             saving = true;
             setBusy(true);
             const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
-            if (saved.publication?.state === 'CHECKPOINT_PENDING') {
+            if (['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state)) {
                 versionRetryLabel(true);
-                const message=locale==='de'?'Die Anforderung ist gespeichert. Wiederholen Sie denselben Vorgang, um den offenen Architektur-Checkpoint abzuschließen.':'The requirement is saved. Retry this same operation to complete its pending architecture checkpoint.';
-                const target=document.getElementById('newVersionError');target.textContent=message;target.classList.remove('d-none');target.focus();
+                const target=document.getElementById('newVersionError');target.textContent='';target.classList.remove('d-none');
+                window.TaxonomyArchitectureLifecycle.showPublicationRecovery(target,saved);
                 return;
             }
             state.versionAttempt=null;versionRetryLabel(false);

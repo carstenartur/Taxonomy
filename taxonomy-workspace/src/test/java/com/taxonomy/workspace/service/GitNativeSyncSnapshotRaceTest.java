@@ -265,7 +265,7 @@ class GitNativeSyncSnapshotRaceTest {
             workspace.setSourceRepositoryId("source"); workspace.setCurrentBranch("main");
             when(rows.findByWorkspaceId("workspace")).thenReturn(Optional.of(workspace));
             when(rows.save(any())).thenAnswer(call -> call.getArgument(0));
-            var catalog = mock(SystemRepositoryService.class);
+            var catalog = NativeSyncTestCatalog.create();
             var metadata = new SystemRepository(); metadata.setRepositoryId("source"); metadata.setDefaultBranch("draft");
             when(catalog.getRepository("source")).thenReturn(metadata);
             var syncRows = mock(SyncStateRepository.class);

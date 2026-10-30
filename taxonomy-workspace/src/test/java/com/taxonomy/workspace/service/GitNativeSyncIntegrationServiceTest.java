@@ -44,7 +44,7 @@ class GitNativeSyncIntegrationServiceTest {
 
     private final SyncStateRepository syncStateRepository = mock(SyncStateRepository.class);
     private final UserWorkspaceRepository workspaceRepository = mock(UserWorkspaceRepository.class);
-    private final SystemRepositoryService systemRepositoryService = mock(SystemRepositoryService.class);
+    private final SystemRepositoryService systemRepositoryService = NativeSyncTestCatalog.create();
     private final DslGitRepositoryFactory repositoryFactory = mock(DslGitRepositoryFactory.class);
     private final SemanticGitMergeService semanticMergeService = mock(SemanticGitMergeService.class);
     private final WorkspacePortfolioGitPort portfolioGitPort = mock(WorkspacePortfolioGitPort.class);

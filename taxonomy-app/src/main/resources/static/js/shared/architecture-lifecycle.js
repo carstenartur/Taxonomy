@@ -135,7 +135,40 @@
     }
     function metadata(reason) { var id = crypto.randomUUID(); return {commandId:id, correlationId:id, causationId:id, rationale:reason}; }
     function publicationOf(result) { return result?.publication || result; }
-    function pendingPublication(result) { return publicationOf(result)?.state === 'CHECKPOINT_PENDING'; }
+    function pendingPublication(result) { return ['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(publicationOf(result)?.state); }
+    function showPublicationRecovery(target, result) {
+        var publication = publicationOf(result);
+        if (!target || !pendingPublication(result)) return;
+        target.querySelector('[data-lifecycle-publication-recovery]')?.remove();
+        var message = node('div',null,'taxonomy-lifecycle__publication-recovery');
+        message.dataset.lifecyclePublicationRecovery = ''; message.setAttribute('role','status'); message.tabIndex = -1;
+        message.append(node('p',t(publication.state === 'RECONCILIATION_REQUIRED' ? 'lifecycle.reconciliationPending' : 'lifecycle.pending')));
+        if (publication.state === 'RECONCILIATION_REQUIRED') {
+            var expected = clone(publication.context), expectedSubject = subjectKey;
+            var expectedSource = state.overview?.source || state.observed?.source;
+            function available() {
+                var current = state.overview;
+                return Boolean(expected && current && !historicalSelection() && subjectKey === expectedSubject
+                    && ['WORKSPACE_REVISION','WORKSPACE_AND_PORTFOLIO'].includes(current.source)
+                    && (!expectedSource || current.source === expectedSource)
+                    && scopeKey(scope()) === scopeKey(expected) && scopeKey(state.context) === scopeKey(expected)
+                    && scopeKey(current.context) === scopeKey(expected) && current.context.actor === expected.actor
+                    && current.context.writeMode === expected.writeMode
+                    && ['VERSION_CHANGED','RECONCILIATION_REQUIRED'].includes(current.projectionState));
+            }
+            var reconcile = button(t('lifecycle.reconcile'),function () {
+                if (available()) openReconciliation();
+                else { reconcile.disabled = true; message.firstChild.textContent = t('lifecycle.stale'); }
+            });
+            reconcile.dataset.lifecyclePublicationReconcile = ''; message.append(reconcile);
+            function changed() {
+                if (!message.isConnected) { listeners.delete(changed); return; }
+                reconcile.disabled = !available();
+            }
+            listeners.add(changed); reconcile.disabled = !available();
+        }
+        target.append(message); message.focus();
+    }
     function showPublishedCurrentStand(context) {
         if (!context || historicalSelection() || scopeKey(context) !== scopeKey(state.context)
                 || scopeKey(scope()) !== scopeKey(state.context)) return;
@@ -267,7 +300,7 @@
         var dialog = node('dialog', null, 'taxonomy-lifecycle__dialog'); dialog.id = id;
         var heading = node('h2', title); heading.id = id + 'Title'; dialog.setAttribute('aria-labelledby', heading.id);
         var form = node('form'); form.addEventListener('submit', function (event) { event.preventDefault(); });
-        var message = node('p'); message.setAttribute('role', 'status'); message.dataset.lifecycleMessage = '';
+        var message = node('div'); message.setAttribute('role', 'status'); message.dataset.lifecycleMessage = '';
         var close = button(t('lifecycle.close'), function () { dialog.close(); });
         close.dataset.lifecycleClose = ''; dialog.append(heading, form, message, close); document.body.append(dialog);
         dialog.addEventListener('close', function () { dialog.remove(); });
@@ -283,11 +316,7 @@
     function intentFence(captured, shell, preview, accept, editable) {
         var pending = null, uncertain = false;
         function recoverable() {
-            return Boolean(pending?.context && state.overview && !historicalSelection()
-                && ['WORKSPACE_REVISION','WORKSPACE_AND_PORTFOLIO'].includes(state.overview.source)
-                && state.overview.projectionState === 'CHECKPOINT_PENDING'
-                && scopeKey(scope()) === scopeKey(captured.context)
-                && contextKey(state.overview.context) === contextKey(pending.context));
+            return Boolean(pending?.context && matchesRetryScope(captured));
         }
         function valid() { return matchesStand(captured, editable) || recoverable() || (uncertain && matchesRetryScope(captured)); }
         function ensure() {
@@ -297,6 +326,9 @@
         }
         function changed() {
             if (!ensure()) return;
+            if (pending && !shell.message.querySelector('[data-lifecycle-publication-recovery]')) {
+                shell.message.textContent = ''; showPublicationRecovery(shell.message,pending);
+            }
             if (pending || uncertain) { accept.hidden = false; accept.disabled = false; preview.disabled = true; accept.textContent = t(uncertain ? 'lifecycle.retryUnknown' : 'lifecycle.retry'); }
         }
         listeners.add(changed); shell.dialog.addEventListener('close', function () { listeners.delete(changed); });
@@ -305,8 +337,9 @@
             rejected:function () { uncertain = false; pending = null; },
             afterSuccess:function (result, reconciled) {
                 var current = valid();
+                uncertain = false;
                 if (pendingPublication(result)) {
-                    pending = clone(publicationOf(result)); shell.message.textContent = t('lifecycle.pending');
+                    pending = clone(publicationOf(result)); shell.message.textContent = ''; showPublicationRecovery(shell.message,result);
                     if (current) publishChanged(result, reconciled); else ensure();
                     return false;
                 }
@@ -469,21 +502,75 @@
         var shell = dialogShell('lifecycleArchitectureDialog', t('lifecycle.newArchitecture'));
         var name = field(shell.form, 'lifecycleArchitectureName', t('lifecycle.architecture.name')); name.required = true; name.maxLength = 200;
         var description = field(shell.form, 'lifecycleArchitectureDescription', t('lifecycle.architecture.description'), 'textarea');
+        description.maxLength = 1000;
         var create = button(t('lifecycle.architecture.create'), submit); create.id = 'lifecycleArchitectureCreate'; shell.form.append(create);
         var request = null, architecture = null, workspace = null, attempted = false, workspaceAttempted = false, busy = false;
         var openingGeneration = state.generation;
+        var recovery = node('section'); recovery.hidden = true;
+        var recoveryMessage = node('p'); recoveryMessage.setAttribute('role','status');
+        var recoveryList = node('ul');
+        var reload = button(t('lifecycle.architecture.refresh'), loadIncomplete); reload.dataset.lifecycleRefreshArchitectures = '';
+        recovery.append(node('h3',t('lifecycle.architecture.incomplete')),recoveryMessage,recoveryList,reload); shell.form.append(recovery);
+        var readSequence = 0;
+        function entries(value) { return value.repositories || value || []; }
+        function lifecycle(architecture) { return architecture.lifecycleState || 'ACTIVE'; }
+        function updateControls() {
+            create.disabled = busy; reload.disabled = busy;
+            recoveryList.querySelectorAll('[data-lifecycle-recover-architecture]').forEach(function (control) {
+                control.disabled = busy || Boolean(request && control.dataset.slug !== request.slug);
+            });
+        }
+        async function loadIncomplete() {
+            if (busy) return;
+            var ticket = ++readSequence; reload.disabled = true;
+            try {
+                var owned = entries(await api.architectures());
+                if (ticket !== readSequence || !shell.dialog.open) return;
+                recoveryList.replaceChildren(); recoveryMessage.textContent = '';
+                owned.filter(function (item) { return item.owned && ['FAILED','PROVISIONING'].includes(lifecycle(item)); }).forEach(function (item) {
+                    var entry = node('li');
+                    entry.append(node('strong',item.displayName),node('p',t('lifecycle.architecture.state.' + lifecycle(item))));
+                    if (item.description) entry.append(node('p',item.description));
+                    if (lifecycle(item) === 'FAILED') {
+                        var retry = button(t('lifecycle.architecture.retry'),function () { recover(item); });
+                        retry.dataset.lifecycleRecoverArchitecture = item.repositoryId; retry.dataset.slug = item.slug; entry.append(retry);
+                    } else entry.dataset.lifecycleProvisioningArchitecture = item.repositoryId;
+                    recoveryList.append(entry);
+                });
+                recovery.hidden = recoveryList.children.length === 0;
+            } catch (error) {
+                if (ticket !== readSequence || !shell.dialog.open) return;
+                recovery.hidden = false; recoveryMessage.textContent = errorText(error);
+            } finally { if (ticket === readSequence) updateControls(); }
+        }
+        function recover(item) {
+            if (busy || (request && request.slug !== item.slug)) return;
+            request = {displayName:item.displayName,slug:item.slug,description:item.description};
+            name.value = item.displayName; description.value = item.description || '';
+            architecture = item; attempted = true;
+            submit();
+        }
         async function submit() {
             if (busy || !shell.form.reportValidity()) return;
-            busy = true; create.disabled = true;
+            busy = true; updateControls();
             if (!request) request = {displayName:name.value.trim(),description:description.value,slug:'architecture-' + crypto.randomUUID()};
             name.disabled = true; description.disabled = true;
             try {
-                if (!architecture && attempted) {
+                if (attempted && (!architecture || lifecycle(architecture) !== 'ACTIVE')) {
                     shell.message.textContent = t('lifecycle.architecture.recover');
-                    var owned = await api.architectures();
-                    architecture = (owned.repositories || owned || []).find(function (item) { return item.slug === request.slug; });
+                    architecture = entries(await api.architectures()).find(function (item) { return item.owned && item.slug === request.slug; });
                 }
-                if (!architecture) { attempted = true; architecture = await api.createArchitecture(request); }
+                if (architecture && lifecycle(architecture) === 'PROVISIONING') {
+                    shell.message.textContent = t('lifecycle.architecture.state.PROVISIONING');
+                    return;
+                }
+                if (!architecture || lifecycle(architecture) === 'FAILED') {
+                    attempted = true; architecture = await api.createArchitecture(request);
+                }
+                if (lifecycle(architecture) !== 'ACTIVE') {
+                    shell.message.textContent = t('lifecycle.architecture.state.' + lifecycle(architecture));
+                    return;
+                }
                 if (!workspace && workspaceAttempted) {
                     var copies = await api.workspaces(architecture.repositoryId);
                     workspace = (copies.workspaces || copies || []).find(function (item) {
@@ -508,9 +595,9 @@
                     create.hidden = true;
                 }
             } catch (error) { shell.message.textContent = errorText(error); }
-            finally { busy = false; create.disabled = false; }
+            finally { busy = false; updateControls(); }
         }
-        shell.dialog.showModal(); name.focus();
+        shell.dialog.showModal(); name.focus(); loadIncomplete();
     }
     function initialize() {
         root = document.getElementById('architectureLifecycle'); if (!root) return;
@@ -555,6 +642,6 @@
     });
     window.addEventListener('popstate',function () { if (!isEditor()) refresh(scope(),selectionFromUrl()); });
     window.TaxonomyArchitectureLifecycle = {state:function () { return clone(state.overview); }, refresh:refresh, beginSelection:beginSelection, observe:observe,
-        failedSelection:failedSelection, saveRequirement:saveRequirement, openNewArchitecture:openNewArchitecture};
+        failedSelection:failedSelection, saveRequirement:saveRequirement, showPublicationRecovery:showPublicationRecovery, openNewArchitecture:openNewArchitecture};
     window.TaxonomyI18n.ready().then(initialize);
 }());

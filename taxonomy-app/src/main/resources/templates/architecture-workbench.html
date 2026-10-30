@@ -24,6 +24,7 @@
                data-policy-title-trace=#{archview.policy.title.trace}">
 <a class="visually-hidden-focusable" href="#architectureCanvas" th:text="#{workbench.ui.skip}">Skip to architecture diagram</a>
 
+<div class="workbench-context">
 <header th:replace="~{fragments/application-chrome :: navigation('architecture', ~{:: localActions}, 'USER_GUIDE', 'architecture-source-context')}">
     <th:block th:fragment="localActions">
     
@@ -71,6 +72,7 @@
 </th:block>
 </header>
 <section th:replace="~{fragments/architecture-workflow :: context}"></section>
+</div>
 
 <div id="architectureStatus" class="workbench-status" role="status" aria-live="polite" th:text="#{workbench.ui.loading}">
     Loading persisted Copilot architecture snapshot…

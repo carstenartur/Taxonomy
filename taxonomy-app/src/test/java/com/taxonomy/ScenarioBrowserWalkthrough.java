@@ -74,6 +74,8 @@ final class ScenarioBrowserWalkthrough implements AutoCloseable {
         new Select(modal.findElement(By.id("requirementType"))).selectByValue("FUNCTIONAL");
         fill(modal, "requirementText", fixture.at("/requirement/text").asText());
         modal.findElement(By.cssSelector("button[type='submit']")).click();
+        wait.until(ExpectedConditions.elementToBeClickable(
+                By.cssSelector("#requirementModal [data-intake-choice='NEW']"))).click();
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("requirementModal")));
         var row = wait.until(browser -> browser.findElements(By.cssSelector("#requirementsTable tbody tr")).stream()
                 .filter(element -> element.getText().contains("FLOOD-001")).findFirst().orElse(null));

@@ -37,7 +37,7 @@ class GitNativeSyncPortfolioProjectionTest {
             var repositories = mock(DslGitRepositoryFactory.class);
             when(repositories.getSystemRepository()).thenReturn(repository);
             when(repositories.getCentralRepository("repository-a")).thenReturn(repository);
-            var system = mock(SystemRepositoryService.class);
+            var system = NativeSyncTestCatalog.create();
             when(system.getSharedBranch()).thenReturn("draft");
             var sourceMetadata = new com.taxonomy.workspace.model.SystemRepository();
             sourceMetadata.setRepositoryId("repository-a");

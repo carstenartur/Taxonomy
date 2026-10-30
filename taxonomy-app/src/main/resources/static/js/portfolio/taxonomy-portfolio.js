@@ -779,7 +779,10 @@
             if (!command) return;
             await withBusy(async function () {
                 const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
-                if (saved.publication?.state === 'CHECKPOINT_PENDING') { showInfo(window.TaxonomyI18n.t('lifecycle.pending')); return; }
+                if (['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state)) {
+                    window.TaxonomyArchitectureLifecycle.showPublicationRecovery(form,saved); return;
+                }
+                form.querySelector('[data-lifecycle-publication-recovery]')?.remove();
                 if (command.choice === 'LINK') { showInfo(window.TaxonomyI18n.t('lifecycle.linked')); return; }
                 const requirement = saved.requirement;
                 if (!window.TaxonomyRequirementIntake.isCurrent(form)) { showInfo(t('status.requirement.created')); return; }

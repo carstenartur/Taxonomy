@@ -115,7 +115,7 @@ class WorkspaceCentralReadBoundaryTest {
         var request = new MockHttpServletRequest();
         if (explicitEmptyPin) request.addHeader(WorkspaceContextResolver.WORKSPACE_HEADER, "");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-        var catalog = mock(SystemRepositoryService.class);
+        var catalog = NativeSyncTestCatalog.create();
         var metadata = new SystemRepository();
         metadata.setRepositoryId("selected-source");
         metadata.setDefaultBranch("release");

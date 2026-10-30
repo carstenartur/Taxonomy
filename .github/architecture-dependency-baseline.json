@@ -461,7 +461,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
-      "classDependencyCount": 10
+      "classDependencyCount": 11
     },
     {
       "fromContext": "app-composition",
@@ -475,7 +475,7 @@
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 25
+      "classDependencyCount": 26
     },
     {
       "fromContext": "app-composition",

@@ -20,6 +20,7 @@ import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -33,6 +34,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 /** Real Hibernate Git refs and portfolio transactions expose failures that ORM rollback cannot repair. */
 @SpringBootTest
@@ -85,7 +87,58 @@ class GitNativeSyncPortfolioAtomicityTest {
         assertThat(after.syncState()).isEqualTo(before.syncState());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings={"pageNumber","sourceArtifactId","sourceVersionId","projectTitle","requirementTitle","newProjectTitle","newRequirementTitle"})
+    void invalidProspectiveImportIsRejectedBeforeAnyGitRefOrDatabaseStateChanges(String invalidField) throws Exception {
+        Fixture fixture=fixture(false,DivergedStrategy.TAKE_SHARED);
+        var centralProject=projects.listProjects("shared",fixture.central()).getFirst();
+        var centralRequirement=projects.listRequirements(centralProject.id(),"shared",fixture.central()).getFirst();
+        projects.addRequirementVersion(centralProject.id(),centralRequirement.id(),
+                new CreateRequirementVersionRequest("Valid new immutable body","Valid source version",null),"shared",fixture.central());
+        if(invalidField.equals("newProjectTitle")) projects.createProject(new CreateProjectRequest(
+                "NEW","New imported project",null,null,null,null,null,null),"shared",fixture.central());
+        if(invalidField.equals("newRequirementTitle")) projects.createRequirement(centralProject.id(),new CreateRequirementRequest(
+                "NEW","New imported requirement","Another valid immutable body",null,null,null,null,null,"shared",null,null),"shared",fixture.central());
+        String incoming=portfolio.contributeTo(MODEL,"shared",fixture.central());
+        if(invalidField.equals("projectTitle")) incoming=incoming.replace("title: \"Orders\";","title: \""+"P".repeat(241)+"\";");
+        else if(invalidField.equals("requirementTitle")) incoming=incoming.replace("title: \"Order retention\";","title: \""+"R".repeat(241)+"\";");
+        else if(invalidField.equals("newProjectTitle")) incoming=incoming.replace("title: \"New imported project\";","title: \""+"P".repeat(241)+"\";");
+        else if(invalidField.equals("newRequirementTitle")) incoming=incoming.replace("title: \"New imported requirement\";","title: \""+"R".repeat(241)+"\";");
+        else incoming=incoming.replace("requirementVersion ORDERS RETENTION 2 {",
+                    "requirementVersion ORDERS RETENTION 2 {\n  "+invalidField+": -1;");
+        assertThat(incoming).contains(com.taxonomy.identity.StableIdentityHash.sha256("Valid new immutable body"));
+        fixture.source().commitDsl("main",incoming,"shared","Prospective invalid import");
+        String localHead=fixture.working().commitDsl("main",fixture.working().getDslAtHead("main")
+                +"\nelement local-note type Component {\n  title: \"Local reviewed note\";\n}\n","alice","Local divergence");
+        var workspace=workspaces.findByWorkspaceId(fixture.local().workspaceId()).orElseThrow();
+        workspace.setCurrentCommit(localHead);workspaces.saveAndFlush(workspace);
+        Snapshot before=snapshot(fixture);
+        var request=new MockHttpServletRequest();
+        request.addHeader(WorkspaceContextResolver.WORKSPACE_HEADER,fixture.local().workspaceId());
+        var previous=RequestContextHolder.getRequestAttributes();
+        Throwable failure;
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try { failure=catchThrowable(()->sync.resolveDiverged("alice","main",DivergedStrategy.TAKE_SHARED)); }
+        finally { RequestContextHolder.setRequestAttributes(previous); }
+        Snapshot after=snapshot(fixture);
+        org.assertj.core.api.SoftAssertions.assertSoftly(checks->{
+            checks.assertThat(failure).as("invalid import must be rejected").isInstanceOf(CommandProblem.class);
+            checks.assertThat(after.localHead()).as("workspace model HEAD").isEqualTo(before.localHead());
+            checks.assertThat(after.centralHead()).as("central model HEAD").isEqualTo(before.centralHead());
+            checks.assertThat(after.trackingHead()).as("semantic tracking HEAD").isEqualTo(before.trackingHead());
+            checks.assertThat(after.localPortfolio()).as("local portfolio database").isEqualTo(before.localPortfolio());
+            checks.assertThat(after.centralPortfolio()).as("central portfolio database").isEqualTo(before.centralPortfolio());
+            checks.assertThat(after.workspaceMetadata()).as("workspace metadata").isEqualTo(before.workspaceMetadata());
+            checks.assertThat(after.lastPushAt()).as("publication metadata").isEqualTo(before.lastPushAt());
+            checks.assertThat(after.syncState()).as("sync tracking state").isEqualTo(before.syncState());
+        });
+    }
+
     private Fixture collision(DivergedStrategy strategy) throws Exception {
+        return fixture(true,strategy);
+    }
+
+    private Fixture fixture(boolean divergentVersions,DivergedStrategy strategy) throws Exception {
         String id = UUID.randomUUID().toString();
         var repository = repositories.createCentralRepository("Native sync immutable collision", "native-sync-" + id,
                 "Real publication boundary regression", RepositoryVisibility.PRIVATE, "alice", "main");
@@ -113,18 +166,21 @@ class GitNativeSyncPortfolioAtomicityTest {
         working.commitDsl("sync-base", base, "alice", "Accepted semantic base");
         repositories.markProvisioningReady(repository.getRepositoryId());
 
+        String localHead=working.getHeadCommit("main");
+        if(divergentVersions) {
         projects.addRequirementVersion(project.id(), requirement.id(),
                 new CreateRequirementVersionRequest("Local immutable second version", "Reviewed locally", null), "alice", local);
         projects.addRequirementVersion(centralProject.id(), centralRequirement.id(),
                 new CreateRequirementVersionRequest("Central immutable second version", "Reviewed centrally", null), "shared", central);
         String localDsl = portfolio.contributeTo(MODEL, "alice", local);
-        String localHead = working.commitDsl("main", localDsl, "alice", "Local second version");
+        localHead = working.commitDsl("main", localDsl, "alice", "Local second version");
         if (strategy == DivergedStrategy.TAKE_SHARED) {
             source.commitDsl("main", portfolio.contributeTo(MODEL, "shared", central), "shared", "Central second version");
         } else {
             // The conflicting central v2 is retained only in the database: source-text comparison cannot find it.
             assertThat(source.getDslAtHead("main")).doesNotContain("Central immutable second version");
             assertThat(portfolio.exportPortfolio("shared", central)).contains("Central immutable second version");
+        }
         }
         workspace.setBaseCommit(sourceBase); workspace.setLastFetchedCommit(sourceBase); workspace.setLastIntegratedCommit(sourceBase);
         workspace.setCurrentCommit(localHead); workspace.setLastAccessedAt(Instant.now());

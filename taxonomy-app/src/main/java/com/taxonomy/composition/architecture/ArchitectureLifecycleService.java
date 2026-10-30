@@ -180,6 +180,14 @@ public class ArchitectureLifecycleService {
             try {
                 // Prefer the operation's own durable receipt even if a later unrelated operation was published.
                 receipt=editor.checkpoint(context,new CreateCheckpointCommand(accepted,checkpoint));
+                try {
+                    // A completed journal receipt can outlive an explicit branch undo. The workspace
+                    // reader verifies that its exact Git version remains reachable in this context.
+                    editor.read(context,receipt.commitId());
+                } catch(CommandProblem unavailable) {
+                    if(!"NOT_FOUND".equals(unavailable.code())) throw unavailable;
+                    throw problem("VERSION_CHANGED","The original checkpoint is no longer reachable in this architecture; reconcile the retained decision before confirming its publication.");
+                }
             } catch(CommandProblem failure) {
                 if(!Set.of("VERSION_CHANGED","CONTEXT_CHANGED","CHECKPOINT_REJECTED","CHECKPOINT_CONFLICT").contains(failure.code())) throw failure;
                 // An explicitly reconciled operation may have been published by the reconciliation checkpoint.

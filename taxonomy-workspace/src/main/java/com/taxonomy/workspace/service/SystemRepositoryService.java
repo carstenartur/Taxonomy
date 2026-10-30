@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /** Manages the catalog of central architecture repositories. */
@@ -111,6 +112,20 @@ public class SystemRepositoryService {
         return repository.findByRepositoryId(repositoryId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Architecture repository not found: " + repositoryId));
+    }
+
+    /** Read metadata and the caller's membership decision outside any retained journal persistence context. */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public void readCurrentAuthorization(String repositoryId, Consumer<SystemRepository> decision) {
+        Objects.requireNonNull(decision).accept(getRepository(repositoryId));
+    }
+
+    /** Record publication without merging an older catalogue entity over current policy. */
+    @Transactional
+    public void recordLastPush(String repositoryId, Instant publishedAt) {
+        String id = requireText(repositoryId, "repositoryId");
+        if (repository.recordLastPush(id, Objects.requireNonNull(publishedAt)) != 1)
+            throw new IllegalArgumentException("Architecture repository not found: " + id);
     }
 
     public List<SystemRepository> listActiveRepositories() {

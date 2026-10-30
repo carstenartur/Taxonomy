@@ -46,6 +46,12 @@ business blocks requires retaining `LOCAL` and explicit archival. Conflicting
 portfolio choices roll back acceptance; later Git storage interruption remains a
 pending-checkpoint recovery case. See the [API contract](PROJECT_PORTFOLIO_API.md#editor-version-reconciliation-api).
 
+Integration also checks immutable requirement versions already retained in the
+exact target database, even when the local DSL no longer contains those versions.
+Conflicting text, hashes or supplied provenance cannot overwrite an existing version;
+known content cannot silently acquire another version number. This preflight occurs
+before the proposed integration advances target model or tracking references.
+
 ## Recommended workflow
 
 ```text

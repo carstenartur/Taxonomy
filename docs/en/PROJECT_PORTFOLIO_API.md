@@ -31,6 +31,9 @@ requirement identity remains stable. See the [user workflow](PROJECT_REQUIREMENT
 
 | Method | Route | Purpose |
 |---|---|---|
+| GET | `/api/architecture/lifecycle/architectures` | List readable active architectures and the caller's own incomplete creations. |
+| POST | `/api/architecture/lifecycle/architectures` | Create or resume the exact owned private architecture creation. |
+| GET | `/api/architecture/lifecycle/architectures/{repositoryId}/workspaces` | Recover the caller's existing private working copies for that architecture. |
 | GET | `/api/architecture/lifecycle` | Read the exact selected architecture stand and its requirement realization assessments. |
 | GET | `/api/architecture/lifecycle/history` | Search actual reachable Git history with bounded coverage. |
 | POST | `/api/architecture/lifecycle/intake-review` | Review incoming text against authorized candidates without writing. |
@@ -57,6 +60,28 @@ Each requirement's `version`, `versionId`, `contentHash` and text describe that
 selected model stand; a historical row does not overwrite the current portfolio
 requirement header. `realization`, `contributors` and `links` retain review and
 contribution provenance. Historical portable sources need not have current database IDs.
+
+### Independent architecture creation and exact recovery
+
+Creation takes `{displayName, slug, description}`: a nonblank name of at most 255
+characters, a stable slug matching `[a-z0-9][a-z0-9-]{0,99}` and an optional description
+of at most 1,000 characters. A new creation returns 201; exact recovery returns 200.
+Keep the same slug, name and description after an interrupted response. Recovery
+only matches the same caller's original private creation identity. A matching
+`ACTIVE` entry is reused; a matching `FAILED` entry can resume provisioning under
+the same repository ID. A `PROVISIONING` entry returns 409: observe/reload its status
+before retrying. A different owner, identity or creation payload conflicts rather
+than exposing or taking over another creation.
+
+The architecture response includes `repositoryId`, `displayName`, `slug`,
+`defaultBranch`, `owned`, `description` and `lifecycleState`. The list includes the
+caller's own `FAILED`/`PROVISIONING` creations so a lost response does not require
+inventing a new identity. Recovery verifies and retains an already-written initial
+Git commit; it does not delete or reinitialize logical Git storage. Different retained
+Git content returns 409 for explicit review. Recover an existing private working
+copy through the workspace-list route before creating another one. Its entries
+identify `workspaceId`, `sourceRepositoryId`, `sourceBranch`, `currentBranch`,
+`displayName` and `provisioningStatus`.
 
 ### Exact context, input and publication
 
@@ -158,8 +183,10 @@ and `source=LIVE_GIT`. Entries contain `commitId`, `parents`, `author`, `timesta
 the full `message`, signature evidence and `changes`. Kinds include `ADDED`,
 `REMOVED`, `REQUIREMENT_CHANGED`, `REQUIREMENT_METADATA_CHANGED`, `DEPENDENCIES_CHANGED`,
 `REALIZATION_CHANGED`, `MERGE` and `GIT_CHANGE`. Coverage is `COMPLETE`, `PARTIAL`
-or `LIMIT_REACHED`. Continue with the returned offset and same HEAD; restart after
-a branch change. Bounded scans may return no matches while more history remains.
+or `LIMIT_REACHED`. Continue with the returned offset and same HEAD. A changed HEAD
+returns HTTP 409 `HISTORY_HEAD_CHANGED`, with `branch`, `expectedHead` and `currentHead`;
+restart from the first page instead of continuing the old offset. Bounded scans may
+return no matches while more history remains.
 Authorization, storage and source-reading failures must not be presented as empty history.
 
 <a id="editor-version-reconciliation-api"></a>
@@ -190,6 +217,13 @@ with explicit `LOCAL`/`INCOMING` choices. Retaining the consistent local blocks
 provides the path to create a new version. Git omission cannot delete managed
 business history: choose `LOCAL` and use explicit archival. Incompatible choices
 return HTTP 409 `PORTFOLIO_RECONCILIATION_REQUIRED`.
+
+Compatibility also checks the exact target database's retained immutable versions,
+including versions absent from the local DSL. Conflicting text, hashes or supplied
+source provenance, duplicate version numbers and known content under a different
+version number are rejected rather than rewritten or renumbered. This preflight
+runs before the proposed integration advances target model or tracking references;
+matching portable source blocks alone are not sufficient.
 
 On acceptance, changed managed portfolio blocks are materialized through
 `WorkspacePortfolioGitPort` inside the journal transaction, before checkpoint intent

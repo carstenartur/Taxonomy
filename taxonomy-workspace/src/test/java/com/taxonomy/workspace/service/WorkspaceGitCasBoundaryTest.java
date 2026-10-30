@@ -48,7 +48,7 @@ class WorkspaceGitCasBoundaryTest {
         final RacingRepository destination = new RacingRepository();
         final UserWorkspaceRepository rows = mock(UserWorkspaceRepository.class);
         final SyncStateRepository states = mock(SyncStateRepository.class);
-        final SystemRepositoryService catalog = mock(SystemRepositoryService.class);
+        final SystemRepositoryService catalog = NativeSyncTestCatalog.create();
         final DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
         final SemanticGitMergeService merger = mock(SemanticGitMergeService.class);
         final WorkspacePortfolioGitPort portfolio = mock(WorkspacePortfolioGitPort.class);

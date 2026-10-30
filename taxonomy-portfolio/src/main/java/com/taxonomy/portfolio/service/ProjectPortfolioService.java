@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -82,18 +83,13 @@ public class ProjectPortfolioService {
     public ProjectView createProject(CreateProjectRequest request,
                                      String username,
                                      WorkspaceContext context) {
-        requireNonNull(request, "project request");
+        request = validatedProjectInput(request);
         String scopeKey = PortfolioScope.key(username, context);
-        String projectKey = normalizeBusinessKey(request.projectKey(), "projectKey");
-        String title = requireText(request.title(), "title", 240);
+        String projectKey = request.projectKey();
+        String title = request.title();
         if (projectRepository.existsByScopeKeyAndProjectKeyIgnoreCase(scopeKey, projectKey)) {
             throw PortfolioException.conflict("Project key already exists in this workspace: " + projectKey);
         }
-
-        var budgetAmount = PortfolioValueValidator.money(request.budgetAmount(), "budgetAmount");
-        String budgetCurrency = normalizeCurrency(request.budgetCurrency());
-        PortfolioValueValidator.requireMoneyPair(
-                budgetAmount, budgetCurrency, "budgetAmount", "budgetCurrency");
 
         Instant now = Instant.now();
         ArchitectureProject project = new ArchitectureProject(
@@ -102,17 +98,17 @@ public class ProjectPortfolioService {
                 PortfolioScope.username(username, context),
                 projectKey,
                 title,
-                limited(request.description(), 4000, "description"),
-                request.status() != null ? request.status() : ProjectStatus.PLANNING,
+                request.description(),
+                request.status(),
                 now);
         project.update(
                 null,
                 null,
                 null,
-                limited(request.targetArchitecture(), 4000, "targetArchitecture"),
+                request.targetArchitecture(),
                 request.targetDate(),
-                budgetAmount,
-                budgetCurrency,
+                request.budgetAmount(),
+                request.budgetCurrency(),
                 now);
         return toProjectView(projectRepository.save(project));
     }
@@ -135,25 +131,15 @@ public class ProjectPortfolioService {
                                      WorkspaceContext context) {
         requireNonNull(request, "project update");
         ArchitectureProject project = requireProjectForUpdate(projectId, username, context);
-        var requestedAmount = request.budgetAmount() != null
-                ? PortfolioValueValidator.money(request.budgetAmount(), "budgetAmount") : null;
-        String requestedCurrency = request.budgetCurrency() != null
-                ? normalizeCurrency(request.budgetCurrency()) : null;
-        var effectiveAmount = request.budgetAmount() != null
-                ? requestedAmount : project.getBudgetAmount();
-        String effectiveCurrency = request.budgetCurrency() != null
-                ? requestedCurrency : project.getBudgetCurrency();
-        PortfolioValueValidator.requireMoneyPair(
-                effectiveAmount, effectiveCurrency, "budgetAmount", "budgetCurrency");
-
+        request = validatedProjectInput(request, project.getBudgetAmount(), project.getBudgetCurrency());
         project.update(
-                request.title() != null ? requireText(request.title(), "title", 240) : null,
-                limited(request.description(), 4000, "description"),
+                request.title(),
+                request.description(),
                 request.status(),
-                limited(request.targetArchitecture(), 4000, "targetArchitecture"),
+                request.targetArchitecture(),
                 request.targetDate(),
-                requestedAmount,
-                requestedCurrency,
+                request.budgetAmount(),
+                request.budgetCurrency(),
                 Instant.now());
         return toProjectView(project);
     }
@@ -179,10 +165,10 @@ public class ProjectPortfolioService {
 
     private RequirementView createRequirement(Long projectId, CreateRequirementRequest request, String username,
                                                WorkspaceContext context, ImportedVersion imported) {
-        requireNonNull(request, "requirement request");
+        request = validatedRequirementInput(request, imported);
         ArchitectureProject project = requireProjectForUpdate(projectId, username, context);
         String scopeKey = project.getScopeKey();
-        String requirementKey = normalizeBusinessKey(request.requirementKey(), "requirementKey");
+        String requirementKey = request.requirementKey();
         if (requirementRepository
                 .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(
                         projectId, scopeKey, requirementKey)
@@ -191,27 +177,26 @@ public class ProjectPortfolioService {
                     "Requirement key already exists in project " + project.getProjectKey() + ": " + requirementKey);
         }
 
-        int priority = normalizePriority(request.priority());
         Instant now = Instant.now();
         ProjectRequirement requirement = new ProjectRequirement(
                 project,
                 requirementKey,
-                requireText(request.title(), "title", 240),
-                request.status() != null ? request.status() : RequirementStatus.DRAFT,
-                priority,
-                request.criticality() != null ? request.criticality() : Criticality.MEDIUM,
-                request.requirementType() != null ? request.requirementType() : RequirementType.FUNCTIONAL,
-                request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,
-                request.ownerUsername() != null && !request.ownerUsername().isBlank()
-                        ? requireText(request.ownerUsername(), "ownerUsername", 160)
+                request.title(),
+                request.status(),
+                request.priority(),
+                request.criticality(),
+                request.requirementType(),
+                request.reviewStatus(),
+                request.ownerUsername() != null
+                        ? request.ownerUsername()
                         : PortfolioScope.username(username, context),
                 now);
         requirementRepository.save(requirement);
         ProjectRequirementVersion version = createVersionEntity(
                 requirement,
-                rawText(imported == null ? request.text() : imported.text(), "text", 100_000),
-                imported == null ? request.changeReason() : imported.changeReason(),
-                imported == null ? request.source() : imported.source(),
+                request.text(),
+                request.changeReason(),
+                request.source(),
                 imported == null || imported.createdBy() == null ? PortfolioScope.username(username, context) : imported.createdBy(),
                 imported == null ? 1 : imported.versionNumber(),
                 imported == null || imported.createdAt() == null ? now : imported.createdAt());
@@ -317,18 +302,16 @@ public class ProjectPortfolioService {
                                              WorkspaceContext context) {
         requireNonNull(request, "requirement update");
         ProjectRequirement requirement = requireRequirementForUpdate(projectId, requirementId, username, context);
-        if (request.status() == RequirementStatus.APPROVED || request.status() == RequirementStatus.IMPLEMENTING
-                || request.status() == RequirementStatus.SATISFIED || request.reviewStatus() == ReviewStatus.CONFIRMED)
-            positiveReviewGuard.requireReviewable(requirement.getProject(), requirement, currentVersion(requirement));
+        request = validatedRequirementInput(request);
+        validateRequirementImportMetadata(requirement, request);
         requirement.updateMetadata(
-                request.title() != null ? requireText(request.title(), "title", 240) : null,
+                request.title(),
                 request.status(),
-                request.priority() != null ? normalizePriority(request.priority()) : null,
+                request.priority(),
                 request.criticality(),
                 request.requirementType(),
                 request.reviewStatus(),
-                request.ownerUsername() != null && !request.ownerUsername().isBlank()
-                        ? requireText(request.ownerUsername(), "ownerUsername", 160) : null,
+                request.ownerUsername(),
                 Instant.now());
         return toRequirementView(requirement, currentVersion(requirement));
     }
@@ -441,9 +424,10 @@ public class ProjectPortfolioService {
     }
 
     private static SourceReference normalizedSource(SourceReference source) {
-        return new SourceReference(source == null ? null : source.sourceArtifactId(), source == null ? null : source.sourceVersionId(),
+        return new SourceReference(source == null ? null : positiveIdentifier(source.sourceArtifactId(), "sourceArtifactId"),
+                source == null ? null : positiveIdentifier(source.sourceVersionId(), "sourceVersionId"),
                 sourceFragmentIds(source), source == null ? null : limited(source.sectionReference(), 500, "sectionReference"),
-                source == null ? null : source.pageNumber(), source == null ? null : nullableRawText(source.originalText(),
+                source == null ? null : positivePageNumber(source.pageNumber()), source == null ? null : nullableRawText(source.originalText(),
                 "originalText", PortfolioValueValidator.MAX_ORIGINAL_TEXT_CHARACTERS));
     }
 
@@ -624,12 +608,7 @@ public class ProjectPortfolioService {
                                                            String createdBy,
                                                            int versionNumber,
                                                            Instant now) {
-        List<Long> fragmentIds = sourceFragmentIds(source);
-        Long sourceArtifactId = source != null
-                ? positiveIdentifier(source.sourceArtifactId(), "sourceArtifactId") : null;
-        Long sourceVersionId = source != null
-                ? positiveIdentifier(source.sourceVersionId(), "sourceVersionId") : null;
-        Integer pageNumber = source != null ? positivePageNumber(source.pageNumber()) : null;
+        SourceReference normalized = normalizedSource(source);
         return new ProjectRequirementVersion(
                 requirement,
                 versionNumber,
@@ -638,15 +617,64 @@ public class ProjectPortfolioService {
                 limited(changeReason, 1000, "changeReason"),
                 createdBy,
                 now,
-                sourceArtifactId,
-                sourceVersionId,
-                jsonCodec.write(fragmentIds),
-                source != null ? limited(source.sectionReference(), 500, "sectionReference") : null,
-                pageNumber,
-                source != null
-                        ? nullableRawText(source.originalText(), "originalText",
-                                PortfolioValueValidator.MAX_ORIGINAL_TEXT_CHARACTERS)
-                        : null);
+                normalized.sourceArtifactId(),
+                normalized.sourceVersionId(),
+                jsonCodec.write(normalized.sourceFragmentIds()),
+                normalized.sectionReference(),
+                normalized.pageNumber(),
+                normalized.originalText());
+    }
+
+    /** Pure owner validation shared by ordinary writes and Git import preflight. */
+    static CreateProjectRequest validatedProjectInput(CreateProjectRequest request) {
+        requireNonNull(request, "project request");
+        BigDecimal amount = PortfolioValueValidator.money(request.budgetAmount(), "budgetAmount");
+        String currency = normalizeCurrency(request.budgetCurrency());
+        PortfolioValueValidator.requireMoneyPair(amount, currency, "budgetAmount", "budgetCurrency");
+        return new CreateProjectRequest(normalizeBusinessKey(request.projectKey(), "projectKey"),
+                requireText(request.title(), "title", 240), limited(request.description(), 4000, "description"),
+                request.status() == null ? ProjectStatus.PLANNING : request.status(),
+                limited(request.targetArchitecture(), 4000, "targetArchitecture"), request.targetDate(), amount, currency);
+    }
+
+    static UpdateProjectRequest validatedProjectInput(UpdateProjectRequest request, BigDecimal existingAmount, String existingCurrency) {
+        requireNonNull(request, "project update");
+        BigDecimal amount = PortfolioValueValidator.money(request.budgetAmount(), "budgetAmount");
+        String currency = normalizeCurrency(request.budgetCurrency());
+        PortfolioValueValidator.requireMoneyPair(request.budgetAmount() == null ? existingAmount : amount,
+                request.budgetCurrency() == null ? existingCurrency : currency, "budgetAmount", "budgetCurrency");
+        return new UpdateProjectRequest(request.title() == null ? null : requireText(request.title(), "title", 240),
+                limited(request.description(), 4000, "description"), request.status(),
+                limited(request.targetArchitecture(), 4000, "targetArchitecture"), request.targetDate(), amount, currency);
+    }
+
+    static CreateRequirementRequest validatedRequirementInput(CreateRequirementRequest request, ImportedVersion imported) {
+        requireNonNull(request, "requirement request");
+        return new CreateRequirementRequest(normalizeBusinessKey(request.requirementKey(), "requirementKey"),
+                requireText(request.title(), "title", 240), rawText(imported == null ? request.text() : imported.text(), "text", 100_000),
+                request.status() == null ? RequirementStatus.DRAFT : request.status(), normalizePriority(request.priority()),
+                request.criticality() == null ? Criticality.MEDIUM : request.criticality(),
+                request.requirementType() == null ? RequirementType.FUNCTIONAL : request.requirementType(),
+                request.reviewStatus() == null ? ReviewStatus.PROPOSED : request.reviewStatus(),
+                request.ownerUsername() == null || request.ownerUsername().isBlank() ? null : requireText(request.ownerUsername(), "ownerUsername", 160),
+                limited(imported == null ? request.changeReason() : imported.changeReason(), 1000, "changeReason"),
+                normalizedSource(imported == null ? request.source() : imported.source()));
+    }
+
+    static UpdateRequirementRequest validatedRequirementInput(UpdateRequirementRequest request) {
+        requireNonNull(request, "requirement update");
+        return new UpdateRequirementRequest(request.title() == null ? null : requireText(request.title(), "title", 240),
+                request.status(), request.priority() == null ? null : normalizePriority(request.priority()), request.criticality(),
+                request.requirementType(), request.reviewStatus(), request.ownerUsername() == null || request.ownerUsername().isBlank()
+                ? null : requireText(request.ownerUsername(), "ownerUsername", 160));
+    }
+
+    /** The caller holds the aggregate lock; this checks existing review evidence without changing metadata. */
+    void validateRequirementImportMetadata(ProjectRequirement requirement, UpdateRequirementRequest request) {
+        validatedRequirementInput(request);
+        if (request.status() == RequirementStatus.APPROVED || request.status() == RequirementStatus.IMPLEMENTING
+                || request.status() == RequirementStatus.SATISFIED || request.reviewStatus() == ReviewStatus.CONFIRMED)
+            positiveReviewGuard.requireReviewable(requirement.getProject(), requirement, currentVersion(requirement));
     }
 
     private static List<Long> sourceFragmentIds(SourceReference source) {

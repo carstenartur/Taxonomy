@@ -32,6 +32,9 @@ Anforderungsidentität bleibt erhalten. Siehe den
 
 | Methode | Route | Zweck |
 |---|---|---|
+| GET | `/api/architecture/lifecycle/architectures` | Lesbare aktive Architekturen und eigene unvollständige Erstellungen auflisten. |
+| POST | `/api/architecture/lifecycle/architectures` | Exakte eigene private Architekturerstellung anlegen oder wiederaufnehmen. |
+| GET | `/api/architecture/lifecycle/architectures/{repositoryId}/workspaces` | Vorhandene private Arbeitskopien des Aufrufers für diese Architektur wiederfinden. |
 | GET | `/api/architecture/lifecycle` | Exakten gewählten Architekturstand samt Umsetzungsbewertungen lesen. |
 | GET | `/api/architecture/lifecycle/history` | Tatsächlich erreichbare Git-Historie mit begrenzter Abdeckung durchsuchen. |
 | POST | `/api/architecture/lifecycle/intake-review` | Eingangstext gegen erlaubte Kandidaten prüfen, ohne zu schreiben. |
@@ -59,6 +62,30 @@ Die Antwort enthält `context`, `architectureTitle`, `source`, `projectionState`
 gewählten Modellstand. Eine historische Zeile überschreibt nicht den aktuellen
 Portfolio-Anforderungskopf. `realization`, `contributors` und `links` erhalten Prüf-
 und Beitragsherkunft. Historische portable Quellen benötigen keine aktuellen Datenbank-IDs.
+
+### Unabhängige Architektur anlegen und exakt wiederaufnehmen
+
+Die Erstellung übernimmt `{displayName, slug, description}`: einen nicht leeren Namen
+mit höchstens 255 Zeichen, einen stabilen Slug gemäß `[a-z0-9][a-z0-9-]{0,99}` und eine
+optionale Beschreibung mit höchstens 1.000 Zeichen. Eine neue Erstellung liefert
+201, eine exakte Wiederaufnahme 200. Nach unterbrochener Antwort denselben Slug,
+Namen und dieselbe Beschreibung behalten. Wiederaufnahme passt nur zur ursprünglichen
+privaten Erstellungsidentität desselben Aufrufers. Ein passender `ACTIVE`-Eintrag
+wird wiederverwendet; ein passender `FAILED`-Eintrag kann die Bereitstellung unter
+derselben Repository-ID fortsetzen. `PROVISIONING` ergibt 409: Zustand beobachten/neu
+laden, bevor erneut versucht wird. Abweichender Eigentümer, Identität oder
+Erstellungsinhalt ergibt einen Konflikt statt eine fremde Erstellung offenzulegen
+oder zu übernehmen.
+
+Die Architekturantwort enthält `repositoryId`, `displayName`, `slug`, `defaultBranch`,
+`owned`, `description` und `lifecycleState`. Die Liste enthält eigene Erstellungen
+mit `FAILED`/`PROVISIONING`, damit eine verlorene Antwort keine neue Identität
+erfordert. Die Wiederaufnahme prüft und erhält einen bereits geschriebenen initialen
+Git-Commit; sie löscht oder initialisiert den logischen Git-Speicher nicht neu.
+Abweichender erhaltener Git-Inhalt ergibt 409 und benötigt ausdrückliche Prüfung.
+Vor dem Anlegen einer weiteren privaten Arbeitskopie vorhandene über die
+Workspace-Listenroute wiederfinden. Deren Einträge nennen `workspaceId`,
+`sourceRepositoryId`, `sourceBranch`, `currentBranch`, `displayName` und `provisioningStatus`.
 
 ### Exakter Kontext, Eingabe und Veröffentlichung
 
@@ -168,9 +195,11 @@ und `source=LIVE_GIT`. Einträge enthalten `commitId`, `parents`, `author`, `tim
 vollständige `message`, Signaturbelege und `changes`. Änderungsarten umfassen `ADDED`,
 `REMOVED`, `REQUIREMENT_CHANGED`, `REQUIREMENT_METADATA_CHANGED`, `DEPENDENCIES_CHANGED`,
 `REALIZATION_CHANGED`, `MERGE` und `GIT_CHANGE`. Die Abdeckung ist `COMPLETE`, `PARTIAL`
-oder `LIMIT_REACHED`. Mit zurückgegebenem Offset und demselben HEAD fortsetzen;
-nach Branch-Änderung neu beginnen. Begrenzte Seiten können ohne Treffer bleiben,
-obwohl weitere Historie existiert. Berechtigungs-, Speicher- und Quelllesefehler
+oder `LIMIT_REACHED`. Mit zurückgegebenem Offset und demselben HEAD fortsetzen.
+Ein geänderter HEAD ergibt HTTP 409 `HISTORY_HEAD_CHANGED` mit `branch`, `expectedHead`
+und `currentHead`. Auf der ersten Seite neu beginnen statt mit dem alten Offset
+fortzusetzen. Begrenzte Seiten können ohne Treffer bleiben, obwohl weitere Historie
+existiert. Berechtigungs-, Speicher- und Quelllesefehler
 dürfen nicht als leere Historie dargestellt werden.
 
 <a id="editor-version-reconciliation-api"></a>
@@ -203,6 +232,13 @@ ausdrücklicher `LOCAL`-/`INCOMING`-Auswahl. Konsistente lokale Blöcke beibehal
 anschließend eine neue Version anlegen. Git-Auslassungen löschen keine verwaltete
 Fachhistorie: `LOCAL` wählen und ausdrücklich archivieren. Unverträgliche Entscheidungen
 ergeben HTTP 409 `PORTFOLIO_RECONCILIATION_REQUIRED`.
+
+Die Kompatibilitätsprüfung berücksichtigt auch unveränderliche Versionen der exakten
+Zieldatenbank, einschließlich Versionen, die in der lokalen DSL fehlen. Widersprüchlicher
+Text, Hashes oder mitgelieferte Quellherkunft, doppelte Versionsnummern und bekannter
+Inhalt unter einer anderen Versionsnummer werden abgewiesen statt umgeschrieben oder
+umnummeriert. Diese Vorprüfung läuft, bevor die vorgeschlagene Integration Zielmodell-
+oder Tracking-Referenzen fortschreibt. Passende portable Quellblöcke allein reichen nicht.
 
 Bei der Annahme werden geänderte verwaltete Portfolioblöcke über
 `WorkspacePortfolioGitPort` innerhalb der Journaltransaktion materialisiert, vor

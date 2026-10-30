@@ -103,13 +103,19 @@ tragen Anforderungen und geprüfte Umsetzung zu dieser Identität bei. Projektab
 erzeugt weder einen neuen Architektureigentümer noch entfernt er frühere Anforderungen.
 Folgebeiträge erhalten ursprüngliche Anforderungsidentität und exakte geprüfte Version.
 
-| Zuständigkeit | Lifecycle-Verantwortung |
+| Vertrag oder Einstieg | Zuständigkeit und Lifecycle-Verantwortung |
 |---|---|
-| `taxonomy-dsl` | Frameworkfreie Semantik von `RequirementRealization` und `RequirementTrace`, Versions-/Hashnachweise, Beitragsherkunft und quellenerhaltender Abgleich. |
-| `taxonomy-portfolio` | Projekt-/Anforderungsfachdaten, unveränderliche Versionen, begrenzte berechtigte Eingangskandidaten und Providerbewertung; portable Fachvalidierung/Materialisierung. |
-| `taxonomy-workspace` | Exakte Editorkontexte und semantische Revisionen, Journaltransaktionen, Checkpoint-Absicht/Wiederanlauf, Abgleich und native erreichbare Git-Historie über JGit/Hibernate-Speicher. |
-| `taxonomy-app` | Lifecycle-/Anforderungs-HTTP-Komposition, authentifizierter Kontext, atomare fachübergreifende Befehlskoordination und Portfolio-Port-Adapter. |
-| Anwendungsoberfläche | Gemeinsame Navigation/Kontext, ausdrückliche Intake-/Umsetzungsentscheidungen, Trennung von Quelle und gewähltem Stand sowie kontextsensitive Hilfe. |
+| `RequirementRealization`, `RequirementTrace` | `taxonomy-dsl`: frameworkfreie Versions-/Hashnachweise, Beitragsherkunft und quellenerhaltende Semantik. |
+| `RequirementIntakeService`, `PortablePortfolioGitService` | `taxonomy-portfolio`: begrenzte berechtigte Kandidaten und Providerbewertung, unveränderliche Fachversionen, portable Validierung/Materialisierung und Implementierung des Workspace-Ports. |
+| `ArchitectureEditorService`, `RequirementHistoryService` | `taxonomy-workspace`: exakte Kontexte und semantische Revisionen, Journaltransaktionen, Checkpoint-Absicht/Wiederanlauf, Abgleich und erreichbare Git-Historie über JGit/Hibernate-Speicher. |
+| `ArchitectureLifecycleService`, `ArchitectureRequirementService` | `taxonomy-app`: Lifecycle-Komposition, authentifizierter Kontext und atomare fachübergreifende Befehlskoordination. |
+| Gemeinsame Lifecycle-Navigation | Anwendungsoberfläche: ausdrückliche Intake-/Umsetzungsentscheidungen, Trennung von Quelle und gewähltem Stand sowie kontextsensitive Hilfe. |
+
+`WorkspaceSourceDiscoveryService` besitzt die begrenzte Architekturquellensuche und
+Leseberechtigung für exakte Kontexte. Portfolio-Intake verwendet diese Workspace-API
+statt auf Workspace-Repositories zuzugreifen. Dokumentzugriffe bleiben hinter
+`WorkspacePortfolioDocumentPort`; die Suche selbst materialisiert nichts und ruft
+keine Provider auf. Fachliche Portfolio-Repositories bleiben im Portfolio-Modul.
 
 `WorkspacePortfolioGitPort` hält Portfolio-Validierung/Materialisierung hinter der
 bestehenden Workspace-Grenze. Der Abgleich prüft kanonischen Anforderungstitel/Text/
@@ -117,7 +123,11 @@ Version/Hash gegen portable aktuelle unveränderliche Versionen und verhindert d
 Umschreiben vorhandener Versionsquellen. Geänderte verwaltete Blöcke werden innerhalb
 der Journaltransaktion vor Checkpoint-Absicht/Git materialisiert; Retries verwenden
 den dauerhaften Beleg. Git-Auslassungen löschen keine verwaltete Fachhistorie.
-Es entsteht weder ein paralleler Historienspeicher noch ein neues Fachmodul.
+Es entsteht weder ein paralleler Historienspeicher noch ein neues Fachmodul. Die
+zielkontextgebundene Validierung prüft auch unveränderliche Versionen, die nur in
+der Zieldatenbank erhalten sind. Diese Kompatibilitätsprüfung erfolgt vor dem
+Fortschreiben von Zielmodell- und Tracking-Referenzen. Passende Quellen erlauben
+kein Ersetzen oder Umnummerieren einer gespeicherten Version.
 
 Die Historie verwendet tatsächliche erreichbare JGit-Commits, Elternbeziehungen und
 Signaturbelege über die vorhandene `jgit-storage-hibernate`-Fassade. Begrenzte Abdeckung

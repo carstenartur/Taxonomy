@@ -1,6 +1,7 @@
 package com.taxonomy.backup.recovery;
 
 import com.taxonomy.tooling.NativeInstallationSnapshot;
+import com.taxonomy.support.ProcessTestDiagnostics;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -198,13 +199,14 @@ class NativeInstallationPostgresRecoveryIT {
     private static void application(Database db, String url, Path data, Path oracle, String phase, Path evidence) throws Exception {
         var builder = new ProcessBuilder(java(), "-Xmx768m", "-cp", classpath(), NativeInstallationRecoveryDriver.class.getName(), data.toString(), oracle.toString(), phase);
         builder.environment().put("TAXONOMY_RECOVERY_JDBC_URL", url); builder.environment().put("TAXONOMY_RECOVERY_DB_USER", db.user); builder.environment().put("TAXONOMY_RECOVERY_DB_PASSWORD", db.password);
-        Path log = evidence.resolve(phase + ".log"); assertThat(process(builder, log)).as("Application recovery phase %s; %s", phase, log).isZero();
-        assertThat(Files.readString(log)).contains("NATIVE_INSTALLATION_RECOVERY_OK " + phase);
+        Path log = evidence.resolve(phase + ".log");
+        ProcessTestDiagnostics.assertCompleted(process(builder, log), log, "NATIVE_INSTALLATION_RECOVERY_OK " + phase);
     }
     private static int process(ProcessBuilder builder, Path log) throws Exception {
         var process = builder.redirectErrorStream(true).redirectOutput(log.toFile()).start(); boolean done = process.waitFor(150, TimeUnit.SECONDS);
         if (!done) { process.destroyForcibly(); process.waitFor(20, TimeUnit.SECONDS); }
-        assertThat(done).as("Native recovery process completed: %s", log).isTrue(); return process.exitValue();
+        assertThat(done).as(() -> "Native recovery process completed; " + ProcessTestDiagnostics.describe(log)).isTrue();
+        return process.exitValue();
     }
     private static String fingerprint(String identity) throws Exception { return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
     private static String java() { return Path.of(System.getProperty("java.home"), "bin", "java").toString(); }

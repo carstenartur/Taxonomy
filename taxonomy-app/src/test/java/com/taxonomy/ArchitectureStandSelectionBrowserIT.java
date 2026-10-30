@@ -395,6 +395,60 @@ class ArchitectureStandSelectionBrowserIT {
         assertThat(countPosts(LIFECYCLE + "/architectures")).isZero();
     }
 
+    @Test void acceptedReviewNeedingReconciliationKeepsItsDraftUntilTheOriginalOperationIsPublished() {
+        currentWithHistoricalBackEntry(); openReview(); prepareReview();
+        AtomicInteger attempts=new AtomicInteger();
+        page.route("POST",LIFECYCLE + "/realizations",request -> {
+            boolean first=attempts.getAndIncrement()==0;
+            if(first) { REVISION.set(3); NEEDS_RECONCILIATION.set(true); }
+            return json(200,Map.of("context",context(REVISION.get()),"state",first?"RECONCILIATION_REQUIRED":"CHECKPOINTED"));
+        });
+        page.route("POST",RECONCILIATION + "/accept",request -> {
+            REVISION.set(4); NEEDS_RECONCILIATION.set(false); return json(200,Map.of("context",context(4),"state","CHECKPOINTED"));
+        });
+        click(By.id("lifecycleReviewAccept")); awaitRevision(3);
+        assertThat(page.driver().findElements(By.cssSelector("#lifecycleReviewDialog[open]"))).hasSize(1);
+        assertThat(page.driver().findElement(By.id("lifecycleReviewDialog")).getText()).contains("not published in Git").doesNotContain("Saved in Git");
+        assertThat(page.driver().findElement(By.id("lifecycleReviewReason")).getDomProperty("value")).isEqualTo("Keep this reviewed rationale");
+        click(By.cssSelector("#lifecycleReviewDialog [data-lifecycle-publication-reconcile]"));
+        reconcileFromRecovery(); awaitRevision(4);
+        assertThat(page.driver().findElement(By.id("lifecycleReviewDialog")).isDisplayed()).isTrue();
+        click(By.id("lifecycleReviewAccept"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("lifecycleReviewDialog")));
+        assertExactRetry(LIFECYCLE + "/realizations");
+    }
+
+    @Test void acceptedRequirementNeedingReconciliationKeepsTheVersionFormAndExactRetry() {
+        var fixture=new PortfolioRequirementFixture(page);
+        page.route("GET",LIFECYCLE,request -> json(200,Map.of("context",controlContext(),"architectureTitle","Control architecture",
+                "source","WORKSPACE_REVISION","projectionState",NEEDS_RECONCILIATION.get()?"RECONCILIATION_REQUIRED":"READY",
+                "publicationState",NEEDS_RECONCILIATION.get()?"RECONCILIATION_REQUIRED":"CHECKPOINTED","mayEdit",!NEEDS_RECONCILIATION.get(),
+                "projects",List.of(PortfolioRequirementFixture.project()),"requirements",List.of(),"dependencies",List.of())));
+        AtomicInteger attempts=new AtomicInteger();
+        page.route("POST",PortfolioRequirementFixture.SAVE_REQUIREMENT,request -> {
+            boolean first=attempts.getAndIncrement()==0;
+            if(first) { REVISION.set(3); NEEDS_RECONCILIATION.set(true); fixture.updateBaseline(PortfolioRequirementFixture.DRAFT.getFirst(),"Pump control"); }
+            return json(200,Map.of("projectId",1,"requirementId",2,"requirement",fixture.requirement.get(),
+                    "publication",Map.of("context",controlContext(),"state",first?"RECONCILIATION_REQUIRED":"CHECKPOINTED")));
+        });
+        page.route("POST",RECONCILIATION + "/preview",request -> {
+            var value=new LinkedHashMap<>(reconciliationPreview(request)); value.put("context",controlContext()); return json(200,value);
+        });
+        page.route("POST",RECONCILIATION + "/accept",request -> {
+            REVISION.set(4); NEEDS_RECONCILIATION.set(false); return json(200,Map.of("context",controlContext(),"state","CHECKPOINTED"));
+        });
+        fixture.open("en"); fixture.openVersionModal(); fixture.editVersion(); fixture.submitVersion(); fixture.idle();
+        wait.until(driver -> countPosts(PortfolioRequirementFixture.SAVE_REQUIREMENT)==1);
+        assertThat(page.driver().findElement(By.id("newVersionError")).getText()).contains("not published in Git");
+        assertThat(page.driver().findElement(By.id("newVersionModal")).isDisplayed()).isTrue(); fixture.assertDraft();
+        fixture.click(By.cssSelector("#newVersionError [data-lifecycle-publication-reconcile]"));
+        reconcileFromRecovery();
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("return TaxonomyArchitectureLifecycle.state()?.context.revision===4;")));
+        fixture.assertDraft(); fixture.click(By.cssSelector("#newVersionForm button[type='submit']"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("newVersionModal")));
+        assertExactRetry(PortfolioRequirementFixture.SAVE_REQUIREMENT);
+    }
+
     @Test void failedArchitectureProvisioningCanResumeAfterReloadWithItsPersistedIdentity() throws Exception {
         var failed=creationArchitecture("FAILED");
         CountDownLatch discovered=new CountDownLatch(1);
@@ -483,6 +537,14 @@ class ArchitectureStandSelectionBrowserIT {
         new Select(select).selectByValue("LOCAL");
     }
     private static void prepareReconciliation() { click(By.id("lifecycleReconciliationPreview")); wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("lifecycleReconciliationAccept"))); }
+    private static void reconcileFromRecovery() {
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("lifecycleReconciliationDialog")));
+        page.driver().findElement(By.id("lifecycleReconciliationReason")).sendKeys("Publish the accepted local operation");
+        click(By.id("lifecycleReconciliationPreview"));
+        new Select(wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#lifecycleReconciliationDialog [data-conflict-id]")))).selectByValue("LOCAL");
+        prepareReconciliation(); click(By.id("lifecycleReconciliationAccept"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("lifecycleReconciliationDialog")));
+    }
     private static void expand() {
         var details = page.driver().findElement(By.cssSelector("#architectureLifecycle > details"));
         if (!"true".equals(details.getDomProperty("open"))) click(By.cssSelector("#architectureLifecycle > details > summary"));
@@ -528,6 +590,9 @@ class ArchitectureStandSelectionBrowserIT {
     private static Map<String,Object> context(int revision) {
         return new LinkedHashMap<>(Map.of("repositoryId","fixture-architecture","workspaceScopeKey","fixture-space","branch","draft",
                 "commit",HEAD,"revision",revision,"actor","fixture-user","writeMode","PRIVATE_WORKSPACE"));
+    }
+    private static Map<String,Object> controlContext() {
+        var value=new LinkedHashMap<>(PortfolioRequirementFixture.lifecycleContext()); value.put("revision",REVISION.get()); return value;
     }
     private static Map<String,Object> selectedContext(Map<String,String> query) {
         int revision=query.containsKey("commit")?1:Integer.parseInt(query.getOrDefault("revision",String.valueOf(REVISION.get())));

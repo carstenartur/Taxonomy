@@ -1,5 +1,8 @@
 package com.taxonomy;
 
+import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
+import com.taxonomy.portfolio.model.AiCostPolicy;
+import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -12,7 +15,9 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
+import org.openqa.selenium.chromium.HasCdp;
 import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
@@ -160,6 +165,101 @@ class SharedApplicationChromeBrowserIT {
         page.driver().executeScript("arguments[0].scrollIntoView({block:'nearest',behavior:'instant'});", last);
         assertThat(page.driver().executeScript("const r=arguments[0].getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;", last))
                 .as("The last requirement remains reachable in the bounded header").isEqualTo(true);
+    }
+
+    @Test void forcedColorsKeepAnalysisMenuTextReadable() {
+        var cdp = (HasCdp) new Augmenter().augment(page.driver());
+        cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features",
+                List.of(Map.of("name", "forced-colors", "value", "active"))));
+        try {
+            open(new View("index", "/", "analysis", "fileMenuButton"), "en", 1366);
+            assertThat(page.driver().executeScript("return matchMedia('(forced-colors: active)').matches;")).isEqualTo(true);
+            for (String id : List.of("fileMenuButton", "projectMenuButton", "main-tab-help", "aboutBtn")) {
+                var button = page.driver().findElement(By.id(id));
+                assertThat(button.isDisplayed()).as("%s remains visible in forced colors", id).isTrue();
+                Number ratio = (Number) page.driver().executeScript("""
+                        const element=arguments[0],style=getComputedStyle(element);
+                        const luminance=color=>{
+                            const rgb=color.match(/[\\d.]+/g).slice(0,3).map(Number).map(v=>{
+                                v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);
+                            });
+                            return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;
+                        };
+                        let parent=element,background=style.backgroundColor;
+                        while(parent.parentElement && (background==='transparent' || background==='rgba(0, 0, 0, 0)')) {
+                            parent=parent.parentElement;background=getComputedStyle(parent).backgroundColor;
+                        }
+                        const first=luminance(style.color),second=luminance(background);
+                        return (Math.max(first,second)+.05)/(Math.min(first,second)+.05);
+                        """, button);
+                assertThat(ratio.doubleValue()).as("%s foreground/background contrast", id).isGreaterThanOrEqualTo(4.5);
+            }
+        } finally {
+            cdp.executeCdpCommand("Emulation.setEmulatedMedia", Map.of("features",
+                    List.of(Map.of("name", "forced-colors", "value", "none"))));
+        }
+    }
+
+    @ParameterizedTest @ValueSource(ints = {1920, 1366, 1024, 390})
+    void loadedWorkbenchReservesDiagramSpaceWithCurrentAndSourceContext(int width) throws IOException {
+        page.clearRoutes(); page.clearRequests();
+        page.driver().manage().window().setSize(new Dimension(width, width == 1920 ? 1080 : width == 390 ? 844 : 768));
+        page.route("GET", "/taxonomy/api/capabilities", request -> json(200, Map.of("features", List.of("portfolio", "architecture"))));
+        var project = Map.of("id", 42, "projectKey", "QA-PROJECT", "title", "Communication architecture contribution", "status", "ACTIVE");
+        page.route("GET", "/taxonomy/api/projects", request -> json(200, List.of(project)));
+        page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
+                "context", Map.of("repositoryId", "qa-architecture", "workspaceScopeKey", "qa-context-workspace",
+                        "branch", "qa-context-main", "commit", "a".repeat(40), "revision", 4),
+                "architectureTitle", "Communication architecture", "source", "WORKSPACE_AND_PORTFOLIO", "projectionState", "READY",
+                "publicationState", "CHECKPOINTED", "mayEdit", false,
+                "projects", List.of(project), "dependencies", List.of(), "requirements", List.of())));
+        page.route("GET", "/taxonomy/api/projects/42/architecture-workbench/qa-locale", request -> json(200, Map.ofEntries(
+                Map.entry("projectId", 42), Map.entry("projectKey", "QA-PROJECT"), Map.entry("requirementId", 7),
+                Map.entry("requirementKey", "QA-REQ-7"), Map.entry("requirementTitle", "Communication access requirement"),
+                Map.entry("requirementVersionNumber", 1), Map.entry("snapshotId", "qa-locale"), Map.entry("snapshotStatus", "SUCCESS"),
+                Map.entry("requirementText", "Original English requirement\n" + "Original authored requirement detail\n".repeat(80)),
+                Map.entry("provider", "QA"), Map.entry("policyTitleKey", "archview.policy.title.defaultImpact"),
+                Map.entry("branchName", "qa-verifikation"), Map.entry("commitSha", "0123456789".repeat(4)),
+                Map.entry("workspaceId", "qa-context-workspace"),
+                Map.entry("exportProvenance", Map.of("repositoryId", "qa-architecture", "requirementVersionId", 11)),
+                Map.entry("scene", Map.of("title", "archview.policy.title.defaultImpact", "nodes", List.of(
+                        Map.of("id", "QA-01", "label", "Original English architecture title", "type", "BP", "layer", "BP",
+                                "x", 40, "y", 80, "width", 260, "height", 90, "relevance", .9, "anchor", true),
+                        Map.of("id", "QA-02", "label", "Original distant architecture title", "type", "BP", "layer", "BP",
+                                "x", 2200, "y", 1800, "width", 260, "height", 90, "relevance", .7, "anchor", false)), "edges", List.of())),
+                Map.entry("elements", Map.of("QA-01", Map.of("directScore", 90, "reviewStatus", "PROPOSED", "presenceReason", "Original English evidence"))),
+                Map.entry("relations", Map.of()))));
+        page.openAt("architecture-workbench", "/taxonomy", "/taxonomy/architecture/workbench", "de", """
+                localStorage.clear();sessionStorage.clear();
+                history.replaceState(null,'','?projectId=42&snapshotId=qa-locale&repositoryId=qa-architecture&workspaceId=qa-context-workspace&workspaceScopeKey=qa-context-workspace&branch=qa-context-main&lang=de');
+                """, Map.of("projectId", 42, "snapshotId", "qa-locale"));
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#architectureCanvas .architecture-node")));
+        wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
+                const c=window.TaxonomyAppChrome?.getContext();
+                return c?.architecture?.title==='Communication architecture' && c?.source?.snapshotId==='qa-locale';
+                """)));
+        assertThat(page.driver().findElement(By.id("architectureAlert")).isDisplayed()).isFalse();
+        var geometry = (Map<?, ?>) page.driver().executeScript("""
+                const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();
+                    return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
+                const canvas=rect('#architectureCanvasShell'),details=rect('.workbench-detail-panel');
+                const desktop=innerWidth>900;
+                return {innerWidth,innerHeight,canvas,details,header:rect('.taxonomy-app-chrome'),
+                    valid:document.documentElement.scrollWidth<=innerWidth+1 && (desktop
+                        ? canvas.height>=innerHeight*.5 && canvas.bottom<=innerHeight+1 && details.bottom<=innerHeight+1
+                        : canvas.top<=innerHeight*.7 && [...document.querySelectorAll('.architecture-control,.architecture-toggle,.architecture-search')]
+                            .filter(e=>!e.hidden).every(e=>e.getBoundingClientRect().height>=44))};
+                """);
+        if (!Boolean.TRUE.equals(geometry.get("valid"))) {
+            Path evidence = Path.of("target", "coherent-lifecycle", "loaded-workbench-" + width);
+            Files.createDirectories(evidence);
+            Files.write(evidence.resolve("viewport.png"), page.driver().getScreenshotAs(OutputType.BYTES));
+            Files.writeString(evidence.resolve("geometry.json"), PortfolioClientTestPage.json(geometry));
+            Files.writeString(evidence.resolve("page.html"), page.driver().getPageSource());
+        }
+        assertThat(geometry.get("valid")).as("The fully loaded snapshot keeps the existing CI diagram and inspector viewport gates: %s", geometry).isEqualTo(true);
+        assertThat(page.driver().findElement(By.id("requirementText")).getText()).contains("Original authored requirement detail");
+        assertThat(page.driver().findElement(By.id("architectureProvenance")).getText()).contains("qa-locale");
     }
 
     @Test void languageAndSourceReturnKeepTheCompleteSelection() {
@@ -373,7 +473,8 @@ class SharedApplicationChromeBrowserIT {
                 const summary=arguments[0].getBoundingClientRect();
                 const heading=document.getElementById('requirementHeading').getBoundingClientRect();
                 const action=document.getElementById('newVersionButton').getBoundingClientRect();
-                const valid=summary.height>=44 && document.documentElement.scrollWidth<=innerWidth+1
+                const valid=summary.height>=44 && (innerWidth>=768 || action.height>=44)
+                    && document.documentElement.scrollWidth<=innerWidth+1
                     && scrollY===0 && (innerWidth<1000 ||
                         (heading.top>=0 && heading.top<=innerHeight/2 && heading.bottom<=innerHeight
                             && action.top>=0 && action.bottom<=innerHeight));
@@ -431,6 +532,12 @@ class SharedApplicationChromeBrowserIT {
         requirement.put("currentVersion", currentVersion);
         fixture.requirement.set(requirement);
         fixture.versions.set(List.of(currentVersion, previousVersion));
+        page.route("GET", "/api/ai-automation", request -> json(200, new AiAutomationStatus(
+                AiCostPolicy.METERED, false, false, false, false, null, null,
+                AnalysisAutomationProfile.FULL, AnalysisAutomationProfile.FULL, 1, 1, 100,
+                "No provider configured for this browser fixture.", List.of(), List.of("Human review remains required."))));
+        page.route("GET", PortfolioRequirementFixture.REQUIREMENT + "/copilot/latest", request ->
+                new PortfolioClientTestPage.Response(204, "application/json", ""));
         var requirements = java.util.stream.IntStream.rangeClosed(1, 19).mapToObj(number -> Map.<String, Object>ofEntries(
                 Map.entry("id", "control-requirement-" + number), Map.entry("projectId", 1), Map.entry("projectKey", "PROJECT"),
                 Map.entry("requirementId", number), Map.entry("requirementKey", "REQ-" + number),
@@ -462,6 +569,10 @@ class SharedApplicationChromeBrowserIT {
                 """.formatted(locale, COMPACT_REPOSITORY, COMPACT_WORKSPACE, COMPACT_WORKSPACE));
         wait.until(ExpectedConditions.textToBe(By.id("requirementHeading"), "Pump control"));
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("detailBusy")));
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("copilotPolicy"),
+                "No provider configured for this browser fixture."));
+        assertThat(page.driver().findElement(By.id("copilotError")).isDisplayed())
+                .as("The complete read fixture does not create an unrelated startup error or move focus").isFalse();
         wait.until(driver -> Boolean.TRUE.equals(page.driver().executeScript("""
                 const c=window.TaxonomyAppChrome?.getContext();
                 return c?.architecture?.title==='Control architecture' && c?.requirement?.versionId===912345

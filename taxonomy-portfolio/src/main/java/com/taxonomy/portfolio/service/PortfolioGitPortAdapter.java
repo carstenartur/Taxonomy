@@ -32,7 +32,7 @@ public class PortfolioGitPortAdapter
 
     @Override
     public void validatePortfolio(String localDsl, String candidateDsl, String username, WorkspaceContext context) {
-        workspaceConflict(() -> portfolioGitService.validatePortfolio(localDsl, candidateDsl, username, context));
+        workspaceConflict(() -> portfolioGitService.validatePortfolio(localDsl, candidateDsl, username, context), true);
     }
 
     @Override
@@ -58,9 +58,15 @@ public class PortfolioGitPortAdapter
     }
 
     private static void workspaceConflict(Runnable action) {
+        workspaceConflict(action, false);
+    }
+
+    private static void workspaceConflict(Runnable action, boolean incomingPreflight) {
         try { action.run(); }
         catch (PortfolioException failure) {
-            if (failure.getKind() != PortfolioException.Kind.CONFLICT) throw failure;
+            // Invalid incoming owner data also requires source reconciliation before any Git publication.
+            if (failure.getKind() != PortfolioException.Kind.CONFLICT
+                    && !(incomingPreflight && failure.getKind() == PortfolioException.Kind.VALIDATION)) throw failure;
             var conflict = new CommandProblem("PORTFOLIO_RECONCILIATION_REQUIRED", "portfolio", failure.getMessage(), List.of());
             conflict.initCause(failure);
             throw conflict;

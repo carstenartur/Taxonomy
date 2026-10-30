@@ -167,7 +167,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     @Transactional
     public void validatePortfolio(String localDsl, String candidateDsl, String username, WorkspaceContext context) {
         validatePortfolio(localDsl, candidateDsl);
-        validateImmutableVersions(candidateDsl, username, context);
+        validateMaterialization(candidateDsl, username, context);
         reformulationEvidence.validateForMaterialization(candidateDsl);
     }
 

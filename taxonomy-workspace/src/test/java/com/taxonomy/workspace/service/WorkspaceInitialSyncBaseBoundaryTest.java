@@ -74,7 +74,7 @@ class WorkspaceInitialSyncBaseBoundaryTest {
         sourceMetadata.setDefaultBranch("draft");
         var rows = mock(UserWorkspaceRepository.class);
         when(rows.findByWorkspaceId("workspace-id")).thenReturn(Optional.of(workspace));
-        var catalog = mock(SystemRepositoryService.class);
+        var catalog = NativeSyncTestCatalog.create();
         when(catalog.getRepository("source-id")).thenReturn(sourceMetadata);
         var syncRows = mock(SyncStateRepository.class);
         when(syncRows.findByUsername("base-owner")).thenReturn(Optional.of(new SyncState()));

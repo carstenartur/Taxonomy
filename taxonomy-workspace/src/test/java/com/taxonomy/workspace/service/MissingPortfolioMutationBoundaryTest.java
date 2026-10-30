@@ -11,7 +11,7 @@ class MissingPortfolioMutationBoundaryTest {
     @Test void rejectsAllSyncWritesBeforeContextProvisioningOrGitMutation() {
         var sync = mock(SyncStateRepository.class);
         var workspaces = mock(UserWorkspaceRepository.class);
-        var system = mock(SystemRepositoryService.class);
+        var system = NativeSyncTestCatalog.create();
         var repositories = mock(DslGitRepositoryFactory.class);
         var merge = mock(SemanticGitMergeService.class);
         var portfolio = mock(WorkspacePortfolioGitPort.class);

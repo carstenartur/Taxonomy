@@ -167,7 +167,7 @@
         }
         try {
             var saved=await window.TaxonomyArchitectureLifecycle.saveRequirement(attempt.command);
-            if(saved.publication?.state!=='CHECKPOINT_PENDING')promotionAttempts.delete(form);
+            if(!['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(saved.publication?.state))promotionAttempts.delete(form);
             return{saved:saved,captured:attempt.captured,choice:attempt.command.choice};
         } catch(error) {
             if([400,403,404,409,412,422].includes(error?.status))promotionAttempts.delete(form);
@@ -396,8 +396,8 @@
                     text: textInput.value
                 }, parts.form, options).then(function (result) {
                     if (!result) { setDialogBusy(parts, false); return; }
-                    parts.savedPending=result.saved.publication?.state==='CHECKPOINT_PENDING';
-                    if(parts.savedPending){setDialogBusy(parts,false);showSavedEntry(parts,result,language()==='de'?'Die Anforderung ist gespeichert. Wiederholen Sie den Vorgang, um den offenen Architektur-Checkpoint abzuschließen.':'The requirement is saved. Retry this operation to complete its pending architecture checkpoint.');return;}
+                    parts.savedPending=['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(result.saved.publication?.state);
+                    if(parts.savedPending){setDialogBusy(parts,false);parts.error.textContent='';parts.error.classList.remove('d-none');window.TaxonomyArchitectureLifecycle.showPublicationRecovery(parts.error,result.saved);return;}
                     if (result.choice === 'LINK') {
                         setDialogBusy(parts,false);
                         showSavedEntry(parts,result,language()==='de'?'Die bestehende Anforderung wurde verknüpft. Ihr eingegebener Text bleibt für eine neue Anforderung oder Version erhalten.':'The existing requirement was linked. Your entered text is retained for a new requirement or version.');return;
@@ -484,8 +484,8 @@
                 createRequirement(null, {requirementKey:'REQ-001',title:deriveTitle(seedTextInput.value),text:seedTextInput.value},
                     parts.form, options, projectRequest).then(function (result) {
                     if (!result) { setDialogBusy(parts,false); return; }
-                    parts.savedPending=result.saved.publication?.state==='CHECKPOINT_PENDING';
-                    if(parts.savedPending){setDialogBusy(parts,false);showSavedEntry(parts,result,language()==='de'?'Die Anforderung ist gespeichert. Wiederholen Sie denselben Vorgang für den offenen Checkpoint.':'The requirement is saved. Retry the same operation to complete its pending checkpoint.');return;}
+                    parts.savedPending=['CHECKPOINT_PENDING','RECONCILIATION_REQUIRED'].includes(result.saved.publication?.state);
+                    if(parts.savedPending){setDialogBusy(parts,false);parts.error.textContent='';parts.error.classList.remove('d-none');window.TaxonomyArchitectureLifecycle.showPublicationRecovery(parts.error,result.saved);return;}
                     if (result.choice === 'LINK') {
                         setDialogBusy(parts,false);
                         showSavedEntry(parts,result,language()==='de'?'Die bestehende Anforderung wurde verknüpft. Ihr eingegebener Text bleibt erhalten.':'The existing requirement was linked. Your entered text is retained.');return;

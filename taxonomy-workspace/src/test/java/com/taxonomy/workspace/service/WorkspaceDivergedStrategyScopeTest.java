@@ -41,7 +41,7 @@ class WorkspaceDivergedStrategyScopeTest {
             var sourceMetadata = new SystemRepository();
             sourceMetadata.setRepositoryId("selected-source");
             sourceMetadata.setDefaultBranch("release");
-            var catalog = mock(SystemRepositoryService.class);
+            var catalog = NativeSyncTestCatalog.create();
             when(catalog.getRepository("selected-source")).thenReturn(sourceMetadata);
             when(catalog.getSharedBranch()).thenReturn("draft");
             var workspace = new UserWorkspace();

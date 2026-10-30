@@ -69,6 +69,7 @@
 @media print { .taxonomy-app-chrome { display: none; } }
 @media (forced-colors: active) {
     .taxonomy-app-navigation, .taxonomy-app-context, .taxonomy-entity-status, .taxonomy-entity-key, .taxonomy-entity-version { color: CanvasText; background: Canvas; border-color: CanvasText; }
+    .taxonomy-app-navigation .btn-outline-light { color: ButtonText !important; background-color: ButtonFace !important; border-color: ButtonText !important; }
     .taxonomy-app-primary a, .taxonomy-app-languages a, .taxonomy-app-brand, .taxonomy-app-navigation .context-help { color: LinkText; }
     .taxonomy-app-primary a[aria-current="page"] { color: HighlightText; background: Highlight; }
 }

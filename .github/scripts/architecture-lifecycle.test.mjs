@@ -37,8 +37,9 @@ async function fixture(firstOutcome='unknown') {
                 writes.push({url,options:copy(options)});
                 if (writes.length===1) {
                     if (firstOutcome==='unknown') throw Object.assign(new Error('The accepted response was lost'), {status:503});
-                    current=overview({...originalContext,revision:3},'CHECKPOINT_PENDING');
-                    return {json:async()=>({projectId:1,requirementId:2,publication:{context:copy(current.context),state:'CHECKPOINT_PENDING'}})};
+                    const publicationState=firstOutcome==='reconciliation'?'RECONCILIATION_REQUIRED':'CHECKPOINT_PENDING';
+                    current=overview({...originalContext,revision:3},publicationState);
+                    return {json:async()=>({projectId:1,requirementId:2,publication:{context:copy(current.context),state:publicationState}})};
                 }
                 return {json:async()=>({projectId:1,requirementId:2,publication:{context:copy(current.context),state:'CHECKPOINTED'}})};
             }
@@ -84,6 +85,18 @@ test('a confirmed pending requirement replays its original command after a later
     const {lifecycle,command,writes,changeStand}=await fixture('pending');
     const first=await lifecycle.saveRequirement(command);
     assert.equal(first.publication.state,'CHECKPOINT_PENDING');
+    await changeStand({...originalContext,revision:4,commit:'c'.repeat(40)});
+    await lifecycle.saveRequirement(command);
+    assert.equal(writes.length,2);
+    assert.equal(writes[1].options.body,writes[0].options.body);
+    assert.equal(writes[1].url,writes[0].url);
+    for (const write of writes) assert.equal(write.options.headers['If-Match'],'"workspace-revision-2"');
+});
+
+test('an accepted requirement awaiting reconciliation retains its exact command until publication is confirmed', async () => {
+    const {lifecycle,command,writes,changeStand}=await fixture('reconciliation');
+    const first=await lifecycle.saveRequirement(command);
+    assert.equal(first.publication.state,'RECONCILIATION_REQUIRED');
     await changeStand({...originalContext,revision:4,commit:'c'.repeat(40)});
     await lifecycle.saveRequirement(command);
     assert.equal(writes.length,2);

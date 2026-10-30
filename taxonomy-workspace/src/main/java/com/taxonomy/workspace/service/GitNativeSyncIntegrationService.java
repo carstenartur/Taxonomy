@@ -291,8 +291,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         workspaceMetadata.setLastAccessedAt(Instant.now());
         workspaceRepository.save(workspaceMetadata);
         requireSourceAuthority(username, sourceMetadata, true);
-        sourceMetadata.setLastPushAt(Instant.now());
-        systemRepositoryService.save(sourceMetadata);
+        systemRepositoryService.recordLastPush(sourceMetadata.getRepositoryId(), Instant.now());
         updateAfterPublish(username, sourceCommit);
         return sourceCommit;
     }
@@ -318,6 +317,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         WorkspaceContext target = new WorkspaceContext(username, null, into, context.repositoryId());
         portfolioGitPort.validatePortfolio(destination.dsl(), content, username, target);
         repository.verifyExpectedHead(from, chosen.head());
+        requireSourceAuthority(username, metadata, true);
         String commit = commitIfChanged(repository, into, content, destination.dsl(),
                 destination.head(), username, "Resolve conflict using " + from);
         portfolioGitPort.materializePortfolio(content, username, target);
@@ -471,14 +471,20 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     }
 
     private void requireSourceAuthority(String username, SystemRepository source, boolean publish) {
-        if (sourceMemberships == null || !sourceMemberships.canRead(source, username)) {
+        if (sourceMemberships == null) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Current source repository read access is required");
         }
-        if (publish && !sourceMemberships.canContribute(source, username)) {
-            throw new org.springframework.security.access.AccessDeniedException(
-                    "Current source repository CONTRIBUTOR role is required");
-        }
+        // A repeated lookup in the surrounding journal transaction can return the captured entity.
+        // Evaluate metadata and membership together in the owner's fresh, read-only transaction.
+        systemRepositoryService.readCurrentAuthorization(requireRepositoryId(source), current -> {
+            if (!sourceMemberships.canRead(current, username))
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Current source repository read access is required");
+            if (publish && !sourceMemberships.canContribute(current, username))
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Current source repository CONTRIBUTOR role is required");
+        });
     }
 
     private UserWorkspace requireWorkspace(String workspaceId) {

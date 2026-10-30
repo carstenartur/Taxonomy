@@ -77,7 +77,7 @@ test('portfolio intake keeps one interactive choice, releases cancellation and p
   }
   const reviews=[],saves=[];let finishSave,resetCount=0;
   const textField=element('text');textField.value=' Raw draft\n';
-  const form={querySelector:()=>textField,reset(){resetCount++;}};
+  const form={querySelector:selector=>selector==='[name="text"]'?textField:null,reset(){resetCount++;}};
   const window={location:{search:''},setTimeout(){},
     TaxonomyRequirementIntake:{prepare(form,payload,projectId){
       return new Promise(resolve=>reviews.push({payload,projectId,resolve}));
@@ -107,4 +107,67 @@ test('portfolio intake keeps one interactive choice, releases cancellation and p
   await pending;
   assert.equal(element('portfolioBusy').classList.contains('d-none'),true);
   assert.equal(textField.value,'Newer unsaved text');assert.equal(resetCount,0);
+});
+
+for (const surface of ['detail','portfolio']) {
+  test(`${surface} keeps its draft and original attempt when accepted text still requires reconciliation`,async()=>{
+    const elements=new Map(),recoveries=[],savedMessages=[];let hidden=0,resets=0,reloads=0;
+    function element(id){
+      if(!elements.has(id)) {
+        const classes=new Set(['d-none']);
+        elements.set(id,{value:'',textContent:'',dataset:{},disabled:false,focus(){},scrollIntoView(){},
+          classList:{add(...values){values.forEach(value=>classes.add(value));},remove(...values){values.forEach(value=>classes.delete(value));},
+            contains:value=>classes.has(value),toggle(value,force){if(force)classes.add(value);else classes.delete(value);}}});
+      }
+      return elements.get(id);
+    }
+    const draft=element(surface==='detail'?'versionText':'text');draft.value='Unpublished draft\nKeep the exact text';
+    const form=element(surface==='detail'?'newVersionForm':'requirementForm');
+    form.querySelector=selector=>selector==='[name="text"]'?draft:null;form.reset=()=>{resets++;draft.value='';};
+    const command={choice:'CHANGE',projectId:1,requirementId:2,expectedVersionId:12,expectedContentHash:'original-hash',requirement:{text:draft.value}};
+    const window={location:{pathname:'/projects/1/requirements/2',search:''},setTimeout(){},
+      TaxonomyI18n:{t:key=>key},TaxonomyRequirementIntake:{attach(){},prepareVersion:async()=>command,prepare:async()=>command,isCurrent:()=>true},
+      TaxonomyArchitectureLifecycle:{async saveRequirement(value){
+        value.context={revision:2};value.metadata={commandId:'original-command'};
+        return {projectId:1,requirementId:2,requirement:{id:2,currentVersion:{id:13,contentHash:'new-hash'}},publication:{state:'RECONCILIATION_REQUIRED'}};
+      },showPublicationRecovery(target,value){recoveries.push(value.publication.state);}}};
+    const document={documentElement:{lang:'en'},addEventListener(){},getElementById:element,querySelector:()=>element('submit'),querySelectorAll:()=>[element('submit')]};
+    const bootstrap={Modal:{getOrCreateInstance:()=>({hide(){hidden++;}})}};
+    class FormData {forEach(callback){callback('REQ-2','requirementKey');callback('Requirement','title');callback(draft.value,'text');}}
+    if(surface==='detail') {
+      const instrumented=detailSource.replace(/\}\)\(\);\s*$/,'window.detailProbe={state,createVersion,captureVersionDraftBase,setObservers:function(reload,saved){loadAll=reload;showSavedRequirement=saved;}};})();');
+      vm.runInNewContext(instrumented,{window,document,bootstrap,URLSearchParams,Date,JSON,Number});
+      const probe=window.detailProbe;probe.state.requirement={requirementKey:'REQ-2',title:'Requirement'};
+      probe.captureVersionDraftBase({id:12,contentHash:'original-hash'});
+      probe.setObservers(async()=>{reloads++;},(_saved,message)=>savedMessages.push(message));
+      await probe.createVersion({preventDefault(){}});
+      assert.equal(probe.state.versionAttempt?.command,command,'The exact accepted but unpublished attempt must remain available');
+      assert.equal(probe.state.versionDraftBase.requirementVersionId,12);
+    } else {
+      const instrumented=portfolioSource.replace(/\}\)\(\);\s*$/,'window.portfolioProbe={state,createRequirement,setRefresh:function(reload){refreshSelectedProject=reload;}};})();');
+      vm.runInNewContext(instrumented,{window,document,bootstrap,URLSearchParams,FormData});
+      const probe=window.portfolioProbe;probe.state.selectedProjectId=1;probe.setRefresh(async()=>{reloads++;});
+      await probe.createRequirement({preventDefault(){},currentTarget:form});
+    }
+    assert.equal(hidden,0);assert.equal(resets,0);assert.equal(reloads,0);assert.deepEqual(savedMessages,[]);
+    assert.equal(draft.value,'Unpublished draft\nKeep the exact text');
+    assert.deepEqual(recoveries,['RECONCILIATION_REQUIRED'],'The existing reconciliation workflow must be offered explicitly');
+  });
+}
+
+test('analysis promotion retains the same accepted attempt while reconciliation is still required',async()=>{
+  let preparations=0;const commands=[];
+  const C={S:{},runtime:{},text:key=>key,language:()=> 'en',currentPayload:()=>({businessText:'Draft'}),
+    comparable:JSON.stringify,meaningful:()=>true,saveDraft:async()=>true};
+  const window={__TaxonomyAnalysisSessionContext:C,
+    TaxonomyRequirementIntake:{async prepare(){preparations++;return {choice:'NEW',projectId:1,requirement:{text:'Draft'}};}},
+    TaxonomyArchitectureLifecycle:{async saveRequirement(command){commands.push(command);return {publication:{state:commands.length===1?'RECONCILIATION_REQUIRED':'CHECKPOINTED'}};}}};
+  vm.runInNewContext(source.replace(/\}\(\)\);\s*$/,'window.analysisProbe={createRequirement};}());'),
+    {window,document:{readyState:'loading',addEventListener(){}},Promise,Date,String,Object,JSON,Math,encodeURIComponent});
+  const form={},values={requirementKey:'REQ-1',title:'Requirement',text:'Draft'};
+  const first=await window.analysisProbe.createRequirement(1,values,form,{});
+  assert.equal(first.saved.publication.state,'RECONCILIATION_REQUIRED');
+  await window.analysisProbe.createRequirement(1,values,form,{});
+  assert.equal(preparations,1,'Unpublished acceptance must not become a new intake decision');
+  assert.equal(commands[1],commands[0]);
 });

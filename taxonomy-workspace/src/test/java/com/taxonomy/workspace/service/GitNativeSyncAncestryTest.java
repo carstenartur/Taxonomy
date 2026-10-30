@@ -90,7 +90,7 @@ class GitNativeSyncAncestryTest {
             var workspaces = mock(UserWorkspaceRepository.class);
             when(workspaces.findByWorkspaceId("workspace")).thenReturn(Optional.of(workspace));
             when(workspaces.save(any())).thenAnswer(call -> call.getArgument(0));
-            var catalog = mock(SystemRepositoryService.class);
+            var catalog = NativeSyncTestCatalog.create();
             var metadata = new SystemRepository(); metadata.setRepositoryId("architecture"); metadata.setDefaultBranch("main");
             when(catalog.getRepository("architecture")).thenReturn(metadata);
             var states = mock(SyncStateRepository.class);
