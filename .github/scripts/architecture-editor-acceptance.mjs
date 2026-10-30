@@ -70,8 +70,6 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   assert.ok(sourceWorkspace,'Ordinary analysis fixtures must be created in an isolated source workspace');
   const pin = new URLSearchParams({repositoryId:repository,workspaceId:sourceWorkspace,branch});
   const scoped = path => path + '?' + pin;
-  await page.goto(base + '/projects?' + pin + '&lang=en');
-  await page.locator('#portfolioMain').waitFor();
   async function request(path,body,method='POST') {
     const response = await csrfJson(page,scoped(path),{method,body});
     assert.ok(response.status >= 200 && response.status < 300, `${path}: ${response.status} ${response.text}`);
@@ -83,6 +81,13 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
     text:'Provide secure resilient command information exchange with auditable decisions.',status:'APPROVED',priority:90,
     criticality:'MISSION_CRITICAL',requirementType:'SECURITY',reviewStatus:'CONFIRMED',changeReason:'Browser acceptance fixture'};
   const requirement = await request(`/api/projects/${project.id}/requirements`,requirementBody);
+  await page.goto(base + `/projects?projectId=${project.id}&${pin}&lang=en`);
+  await page.locator('#projectWorkspace').waitFor({state:'visible'});
+  assert.equal(await page.locator('#selectedProjectKey').innerText(),project.projectKey);
+  assert.equal(new URL(page.url()).searchParams.get('projectId'),String(project.id));
+  assert.deepEqual(await page.evaluate(()=>window.TaxonomyArchitectureWorkflow.getScope()),{
+    repositoryId:repository,workspaceId:sourceWorkspace,workspaceScopeKey:sourceWorkspace,branch
+  });
   const job = await request(`/api/projects/${project.id}/requirements/${requirement.id}/analyses`,{provider:'GEMINI',maxArchitectureNodes:20,idempotencyKey:'adoption-'+suffix});
   let completed;
   const deadline = Date.now()+120000;
@@ -94,6 +99,24 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   }
   assert.ok(completed,'Mock analysis must persist a snapshot within the existing analysis timeout');
   const snapshot = completed.items[0].snapshotId;
+  // The driver and the product poll independently. Observe the same completed
+  // result in the selected project before navigating away from its job centre.
+  const jobUrl = new URL(`/api/projects/${project.id}/analysis-jobs/${job.id}`,base).href;
+  const jobCard = page.locator('#portfolioJobList .portfolio-job').filter({
+    has:page.locator(`h3[id="job-${job.id}"]`)
+  });
+  assert.equal(await jobCard.getAttribute('data-job-url'),jobUrl);
+  const statusLabel = status => status === 'SUCCESS' ? 'Successful' : 'Partial';
+  await jobCard.getByRole('heading',{name:`${job.id.slice(0,12)} · ${statusLabel(completed.status)}`,exact:true})
+    .waitFor({state:'visible',timeout:30000});
+  assert.ok(['SUCCESS','PARTIAL'].includes(completed.items[0].status));
+  await jobCard.locator('.job-toggle').click();
+  const resultRow = jobCard.locator('tbody tr').filter({hasText:requirementBody.requirementKey});
+  await resultRow.waitFor({state:'visible'});
+  assert.equal(await resultRow.locator('td').nth(0).innerText(),requirementBody.requirementKey);
+  assert.equal(await resultRow.locator('td').nth(1).innerText(),statusLabel(completed.items[0].status));
+  assert.equal(await resultRow.locator('td').nth(3).locator(':scope > code').innerText(),snapshot.slice(0,12));
+  assert.equal(await jobCard.locator('.text-warning').count(),0);
   await request(`/api/projects/${project.id}/requirements/${requirement.id}/versions`,{text:'Later edited requirement must not replace frozen evidence.',changeReason:'Retained version regression'});
   await page.goto(base+`/architecture/workbench?projectId=${project.id}&snapshotId=${snapshot}&${pin}&lang=en`);
   await page.locator('#workflow-adopt').waitFor({state:'visible'});
@@ -183,7 +206,8 @@ async function runSnapshotAdoptionAcceptance(page, base, initial) {
   await page.locator('#workflow-adopt').waitFor({state:'visible'});
   assert.match(await page.locator('#requirementText').innerText(),/Provide secure resilient command information exchange/);
   return {snapshot,sourceRepository:repository,targetWorkspace:copy.workspaceId,viewId:adopted.viewId,acceptedRevision:1,
-    replayed:true,checkpoint:checkpoint.commitId,undo:undone.operationId,redo:redone.operationId,retainedOldRequirement:true,sourceReturn:true};
+    replayed:true,checkpoint:checkpoint.commitId,undo:undone.operationId,redo:redone.operationId,retainedOldRequirement:true,sourceReturn:true,
+    projectSelectionVerified:true,productCompletionObserved:true,terminalJobStatus:completed.status};
 }
 
 /** Real authenticated UI commands, sharing the existing role/engine/reflow application fixture. */
