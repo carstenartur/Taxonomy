@@ -78,6 +78,7 @@ public class PortfolioDecisionGitContributor {
     private static final SourceLocation GENERATED =
             new SourceLocation("portfolio-decision-projection", 1, 1);
 
+    private final com.taxonomy.workspace.service.RepositoryMutationFence repositoryFence;
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
     private final SolutionDefinitionRepository solutionRepository;
@@ -99,7 +100,9 @@ public class PortfolioDecisionGitContributor {
             RequirementSolutionLinkRepository requirementLinkRepository,
             ProductCatalogEntryRepository productRepository,
             ProductTaxonomyCoverageRepository productCoverageRepository,
-            SolutionProductCandidateRepository candidateRepository) {
+            SolutionProductCandidateRepository candidateRepository,
+            com.taxonomy.workspace.service.RepositoryMutationFence repositoryFence) {
+        this.repositoryFence=java.util.Objects.requireNonNull(repositoryFence);
         this.projectRepository = projectRepository;
         this.requirementRepository = requirementRepository;
         this.solutionRepository = solutionRepository;
@@ -219,6 +222,9 @@ public class PortfolioDecisionGitContributor {
                                 "actionStatus", name(projectSolution.getActionStatus()),
                                 "priority", string(projectSolution.getPriority()),
                                 "rationale", projectSolution.getRationale(),
+                                "inventoryComparisonId", projectSolution.getInventoryComparisonId(),
+                                "inventoryFingerprint", projectSolution.getInventoryFingerprint(),
+                                "inventoryHardExclusions", projectSolution.getInventoryHardExclusions(),
                                 "createdBy", projectSolution.getCreatedBy(),
                                 "createdAt", string(projectSolution.getCreatedAt()),
                                 "updatedAt", string(projectSolution.getUpdatedAt()),
@@ -266,6 +272,28 @@ public class PortfolioDecisionGitContributor {
     @Transactional
     public DecisionMaterializeResult materialize(
             String dsl, String username, WorkspaceContext context) {
+        lockForMaterialization(username,context);
+        return materializeWithLockedAggregates(dsl,username,context);
+    }
+
+    /** Shared order at the outer Git entry, before any superclass project writes. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockForMaterialization(String username,WorkspaceContext context) {
+        String scope=PortfolioScope.key(username,context);
+        try {
+            repositoryFence.lock(PortfolioScope.repositoryId(context));
+            for(var p:projectRepository.findByScopeKeyOrderByUpdatedAtDesc(scope).stream().sorted(Comparator.comparing(ArchitectureProject::getId)).toList())
+                projectRepository.findByIdAndScopeKeyForUpdate(p.getId(),scope).orElseThrow(()->PortfolioException.conflict("Project disappeared during Git materialization"));
+            for(var s:solutionRepository.findByScopeKeyOrderByTitleAsc(scope).stream().sorted(Comparator.comparing(SolutionDefinition::getId)).toList())
+                solutionRepository.findByIdAndScopeKeyForUpdate(s.getId(),scope).orElseThrow(()->PortfolioException.conflict("Solution disappeared during Git materialization"));
+            for(var p:productRepository.findByScopeKeyOrderByManufacturerAscProductNameAsc(scope).stream().sorted(Comparator.comparing(ProductCatalogEntry::getId)).toList())
+                productRepository.findByIdAndScopeKeyForUpdate(p.getId(),scope).orElseThrow(()->PortfolioException.conflict("Product disappeared during Git materialization"));
+        } catch(jakarta.persistence.OptimisticLockException | jakarta.persistence.PessimisticLockException | org.springframework.dao.ConcurrencyFailureException conflict) {
+            throw PortfolioException.conflict("Portfolio inputs changed during Git materialization; retry against current state");
+        }
+    }
+
+    DecisionMaterializeResult materializeWithLockedAggregates(String dsl,String username,WorkspaceContext context) {
         DocumentAst document = parser.parse(dsl, "portfolio-decisions.taxdsl");
         String scopeKey = PortfolioScope.key(username, context);
         String workspaceId = PortfolioScope.workspaceId(context);
@@ -517,6 +545,13 @@ public class PortfolioDecisionGitContributor {
             ActionStatus action = enumValue(
                     ActionStatus.class, block.property("actionStatus"), ActionStatus.UNDECIDED);
             int priority = clamp(integer(block.property("priority"), 50), 0, 100);
+            boolean retainPrior=projectSolution!=null && !isBlank(projectSolution.getInventoryHardExclusions());
+            String comparisonId=retainPrior?projectSolution.getInventoryComparisonId():block.property("inventoryComparisonId");
+            String fingerprint=retainPrior?projectSolution.getInventoryFingerprint():block.property("inventoryFingerprint");
+            String exclusions=retainPrior?projectSolution.getInventoryHardExclusions():block.property("inventoryHardExclusions");
+            if(!isBlank(exclusions) && (status==ProjectSolutionStatus.SELECTED || status==ProjectSolutionStatus.IMPLEMENTED)) {
+                warnings.add(identity(block)+" cannot remain selected with retained inventory hard exclusions");status=ProjectSolutionStatus.REJECTED;
+            }
             if (projectSolution == null) {
                 projectSolution = new ProjectSolution(
                         project,
@@ -535,6 +570,7 @@ public class PortfolioDecisionGitContributor {
                         block.property("rationale"),
                         now);
             }
+            if(comparisonId!=null || exclusions!=null)projectSolution.retainInventoryDecision(comparisonId,fingerprint,exclusions);
             projectSolution = projectSolutionRepository.save(projectSolution);
             projectSolutions.put(composite(projectKey, solutionKey), projectSolution);
         }

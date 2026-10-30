@@ -25,6 +25,10 @@ public final class PortableRows {
                 @Override public void serialize(Instant value, JsonGenerator output, SerializerProvider provider) throws IOException {
                     output.writeString(value.toString());
                 }
+            }).addSerializer(LocalDate.class, new JsonSerializer<LocalDate>() {
+                @Override public void serialize(LocalDate value, JsonGenerator output, SerializerProvider provider) throws IOException {
+                    output.writeString(value.toString());
+                }
             }))
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     static { JSON.getFactory().setStreamReadConstraints(StreamReadConstraints.builder()

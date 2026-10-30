@@ -17,8 +17,9 @@ class EditorTestFixtureArchiveTest {
         assertThat(archives).hasSize(1);
         try (var archive = new ZipFile(archives.getFirst().toFile())) {
             var content = archive.stream().filter(e -> !e.isDirectory())
-                    .map(e -> e.getName()).filter(n -> !n.startsWith("META-INF/")).toList();
-            assertThat(content).containsExactly("com/taxonomy/editor/EditorPersistenceFixture.class");
+                    .map(e -> e.getName()).filter(n -> !n.startsWith("META-INF/")).sorted().toList();
+            assertThat(content).containsExactly("com/taxonomy/editor/EditorPersistenceFixture.class",
+                    "com/taxonomy/workspace/repository/RepositoryMutationFenceFixture.class");
         }
     }
 }

@@ -53,7 +53,7 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
             var driver=session.driver();var wait=new WebDriverWait(driver,Duration.ofSeconds(30));driver.manage().window().setSize(new Dimension(1440,1000));
             driver.get(session.origin()+BASE+"/login");driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys(PASSWORD);driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
             driver.get(session.origin()+BASE+"/projects/"+project.id()+"/requirements/"+requirement.id()+"?snapshot="+snapshot+"&lang=en");
-            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("#inventoryComparison [data-inventory-comparison]")));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("#inventoryComparison [data-inventory-comparison]")));
             var panel=driver.findElement(By.id("inventoryComparison"));
             observeRequests(driver);
             panel.findElement(By.cssSelector("[data-inventory-organization]")).sendKeys("north");
@@ -146,6 +146,81 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
         select(new com.taxonomy.workspace.service.WorkspaceContext("architect",context.workspaceId(),context.currentBranch(),"foreign-repository"));
         try {mvc.perform(get("/api/inventory-comparisons/"+result.id())).andExpect(status().isNotFound());}finally {select(context);}
     }
+    @Test void nativeDirectedRequirementAndExistingVariantAreReviewedAndReopened() throws Exception {
+        var first=products.createProduct(new CreateProductRequest("EDGE-A-"+UUID.randomUUID(),"Manufacturer",null,"Source product",null,ProductStatus.ACTIVE,null,null,OperatingModel.UNSPECIFIED,null,null,null,null,null,null,"Owner record",Instant.EPOCH),"architect",context);
+        var second=products.createProduct(new CreateProductRequest("EDGE-B-"+UUID.randomUUID(),"Manufacturer",null,"Target product",null,ProductStatus.ACTIVE,null,null,OperatingModel.UNSPECIFIED,null,null,null,null,null,null,"Owner record",Instant.EPOCH),"architect",context);
+        var solution=solutionService.createSolution(new CreateSolutionRequest("VAR-"+UUID.randomUUID(),"Existing domain variant",null,null,null,null,null,"north",null,null,null,null,Map.of()),"architect",context);
+        var decision=solutionService.addProjectSolution(project.id(),new AddProjectSolutionRequest(solution.id(),null,ActionStatus.REUSE,50,"Existing before comparison"),"architect",context);
+        Path artifacts=Path.of("target/inventory-browser");Files.createDirectories(artifacts);
+        try(var session=BrowserSession.openWithNetworkLogging(port,artifacts)) {
+            var driver=session.driver();var wait=new WebDriverWait(driver,Duration.ofSeconds(30));driver.manage().window().setSize(new Dimension(1440,1000));
+            driver.get(session.origin()+BASE+"/login");driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys(PASSWORD);driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
+            driver.get(session.origin()+BASE+"/projects/"+project.id()+"/requirements/"+requirement.id()+"?snapshot="+snapshot+"&lang=en");
+            // Snapshot controls are mounted before the analyses tab finishes becoming visible.
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-inventory-organization]")));
+            click(driver,"//div[@id='inventoryComparison']//input[@value='BP']");
+            driver.findElement(By.cssSelector("[data-inventory-organization]")).sendKeys("north");
+            ((JavascriptExecutor)driver).executeScript("arguments[0].value='2030-01-01'",driver.findElement(By.cssSelector("[data-inventory-start]")));
+            click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Add directed requirement']");
+            driver.findElement(By.cssSelector("[data-relationship-source]")).sendKeys("product:"+first.id());
+            driver.findElement(By.cssSelector("[data-relationship-target]")).sendKeys("product:"+second.id());
+            new Select(driver.findElement(By.cssSelector("[data-relationship-kind]"))).selectByValue("DEPENDENCY");
+            click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Add existing solution variant']");
+            new Select(driver.findElement(By.cssSelector("[data-variant-solution]"))).selectByValue(decision.id().toString());
+            driver.findElement(By.cssSelector("[data-variant-candidates]")).sendKeys("product:"+first.id());
+            click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Start comparison']");
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("[data-variant-review]")));
+            assertThat(driver.findElement(By.cssSelector("[data-inventory-result]")).getText()).contains("Existing domain variant","DEPENDENCY","UNKNOWN");
+            driver.findElement(By.cssSelector("[data-variant-review] textarea")).sendKeys("Evaluate existing solution; confirm dependency with its owner before selection.");
+            driver.findElement(By.cssSelector("[data-variant-review] input[type=number]")).sendKeys("60");
+            click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Save variant decision']");
+            wait.until(d->d.findElement(By.cssSelector("[data-inventory-comparison] [role=status]")).getText().contains("Saved"));
+            String id=jdbc.queryForObject("select id from inventory_comparison where scope_key=?",String.class,PortfolioScope.key("architect",context));
+            assertThat(solutionService.listProjectSolutions(project.id(),"architect",context).getFirst().status()).isEqualTo(ProjectSolutionStatus.EVALUATED);
+            assertThat(solutionService.listProjectSolutions(project.id(),"architect",context).getFirst().requirements().getFirst().snapshotId()).isEqualTo(snapshot);
+            driver.navigate().refresh();wait.until(d->!d.findElements(By.cssSelector("#inventoryComparison option[value='"+id+"']")).isEmpty());
+            new Select(driver.findElement(By.xpath("//label[contains(.,'Retained comparisons')]/select"))).selectByValue(id);
+            click(driver,"//div[@id='inventoryComparison']//button[normalize-space()='Open retained comparison']");
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("[data-variant-review]")));
+            click(driver,"//div[@id='inventoryComparison']//summary[normalize-space()='Retained reviews']");
+            wait.until(d->d.findElement(By.cssSelector("[data-inventory-result]")).getText().contains("confirm dependency with its owner"));
+            assertThat(jdbc.queryForObject("select count(*) from inventory_review where comparison_id=?",Integer.class,id)).isEqualTo(1);
+            Files.write(artifacts.resolve("relationship-variant-reopen.png"),driver.getScreenshotAs(OutputType.BYTES));
+        }
+    }
+    @Test void longValidVariantExclusionsAndRationaleRemainReviewableAndBlockOrdinarySelection() throws Exception {
+        var solution=solutionService.createSolution(new CreateSolutionRequest("BLOCK-"+UUID.randomUUID(),"Blocked existing variant",null,null,null,null,null,"north",null,null,null,null,Map.of()),"architect",context);
+        var decision=solutionService.addProjectSolution(project.id(),new AddProjectSolutionRequest(solution.id(),null,null,50,"Existing"),"architect",context);
+        String note="Blocking prerequisite "+"x".repeat(1750);
+        var input=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantInput(decision.id(),com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantAction.CHANGE,List.of(),List.of(new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.AssessmentNote(note,com.taxonomy.extension.api.inventory.InventoryComparisonContracts.AssessmentStatus.BLOCKING,"Owner1"),new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.AssessmentNote(note,com.taxonomy.extension.api.inventory.InventoryComparisonContracts.AssessmentStatus.BLOCKING,"Owner2"),new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.AssessmentNote(note,com.taxonomy.extension.api.inventory.InventoryComparisonContracts.AssessmentStatus.BLOCKING,"Owner3")),List.of(),List.of());
+        var result=comparisons.compare(project.id(),snapshot,new com.taxonomy.portfolio.inventory.InventoryComparisonService.CreateComparisonRequest(List.of("BP"),new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Question(com.taxonomy.extension.api.inventory.InventoryComparisonContracts.TimeMode.EXACT_DATE,LocalDate.parse("2030-01-01"),null,"north",null),List.of(),List.of(),List.of(input)),"architect",context);
+        assertThat(String.join(";",result.variants().getFirst().hardExclusions()).length()).isGreaterThan(4000);
+        String rationale="R".repeat(1800);
+        var review=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Review(UUID.randomUUID(),result.fingerprint(),null,rationale,decision.id(),false,60,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantDecision(decision.id(),com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantOutcome.REJECTED,true));
+        String path="/api/inventory-comparisons/"+result.id()+"/reviews";
+        mvc.perform(post(path).with(csrf()).contentType("application/json").content(json.writeValueAsString(review))).andExpect(status().isOk());
+        mvc.perform(post(path).with(csrf()).contentType("application/json").content(json.writeValueAsString(review))).andExpect(status().isOk());
+        assertThat(comparisons.reviews(result.id(),"architect",context).getFirst().review().rationale()).isEqualTo(rationale);
+        var saved=solutionService.listProjectSolutions(project.id(),"architect",context).getFirst();
+        assertThat(saved.inventoryHardExclusions()).contains(result.id().toString(),result.fingerprint());assertThat(saved.rationale().length()).isLessThanOrEqualTo(2000);
+        assertThatThrownBy(()->solutionService.updateProjectSolution(project.id(),decision.id(),new UpdateProjectSolutionRequest(ProjectSolutionStatus.SELECTED,null,null,"Attempt bypass"),"architect",context)).isInstanceOf(PortfolioException.class);
+        var selected=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Review(UUID.randomUUID(),result.fingerprint(),null,"Select despite blocking prerequisites",decision.id(),false,60,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantDecision(decision.id(),com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantOutcome.SELECTED,true));
+        mvc.perform(post(path).with(csrf()).contentType("application/json").content(json.writeValueAsString(selected))).andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("select count(*) from inventory_review where comparison_id=?",Integer.class,result.id().toString())).isEqualTo(1);
+    }
+    @Test void unknownVariantRequiresAcknowledgmentAndChangedDefinitionRejectsStaleSelection() throws Exception {
+        var solution=solutionService.createSolution(new CreateSolutionRequest("UNKNOWN-"+UUID.randomUUID(),"Existing unknown variant",null,null,null,null,null,"north",null,null,null,null,Map.of()),"architect",context);
+        var decision=solutionService.addProjectSolution(project.id(),new AddProjectSolutionRequest(solution.id(),null,null,50,"Existing"),"architect",context);
+        var input=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantInput(decision.id(),com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantAction.REUSE,List.of(),List.of(),List.of(),List.of());
+        var result=comparisons.compare(project.id(),snapshot,new com.taxonomy.portfolio.inventory.InventoryComparisonService.CreateComparisonRequest(List.of("BP"),new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Question(com.taxonomy.extension.api.inventory.InventoryComparisonContracts.TimeMode.EXACT_DATE,LocalDate.parse("2030-01-01"),null,"north",null),List.of(),List.of(),List.of(input)),"architect",context);
+        var review=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Review(UUID.randomUUID(),result.fingerprint(),null,"Select with remaining unknowns",decision.id(),false,60,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantDecision(decision.id(),com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantOutcome.SELECTED,false));
+        String path="/api/inventory-comparisons/"+result.id()+"/reviews";
+        mvc.perform(post(path).with(csrf()).contentType("application/json").content(json.writeValueAsString(review))).andExpect(status().isBadRequest());
+        solutionService.updateSolution(solution.id(),json.readValue("{\"title\":\"Changed after comparison\"}",UpdateSolutionRequest.class),"architect",context);
+        var stale=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Review(UUID.randomUUID(),result.fingerprint(),null,"Explicitly accept remaining unknowns",decision.id(),false,60,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantDecision(decision.id(),com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantOutcome.SELECTED,true));
+        mvc.perform(post(path).with(csrf()).contentType("application/json").content(json.writeValueAsString(stale))).andExpect(status().isConflict());
+        assertThat(comparisons.reviews(result.id(),"architect",context)).isEmpty();
+    }
     private final List<Map<String,String>> observedRequests=new ArrayList<>();
     private void observeRequests(WebDriver driver) {
         driver.manage().logs().get(org.openqa.selenium.logging.LogType.PERFORMANCE);observedRequests.clear();
@@ -162,5 +237,10 @@ class InventoryComparisonUiIT extends ReformulationWorkflowFixture {
         }
         return List.copyOf(observedRequests);
     }
-    private void click(WebDriver driver,String xpath) {var element=driver.findElement(By.xpath(xpath));((JavascriptExecutor)driver).executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center'})",element);element.click();}
+    private void click(WebDriver driver,String xpath) {
+        new WebDriverWait(driver,Duration.ofSeconds(30)).until(d->{
+            try {var element=d.findElement(By.xpath(xpath));if(!element.isDisplayed() || !element.isEnabled())return false;((JavascriptExecutor)d).executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center'})",element);element.click();return true;}
+            catch(ElementClickInterceptedException | StaleElementReferenceException settling){return false;}
+        });
+    }
 }

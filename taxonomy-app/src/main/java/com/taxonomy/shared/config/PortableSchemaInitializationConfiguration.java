@@ -20,7 +20,10 @@ public class PortableSchemaInitializationConfiguration {
     }
 
     public record Initialization(DataSource database) {
-        public void migrate() { new SchemaContractMigration(database).migrate(); }
+        public void migrate() {
+            new SchemaContractMigration(database).migrate();
+            com.taxonomy.composition.persistence.InventoryDecisionSchemaMigration.migrate(database);
+        }
     }
 
     @Bean

@@ -84,7 +84,7 @@ com.taxonomy.catalog.provenance.CatalogueSourceBlob	knowledge	PORTABLE_PRIMARY	I
 com.taxonomy.catalog.provenance.CatalogueSourceRevision	knowledge	PORTABLE_PRIMARY	Exact input-use provenance; current metadata without historical raw inputs, older revisions require history
 com.taxonomy.catalog.provenance.CatalogueSourceState	knowledge	PORTABLE_PRIMARY	Current source revision pointer, never preserve optimistic locking state as target authority
 storage.indices.search	knowledge	REBUILDABLE	Lucene and Hibernate Search indices rebuilt from captured primary records and Git
-storage.schema-migrations	application	REBUILDABLE	Run versioned target migrations; SQL schema and sequences are target-owned
+storage.schema-migrations	application	REBUILDABLE	Run versioned target migrations including inventory decision history and coordination fields; SQL schema and sequences are target-owned
 storage.security.user-roles	application	PORTABLE_PRIMARY	Join table user_roles included in explicit identity export; role mapping requires approval
 storage.security.principals	application	PORTABLE_PRIMARY	app_principal, principal_binding and principal_installation preserve stable provider identities and explicit legacy scope mappings; never infer target rights from display names
 storage.security.backup-grants	application	PORTABLE_PRIMARY	backup_capability_grant, backup_version_grant and principal_access_audit preserve source permissions and stable-actor provenance; target grants require explicit approval

@@ -7,9 +7,10 @@ import java.time.LocalDate;
 
 /** Deterministic conservative interval evaluator. Missing boundaries are never infinity. */
 public final class InventoryCriterionEvaluator {
-    public static final String VERSION = "inventory-criteria/2";
+    public static final String VERSION = "inventory-criteria/3";
     public Finding evaluate(String candidate, Criterion criterion, String node, Question question, List<Assertion> assertions, boolean examined) {
         if (!examined) return new Finding(candidate,criterion,node,Outcome.UNEXAMINED,List.of(),Set.of(),Set.of("NOT_EXAMINED"),"Examine the required relationship evidence",false);
+        if(criterion==Criterion.RELATIONSHIPS) return new Finding(candidate,criterion,node,Outcome.UNKNOWN,List.of(),Set.of(),Set.of("DIRECTED_REQUIREMENT_REQUIRED"),"Specify exact directed relationship requirements",false);
         boolean positive=false,negative=false;
         var ids=new ArrayList<String>(); var kinds=EnumSet.noneOf(AssertionKind.class); var limits=new TreeSet<String>();var excludedStarts=new ArrayList<Interval>();
         for(var assertion:assertions) {

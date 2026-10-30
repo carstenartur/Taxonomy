@@ -38,11 +38,57 @@ class IntegrationBackupExportTest {
     private static final List<String> TABLES = List.of("interop_connection", "interop_identity", "interop_checkpoint", "interop_operation",
             "interop_event", "interop_publication", "interop_publish_item", "interop_publish_attempt");
 
+    @ParameterizedTest @ValueSource(strings={"project","solution","scope","repository","branch"})
+    void inventoryVariantRejectsMissingOrCrossScopeSolutionReferences(String broken) throws Exception {
+        try(var fixture=new Fixture()) {
+            retainedVariant(fixture);
+            switch(broken) {
+                case "project" -> fixture.jdbc.update("update project_solution set project_id=99");
+                case "solution" -> fixture.jdbc.update("update project_solution set solution_id=99");
+                case "scope" -> fixture.jdbc.update("update solution_definition set scope_key='other'");
+                case "repository" -> fixture.jdbc.update("update arch_project set repository_id='other'");
+                case "branch" -> fixture.jdbc.update("update solution_definition set branch_name='other'");
+                default -> throw new AssertionError();
+            }
+            var out=new Contents();assertThatThrownBy(()->contributor(fixture,OWN).write(snapshot(BackupProfile.CURRENT_STATE,OWN),out)).isInstanceOf(IOException.class);
+            assertThat(out.entries).isEmpty();
+        }
+    }
+    @Test void inventoryVariantExportsFrozenDecisionEvidenceWithoutGrantingTargetAuthority() throws Exception {
+        try(var fixture=new Fixture()) {
+            retainedVariant(fixture);var out=new Contents();contributor(fixture,OWN).write(snapshot(BackupProfile.CURRENT_STATE,OWN),out);
+            assertThat(out.rows("inventory-comparisons")).hasSize(1);
+            assertThat(out.text()).contains("REAUTHORIZE_AND_REVIEW_REQUIRED","frozen-solution","2030-01-01").doesNotContain("scopeGuardKey","rowVersion");
+        }
+    }
+    @ParameterizedTest @ValueSource(strings={"foreign","missing"})
+    void inventoryVariantRejectsContradictoryOrMissingInputIdentity(String corruptInput) throws Exception {
+        try(var fixture=new Fixture()) {
+            retainedVariant(fixture,corruptInput);var out=new Contents();
+            assertThatThrownBy(()->contributor(fixture,OWN).write(snapshot(BackupProfile.CURRENT_STATE,OWN),out)).isInstanceOf(IOException.class);
+            assertThat(out.entries).isEmpty();
+        }
+    }
+    private void retainedVariant(Fixture fixture) {retainedVariant(fixture,"valid");}
+    private void retainedVariant(Fixture fixture,String corruptInput) {
+        var key=new com.taxonomy.workspace.model.RepositoryTenantIdentity("repo-a","WORKSPACE:private-a","draft").scopeKey();
+        fixture.jdbc.execute("create table arch_project(id bigint primary key, repository_id varchar(320),scope_key varchar(1024),branch_name varchar(400))");
+        fixture.jdbc.execute("create table solution_definition(id bigint primary key, repository_id varchar(320),scope_key varchar(1024),branch_name varchar(400))");
+        fixture.jdbc.execute("create table project_solution(id bigint primary key,project_id bigint,solution_id bigint)");
+        fixture.jdbc.update("insert into arch_project values(7,'repo-a',?,'draft')",key);fixture.jdbc.update("insert into solution_definition values(12,'repo-a',?,'draft')",key);fixture.jdbc.update("insert into project_solution values(11,7,12)");
+        var scope=new com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope("repo-a",key,"draft","alice");
+        var demand=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Demand("repo-a",key,"draft",7L,8L,9L,"snapshot","catalog","snapshot-fingerprint",List.of("fixture:node"),new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Question(com.taxonomy.extension.api.inventory.InventoryComparisonContracts.TimeMode.EXACT_DATE,java.time.LocalDate.parse("2030-01-01"),null,"north",null));
+        var input=corruptInput.equals("missing")?null:new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantInput(corruptInput.equals("foreign")?99L:11L,com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantAction.REUSE,List.of(),List.of(),List.of(),List.of());
+        var variant=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.VariantAssessment(11L,12L,"solution-key","Existing solution","solution-fp","frozen-solution",input,List.of(),List.of(),List.of("Availability unknown"));
+        var comparison=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Comparison(UUID.randomUUID(),demand,"v3",NOW,List.of(),List.of(),List.of(),"comparison-fingerprint",List.of(),List.of(),List.of(variant));
+        new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),fixture.json,com.taxonomy.workspace.repository.RepositoryMutationFenceFixture.repositoryFence(fixture.factory,"repo-a","repo-b")).save(scope,comparison);
+    }
+
     @Test void inventoryComparisonCannotExportAnUncapturedObservationReference() throws Exception {
         try(var fixture=new Fixture()) {
             var key=new com.taxonomy.workspace.model.RepositoryTenantIdentity("repo-a","WORKSPACE:private-a","draft").scopeKey();
             var scope=new com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope("repo-a",key,"draft","alice");
-            var journal=new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),fixture.json);
+            var journal=new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),fixture.json,com.taxonomy.workspace.repository.RepositoryMutationFenceFixture.repositoryFence(fixture.factory,"repo-a","repo-b"));
             var demand=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Demand("repo-a",key,"draft",7L,8L,9L,"snapshot","catalog","snapshot-fingerprint",List.of("fixture:node"),new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Question(com.taxonomy.extension.api.inventory.InventoryComparisonContracts.TimeMode.EXACT_DATE,java.time.LocalDate.parse("2030-01-01"),null,"north",null));
             var source=new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.SourceEvidence("approved","v1",UUID.randomUUID().toString(),NOW,"selector","SUCCEEDED",Set.of());
             journal.save(scope,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Comparison(UUID.randomUUID(),demand,"v1",NOW,List.of(),List.of(),List.of(source),"comparison-fingerprint"));
@@ -52,7 +98,7 @@ class IntegrationBackupExportTest {
 
     @Test void inventoryAssertionsHaveTypedOwnerAndExcludeSiblingScopeAndGrants() throws Exception {
         try(var fixture=new Fixture()) {
-            var journal=new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),fixture.json);
+            var journal=new InventoryJournal(fixture.factory,new JpaTransactionManager(fixture.factory),fixture.json,com.taxonomy.workspace.repository.RepositoryMutationFenceFixture.repositoryFence(fixture.factory,"repo-a","repo-b"));
             var own=new com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope("repo-a",new com.taxonomy.workspace.model.RepositoryTenantIdentity("repo-a","WORKSPACE:private-a","draft").scopeKey(),"draft","alice");
             var sibling=new com.taxonomy.extension.api.inventory.InventoryEvidencePort.Scope("repo-a",new com.taxonomy.workspace.model.RepositoryTenantIdentity("repo-a","WORKSPACE:private-b","draft").scopeKey(),"draft","bob");
             journal.append(own,new com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Assertion("claim-a","product:1",com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Criterion.AVAILABILITY,null,true,null,null,"north",null,com.taxonomy.extension.api.inventory.InventoryReadContracts.AssertionKind.DECLARED,"APPROVED-OWN-EVIDENCE",NOW));
@@ -381,7 +427,8 @@ class IntegrationBackupExportTest {
         Fixture() {
             database.setUrl("jdbc:hsqldb:mem:interop-backup-" + UUID.randomUUID()); database.setUser("sa");
             var config = new Configuration().setProperty("hibernate.connection.url", database.getUrl())
-                    .setProperty("hibernate.connection.username", "sa").setProperty("hibernate.hbm2ddl.auto", "create-drop");
+                    .setProperty("hibernate.connection.username", "sa").setProperty("hibernate.hbm2ddl.auto", "create-drop")
+                    .addAnnotatedClass(com.taxonomy.workspace.model.SystemRepository.class);
             for (var type : ENTITIES) config.addAnnotatedClass(type);
             factory = config.buildSessionFactory(); jdbc = new JdbcTemplate(database);
             // This fixture exercises journal persistence, not production authorization. Only its three declared actors/scopes are admitted.

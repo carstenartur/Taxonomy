@@ -41,13 +41,16 @@ public class InventorySourceHost {
                 if(!observed.request().equals(request) || observed.objects().size()>p.limits().maxObjects() || observed.relations().size()>p.limits().maxRelations() || observed.requests()>p.limits().maxRequests() || observed.bytes()>p.limits().maxTotalBytes())throw new ReadFailure("INVALID_OBSERVATION");
                 if(candidates.size()+observed.objects().size()>100)throw new ReadFailure("CANDIDATE_LIMIT");
                 var normalized=new ArrayList<Candidate>();
+                var relationAssertions=new InventoryRelationshipProjection(json).project(observed.relations(),observed.objects().stream().map(ObservedObject::key).collect(java.util.stream.Collectors.toSet()),p.relationships(),operation,observed.finishedAt(),p.organization());
                 for(var object:observed.objects()) {
                     if(candidates.size()>=100)throw new ReadFailure("CANDIDATE_LIMIT");
                     String key="external:"+json.fingerprint(object.key());
                     var metadata=new TreeMap<String,String>();metadata.put("sourceProfile",id);metadata.put("instance",object.key().instance());metadata.put("namespace",object.key().namespace());metadata.put("externalId",object.key().id());metadata.put("sourceType",object.sourceType());metadata.put("observationId",operation.toString());
                     object.fields().forEach((field,value)->metadata.put("field:"+field,value.state()+":"+Objects.toString(value.value(),"")));
                     // Adapter fields are evidence, never implicit organizational availability or confirmed mappings.
-                    normalized.add(new Candidate(key,null,field(object,"name",object.key().id()),object.kind().name(),json.fingerprint(object),metadata,assertions(object,p,key,operation,observed.finishedAt())));
+                    var claims=new ArrayList<>(assertions(object,p,key,operation,observed.finishedAt()));
+                    relationAssertions.stream().filter(a->a.candidateId().equals(key)).forEach(claims::add);
+                    normalized.add(new Candidate(key,null,field(object,"name",object.key().id()),object.kind().name(),json.fingerprint(object),metadata,claims));
                 }
                 journal.observation(scope,id,p.revision(),demand.question().organization(),operation,observed,null);
                 candidates.addAll(normalized);

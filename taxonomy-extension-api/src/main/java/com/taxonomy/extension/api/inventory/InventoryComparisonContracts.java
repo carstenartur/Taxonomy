@@ -10,6 +10,40 @@ public final class InventoryComparisonContracts {
     public enum Outcome { SUPPORTED, CONTRADICTED, UNKNOWN, CONFLICT, UNEXAMINED }
     public enum Criterion { CAPABILITY, AVAILABILITY, SUPPORT, ORGANIZATION, ENVIRONMENT, RELATIONSHIPS }
     public enum TimeMode { EXACT_DATE, START_WINDOW, CONTINUOUS_PERIOD }
+    public enum RelationshipKind { INTERFACE, DEPENDENCY, ALTERNATIVE, HARD_EXCLUSION }
+    public enum VariantAction { SATISFIED_AS_IS, REUSE, CHANGE, CREATE, PROCURE, ORGANIZATIONAL, RETIRE_OR_REPLACE, UNDECIDED }
+    public enum AssessmentStatus { OPEN, SATISFIED, BLOCKING }
+    public enum VariantOutcome { EVALUATED, SELECTED, REJECTED }
+    public record Relationship(String targetCandidateId, RelationshipKind kind, String qualifier) {
+        public Relationship { text(targetCandidateId,3000); Objects.requireNonNull(kind); if(qualifier!=null)text(qualifier,200); }
+    }
+    public record RelationshipRequirement(String id,String sourceCandidateId,String targetCandidateId,RelationshipKind kind,String qualifier,boolean required) {
+        public RelationshipRequirement { text(id,200);text(sourceCandidateId,3000);text(targetCandidateId,3000);Objects.requireNonNull(kind);if(qualifier!=null)text(qualifier,200); }
+    }
+    public record RelationshipFinding(String requirementId,String sourceCandidateId,String targetCandidateId,RelationshipKind kind,String qualifier,boolean required,Finding finding) { }
+    public record AssessmentNote(String text, AssessmentStatus status, String citation) {
+        public AssessmentNote { InventoryComparisonContracts.text(text,1800);Objects.requireNonNull(status);InventoryComparisonContracts.text(citation,1800); }
+    }
+    /** Exact decimal wire value: JavaScript numbers cannot preserve this contract. */
+    public record CostAssumption(String amount,String currency,String basis,String citation) {
+        public CostAssumption {
+            text(amount,24);text(currency,3);text(basis,400);text(citation,1800);
+            if(!amount.matches("[0-9]+(\\.[0-9]{1,4})?") || !currency.matches("[A-Z]{3}"))throw new IllegalArgumentException("Invalid cost assumption");
+            var decimal=new java.math.BigDecimal(amount);
+            if(decimal.precision()>18 || decimal.scale()>4)throw new IllegalArgumentException("Cost precision exceeds 18 digits / 4 decimal places");
+            amount=decimal.toPlainString();
+        }
+    }
+    public record VariantInput(Long projectSolutionId,VariantAction action,List<String> candidateIds,List<AssessmentNote> prerequisites,List<AssessmentNote> risks,List<CostAssumption> costs) {
+        public VariantInput { Objects.requireNonNull(projectSolutionId);Objects.requireNonNull(action);candidateIds=bounded(candidateIds,100);prerequisites=bounded(prerequisites,20);risks=bounded(risks,20);costs=bounded(costs,20);if(new HashSet<>(candidateIds).size()!=candidateIds.size())throw new IllegalArgumentException("Duplicate evidence candidate"); }
+    }
+    public record VariantAssessment(Long projectSolutionId,Long solutionId,String solutionKey,String title,String fingerprint,String frozenSolutionJson,VariantInput input,List<Finding> findings,List<String> hardExclusions,List<String> openQuestions) {
+        public VariantAssessment { findings=List.copyOf(findings);hardExclusions=List.copyOf(hardExclusions);openQuestions=List.copyOf(openQuestions); }
+    }
+    public record VariantDecision(Long projectSolutionId,VariantOutcome outcome,boolean acknowledgeUnknowns) {
+        public VariantDecision { Objects.requireNonNull(projectSolutionId);Objects.requireNonNull(outcome); }
+    }
+    private static <T> List<T> bounded(List<T> values,int max) {var result=values==null?List.<T>of():List.copyOf(values);if(result.size()>max)throw new IllegalArgumentException("Too many assessment inputs");return result;}
     public enum Precision { DATE, YEAR }
     public record Boundary(String value, Precision precision) {
         public Boundary {
@@ -30,8 +64,12 @@ public final class InventoryComparisonContracts {
     }
     public record Assertion(String id, String candidateId, Criterion criterion, String nodeCode, boolean positive,
                             Boundary start, Boundary endExclusive, String organization, String environment,
-                            AssertionKind kind, String citation, Instant recordedAt) {
+                            AssertionKind kind, String citation, Instant recordedAt, Relationship relationship) {
+        public Assertion(String id,String candidateId,Criterion criterion,String nodeCode,boolean positive,Boundary start,Boundary endExclusive,String organization,String environment,AssertionKind kind,String citation,Instant recordedAt) {
+            this(id,candidateId,criterion,nodeCode,positive,start,endExclusive,organization,environment,kind,citation,recordedAt,null);
+        }
         public Assertion {
+            if(relationship!=null && criterion!=Criterion.RELATIONSHIPS)throw new IllegalArgumentException("Directed evidence requires RELATIONSHIPS criterion");
             text(id, 200); text(candidateId, 3000); Objects.requireNonNull(criterion); Objects.requireNonNull(kind);
             text(citation, 4000); Objects.requireNonNull(recordedAt);
             if (nodeCode != null) text(nodeCode, 80);
@@ -65,15 +103,18 @@ public final class InventoryComparisonContracts {
         public SourceEvidence { limitations=Set.copyOf(limitations); }
     }
     public record Comparison(UUID id, Demand demand, String evaluatorVersion, Instant createdAt,
-                             List<Candidate> candidates, List<Finding> findings, List<SourceEvidence> sources, String fingerprint) {
-        public Comparison { candidates=List.copyOf(candidates); findings=List.copyOf(findings); sources=List.copyOf(sources); }
+                             List<Candidate> candidates, List<Finding> findings, List<SourceEvidence> sources, String fingerprint,
+                             List<RelationshipRequirement> relationshipRequirements,List<RelationshipFinding> relationshipFindings,List<VariantAssessment> variants) {
+        public Comparison(UUID id,Demand demand,String evaluatorVersion,Instant createdAt,List<Candidate> candidates,List<Finding> findings,List<SourceEvidence> sources,String fingerprint) {this(id,demand,evaluatorVersion,createdAt,candidates,findings,sources,fingerprint,List.of(),List.of(),List.of());}
+        public Comparison { candidates=List.copyOf(candidates); findings=List.copyOf(findings); sources=List.copyOf(sources);relationshipRequirements=bounded(relationshipRequirements,100);relationshipFindings=bounded(relationshipFindings,100);variants=bounded(variants,20); }
     }
     public record Review(UUID id, String comparisonFingerprint, String candidateId, String rationale,
-                         Long projectSolutionId, boolean selectProduct,Integer coveragePercent) {
+                         Long projectSolutionId, boolean selectProduct,Integer coveragePercent,VariantDecision variantDecision) {
+        public Review(UUID id,String comparisonFingerprint,String candidateId,String rationale,Long projectSolutionId,boolean selectProduct,Integer coveragePercent) {this(id,comparisonFingerprint,candidateId,rationale,projectSolutionId,selectProduct,coveragePercent,null);}
         public Review(UUID id,String comparisonFingerprint,String candidateId,String rationale,Long projectSolutionId,boolean selectProduct) {
             this(id,comparisonFingerprint,candidateId,rationale,projectSolutionId,selectProduct,null);
         }
-        public Review { if(coveragePercent!=null && (coveragePercent<0 || coveragePercent>100))throw new IllegalArgumentException("Reviewed coverage must be 0–100"); Objects.requireNonNull(id); text(comparisonFingerprint,128); text(candidateId,3000); text(rationale,1800); if(selectProduct && projectSolutionId==null) throw new IllegalArgumentException("Selection requires an existing project solution"); }
+        public Review { if(coveragePercent!=null && (coveragePercent<0 || coveragePercent>100))throw new IllegalArgumentException("Reviewed coverage must be 0–100"); Objects.requireNonNull(id); text(comparisonFingerprint,128); if(variantDecision==null)text(candidateId,3000);else if(candidateId!=null || selectProduct || (projectSolutionId!=null && !projectSolutionId.equals(variantDecision.projectSolutionId())))throw new IllegalArgumentException("Product and variant decisions are exclusive"); text(rationale,1800); if(selectProduct && projectSolutionId==null) throw new IllegalArgumentException("Selection requires an existing project solution"); }
     }
     public record Mapping(UUID id,String candidateId,Long productId,String productFingerprint,
                           String sourceProfile,String sourceRevision,String sourceIdentityFingerprint,

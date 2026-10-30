@@ -317,7 +317,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     instant(r,"created_at"),
                     instant(r,"updated_at"));
         });
-        write(scope,sink,"project-solution",profile,query(scope,"select parent.scope_key,solution.scope_key as solution_scope,t.id,t.project_id,t.solution_id,t.status,t.action_status,t.priority,t.rationale,t.created_by,t.created_at,t.updated_at from project_solution t join arch_project parent on parent.id=t.project_id join solution_definition solution on solution.id=t.solution_id and solution.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
+        write(scope,sink,"project-solution",profile,query(scope,"select parent.scope_key,solution.scope_key as solution_scope,t.id,t.project_id,t.solution_id,t.status,t.action_status,t.priority,t.rationale,t.created_by,t.created_at,t.updated_at,t.inventory_comparison_id,t.inventory_fingerprint,t.inventory_hard_exclusions from project_solution t join arch_project parent on parent.id=t.project_id join solution_definition solution on solution.id=t.solution_id and solution.scope_key=parent.scope_key",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
             requireSameTenant(r, "solution_scope");
             return new ProjectSolutionRecord(reference(r,"portfolio.project-solution","id"),
                     reference(r,"portfolio.project","project_id"),
@@ -328,7 +328,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
                     text(r,"rationale"),
                     text(r,"created_by"),
                     instant(r,"created_at"),
-                    instant(r,"updated_at"));
+                    instant(r,"updated_at"),text(r,"inventory_comparison_id"),text(r,"inventory_fingerprint"),text(r,"inventory_hard_exclusions"));
         });
         write(scope,sink,"product-coverage",profile,query(scope,"select parent.scope_key,t.id,t.product_id,t.node_code,t.coverage_percent,t.evidence,t.review_status,t.updated_by,t.updated_at from product_taxonomy t join product_catalog parent on parent.id=t.product_id",scope.tenants("parent.scope_key"),"1=1","t.id"),r -> {
             return new ProductTaxonomyCoverageRecord(reference(r,"portfolio.product-coverage","id"),
@@ -583,7 +583,7 @@ public final class PortfolioBackupContributor implements BackupDataContributor {
     public record RequirementRelationMappingRecord(SourceRecordId sourceId, String tenant, SourceRecordId snapshotId, String sourceCode, String targetCode, String relationType, String relationOrigin, String relationCategory, double relevance, double confidence, String presenceReason, ReviewStatus reviewStatus, String decisionBy, String decisionAt, String decisionComment) { }
     public record SolutionDefinitionRecord(SourceRecordId sourceId, String tenant, String repositoryId, String workspaceScope, String branchName, String workspaceId, String solutionKey, String title, String description, SolutionType solutionType, OperatingModel operatingModel, LifecycleStatus lifecycleStatus, int maturityLevel, String ownerUsername, String responsibleOrganization, String costAmount, String costCurrency, String riskNotes, Long leadTimeDays, String extensionAttributesJson, String createdAt, String updatedAt) { }
     public record ProductCatalogEntryRecord(SourceRecordId sourceId, String tenant, String repositoryId, String workspaceScope, String branchName, String workspaceId, String productKey, String manufacturer, String productFamily, String productName, String editionVersion, ProductStatus productStatus, String endOfSupport, String licenseModel, OperatingModel operatingModel, String supportedPlatforms, String securityFeatures, String complianceFeatures, String costAmount, String costCurrency, String costBasis, String sourceReference, String verifiedAt, String createdBy, String createdAt, String updatedAt) { }
-    public record ProjectSolutionRecord(SourceRecordId sourceId, SourceRecordId projectId, SourceRecordId solutionId, ProjectSolutionStatus status, ActionStatus actionStatus, int priority, String rationale, String createdBy, String createdAt, String updatedAt) { }
+    public record ProjectSolutionRecord(SourceRecordId sourceId, SourceRecordId projectId, SourceRecordId solutionId, ProjectSolutionStatus status, ActionStatus actionStatus, int priority, String rationale, String createdBy, String createdAt, String updatedAt,String inventoryComparisonId,String inventoryFingerprint,String inventoryHardExclusions) { }
     public record ProductTaxonomyCoverageRecord(SourceRecordId sourceId, SourceRecordId productId, String nodeCode, int coveragePercent, String evidence, ReviewStatus reviewStatus, String updatedBy, String updatedAt) { }
     public record SolutionTaxonomyCoverageRecord(SourceRecordId sourceId, SourceRecordId solutionId, String nodeCode, int coveragePercent, String evidence, ReviewStatus reviewStatus, String updatedBy, String updatedAt) { }
     public record RequirementSolutionLinkRecord(SourceRecordId sourceId, SourceRecordId projectSolutionId, SourceRecordId requirementId, SourceRecordId snapshotId, double coveragePercent, RequirementSolutionRole role, ReviewStatus reviewStatus, String evidence, String updatedBy, String updatedAt) { }

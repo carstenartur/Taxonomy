@@ -221,4 +221,27 @@ class PortfolioDecisionGitRoundtripTest {
             });
         });
     }
+    @Test void variantExclusionAndMatchingProvenanceSurviveFreshAndSameTargetMaterialization() {
+        String suffix=UUID.randomUUID().toString().substring(0,8);
+        String repository=systemRepositoryService.getPrimaryRepository().getRepositoryId();
+        var source=new WorkspaceContext("alice","variant-source-"+suffix,"draft",repository);
+        var target=new WorkspaceContext("bob","variant-target-"+suffix,"draft",repository);
+        var project=projectService.createProject(new CreateProjectRequest("P-"+suffix,"Variant project",null,null,null,null,null,null),"alice",source);
+        var solution=solutionService.createSolution(new CreateSolutionRequest("S-"+suffix,"Existing variant",null,null,null,null,null,"north",null,null,null,null,Map.of()),"alice",source);
+        var decision=solutionService.addProjectSolution(project.id(),new AddProjectSolutionRequest(solution.id(),null,null,50,"Existing"),"alice",source);
+        String comparison=UUID.randomUUID().toString();String fingerprint="a".repeat(64);
+        solutionService.applyInventoryVariant(project.id(),decision.id(),ProjectSolutionStatus.REJECTED,ActionStatus.CHANGE,"Explicit blocking decision",comparison,fingerprint,"Explicit interface incompatibility","alice",source);
+        String dsl=portfolioGitService.exportPortfolio("alice",source);
+        assertThat(dsl).contains(comparison,fingerprint,"inventoryHardExclusions");
+        portfolioGitService.materialize(dsl,"bob",target);
+        var imported=projectService.listProjects("bob",target).getFirst();
+        var retained=solutionService.listProjectSolutions(imported.id(),"bob",target).getFirst();
+        assertThat(retained.inventoryComparisonId()).isEqualTo(comparison);assertThat(retained.inventoryHardExclusions()).isEqualTo("Explicit interface incompatibility");
+        String other=UUID.randomUUID().toString();
+        portfolioGitService.materialize(dsl.replace(comparison,other).replace(fingerprint,"b".repeat(64)).replace("Explicit interface incompatibility","Incoming different exclusion"),"bob",target);
+        retained=solutionService.listProjectSolutions(imported.id(),"bob",target).getFirst();
+        assertThat(retained.inventoryComparisonId()).isEqualTo(comparison);assertThat(retained.inventoryFingerprint()).isEqualTo(fingerprint);assertThat(retained.inventoryHardExclusions()).isEqualTo("Explicit interface incompatibility");
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->solutionService.updateProjectSolution(imported.id(),solutionService.listProjectSolutions(imported.id(),"bob",target).getFirst().id(),new com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectSolutionRequest(ProjectSolutionStatus.IMPLEMENTED,null,null,"Bypass"),"bob",target)).isInstanceOf(com.taxonomy.portfolio.service.PortfolioException.class);
+    }
+
 }

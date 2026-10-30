@@ -227,8 +227,10 @@ class ArchitectureContextDependencyRatchetTest {
         var classes = new ClassFileImporter().importClasses(
                 com.taxonomy.composition.interop.InventoryEvidenceAdapter.class,
                 com.taxonomy.interop.backup.IntegrationBackupContributor.class,
+                com.taxonomy.interop.inventory.InventoryJournal.class,
                 com.taxonomy.portfolio.controller.InventoryComparisonController.class,
-                com.taxonomy.portfolio.inventory.InventoryComparisonService.class);
+                com.taxonomy.portfolio.inventory.InventoryComparisonService.class,
+                com.taxonomy.portfolio.service.PortfolioDecisionGitContributor.class);
         Set<String> pairs = new TreeSet<>();
         for (JavaClass origin : classes) {
             ContextDefinition originContext = contextFor(origin, policy);
@@ -242,7 +244,8 @@ class ArchitectureContextDependencyRatchetTest {
         }
         // Composition alone joins the interop journal/source host to the neutral port.
         // Feature cross-context access is limited to canonical backup scope,
-        // tenant identity and authenticated request context resolution.
+        // tenant identity, authenticated request context resolution and the public
+        // repository mutation fence; feature code cannot substitute owner persistence.
         assertThat(pairs).containsExactly(
                 "com.taxonomy.composition.interop.InventoryEvidenceAdapter -> com.taxonomy.interop.IntegrationJson",
                 "com.taxonomy.composition.interop.InventoryEvidenceAdapter -> com.taxonomy.interop.IntegrationProblem",
@@ -250,8 +253,11 @@ class ArchitectureContextDependencyRatchetTest {
                 "com.taxonomy.composition.interop.InventoryEvidenceAdapter -> com.taxonomy.interop.inventory.InventorySourceHost",
                 "com.taxonomy.interop.backup.IntegrationBackupContributor -> com.taxonomy.workspace.backup.BackupRowScope",
                 "com.taxonomy.interop.backup.IntegrationBackupContributor -> com.taxonomy.workspace.model.RepositoryTenantIdentity",
+                "com.taxonomy.interop.inventory.InventoryJournal -> com.taxonomy.workspace.service.RepositoryMutationFence",
                 "com.taxonomy.portfolio.controller.InventoryComparisonController -> com.taxonomy.workspace.service.WorkspaceResolver",
-                "com.taxonomy.portfolio.inventory.InventoryComparisonService -> com.taxonomy.workspace.service.WorkspaceContext");
+                "com.taxonomy.portfolio.inventory.InventoryComparisonService -> com.taxonomy.workspace.service.WorkspaceContext",
+                "com.taxonomy.portfolio.service.PortfolioDecisionGitContributor -> com.taxonomy.workspace.service.RepositoryMutationFence",
+                "com.taxonomy.portfolio.service.PortfolioDecisionGitContributor -> com.taxonomy.workspace.service.WorkspaceContext");
     }
 
     @ParameterizedTest(name = "{0}: {1}")

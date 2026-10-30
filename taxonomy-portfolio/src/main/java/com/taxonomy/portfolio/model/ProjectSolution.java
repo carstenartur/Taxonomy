@@ -64,6 +64,13 @@ public class ProjectSolution {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name="inventory_comparison_id", length=36)
+    private String inventoryComparisonId;
+    @Column(name="inventory_fingerprint", length=128)
+    private String inventoryFingerprint;
+    @Column(name="inventory_hard_exclusions", length=4000)
+    private String inventoryHardExclusions;
+
     @Version
     @Column(name = "row_version", nullable = false)
     private long rowVersion;
@@ -102,6 +109,12 @@ public class ProjectSolution {
         this.updatedAt = now;
     }
 
+    public void retainInventoryDecision(String comparisonId,String fingerprint,String exclusions) {
+        this.inventoryComparisonId=comparisonId;this.inventoryFingerprint=fingerprint;this.inventoryHardExclusions=exclusions;
+    }
+    public String getInventoryComparisonId() {return inventoryComparisonId;}
+    public String getInventoryFingerprint() {return inventoryFingerprint;}
+    public String getInventoryHardExclusions() {return inventoryHardExclusions;}
     public Long getId() { return id; }
     public ArchitectureProject getProject() { return project; }
     public SolutionDefinition getSolution() { return solution; }

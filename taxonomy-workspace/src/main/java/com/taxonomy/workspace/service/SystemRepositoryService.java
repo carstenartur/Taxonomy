@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 
 /** Manages the catalog of central architecture repositories. */
 @Service
-public class SystemRepositoryService {
+public class SystemRepositoryService implements RepositoryMutationFence {
 
     /** Historic storage name that must remain stable for existing installations. */
     public static final String PRIMARY_STORAGE_NAME = "taxonomy-dsl";
@@ -37,6 +37,16 @@ public class SystemRepositoryService {
 
     public SystemRepositoryService(SystemRepositoryRepository repository) {
         this.repository = repository;
+    }
+
+    /** Keep the existing owner locked until the caller commits; do not change its metadata version. */
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lock(String repositoryId) {
+        requireText(repositoryId, "repositoryId");
+        if (repository.lockForMutation(repositoryId) != 1) {
+            throw new IllegalArgumentException("Architecture repository not found: " + repositoryId);
+        }
     }
 
     /**

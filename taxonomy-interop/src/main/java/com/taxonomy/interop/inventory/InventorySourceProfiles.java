@@ -1,6 +1,6 @@
 package com.taxonomy.interop.inventory;
 import com.taxonomy.extension.api.inventory.InventoryReadContracts.*;
-import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.Criterion;
+import com.taxonomy.extension.api.inventory.InventoryComparisonContracts.*;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import java.net.URI;
@@ -18,12 +18,24 @@ public class InventorySourceProfiles {
                                       String organizationField,String environmentField,String nodeField,AssertionKind kind) {
         public AssertionProjection {Objects.requireNonNull(criterion);Objects.requireNonNull(positiveField);Objects.requireNonNull(kind);}
     }
+    public record RelationshipProjection(String sourceRelation,RelationshipKind kind,String qualifier,AssertionKind assertionKind) {
+        public RelationshipProjection {
+            if(sourceRelation==null || sourceRelation.isBlank() || sourceRelation.length()>100)throw new IllegalArgumentException("Invalid source relationship meaning");
+            Objects.requireNonNull(kind);Objects.requireNonNull(assertionKind);
+            if(qualifier!=null && (qualifier.isBlank() || qualifier.length()>200))throw new IllegalArgumentException("Invalid relationship qualifier");
+        }
+    }
     public record Profile(String revision,String extensionId,String instanceId,URI origin,String repositoryId,
                           String organization,Set<String> principals,Set<String> selectedIds,List<TypeProjection> projections,
                           boolean readUsageRelations,Limits limits,Map<String,String> options,String credentialEnvironment,
-                          String principalEnvironment,boolean allowPrivateNetworks,List<AssertionProjection> assertions) {
+                          String principalEnvironment,boolean allowPrivateNetworks,List<AssertionProjection> assertions,List<RelationshipProjection> relationships) {
+        public Profile(String revision,String extensionId,String instanceId,URI origin,String repositoryId,String organization,Set<String> principals,Set<String> selectedIds,List<TypeProjection> projections,boolean readUsageRelations,Limits limits,Map<String,String> options,String credentialEnvironment,String principalEnvironment,boolean allowPrivateNetworks,List<AssertionProjection> assertions) {
+            this(revision,extensionId,instanceId,origin,repositoryId,organization,principals,selectedIds,projections,readUsageRelations,limits,options,credentialEnvironment,principalEnvironment,allowPrivateNetworks,assertions,List.of());
+        }
         public Profile {
             Objects.requireNonNull(revision);Objects.requireNonNull(extensionId);Objects.requireNonNull(instanceId);Objects.requireNonNull(origin);Objects.requireNonNull(repositoryId);Objects.requireNonNull(organization);
+            relationships=relationships==null?List.of():List.copyOf(relationships);
+            if(relationships.size()>16)throw new IllegalArgumentException("Relationship projection limit");
             assertions=assertions==null?List.of():List.copyOf(assertions);
             if(assertions.size()>16)throw new IllegalArgumentException("Assertion projection limit");
             principals=Set.copyOf(principals);selectedIds=Set.copyOf(selectedIds);projections=List.copyOf(projections);options=Map.copyOf(options);

@@ -254,6 +254,17 @@ class InventoryComparisonEvidenceTest {
         verifyNoInteractions(evidence, snapshots, projects, solutions);
     }
 
+    @Test void replacementMappingMakesRetainedCandidateReviewStale() {
+        var retained=new Candidate(external.id(),null,external.name(),external.kind(),external.fingerprint(),Map.of("sourceProfile","fixture-source","mappingStateFingerprint","old-state"),List.of());
+        var comparison=prepareMapping(retained,List.of(source));
+        when(evidence.mappings(SCOPE,retained.id())).thenReturn(List.of(mapping(7L,"product-v1",RATIONALE,ACTOR)));
+        when(evidence.fingerprint(anyList())).thenReturn("new-state");
+        when(evidence.review(any(),any(),any(),any())).thenAnswer(c->{((java.util.function.Supplier<?>)c.getArgument(3)).get();return null;});
+        var review=new Review(UUID.randomUUID(),comparison.fingerprint(),retained.id(),"Reasoned review",null,false);
+        var failure=assertThrows(PortfolioException.class,()->service.review(comparison.id(),review,ACTOR,CONTEXT));
+        assertEquals(PortfolioException.Kind.CONFLICT,failure.getKind());assertTrue(failure.getMessage().contains("mapping authority"));
+    }
+
     private Comparison prepareMapping(Candidate candidate, List<SourceEvidence> sources) {
         var comparison = comparison(candidate, sources);
         var product = mock(ProductView.class);

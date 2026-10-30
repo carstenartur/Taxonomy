@@ -25,6 +25,19 @@ window.TaxonomyInventoryComparison = (function () {
         selectNodes:'Select at least one recorded node', choose:'Choose', error:'The action failed', limitations:'Limitations', assertionNode:'Node (capability assertions only)',
         hint:'Active status, support end and verification date do not establish organizational availability. Names are not identity.', all:'Areas outside this selection are unexamined.'
     };
+    Object.assign(words,de ? {
+        addRelationship:'Gerichtete Anforderung ergänzen', relationSource:'Ausgangskandidat (exakte ID)', relationTarget:'Zielkandidat (exakte ID)', relationKind:'Beziehungsart', qualifier:'Vertrag / Version / Bedingung', required:'Für die Variante erforderlich',
+        addVariant:'Bestehende Lösungsvariante ergänzen', variant:'Bestehende Lösungsvariante', action:'Fachliche Maßnahme', candidateEvidence:'Zusätzliche Kandidatennachweise (IDs, durch Komma getrennt)',
+        membership:'Zusätzliche Nachweise ändern keine Produktmitgliedschaft. Befunde und Ausschlüsse der vorhandenen Lösung bleiben erhalten.',
+        prerequisite:'Voraussetzung ergänzen', risk:'Risiko ergänzen', cost:'Kostenannahme ergänzen', note:'Begründete Aussage', assessmentStatus:'Nachweisstatus', amount:'Exakter Dezimalbetrag', currency:'Währung', basis:'Kostenbasis', remove:'Entfernen',
+        variantFindings:'Gespeicherte Lösungsvarianten', variantDecision:'Variantenentscheidung', saveVariant:'Variantenentscheidung speichern', acknowledge:'Verbleibende ungeklärte Nachweise bewusst anerkennen', exclusions:'Harte Ausschlüsse', questions:'Offene Klärungen', directed:'Gerichtete Beziehungsbefunde'
+    } : {
+        addRelationship:'Add directed requirement', relationSource:'Source candidate (exact ID)', relationTarget:'Target candidate (exact ID)', relationKind:'Relationship kind', qualifier:'Contract / version / constraint', required:'Required for the variant',
+        addVariant:'Add existing solution variant', variant:'Existing solution variant', action:'Domain action', candidateEvidence:'Additional candidate evidence (comma-separated IDs)',
+        membership:'Additional evidence does not change product membership. Findings and exclusions of the existing solution remain binding.',
+        prerequisite:'Add prerequisite', risk:'Add risk', cost:'Add cost assumption', note:'Reasoned statement', assessmentStatus:'Evidence status', amount:'Exact decimal amount', currency:'Currency', basis:'Cost basis', remove:'Remove',
+        variantFindings:'Retained solution variants', variantDecision:'Variant decision', saveVariant:'Save variant decision', acknowledge:'Explicitly acknowledge remaining unknown evidence', exclusions:'Hard exclusions', questions:'Open questions', directed:'Directed relationship findings'
+    });
     const label = key => words[key] || key;
     const url = path => window.TaxonomyI18n?.resolveUrl?.(path) || path;
     const read = path => window.TaxonomyApiClient.getJson(url(path));
@@ -52,10 +65,29 @@ window.TaxonomyInventoryComparison = (function () {
         const start=field(setup,label('start'),input('date'));start.required=true;start.dataset.inventoryStart='';
         const end=field(setup,label('end'),input('date'));end.disabled=true;mode.addEventListener('change',()=>{end.disabled=mode.value==='EXACT_DATE';end.required=!end.disabled;});
         const profiles=field(setup,label('sources'),input());
+        const relationshipRows=[],variantRows=[];
+        const editor=node('div');setup.append(editor);
+        function removeRow(rows,row,element) {element.append(button(label('remove'),()=>{rows.splice(rows.indexOf(row),1);element.remove();}));}
+        editor.append(button(label('addRelationship'),()=>{
+            const box=node('fieldset',undefined,'border p-2 my-2');box.append(node('legend',label('addRelationship'),'h6'));editor.append(box);
+            const row={id:crypto.randomUUID(),source:field(box,label('relationSource'),input()),target:field(box,label('relationTarget'),input()),kind:field(box,label('relationKind'),select(['INTERFACE','DEPENDENCY','ALTERNATIVE','HARD_EXCLUSION'].map(v=>[v,v]))),qualifier:field(box,label('qualifier'),input()),required:field(box,label('required'),input('checkbox'))};
+            row.source.dataset.relationshipSource='';row.target.dataset.relationshipTarget='';row.kind.dataset.relationshipKind='';row.required.checked=true;
+            relationshipRows.push(row);removeRow(relationshipRows,row,box);
+        }));
+        editor.append(node('p',label('membership'),'small'),button(label('addVariant'),()=>{
+            const box=node('fieldset',undefined,'border p-2 my-2');box.append(node('legend',label('variant'),'h6'));editor.append(box);
+            const row={solution:field(box,label('variant'),select([['',label('choose')],...(options.solutions||[]).map(v=>[String(v.id),v.title||v.solution?.title||String(v.id)])])),action:field(box,label('action'),select(['REUSE','SATISFIED_AS_IS','CHANGE','CREATE','PROCURE','ORGANIZATIONAL','RETIRE_OR_REPLACE','UNDECIDED'].map(v=>[v,v]))),candidates:field(box,label('candidateEvidence'),input()),prerequisites:[],risks:[],costs:[]};
+            row.solution.dataset.variantSolution='';row.candidates.dataset.variantCandidates='';
+            function note(kind) {const area=node('fieldset',undefined,'border p-2 my-2');box.append(area);const n={text:field(area,label('note'),node('textarea')),status:field(area,label('assessmentStatus'),select(['OPEN','SATISFIED','BLOCKING'].map(v=>[v,v]))),citation:field(area,label('citation'),input())};n.text.className='form-control';n.text.maxLength=1800;n.citation.maxLength=1800;row[kind].push(n);removeRow(row[kind],n,area);}
+            box.append(button(label('prerequisite'),()=>note('prerequisites')),button(label('risk'),()=>note('risks')),button(label('cost'),()=>{const area=node('fieldset',undefined,'border p-2 my-2');box.append(area);const c={amount:field(area,label('amount'),input('text')),currency:field(area,label('currency'),input()),basis:field(area,label('basis'),input()),citation:field(area,label('citation'),input())};c.amount.inputMode='decimal';c.amount.placeholder='1234.5678';c.currency.maxLength=3;row.costs.push(c);removeRow(row.costs,c,area);}));
+            variantRows.push(row);removeRow(variantRows,row,box);
+        }));
         const output=node('div');output.dataset.inventoryResult='';
         const previous=field(panel,label('retained'),select([['',label('choose')]]));
         async function run(action) {status.textContent='';try {await action();}catch(error){status.textContent=error.detail||error.message||label('error');}}
-        function request(nodes,question,sourceProfiles) {if(!nodes.length)throw new Error(label('selectNodes'));return {selectedNodes:nodes,question,sourceProfiles};}
+        function request(nodes,question,sourceProfiles) {if(!nodes.length)throw new Error(label('selectNodes'));return {selectedNodes:nodes,question,sourceProfiles,
+            relationships:relationshipRows.map(r=>({id:r.id,sourceCandidateId:r.source.value.trim(),targetCandidateId:r.target.value.trim(),kind:r.kind.value,qualifier:r.qualifier.value.trim()||null,required:r.required.checked})),
+            variants:variantRows.map(v=>({projectSolutionId:Number(v.solution.value),action:v.action.value,candidateIds:v.candidates.value.split(',').map(x=>x.trim()).filter(Boolean),prerequisites:v.prerequisites.map(n=>({text:n.text.value,status:n.status.value,citation:n.citation.value})),risks:v.risks.map(n=>({text:n.text.value,status:n.status.value,citation:n.citation.value})),costs:v.costs.map(c=>({amount:c.amount.value.trim(),currency:c.currency.value.trim().toUpperCase(),basis:c.basis.value,citation:c.citation.value}))}))};}
         async function refreshList() {const values=await read(`/api/projects/${options.projectId}/snapshots/${options.snapshot.summary.id}/inventory-comparisons`);previous.replaceChildren();for(const value of [{id:'',createdAt:label('choose')},...values]){const o=node('option',value.createdAt+' '+(value.demand?.question?.organization||''));o.value=value.id;previous.append(o);}}
         async function compare() {
             const question={mode:mode.value,start:start.value,endExclusive:mode.value==='EXACT_DATE'?null:end.value,organization:organization.value.trim(),environment:environment.value.trim()||null};
@@ -97,19 +129,41 @@ window.TaxonomyInventoryComparison = (function () {
                     const mappingId=crypto.randomUUID();mapping.append(button(label('map'),()=>run(async()=>{if(!product.value||!rationale.value.trim())throw new Error(label('rationale'));await write('/api/inventory-comparisons/'+comparison.id+'/candidates/'+encodeURIComponent(candidate.id)+'/mappings',{id:mappingId,productId:Number(product.value),comparisonFingerprint:comparison.fingerprint,rationale:rationale.value});status.textContent=label('saved');})));
                 }
             }
+            if(comparison.relationshipFindings?.length) {
+                output.append(node('h4',label('directed'),'h6'));
+                for(const relation of comparison.relationshipFindings)output.append(node('p',`${relation.sourceCandidateId} → ${relation.targetCandidateId} · ${relation.kind} · ${relation.qualifier||'?'} · ${relation.finding.outcome}`));
+            }
+            if(comparison.variants?.length)output.append(node('h4',label('variantFindings'),'h6'));
+            const variants=node('div',undefined,'row g-3');output.append(variants);
+            for(const variant of comparison.variants||[]) {
+                const card=node('section',undefined,'col border rounded p-3');variants.append(card);card.append(node('h5',variant.title),node('p',variant.solutionKey+' · '+variant.input.action));
+                const frozen=node('details');frozen.append(node('summary',label('evidence')),node('pre',JSON.stringify({solution:JSON.parse(variant.frozenSolutionJson),assessment:variant.input,findings:variant.findings},null,2),'small text-break'));card.append(frozen);
+                card.append(node('h6',label('exclusions')));for(const reason of variant.hardExclusions)card.append(node('p',reason,'small text-break'));
+                card.append(node('h6',label('questions')));for(const question of variant.openQuestions)card.append(node('p',question,'small text-break'));
+                const form=node('div');form.dataset.variantReview='';card.append(form);
+                const decision=field(form,label('variantDecision'),select(['EVALUATED','SELECTED','REJECTED'].map(v=>[v,v])));if(variant.hardExclusions.length)decision.querySelector('option[value=SELECTED]').disabled=true;
+                const rationale=field(form,label('rationale'),node('textarea'));rationale.className='form-control';rationale.maxLength=1800;
+                const coverage=field(form,label('coverage'),input('number'));coverage.min='0';coverage.max='100';
+                const acknowledge=field(form,label('acknowledge'),input('checkbox'));const reviewId=crypto.randomUUID();
+                form.append(button(label('saveVariant'),()=>run(async()=>{
+                    if(!rationale.value.trim()||coverage.value==='')throw new Error(label('rationale')+' / '+label('coverage'));
+                    await write('/api/inventory-comparisons/'+comparison.id+'/reviews',{id:reviewId,comparisonFingerprint:comparison.fingerprint,candidateId:null,rationale:rationale.value,projectSolutionId:variant.projectSolutionId,selectProduct:false,coveragePercent:Number(coverage.value),variantDecision:{projectSolutionId:variant.projectSolutionId,outcome:decision.value,acknowledgeUnknowns:acknowledge.checked}});status.textContent=label('saved');
+                })));
+            }
             const history=node('details');history.append(node('summary',label('history')));output.append(history);
             run(async()=>{for(const item of await read('/api/inventory-comparisons/'+comparison.id+'/reviews'))history.append(node('p',item.actor+' · '+item.reviewedAt+' · '+item.review.rationale));});
             output.focus();
         }
         function assertionForm(parent,candidate,demand) {
             const form=node('details');form.append(node('summary',label('evidence')));parent.append(form);
-            const criterion=field(form,label('criterion'),select(['AVAILABILITY','CAPABILITY','SUPPORT','ORGANIZATION','ENVIRONMENT'].map(v=>[v,v])));
+            const criterion=field(form,label('criterion'),select(['AVAILABILITY','CAPABILITY','SUPPORT','ORGANIZATION','ENVIRONMENT','RELATIONSHIPS'].map(v=>[v,v])));
+            const edgeTarget=field(form,label('relationTarget'),input());const edgeKind=field(form,label('relationKind'),select(['INTERFACE','DEPENDENCY','ALTERNATIVE','HARD_EXCLUSION'].map(v=>[v,v])));const edgeQualifier=field(form,label('qualifier'),input());
             const polarity=field(form,label('evidence'),select([['true',label('positive')],['false',label('negative')]]));
             const kind=field(form,label('kind'),select(['DECLARED','PLANNED','OBSERVED'].map(v=>[v,v])));
             const from=field(form,label('start')+' (YYYY / YYYY-MM-DD)',input());const until=field(form,label('end')+' (YYYY / YYYY-MM-DD)',input());
             const org=field(form,label('organization'),input());org.value=demand.question.organization;const env=field(form,label('environment'),input());env.value=demand.question.environment||'';
             const nodeCode=field(form,label('assertionNode'),select([['',label('choose')],...demand.selectedNodes.map(v=>[v,v])]));const citation=field(form,label('citation'),node('textarea'));
-            const assertionId=crypto.randomUUID();form.append(button(label('saveAssertion'),()=>run(async()=>{if(!citation.value?.trim())throw new Error(label('citation'));await write('/api/products/'+candidate.productId+'/inventory-assertions',{id:assertionId,candidateId:'product:'+candidate.productId,criterion:criterion.value,nodeCode:criterion.value==='CAPABILITY'?nodeCode.value:null,positive:polarity.value==='true',start:boundary(from.value),endExclusive:boundary(until.value),organization:org.value,environment:env.value||null,kind:kind.value,citation:citation.value,recordedAt:new Date().toISOString()});status.textContent=label('saved');})));
+            const assertionId=crypto.randomUUID();form.append(button(label('saveAssertion'),()=>run(async()=>{if(!citation.value?.trim())throw new Error(label('citation'));await write('/api/products/'+candidate.productId+'/inventory-assertions',{id:assertionId,candidateId:'product:'+candidate.productId,criterion:criterion.value,nodeCode:criterion.value==='CAPABILITY'?nodeCode.value:null,positive:polarity.value==='true',start:boundary(from.value),endExclusive:boundary(until.value),organization:org.value,environment:env.value||null,kind:kind.value,citation:citation.value,recordedAt:new Date().toISOString(),relationship:criterion.value==='RELATIONSHIPS'?{targetCandidateId:edgeTarget.value.trim(),kind:edgeKind.value,qualifier:edgeQualifier.value.trim()||null}:null});status.textContent=label('saved');})));
         }
         run(refreshList);return {open,compare,request,element:panel};
     }

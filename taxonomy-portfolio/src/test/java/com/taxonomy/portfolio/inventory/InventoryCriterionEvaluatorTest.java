@@ -19,6 +19,12 @@ class InventoryCriterionEvaluatorTest {
     private Finding evaluate(Question q, Assertion... assertions) {
         return evaluator.evaluate("product:1", Criterion.AVAILABILITY, null, q, List.of(assertions), true);
     }
+    @Test void relationshipScalarWithoutDirectedEndpointsCannotSupport() {
+        var a = new Assertion("edge", "product:1", Criterion.RELATIONSHIPS, null, true,
+                new Boundary("2029", Precision.YEAR), new Boundary("2032", Precision.YEAR),
+                "north", "production", AssertionKind.OBSERVED, "record", Instant.EPOCH);
+        assertEquals(Outcome.UNKNOWN, evaluator.evaluate("product:1", Criterion.RELATIONSHIPS, null, period, List.of(a), true).outcome());
+    }
     @Test void wholeCoverageSupportsAndMissingEndDoesNotMeanInfinity() {
         assertEquals(Outcome.SUPPORTED, evaluate(period, assertion(true,"2029-01-01","2032-01-01", AssertionKind.OBSERVED)).outcome());
         assertEquals(Outcome.UNKNOWN, evaluate(period, assertion(true,"2029-01-01",null, AssertionKind.OBSERVED)).outcome());

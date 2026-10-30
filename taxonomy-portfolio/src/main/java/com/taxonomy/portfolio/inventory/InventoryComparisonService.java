@@ -21,8 +21,9 @@ public class InventoryComparisonService {
     public InventoryComparisonService(ProductCatalogService products,PortfolioAnalysisPersistenceService snapshots,ProjectPortfolioService projects,SolutionPortfolioService solutions,InventoryEvidencePort evidence,PortfolioJsonCodec codec) {
         this.products=products;this.snapshots=snapshots;this.projects=projects;this.solutions=solutions;this.evidence=evidence;this.codec=codec;
     }
-    public record CreateComparisonRequest(List<String> selectedNodes,Question question,List<String> sourceProfiles) {
-        public CreateComparisonRequest { selectedNodes=List.copyOf(selectedNodes);sourceProfiles=sourceProfiles==null?List.of():List.copyOf(sourceProfiles);Objects.requireNonNull(question); }
+    public record CreateComparisonRequest(List<String> selectedNodes,Question question,List<String> sourceProfiles,List<RelationshipRequirement> relationships,List<VariantInput> variants) {
+        public CreateComparisonRequest(List<String> selectedNodes,Question question,List<String> sourceProfiles) {this(selectedNodes,question,sourceProfiles,List.of(),List.of());}
+        public CreateComparisonRequest { selectedNodes=List.copyOf(selectedNodes);sourceProfiles=sourceProfiles==null?List.of():List.copyOf(sourceProfiles);Objects.requireNonNull(question);relationships=relationships==null?List.of():List.copyOf(relationships);variants=variants==null?List.of():List.copyOf(variants);if(relationships.size()>100 || variants.size()>20)throw new IllegalArgumentException("Too many comparison inputs"); }
     }
     public record MapCandidateRequest(UUID id,Long productId,String comparisonFingerprint,String rationale) { }
     public Comparison compare(Long project,String snapshot,CreateComparisonRequest request,String actor,WorkspaceContext context) {
@@ -42,6 +43,8 @@ public class InventoryComparisonService {
         var remote=evidence.readSources(scope,demand,request.sourceProfiles());
         for(var external:remote.candidates()) {
             var mappings=evidence.mappings(scope,external.id());
+            var externalMetadata=new TreeMap<>(external.metadata());externalMetadata.put("mappingStateFingerprint",evidence.fingerprint(mappings));
+            external=new Candidate(external.id(),external.productId(),external.name(),external.kind(),external.fingerprint(),externalMetadata,external.assertions());
             if(mappings.isEmpty()) {candidates.add(external);continue;}
             var mapping=mappings.stream().max(Comparator.comparing(Mapping::mappedAt)).orElseThrow();var product=products.getProduct(mapping.productId(),actor,context);
             if(!mapping.productFingerprint().equals(evidence.fingerprint(product))) {
@@ -51,7 +54,7 @@ public class InventoryComparisonService {
             var metadata=new TreeMap<>(external.metadata());metadata.put("mappingId",mapping.id().toString());metadata.put("mappedProductFingerprint",mapping.productFingerprint());metadata.put("mappingRationale",mapping.rationale());metadata.put("curatedAssertionsFingerprint",evidence.fingerprint(evidence.assertions(scope,"product:"+product.id())));
             var assertions=new ArrayList<>(external.assertions());
             for(var a:projection.project(product,mapping.productFingerprint(),evidence.assertions(scope,"product:"+product.id()),request.question()).assertions())
-                assertions.add(new Assertion(a.id(),external.id(),a.criterion(),a.nodeCode(),a.positive(),a.start(),a.endExclusive(),a.organization(),a.environment(),a.kind(),a.citation(),a.recordedAt()));
+                assertions.add(new Assertion(a.id(),external.id(),a.criterion(),a.nodeCode(),a.positive(),a.start(),a.endExclusive(),a.organization(),a.environment(),a.kind(),a.citation(),a.recordedAt(),a.relationship()));
             candidates.add(new Candidate(external.id(),product.id(),external.name(),external.kind(),evidence.fingerprint(List.of(external.fingerprint(),mapping)),metadata,assertions));
         }
         if(candidates.size()>100)throw PortfolioException.validation("Comparison candidate limit exceeded");
@@ -61,7 +64,7 @@ public class InventoryComparisonService {
         for(var candidate:candidates) {
             var assertions=new ArrayList<>(candidate.assertions());
             if(candidate.productId()!=null) for(var other:candidates) if(!other.id().equals(candidate.id()) && candidate.productId().equals(other.productId()))
-                for(var a:other.assertions()) assertions.add(new Assertion(a.id(),candidate.id(),a.criterion(),a.nodeCode(),a.positive(),a.start(),a.endExclusive(),a.organization(),a.environment(),a.kind(),a.citation(),a.recordedAt()));
+                for(var a:other.assertions()) assertions.add(new Assertion(a.id(),candidate.id(),a.criterion(),a.nodeCode(),a.positive(),a.start(),a.endExclusive(),a.organization(),a.environment(),a.kind(),a.citation(),a.recordedAt(),a.relationship()));
             joined.add(new Candidate(candidate.id(),candidate.productId(),candidate.name(),candidate.kind(),candidate.fingerprint(),candidate.metadata(),assertions.stream().distinct().toList()));
         }
         candidates=joined;
@@ -71,9 +74,25 @@ public class InventoryComparisonService {
             for(var criterion:List.of(Criterion.AVAILABILITY,Criterion.SUPPORT,Criterion.ORGANIZATION,Criterion.ENVIRONMENT,Criterion.RELATIONSHIPS))
                 findings.add(evaluator.evaluate(candidate.id(),criterion,null,demand.question(),candidate.assertions(),criterion!=Criterion.RELATIONSHIPS));
         }
-        UUID id=UUID.randomUUID();Instant now=Instant.now();String fingerprint=evidence.fingerprint(List.of(id,demand,InventoryCriterionEvaluator.VERSION,now,candidates,findings,remote.sources()));
-        var result=new Comparison(id,demand,InventoryCriterionEvaluator.VERSION,now,candidates,findings,remote.sources(),fingerprint);evidence.save(scope,result);return result;
+        var candidateIds=candidates.stream().map(Candidate::id).collect(java.util.stream.Collectors.toSet());
+        var relationshipIds=new HashSet<String>();var relationshipFindings=new ArrayList<RelationshipFinding>();
+        var relationshipEvaluator=new InventoryRelationshipEvaluator();
+        for(var requirement:request.relationships()) {
+            if(!relationshipIds.add(requirement.id()) || !candidateIds.contains(requirement.sourceCandidateId()) || !candidateIds.contains(requirement.targetCandidateId()))throw PortfolioException.validation("Relationship must have a distinct ID and exact retained endpoints");
+            var sourceCandidate=candidates.stream().filter(c->c.id().equals(requirement.sourceCandidateId())).findFirst().orElseThrow();
+            relationshipFindings.add(relationshipEvaluator.evaluate(requirement,request.question(),sourceCandidate.assertions()));
+        }
+        var variants=new ArrayList<VariantAssessment>();var variantIds=new HashSet<Long>();
+        var existing=request.variants().isEmpty()?List.<ProjectSolutionView>of():solutions.listProjectSolutions(project,actor,context);
+        for(var input:request.variants()) {
+            if(!variantIds.add(input.projectSolutionId()) || !candidateIds.containsAll(input.candidateIds()))throw PortfolioException.validation("Variant must name a distinct existing project solution and retained evidence candidates");
+            var solution=existing.stream().filter(v->v.id().equals(input.projectSolutionId())).findFirst().orElseThrow(()->PortfolioException.validation("Variant is not an existing solution of this project"));
+            variants.add(new InventoryVariantEvaluator().evaluate(solution,evidence.fingerprint(solution),codec.write(solution),input,demand,findings,relationshipFindings));
+        }
+        UUID id=UUID.randomUUID();Instant now=Instant.now();String fingerprint=evidence.fingerprint(List.of(id,demand,InventoryCriterionEvaluator.VERSION,now,candidates,findings,remote.sources(),request.relationships(),relationshipFindings,variants));
+        var result=new Comparison(id,demand,InventoryCriterionEvaluator.VERSION,now,candidates,findings,remote.sources(),fingerprint,request.relationships(),relationshipFindings,variants);evidence.save(scope,result);return result;
     }
+
     public List<Comparison> list(Long project,String snapshot,String actor,WorkspaceContext context) {
         snapshots.getSnapshot(project,snapshot,actor,context);
         return evidence.list(scope(actor,context),project,snapshot).stream().filter(c->{try{evidence.authorize(scope(actor,context),c.demand(),c.sources());return true;}catch(InventoryEvidencePort.Failure denied){if(denied.status()==403||denied.status()==404)return false;throw denied;}}).toList();
@@ -105,9 +124,14 @@ public class InventoryComparisonService {
         evidence.map(scope(actor,context),mapping);return mapping;
     }
     public Reviewed review(UUID id,Review review,String actor,WorkspaceContext context) {
-        var comparison=read(id,actor,context);var candidate=candidate(comparison,review.candidateId());
+        var comparison=read(id,actor,context);
+        if(review.variantDecision()!=null)return reviewVariant(comparison,review,actor,context);
+        var candidate=candidate(comparison,review.candidateId());
         var findings=comparison.findings().stream().filter(f->f.candidateId().equals(candidate.id())).toList();
         String hard=findings.stream().filter(f->f.hardExclusion() || f.outcome()==Outcome.CONTRADICTED || f.outcome()==Outcome.CONFLICT).map(f->f.criterion()+":"+Objects.toString(f.nodeCode(),"")+":"+f.outcome()).collect(java.util.stream.Collectors.joining("; "));
+        var directedExclusions=comparison.relationshipFindings().stream().filter(f->f.sourceCandidateId().equals(candidate.id()) && f.finding().hardExclusion()).map(f->f.requirementId()+":"+f.finding().outcome()).toList();
+        if(!directedExclusions.isEmpty())hard=hard+"; "+String.join("; ",directedExclusions);
+        final String retainedHard=hard.length()<=4000?hard:"Hard exclusions retained in inventory comparison "+comparison.id()+" / "+comparison.fingerprint()+"; candidate "+candidate.id();
         if(review.selectProduct() && !hard.isEmpty())throw PortfolioException.validation("A hard contradiction or conflict prevents product selection");
         if(review.selectProduct() && candidate.productId()==null)throw PortfolioException.validation("Explicitly map the external candidate to an existing catalogue product before selection");
         return evidence.review(scope(actor,context),id,review,()->{
@@ -128,12 +152,50 @@ public class InventoryComparisonService {
             if(review.projectSolutionId()!=null) {
                 if(review.coveragePercent()==null)throw PortfolioException.validation("Portfolio application requires an explicit reviewed coverage percentage");
                 if(candidate.productId()==null)throw PortfolioException.validation("Map the external object before portfolio application");
-                String reference="Inventory comparison "+comparison.id()+" / "+comparison.fingerprint()+"; snapshot "+comparison.demand().snapshotId()+"; review "+review.id()+"; "+review.rationale();
-                products.applyReviewedInventoryCandidate(comparison.demand().projectId(),review.projectSolutionId(),new UpsertProductCandidateRequest(candidate.productId(),review.coveragePercent(),hard.isEmpty()?null:hard,null,null,reference,0.0,ReviewStatus.CONFIRMED,review.selectProduct()?ProductSelectionStatus.SELECTED:hard.isEmpty()?ProductSelectionStatus.SHORTLISTED:ProductSelectionStatus.REJECTED),comparison.id().toString(),comparison.fingerprint(),hard,actor,context);
+                String reference=reviewReference(comparison,review);
+                products.applyReviewedInventoryCandidate(comparison.demand().projectId(),review.projectSolutionId(),new UpsertProductCandidateRequest(candidate.productId(),review.coveragePercent(),retainedHard.isEmpty()?null:retainedHard,null,null,reference,0.0,ReviewStatus.CONFIRMED,review.selectProduct()?ProductSelectionStatus.SELECTED:retainedHard.isEmpty()?ProductSelectionStatus.SHORTLISTED:ProductSelectionStatus.REJECTED),comparison.id().toString(),comparison.fingerprint(),retainedHard,actor,context);
                 solutions.linkRequirement(comparison.demand().projectId(),review.projectSolutionId(),new LinkRequirementSolutionRequest(comparison.demand().requirementId(),comparison.demand().snapshotId(),review.coveragePercent(),RequirementSolutionRole.USES,ReviewStatus.CONFIRMED,reference),actor,context);
             }
             return null;
         });
+    }
+    private Reviewed reviewVariant(Comparison comparison,Review review,String actor,WorkspaceContext context) {
+        var decision=review.variantDecision();
+        var variant=comparison.variants().stream().filter(v->v.projectSolutionId().equals(decision.projectSolutionId())).findFirst().orElseThrow(()->PortfolioException.validation("Variant is not part of this retained comparison"));
+        if(review.coveragePercent()==null)throw PortfolioException.validation("Variant application requires explicit reviewed coverage");
+        if(decision.outcome()==VariantOutcome.SELECTED && !variant.hardExclusions().isEmpty())throw PortfolioException.validation("Hard exclusions prevent selecting this solution variant");
+        if(decision.outcome()==VariantOutcome.SELECTED && !variant.openQuestions().isEmpty() && !decision.acknowledgeUnknowns())throw PortfolioException.validation("Acknowledge unresolved evidence before selection");
+        return evidence.review(scope(actor,context),comparison.id(),review,()->{
+            if(!InventoryCriterionEvaluator.VERSION.equals(comparison.evaluatorVersion()))throw PortfolioException.conflict("Inventory evaluation rules changed; compare again");
+            projects.requireProjectForUpdate(comparison.demand().projectId(),actor,context);
+            solutions.requireSolutionForUpdate(variant.solutionId(),actor,context);
+            var current=solutions.listProjectSolutions(comparison.demand().projectId(),actor,context).stream().filter(v->v.id().equals(variant.projectSolutionId())).findFirst().orElseThrow(()->PortfolioException.conflict("Project solution changed; compare again"));
+            var productIds=new TreeSet<Long>();current.productCandidates().forEach(p->productIds.add(p.product().id()));
+            for(var candidateId:variant.input().candidateIds()) {var c=candidate(comparison,candidateId);if(c.productId()!=null)productIds.add(c.productId());}
+            productIds.forEach(p->products.requireProductForUpdate(p,actor,context));
+            revalidateDemand(comparison,actor,context);
+            current=solutions.listProjectSolutions(comparison.demand().projectId(),actor,context).stream().filter(v->v.id().equals(variant.projectSolutionId())).findFirst().orElseThrow(()->PortfolioException.conflict("Project solution changed; compare again"));
+            if(!variant.fingerprint().equals(evidence.fingerprint(current)))throw PortfolioException.conflict("Solution, coverage, membership or requirement links changed; compare again");
+            for(var candidateId:variant.input().candidateIds())revalidateCandidate(comparison,candidate(comparison,candidateId),actor,context);
+            String reference=reviewReference(comparison,review);
+            String exclusions=String.join("; ",variant.hardExclusions());
+            if(exclusions.length()>4000)exclusions="Hard exclusions retained in inventory comparison "+comparison.id()+" / "+comparison.fingerprint()+"; variant "+variant.projectSolutionId()+" ("+variant.hardExclusions().size()+" complete reasons).";
+            solutions.applyInventoryVariant(comparison.demand().projectId(),variant.projectSolutionId(),ProjectSolutionStatus.valueOf(decision.outcome().name()),ActionStatus.valueOf(variant.input().action().name()),reference,comparison.id().toString(),comparison.fingerprint(),exclusions,actor,context);
+            solutions.linkRequirement(comparison.demand().projectId(),variant.projectSolutionId(),new LinkRequirementSolutionRequest(comparison.demand().requirementId(),comparison.demand().snapshotId(),review.coveragePercent(),RequirementSolutionRole.USES,ReviewStatus.CONFIRMED,reference),actor,context);
+            return null;
+        });
+    }
+    private void revalidateCandidate(Comparison comparison,Candidate candidate,String actor,WorkspaceContext context) {
+        if(candidate.productId()==null)return;
+        var product=products.getProduct(candidate.productId(),actor,context);
+        String expected=candidate.metadata().getOrDefault("mappedProductFingerprint",candidate.metadata().getOrDefault("catalogueFingerprint",candidate.fingerprint()));
+        if(!expected.equals(evidence.fingerprint(product)))throw PortfolioException.conflict("Catalogue product changed; compare again");
+        String assertions=candidate.metadata().get("curatedAssertionsFingerprint");
+        if(assertions!=null && !assertions.equals(evidence.fingerprint(evidence.assertions(scope(actor,context),"product:"+product.id()))))throw PortfolioException.conflict("Curated assertions changed; compare again");
+    }
+    private String reviewReference(Comparison comparison,Review review) {
+        String prefix="Inventory comparison "+comparison.id()+" / "+comparison.fingerprint()+"; snapshot "+comparison.demand().snapshotId()+"; review "+review.id()+"; ";
+        return prefix.length()+review.rationale().length()<=2000?prefix+review.rationale():prefix+"Full rationale retained in this review.";
     }
     private record FrozenNode(String code,String nameEn,String nameDe,String descriptionEn,String descriptionDe,String parentCode,String analysisRole,String source,String externalId,Double originalScore) { }
     private void freezeRecordedNodes(List<com.taxonomy.dto.TaxonomyNodeDto> nodes,Map<String,Double> scores,Map<String,String> frozen) {
@@ -152,6 +214,10 @@ public class InventoryComparisonService {
     }
     private void revalidateDemand(Comparison c,String actor,WorkspaceContext context) {
         evidence.revalidate(scope(actor,context),c.demand(),c.sources());
+        for(var candidate:c.candidates()) {
+            String expected=candidate.metadata().get("mappingStateFingerprint");
+            if(expected!=null && !expected.equals(evidence.fingerprint(evidence.mappings(scope(actor,context),candidate.id()))))throw PortfolioException.conflict("Source identity mapping authority changed; compare again");
+        }
         var current=snapshots.getSnapshot(c.demand().projectId(),c.demand().snapshotId(),actor,context);
         if(!c.demand().snapshotFingerprint().equals(evidence.fingerprint(codec.write(current))))throw PortfolioException.conflict("Saved snapshot changed; compare again");
         var requirement=projects.getRequirement(c.demand().projectId(),c.demand().requirementId(),actor,context);

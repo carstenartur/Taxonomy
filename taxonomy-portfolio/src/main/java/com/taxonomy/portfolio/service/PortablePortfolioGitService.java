@@ -104,10 +104,11 @@ public class PortablePortfolioGitService extends PortfolioGitService {
                                          WorkspaceContext context) {
         validatePortfolio(null, dsl);
         var portableEvidence = reformulationEvidence.validateForMaterialization(dsl);
+        decisionContributor.lockForMaterialization(username,context);
         MaterializeResult result = super.materialize(dsl, username, context);
         restorePortableCurrentVersions(dsl, username, context);
         PortfolioDecisionGitContributor.DecisionMaterializeResult decisions =
-                decisionContributor.materialize(dsl, username, context);
+                decisionContributor.materializeWithLockedAggregates(dsl, username, context);
         reformulationEvidence.storeImported(portableEvidence, PortfolioScope.key(username, context));
         List<String> warnings = new ArrayList<>(result.warnings());
         warnings.addAll(decisions.warnings());

@@ -16,8 +16,11 @@ import java.util.function.Supplier;
 public class InventoryJournal {
     private static final int ASSERTION_LIMIT=1000;
     private final EntityManager em; private final TransactionTemplate tx; private final IntegrationJson json;
-    public InventoryJournal(EntityManagerFactory factory,PlatformTransactionManager transactions,IntegrationJson json) {
+    private final com.taxonomy.workspace.service.RepositoryMutationFence repositoryFence;
+    public InventoryJournal(EntityManagerFactory factory,PlatformTransactionManager transactions,IntegrationJson json,
+                            com.taxonomy.workspace.service.RepositoryMutationFence repositoryFence) {
         this.em=org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory);this.tx=new TransactionTemplate(transactions);this.json=json;
+        this.repositoryFence=Objects.requireNonNull(repositoryFence);
     }
     public List<Assertion> assertions(Scope scope,String candidate) {
         return tx.execute(s->{var rows=em.createQuery("select a from InventoryAssertionEntity a where a.repositoryId=:repo and a.scopeKey=:scope and a.branch=:branch and a.candidateId=:candidate order by a.id",InventoryAssertionEntity.class)
@@ -28,14 +31,14 @@ public class InventoryJournal {
     public void append(Scope scope,Assertion assertion) {
         tx.executeWithoutResult(s->{String id=json.fingerprint(List.of(scope.repositoryId(),scope.scopeKey(),scope.branch(),assertion.id()));
             var prior=em.find(InventoryAssertionEntity.class,id);
-            if(prior!=null) { if(!prior.assertionJson.equals(json.write(assertion))) throw IntegrationProblem.conflict("ASSERTION_ID_REUSED");return; }
+            if(prior!=null) { if(!json.read(prior.assertionJson,Assertion.class).equals(assertion)) throw IntegrationProblem.conflict("ASSERTION_ID_REUSED");return; }
             var e=new InventoryAssertionEntity();e.id=id;e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.candidateId=assertion.candidateId();e.assertionJson=json.write(assertion);em.persist(e);});
     }
     public void save(Scope scope,Comparison comparison) {
         requireDemand(scope,comparison.demand());
-        tx.executeWithoutResult(s->{var prior=em.find(InventoryComparisonEntity.class,comparison.id().toString());
-            if(prior!=null) { requireScope(scope,prior.repositoryId,prior.scopeKey,prior.branch);if(!prior.comparisonJson.equals(json.write(comparison))) throw IntegrationProblem.conflict("COMPARISON_ID_REUSED");return; }
-            var e=new InventoryComparisonEntity();e.id=comparison.id().toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.projectId=comparison.demand().projectId();e.snapshotId=comparison.demand().snapshotId();e.actor=scope.actor();e.fingerprint=comparison.fingerprint();e.comparisonJson=json.write(comparison);em.persist(e);});
+        guarded(()->{tx.executeWithoutResult(s->{repositoryFence.lock(scope.repositoryId());var prior=em.find(InventoryComparisonEntity.class,comparison.id().toString());
+            if(prior!=null) { requireScope(scope,prior.repositoryId,prior.scopeKey,prior.branch);if(!json.read(prior.comparisonJson,Comparison.class).equals(comparison)) throw IntegrationProblem.conflict("COMPARISON_ID_REUSED");return; }
+            var e=new InventoryComparisonEntity();e.id=comparison.id().toString();e.scopeGuardKey="comparison:"+e.id;e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.projectId=comparison.demand().projectId();e.snapshotId=comparison.demand().snapshotId();e.actor=scope.actor();e.fingerprint=comparison.fingerprint();e.comparisonJson=json.write(comparison);em.persist(e);});return null;});
     }
     public Comparison read(Scope scope,UUID id) { return tx.execute(s->json.read(require(scope,id,false).comparisonJson,Comparison.class)); }
     public List<Comparison> list(Scope scope,Long project,String snapshot) {
@@ -47,31 +50,58 @@ public class InventoryJournal {
             .setParameter("repo",scope.repositoryId()).setParameter("scope",scope.scopeKey()).setParameter("branch",scope.branch()).setParameter("comparison",comparisonId.toString()).setMaxResults(100).getResultList().stream().map(r->json.read(r.reviewJson,Reviewed.class)).toList();});
     }
     public Reviewed review(Scope scope,UUID id,Review review,Supplier<Void> apply) {
-        return tx.execute(s->{var comparison=require(scope,id,true);
+        return guarded(()->tx.execute(s->{repositoryFence.lock(scope.repositoryId());lockScope(scope);var comparison=require(scope,id,true);
             if(!comparison.fingerprint.equals(review.comparisonFingerprint())) throw IntegrationProblem.conflict("COMPARISON_CHANGED");
             if(!comparison.actor.equals(scope.actor())) throw new IntegrationProblem("REVIEW_ACTOR",403,"Only the comparison actor may review it");
             var prior=em.find(InventoryReviewEntity.class,review.id().toString());String fp=json.fingerprint(review);
-            if(prior!=null) { requireScope(scope,prior.repositoryId,prior.scopeKey,prior.branch);if(!prior.comparisonId.equals(id.toString()) || !prior.reviewFingerprint.equals(fp)) throw IntegrationProblem.conflict("REVIEW_ID_REUSED");return json.read(prior.reviewJson,Reviewed.class); }
-            apply.get();var reviewed=new Reviewed(review,Instant.now(),scope.actor());var e=new InventoryReviewEntity();e.id=review.id().toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.comparisonId=id.toString();e.reviewFingerprint=fp;e.reviewJson=json.write(reviewed);em.persist(e);em.flush();return reviewed;});
+            if(prior!=null) { requireScope(scope,prior.repositoryId,prior.scopeKey,prior.branch);if(!prior.comparisonId.equals(id.toString()) || !json.read(prior.reviewJson,Reviewed.class).review().equals(review)) throw IntegrationProblem.conflict("REVIEW_ID_REUSED");return json.read(prior.reviewJson,Reviewed.class); }
+            apply.get();var reviewed=new Reviewed(review,Instant.now(),scope.actor());var e=new InventoryReviewEntity();e.id=review.id().toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.comparisonId=id.toString();e.reviewFingerprint=fp;e.reviewJson=json.write(reviewed);em.persist(e);em.flush();return reviewed;}));
     }
     public void observation(Scope scope,String profile,String revision,String organization,UUID id,Observation observation,String failureCode) {
-        tx.executeWithoutResult(s->{var e=new InventoryObservationEntity();e.id=id.toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.profileId=profile;e.profileRevision=revision;e.actor=scope.actor();e.organization=organization;e.createdAt=Instant.now().toString();e.status=failureCode==null?"SUCCEEDED":"FAILED";e.failureCode=failureCode;e.observationJson=observation==null?null:json.write(observation);em.persist(e);});
+        guarded(()->{tx.executeWithoutResult(s->{repositoryFence.lock(scope.repositoryId());lockScope(scope);var e=new InventoryObservationEntity();e.id=id.toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.profileId=profile;e.profileRevision=revision;e.actor=scope.actor();e.organization=organization;e.createdAt=Instant.now().toString();e.status=failureCode==null?"SUCCEEDED":"FAILED";e.failureCode=failureCode;e.observationJson=observation==null?null:json.write(observation);em.persist(e);});return null;});
     }
     public String latestSuccessful(Scope scope,String profile,String organization) {
         return tx.execute(s->em.createQuery("select e.id from InventoryObservationEntity e where e.repositoryId=:repo and e.scopeKey=:scope and e.branch=:branch and e.profileId=:profile and e.organization=:org and e.status='SUCCEEDED' order by e.createdAt desc,e.id desc",String.class)
             .setParameter("repo",scope.repositoryId()).setParameter("scope",scope.scopeKey()).setParameter("branch",scope.branch()).setParameter("profile",profile).setParameter("org",organization).setMaxResults(1).getResultStream().findFirst().orElse(null));
     }
     public void map(Scope scope,Mapping mapping) {
-        tx.executeWithoutResult(s->{
+        guarded(()->{tx.executeWithoutResult(s->{repositoryFence.lock(scope.repositoryId());lockScope(scope);
             var prior=em.find(InventoryMappingEntity.class,mapping.id().toString());
             if(prior!=null) {requireScope(scope,prior.repositoryId,prior.scopeKey,prior.branch);if(!prior.mappingJson.equals(json.write(mapping)))throw IntegrationProblem.conflict("MAPPING_ID_REUSED");return;}
             if(!mapping.actor().equals(scope.actor()))throw new IntegrationProblem("MAPPING_ACTOR",403,"Mapping actor differs");
             var e=new InventoryMappingEntity();e.id=mapping.id().toString();e.repositoryId=scope.repositoryId();e.scopeKey=scope.scopeKey();e.branch=scope.branch();e.candidateId=mapping.candidateId();e.mappingJson=json.write(mapping);em.persist(e);
-        });
+        });return null;});
     }
     public List<Mapping> mappings(Scope scope,String candidate) {
-        return tx.execute(s->em.createQuery("select m from InventoryMappingEntity m where m.repositoryId=:repo and m.scopeKey=:scope and m.branch=:branch and m.candidateId=:candidate order by m.id",InventoryMappingEntity.class)
-            .setParameter("repo",scope.repositoryId()).setParameter("scope",scope.scopeKey()).setParameter("branch",scope.branch()).setParameter("candidate",candidate).setMaxResults(100).getResultList().stream().map(m->json.read(m.mappingJson,Mapping.class)).toList());
+        return tx.execute(s->{var rows=em.createQuery("select m from InventoryMappingEntity m where m.repositoryId=:repo and m.scopeKey=:scope and m.branch=:branch and m.candidateId=:candidate order by m.id",InventoryMappingEntity.class)
+            .setParameter("repo",scope.repositoryId()).setParameter("scope",scope.scopeKey()).setParameter("branch",scope.branch()).setParameter("candidate",candidate).setMaxResults(101).getResultList();
+            if(rows.size()>100)throw IntegrationProblem.conflict("MAPPING_LIMIT_EXCEEDED");
+            return rows.stream().map(m->json.read(m.mappingJson,Mapping.class)).toList();});
+    }
+    /** Coordinate current mapping/observation authority on an existing immutable comparison owner.
+     * This fence precedes comparison and portfolio locks; only technical guard/version fields change. */
+    private void lockScope(Scope scope) {
+        String guard="scope:"+json.fingerprint(List.of(scope.repositoryId(),scope.scopeKey(),scope.branch()));
+        var anchors=em.createQuery("select c from InventoryComparisonEntity c where c.scopeGuardKey=:guard",InventoryComparisonEntity.class)
+            .setParameter("guard",guard).setMaxResults(1).getResultList();
+        InventoryComparisonEntity anchor;
+        if(anchors.isEmpty()) {
+            var existing=em.createQuery("select c from InventoryComparisonEntity c where c.repositoryId=:repo and c.scopeKey=:scope and c.branch=:branch order by c.id",InventoryComparisonEntity.class)
+                .setParameter("repo",scope.repositoryId()).setParameter("scope",scope.scopeKey()).setParameter("branch",scope.branch()).setMaxResults(1).getResultList();
+            if(existing.isEmpty())return; // The repository fence also covers the interval before the first comparison.
+            anchor=existing.getFirst();
+            em.lock(anchor,LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+            anchor.scopeGuardKey=guard;em.flush();
+        } else {
+            anchor=anchors.getFirst();requireScope(scope,anchor.repositoryId,anchor.scopeKey,anchor.branch);
+            em.lock(anchor,LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        }
+    }
+    private <T> T guarded(Supplier<T> action) {
+        try {return action.get();}
+        catch(OptimisticLockException|PessimisticLockException|org.springframework.dao.ConcurrencyFailureException|org.springframework.dao.DataIntegrityViolationException conflict) {
+            throw IntegrationProblem.conflict("INVENTORY_AUTHORITY_CHANGED");
+        }
     }
     private InventoryComparisonEntity require(Scope scope,UUID id,boolean lock) {
         var e=em.find(InventoryComparisonEntity.class,id.toString(),lock?LockModeType.PESSIMISTIC_WRITE:LockModeType.NONE);if(e==null)throw IntegrationProblem.missing();requireScope(scope,e.repositoryId,e.scopeKey,e.branch);return e;

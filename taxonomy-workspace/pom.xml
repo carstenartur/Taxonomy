@@ -107,6 +107,7 @@
                             <skip>false</skip>
                             <includes>
                                 <include>com/taxonomy/editor/EditorPersistenceFixture.class</include>
+                                <include>com/taxonomy/workspace/repository/RepositoryMutationFenceFixture.class</include>
                             </includes>
                         </configuration>
                     </execution>

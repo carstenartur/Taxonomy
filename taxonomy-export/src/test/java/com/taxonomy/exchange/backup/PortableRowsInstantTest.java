@@ -7,6 +7,11 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class PortableRowsInstantTest {
+    public record DateEvidence(java.time.LocalDate start) { }
+    @Test void calendarDatesRemainExactPortableStrings() throws Exception {
+        var value=PortableRows.json().writeValueAsString(new DateEvidence(java.time.LocalDate.of(2030,1,1)));
+        assertThat(PortableRows.json().readTree(value).path("start").asText()).isEqualTo("2030-01-01");
+    }
     public record Receipt(Instant recordedAt) { }
     public record Evidence(List<Receipt> receipts) { }
     @Test void nestedReceiptInstantsArePortableUtcStringsIncludingNanoseconds() throws Exception {

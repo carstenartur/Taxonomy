@@ -53,13 +53,13 @@ class InventoryReviewConcurrencyTest {
       .setProperty("hibernate.connection.username","SA").setProperty("hibernate.connection.password","")
       .setProperty("hibernate.connection.pool_size","4").setProperty("hibernate.hbm2ddl.auto","create-drop")
       .setProperty("hibernate.search.enabled","false");
-    for(var entity:List.of(InventoryComparisonEntity.class,InventoryReviewEntity.class,InventoryAssertionEntity.class,InventoryMappingEntity.class,
+    for(var entity:List.of(com.taxonomy.workspace.model.SystemRepository.class,InventoryComparisonEntity.class,InventoryReviewEntity.class,InventoryAssertionEntity.class,InventoryMappingEntity.class,
       ProductCatalogEntry.class,ProductTaxonomyCoverage.class,ArchitectureProject.class,SolutionDefinition.class,ProjectSolution.class,SolutionProductCandidate.class,ProjectRequirement.class,ProjectRequirementVersion.class,RequirementAnalysisJob.class,RequirementAnalysisJobItem.class,RequirementAnalysisSnapshot.class,SnapshotReference.class,RequirementElementMapping.class,RequirementRelationMapping.class)) config.addAnnotatedClass(entity);
     try(var factory=config.buildSessionFactory()) {
       var txm=new JpaTransactionManager(factory);var tx=new TransactionTemplate(txm);
       var em=SharedEntityManagerCreator.createSharedEntityManager(factory);
       var mapper=JsonMapper.builder().build();var json=new IntegrationJson(mapper);var codec=new PortfolioJsonCodec(mapper);
-      var journal=new InventoryJournal(factory,txm,json);var evidence=new Evidence(journal,json);
+      var journal=new InventoryJournal(factory,txm,json,com.taxonomy.workspace.repository.RepositoryMutationFenceFixture.repositoryFence(factory,"repo"));var evidence=new Evidence(journal,json);
       var context=new WorkspaceContext("alice","ws","draft","repo");
       var scope=new Scope("repo",PortfolioScope.key("alice",context),"draft","alice");
       var project=new ArchitectureProject(scope.scopeKey(),"ws","alice","P","Project",null,ProjectStatus.PLANNING,Instant.EPOCH);
