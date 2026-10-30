@@ -176,14 +176,20 @@ public class ArchitectureLifecycleService {
 
     public Publication finish(RepositoryContext context, Context accepted,Metadata checkpoint) {
         try {
-            var proven=editor.integrationCheckpointForOperation(context,checkpoint.causationId());
-            var receipt=proven.isPresent()?proven.get():editor.checkpoint(context,new CreateCheckpointCommand(accepted,checkpoint));
+            CheckpointAccepted receipt;
+            try {
+                // Prefer the operation's own durable receipt even if a later unrelated operation was published.
+                receipt=editor.checkpoint(context,new CreateCheckpointCommand(accepted,checkpoint));
+            } catch(CommandProblem failure) {
+                if(!Set.of("VERSION_CHANGED","CONTEXT_CHANGED","CHECKPOINT_REJECTED","CHECKPOINT_CONFLICT").contains(failure.code())) throw failure;
+                // An explicitly reconciled operation may have been published by the reconciliation checkpoint.
+                var proven=editor.integrationCheckpointForOperation(context,checkpoint.causationId());
+                if(proven.isEmpty()) return new Publication(accepted,"RECONCILIATION_REQUIRED",null,failure.code(),failure.getMessage());
+                receipt=proven.get();
+            }
             return new Publication(receipt.context(),"CHECKPOINTED",receipt,null,null);
         } catch(IOException failure) {
             return new Publication(accepted,"CHECKPOINT_PENDING",null,"GIT_UNAVAILABLE","The change is retained. Retry the same operation to finish its Git checkpoint.");
-        } catch(CommandProblem failure) {
-            if(!Set.of("VERSION_CHANGED","CONTEXT_CHANGED","CHECKPOINT_REJECTED","CHECKPOINT_CONFLICT").contains(failure.code())) throw failure;
-            return new Publication(accepted,"RECONCILIATION_REQUIRED",null,failure.code(),failure.getMessage());
         }
     }
 

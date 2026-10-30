@@ -30,6 +30,29 @@ The system evaluates the selected taxonomy scope hierarchically and preserves pa
 <a id="architecture-source-context"></a>
 ## Keep the source while moving between architecture views
 
+The shared navigation keeps analysis, projects, requirement detail, architecture
+workbench, editor and versioning connected. The context identifies the architecture,
+project and requirement with readable names and business keys. The current text
+version, source version and selected model stand have separate meanings. Expand
+**Technical details** for exact repository/workspace identities, the full commit
+and available snapshot/version IDs. Existing contextual help links explain the
+currently selected workflow.
+
+| View | Which source or stand it represents |
+|---|---|
+| Analysis | The active analysis draft or the explicitly loaded saved result; opening it does not create a project requirement. |
+| Projects | The selected project's current portfolio in its workspace. The architecture can also serve later projects. |
+| Requirement detail | The stable requirement and its current text version, with earlier versions and separately selected snapshots. |
+| Architecture workbench | The frozen analysis snapshot and its original requirement version. |
+| Architecture editor | The current working model or explicitly selected semantic revision/Git checkpoint; it may differ from the source snapshot. |
+| Versioning | The selected architecture's branches, checkpoints and integration state. |
+
+The current requirement header may show version 2 while a selected historical
+model contains version 1. Historical selection does not rewrite the current text
+or the snapshot source. **Show current working state**, **Refresh** and browser
+Back/Forward keep editor, lifecycle and context on the same loaded model. Earlier
+revisions and Git checkpoints are read-only, without today's portfolio overlay.
+
 The saved architecture workbench identifies the project, requirement and analysis.
 **Requirement and evidence** returns to that exact analysis; **Clarify requirement**
 opens its clarification area. **Project portfolio** selects the corresponding
@@ -60,8 +83,43 @@ Accepted editor changes are durable operations with their own undo/redo history.
 Use **Create checkpoint/version** to record a Git version. The element and history
 lists scroll independently and can be focused with the keyboard.
 
+<a id="analysis-requirement-promotion"></a>
+## Save an analysis as a project requirement
+
+Saving a working analysis into a project is an explicit action. Review the incoming
+text and choose `NEW`, `CHANGE` or `LINK` in the
+[intake workflow](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake). Candidate
+suggestions do not silently create a requirement or replace an existing version.
+
+To save a new version of an existing requirement, the loaded analysis context must
+identify its original requirement version. A missing or now outdated source version
+produces an explicit notice. Open the requirement details, compare the current
+version and decide again; the action does not silently retarget the newest text.
+
+If you type more while saving, the submitted text and newer draft remain separate.
+The submitted version can be saved successfully while the form stays open with your
+newer edits. **Open saved requirement** opens the saved result in a new tab; it does
+not discard the later draft. `LINK` also retains your entered text because linking
+does not replace the stored requirement wording. A pending Git checkpoint retains
+the exact operation for retry; check publication state before treating the saved
+contribution as a completed Git version.
+
 <a id="requirement-clarification-workflow"></a>
 ## Clarify a requirement through architecture and decisions
+
+The architecture remains available after a project ends. A later project can
+contribute a new requirement, a new version of an original requirement or a link to
+it. Use the [intake review](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake) to
+choose `NEW`, `CHANGE` or `LINK` explicitly. The original identity and later project
+contribution remain traceable.
+
+In **Requirements, realization and history**, compare **Text version in selected stand**
+with the reviewed version. Partial/complete realization is a human review against
+exact architecture dependencies. Changed text or evidence requires renewed review;
+an analysis score is not implementation progress. See the
+[lifecycle guide](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle),
+[Git history](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-history) and
+[conflict reconciliation](ARCHITECTURE_EDITOR.md#editor-version-reconciliation).
 
 Use **Projects** and the requirement detail page for a saved, reviewable workflow,
 rather than treating an exported diagram as the end of the analysis.

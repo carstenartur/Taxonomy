@@ -4,6 +4,7 @@ import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.*;
 import com.taxonomy.workspace.repository.*;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.GitHistoryTransfer;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.access.AccessDeniedException;
@@ -71,6 +72,27 @@ class GitNativeSyncSourceAuthorityTest {
             assertEquals(head, fixture.source.getHeadCommit("draft"));
             verify(fixture.portfolio).requireAvailable(); verifyNoMoreInteractions(fixture.portfolio);
             verify(fixture.catalog, never()).save(any());
+            verify(fixture.rows, never()).save(any());
+        }
+    }
+
+    @ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void sourceAuthorityIsRecheckedAfterCopyingHistoryBeforePublishingARef(boolean publish) throws Exception {
+        try (var fixture = new Fixture(); var transfer = mockStatic(GitHistoryTransfer.class)) {
+            String sourceHead = fixture.source.getHeadCommit("draft");
+            String localHead = fixture.local.getHeadCommit("main");
+            transfer.when(() -> GitHistoryTransfer.copyCommitClosure(any(), any(), anyString(), anyList()))
+                    .thenAnswer(call -> {
+                        Object result = call.callRealMethod();
+                        when(fixture.memberRows.findByRepositoryIdAndUsername("private-source", "alice"))
+                                .thenReturn(Optional.empty());
+                        return result;
+                    });
+            assertThrows(AccessDeniedException.class,
+                    () -> run(fixture.service, publish ? Operation.EXPLICIT_PUBLISH : Operation.EXPLICIT_PULL));
+            assertEquals(sourceHead, fixture.source.getHeadCommit("draft"));
+            assertEquals(localHead, fixture.local.getHeadCommit("main"));
+            verify(fixture.portfolio, never()).materializePortfolio(anyString(), anyString(), any());
             verify(fixture.rows, never()).save(any());
         }
     }

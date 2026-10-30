@@ -22,7 +22,7 @@
         Array.from(target.classList).forEach(function (name) {
             if (name === 'badge' || /^(?:text-bg|bg)-(?:primary|secondary|success|warning|danger|info|light|dark)$/.test(name)) target.classList.remove(name);
         });
-        target.classList.add('taxonomy-entity-status');
+        target.classList.add('taxonomy-status', 'taxonomy-entity-status');
         var normalized = String(value || '').toUpperCase();
         target.dataset.state = normalized;
         target.dataset.tone = /^(COMPLETE|COMPLETED|CONFIRMED|CHECKPOINTED|SUCCESS|ACTIVE)$/.test(normalized) ? 'positive'
@@ -102,6 +102,8 @@
         technicalEntry(technical, 'app.context.current', 'app.context.workspace', architecture.workspaceScopeKey);
         technicalEntry(technical, 'app.context.current', 'app.context.branch', architecture.branch);
         technicalEntry(technical, 'app.context.current', 'app.context.modelStand', architecture.modelStand);
+        technicalEntry(technical, 'app.context.current', 'workbench.ui.commit', architecture.commit);
+        technicalEntry(technical, 'app.context.current', 'app.context.modelStand', architecture.revision);
         technicalEntry(technical, 'app.context.current', 'app.entity.project', state.project?.id, true);
         technicalEntry(technical, 'app.context.current', 'app.entity.requirement', requirement.id, true);
         technicalEntry(technical, 'app.context.current', 'app.context.currentTextVersionId', requirement.versionId);

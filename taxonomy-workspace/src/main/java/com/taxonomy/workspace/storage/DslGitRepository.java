@@ -318,7 +318,9 @@ public class DslGitRepository implements AutoCloseable {
             var commit = walk.parseCommit(ObjectId.fromString(commitId));
             try (TreeWalk tree = TreeWalk.forPath(gitRepo, DSL_FILENAME, commit.getTree())) {
                 if (tree == null) return "";
-                return new String(gitRepo.open(tree.getObjectId(0), Constants.OBJ_BLOB).getBytes(maximumBytes), StandardCharsets.UTF_8);
+                ObjectLoader blob = gitRepo.open(tree.getObjectId(0), Constants.OBJ_BLOB);
+                if (blob.getSize() > maximumBytes) throw new IOException("Historical DSL exceeds the document byte budget");
+                return new String(blob.getBytes(maximumBytes), StandardCharsets.UTF_8);
             }
         }
     }

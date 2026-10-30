@@ -141,7 +141,7 @@
         window.TaxonomyArchitectureWorkflow?.showEditor(c,adoptionPanel.getSource());
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
-        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId, workspaceScopeKey:c.workspaceScopeKey, branch:c.branch, modelStand:contextLabel}, editable:Boolean(view.mayEdit)});
+        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:c.repositoryId, workspaceScopeKey:c.workspaceScopeKey, branch:c.branch, modelStand:contextLabel,commit:c.commit,revision:c.revision}, editable:Boolean(view.mayEdit), source:adoptionPanel.getSource()});
         el('editorContext').hidden = Boolean(window.TaxonomyAppChrome);
         el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
         var state = view.document.projectionState;

@@ -57,6 +57,34 @@ class ArchiMateIdentityImportTest {
         assertTrue(relations.rows.isEmpty());
     }
 
+    @Test
+    void returnPreviewMustBeReviewedForExactFilesAndWorkspaceBeforeApplying() throws Exception {
+        var relations = new InMemoryRelations();
+        var importer = new ArchiMateXmlImporter(catalogue("CP", "CR"), relations);
+        var context = new WorkspaceContext("alice", "workspace", "branch");
+        byte[] original = export("CP", "CR");
+        byte[] returned = new String(original, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("type=\"number\"", "type=\"string\"")
+                .replace("type=\"boolean\"", "type=\"string\"").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var preview = importer.previewReturn(original, returned, context);
+        assertTrue(preview.isPreview());
+        assertTrue(relations.rows.isEmpty());
+        assertEquals(2, preview.getElementsMatched());
+        assertTrue(preview.getLosses().stream().anyMatch(loss -> loss.kind().equals("ARCHI_PROPERTY_TYPE_TO_STRING")));
+        assertThrows(ArchiMateImportException.class, () -> importer.importReturn(original, returned, null, context));
+        for (var changedContext : List.of(new WorkspaceContext("alice", "other", "branch"),
+                new WorkspaceContext("bob", "workspace", "branch"), new WorkspaceContext("alice", "workspace", "other"),
+                new WorkspaceContext("alice", "workspace", "branch", "other-repository")))
+            assertThrows(ArchiMateImportException.class, () -> importer.importReturn(original, returned, preview.getReviewFingerprint(), changedContext));
+        assertThrows(ArchiMateImportException.class, () -> importer.importReturn(original, original, preview.getReviewFingerprint(), context));
+        assertTrue(relations.rows.isEmpty());
+        assertEquals(1, importer.importReturn(original, returned, preview.getReviewFingerprint(), context).getRelationsImported());
+        assertEquals(1, importer.importReturn(original, returned, preview.getReviewFingerprint(), context).getRelationsSkipped());
+        assertEquals(Set.of("workspace|CR|CP|FULFILLS"), relations.rows);
+        assertEquals("ARCHIMATE_RETURN", relations.lastProvenance);
+        assertEquals("Reviewed Archi return " + preview.getReviewFingerprint(), relations.lastDescription);
+    }
+
     private static byte[] export(String first, String second) {
         var graph = new DiagramModel("Identity fixture", List.of(
                 new DiagramNode(first, "Identical external display label", "Capabilities", .9, true, 1),
@@ -96,12 +124,14 @@ class ArchiMateIdentityImportTest {
 
     private static final class InMemoryRelations extends TaxonomyRelationService {
         final Set<String> rows = new HashSet<>();
+        String lastProvenance, lastDescription;
         InMemoryRelations() { super(null, null, null); }
         @Override public boolean relationExistsVisible(String source, String target, RelationType type, String workspace) {
             return rows.contains(workspace + "|" + source + "|" + target + "|" + type);
         }
         @Override public TaxonomyRelationDto createRelation(String source, String target, RelationType type,
                                                             String description, String provenance, String workspace, String owner) {
+            lastProvenance = provenance; lastDescription = description;
             assertTrue(rows.add(workspace + "|" + source + "|" + target + "|" + type));
             return new TaxonomyRelationDto();
         }

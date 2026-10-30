@@ -923,6 +923,11 @@
         document.getElementById('architectureTitle').textContent = resolvePolicyTitle(data.policyTitleKey || scene.title);
         renderProvenance(data);
         window.TaxonomyArchitectureWorkflow?.showSnapshot(data, state.selectedNodeId);
+        window.TaxonomyAppChrome?.updateContext({source:{projectId:data.projectId,projectKey:data.projectKey,
+            requirementId:data.requirementId,requirementKey:data.requirementKey,requirementTitle:data.requirementTitle,
+            snapshotId:data.snapshotId,requirementVersionId:data.exportProvenance?.requirementVersionId,
+            requirementVersion:data.requirementVersionNumber,repositoryId:data.exportProvenance?.repositoryId,
+            workspaceScopeKey:data.workspaceId || '__shared__',branch:data.branchName}});
         const archiMateDownload = document.getElementById('downloadArchitectureArchiMate');
         if (archiMateDownload) archiMateDownload.disabled = false;
         document.getElementById('requirementText').textContent = data.requirementText || '';

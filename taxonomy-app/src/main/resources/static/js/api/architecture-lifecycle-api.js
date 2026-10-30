@@ -19,14 +19,20 @@ window.TaxonomyArchitectureLifecycleApi = (function () {
         });
         return window.TaxonomyApiClient.getJson(path + '?' + params);
     }
-    function write(path, body, exact) {
+    function write(path, body, exact, context) {
         var headers = {'Content-Type': 'application/json'};
         if (exact) headers['If-Match'] = '"workspace-revision-' + body.context.revision + '"';
-        return window.TaxonomyApiClient.request(path + '?' + query(body.context), {
+        return window.TaxonomyApiClient.request(path + '?' + query(context || body.context), {
             method:'POST', headers:headers, body:JSON.stringify(body)
         }, {retries:0}).then(function (response) { return response.json(); });
     }
     return {
+        architectures:function () { return read(base + '/architectures', {}); },
+        createArchitecture:function (request) { return write(base + '/architectures', request, false); },
+        workspaces:function (repositoryId) { return read(base + '/architectures/' + encodeURIComponent(repositoryId) + '/workspaces', {}); },
+        createWorkspace:function (context, displayName) { return write('/api/architecture/editor/workspaces', {
+            repositoryId:context.repositoryId, branch:context.branch, displayName:displayName
+        }, false, context); },
         // Selection is explicit. A command Context.revision is never a historical selection.
         overview:function (context, commit, revision) { return read(base, context, {commit:commit, revision:revision}); },
         history:function (context, filters) { return read(base + '/history', context, filters); },

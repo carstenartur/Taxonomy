@@ -119,18 +119,22 @@ try {
     await run('xvfb-run', ['-a', executables[0], '-nosplash', '-consoleLog', '-application', 'com.archimatetool.commandline.app',
       '-data', path.join(out, 'archi-workbench-workspace'), '--abortOnException', '--xmlexchange.import', workbenchXml, '--xmlexchange.export', workbenchReturned]);
     const workbenchComparison = await workbenchProbe('compare', workbenchXml, workbenchReturned);
+    if (!workbenchComparison.split('\n').includes('RETURN_IMPORT_PROFILE taxonomy-archi-5.10-return-v1'))
+      throw new Error('Workbench comparison did not execute the expected bounded return profile');
     const workbenchLossLine = workbenchComparison.split('\n').find(line => line.startsWith('PRODUCT_MAPPING_LOSSES '));
     if (!workbenchLossLine) throw new Error('Workbench product comparison did not return its transformation report');
     report.results.push({ product: 'Archi', version: '5.10.0', releaseSha256: archiSha, profile: 'taxonomy-archimate-3.1-v2',
-      direction: 'Taxonomy workbench bundle -> Archi -> semantic comparison', fixture: 'authored frozen workbench projection',
+      direction: 'Taxonomy workbench bundle -> Archi -> bounded original-bound return reader and semantic comparison',
+      returnProfile: 'taxonomy-archi-5.10-return-v1', fixture: 'authored frozen workbench projection',
       bundleSha256: await digest(workbenchBundle), inputSha256: await digest(workbenchXml), outputSha256: await digest(workbenchReturned),
       result: 'passed', mappingLosses: JSON.parse(workbenchLossLine.slice('PRODUCT_MAPPING_LOSSES '.length)),
+      returnLosses: JSON.parse(workbenchComparison.split('\n').find(line => line.startsWith('RETURN_IMPORT_LOSSES ')).slice('RETURN_IMPORT_LOSSES '.length)),
       checked: ['frozen provenance', 'exact property values and reported type transformations', 'model/element/relationship/view/property-definition names and language attributes',
         'node labels and complete node/connection styles with only the observed reported transitions', 'element and relationship identities', 'endpoints', 'view membership', 'geometry'],
       knownLosses: ['Archi omits en on property values and names; whole node labels and flat source-type folders are also omitted, including their label language markers. Each affected item is recorded.',
         'The observed lineWidth=3 is omitted. Node styles gain exactly fill alpha 100, line RGBA 92/92/92/100 and Sans 9 black font; the connection gains the observed black line and Sans 9 black font. Unknown style or language changes fail.',
         'Property-definition identifiers are product-owned and matched by unique semantic property name; identifier rewrites do not permit name, value or declaration changes beyond the recorded type erasure.'],
-      limitations: ['Archi 5.10.0 converts number/boolean declarations to string. This is a bounded import/export check with recorded losses, not preservation of the typed Taxonomy profile; the production typed reader still rejects the returned type-erased contract.',
+      limitations: ['Archi 5.10.0 converts number/boolean declarations to string. This is a bounded import/export check with recorded losses, not preservation of the typed Taxonomy profile; the strict reader still rejects the returned type-erased contract. The separate original-bound return profile requires exact unchanged semantic content, records every transformation and does not certify semantic editing or relation application.',
         'Bounded authored projection; no live analysis, authorization, independent consumer or Visio acceptance is implied.'] });
   } catch (error) {
     for (const profile of ['archimate-3.1/1', 'taxonomy-archimate-3.1-v2']) {

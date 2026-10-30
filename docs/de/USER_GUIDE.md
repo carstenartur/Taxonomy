@@ -26,6 +26,30 @@ Das System untersucht den ausgewählten Taxonomieumfang hierarchisch und erhält
 <a id="architecture-source-context"></a>
 ## Den Bezug zur Anforderung beim Ansichtswechsel behalten
 
+Die gemeinsame Navigation verbindet Analyse, Projekte, Anforderungsdetail,
+Architekturansicht, Editor und Versionierung. Der Kontext nennt Architektur,
+Projekt und Anforderung mit lesbaren Namen und Fachschlüsseln. Aktuelle Textversion,
+Quellversion und gewählter Modellstand haben verschiedene Bedeutungen.
+**Technische Details** enthält exakte Repository-/Workspace-Kennungen, vollständigen
+Commit und vorhandene Snapshot-/Versions-IDs. Die bestehenden kontextsensitiven
+Hilfelinks erläutern den gewählten Arbeitsablauf.
+
+| Ansicht | Dargestellte Quelle oder Stand |
+|---|---|
+| Analyse | Aktiver Analyseentwurf oder ausdrücklich geladenes gespeichertes Ergebnis; das Öffnen legt keine Projektanforderung an. |
+| Projekte | Aktuelles Portfolio des ausgewählten Projekts in seinem Workspace; die Architektur kann auch spätere Projekte tragen. |
+| Anforderungsdetail | Stabile Anforderung und aktuelle Textversion, mit früheren Versionen und getrennt gewählten Snapshots. |
+| Architekturansicht | Eingefrorener Analysesnapshot und seine ursprüngliche Anforderungsversion. |
+| Architektureditor | Aktuelles Arbeitsmodell oder ausdrücklich gewählte semantische Revision/Git-Checkpoint; kann vom Quellsnapshot abweichen. |
+| Versionierung | Branches, Checkpoints und Integrationszustand der ausgewählten Architektur. |
+
+Der aktuelle Anforderungskopf kann Version 2 zeigen, während ein gewähltes
+historisches Modell Version 1 enthält. Die historische Auswahl schreibt weder
+aktuellen Text noch Snapshot-Quelle um. **Aktuellen Arbeitsstand anzeigen**,
+**Aktualisieren** und Zurück/Vorwärts im Browser halten Editor, Lifecycle
+und Kontext auf demselben geladenen Modell. Frühere Revisionen und Git-Checkpoints
+sind schreibgeschützt und ohne heutige Portfolioüberblendung.
+
 Die gespeicherte Architekturansicht nennt Projekt, Anforderung und Analyse.
 **Anforderung und Nachweise** führt zu genau dieser Analyse zurück;
 **Anforderung klären** öffnet den zugehörigen Klärungsbereich.
@@ -60,8 +84,47 @@ Modell. Die erneute Übernahme derselben Quelle öffnet die vorhandene Sicht. De
 Quelllink führt auch nach dem Anlegen einer Arbeitskopie zum ursprünglichen
 Repository, Arbeitsbereich und Branch zurück.
 
+<a id="analysis-requirement-promotion"></a>
+## Eine Analyse als Projektanforderung speichern
+
+Das Speichern einer Arbeitsanalyse in ein Projekt ist eine ausdrückliche Aktion.
+Eingangstext prüfen und im
+[Intake-Ablauf](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake) `NEW`, `CHANGE`
+oder `LINK` wählen. Kandidatenvorschläge legen nicht stillschweigend Anforderungen
+an und ersetzen keine vorhandene Version.
+
+Beim Speichern einer neuen Version muss der geladene Analysekontext die ursprüngliche
+Anforderungsversion identifizieren. Eine fehlende oder inzwischen veraltete Quellversion
+führt zu einem ausdrücklichen Hinweis. Anforderungsdetails öffnen, aktuelle Version
+vergleichen und erneut entscheiden. Die Aktion wählt nicht stillschweigend den
+neuesten Text als Ziel.
+
+Während des Speicherns neu eingegebener Text bleibt vom abgesendeten Stand getrennt.
+Die abgesendete Version kann erfolgreich gespeichert sein, während das Formular
+mit neueren Eingaben offen bleibt. **Gespeicherte Anforderung öffnen** zeigt das
+gespeicherte Ergebnis in einem neuen Tab und verwirft den späteren Entwurf nicht.
+Auch `LINK` erhält den eingegebenen Text, weil Verknüpfen den gespeicherten
+Anforderungswortlaut nicht ersetzt. Ein ausstehender Git-Checkpoint behält den
+exakten Vorgang für die Wiederholung. Veröffentlichungszustand prüfen, bevor der
+gespeicherte Beitrag als abgeschlossene Git-Version behandelt wird.
+
 <a id="requirement-clarification-workflow"></a>
 ## Eine Anforderung durch Architektur und Entscheidungen klären
+
+Die Architektur bleibt nach einem Projektabschluss erhalten. Ein Folgeprojekt kann
+eine neue Anforderung, eine neue Version der ursprünglichen Anforderung oder einen
+Verweis darauf beitragen. In der
+[Eingangsprüfung](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake) ausdrücklich
+`NEW`, `CHANGE` oder `LINK` wählen. Ursprüngliche Identität und späterer Projektbeitrag
+bleiben nachvollziehbar.
+
+In **Anforderungen, Realisierung und Historie** die **Textversion im gewählten Stand** mit der
+geprüften Version vergleichen. Teilweise/vollständige Umsetzung ist eine menschliche
+Prüfung gegen exakte Architekturabhängigkeiten. Geänderter Text oder Nachweis
+benötigt erneute Prüfung; ein Analysewert ist kein Umsetzungsfortschritt. Siehe
+[Lifecycle-Anleitung](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle),
+[Git-Historie](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-history) und
+[Konfliktabgleich](ARCHITECTURE_EDITOR.md#editor-version-reconciliation).
 
 Verwenden Sie **Projekte** und die Detailseite der Anforderung für einen
 gespeicherten, nachvollziehbaren Ablauf. Der Diagrammexport muss nicht das Ende

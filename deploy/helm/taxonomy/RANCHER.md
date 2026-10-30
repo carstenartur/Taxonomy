@@ -213,3 +213,12 @@ For a fresh installation, additionally inspect startup logs to confirm that both
 The small envelope is intended for one replica, demonstrations and functional validation with the in-memory search backend. It is not a claim that ONNX, embedding-model download, bulk imports or high-concurrency analysis fit this envelope. Measured standard/large profiles and live ResourceQuota validation are tracked in issue #638.
 
 The browser base-path contract is verified independently: the bootstrap script derives `/taxonomy` from its own URL, rewrites root-relative application requests, and leaves already-prefixed or external URLs unchanged. Helm verification locks the matching ingress-nginx regex, rewrite target, `X-Forwarded-Prefix` annotation, packaged release image selection, safe upgrade strategy and guarded rolling override.
+
+### Native PostgreSQL recovery rehearsal
+
+Use the [same-version PostgreSQL 16 recovery procedure](../../../docs/testing/native-postgresql-recovery.md)
+to capture the stopped database and application files together, inspect an isolated
+empty target, restore SQL transactionally and verify the recovered application
+across restarts. It includes Rancher writer/controller/PVC precautions and the
+explicit native identity/secret boundary. Portable owner import remains closed;
+a Helm rollback alone does not restore a database.

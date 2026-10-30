@@ -6,6 +6,49 @@ Mehrere Personen können Anforderungen, Lösungsentscheidungen und Produktbewert
 
 Dafür werden das bestehende Workspace- und Branch-Modell sowie der Git-basierte Portfoliovertrag aus ADR 0002 verwendet.
 
+## Architekturlebensdauer, Beiträge und Historie
+
+Das Repository identifiziert die fortbestehende Architektur, nicht die Laufzeit
+eines einzelnen Projekts. Ein Projektabschluss beendet oder ersetzt die Architektur
+nicht. Ein Folgeprojekt kann eine ursprüngliche Anforderung ändern oder wiederverwenden;
+ihre projektqualifizierte Identität bleibt erhalten und das spätere Projekt wird
+als Beitrag dokumentiert. `NEW`, `CHANGE` und `LINK` sind ausdrückliche
+[Eingangsentscheidungen](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-intake).
+
+Aktueller Text, unveränderliche Analysesnapshots und geprüfte Umsetzung sind
+verschiedene Datensätze. Eine Umsetzungsprüfung bindet exakte Textversion/Hash an
+Architekturabhängigkeiten samt Hashes, beitragendes Projekt, Benutzer und Begründung.
+Spätere Text- oder Abhängigkeitsänderungen benötigen erneute Prüfung; die frühere
+Bewertung bleibt nachvollziehbar. Ein älterer Git-Checkpoint oder eine semantische
+Revision ist schreibgeschützt und verwendet die eigene Quelle ohne heutige
+Portfolioüberblendung. Er kann Version 1 zeigen, während der aktuelle
+Anforderungskopf Version 2 enthält.
+
+Die [Anforderungshistorie](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-history)
+durchsucht erreichbare Git-Ancestry über natives JGit und `jgit-storage-hibernate`.
+Sie benötigt keine Shell-Git-Kommandos im Produkt und keine zweite Audit-Datenbank.
+Die Antwort nennt erfassten HEAD, tatsächliche Eltern, Quellen, Signaturbelege und
+begrenzte Abdeckung. Mit demselben HEAD fortsetzen, nach seiner Änderung neu beginnen.
+Eine leere begrenzte Seite oder nicht verfügbarer Speicher beweist keine fehlende Historie.
+
+Angenommene Lifecycle-Änderungen bereiten einen Checkpoint in derselben Transaktion
+wie Fachbeitrag und Editorjournal vor. Die Git-Veröffentlichung folgt danach.
+`CHECKPOINT_PENDING` erhält die über `pendingCheckpointId` sichtbare Absicht;
+exakter Retry oder vorhandene Resume-Operation schließen sie ohne wiederholte
+Fachänderung ab. Ein geänderter Git-HEAD kann einen ausdrücklichen
+[Versionsabgleich](ARCHITECTURE_EDITOR.md#editor-version-reconciliation) erfordern.
+Basis/lokale/eingehende Quelle prüfen, jeden Konflikt entscheiden und das Ergebnis
+vor der Annahme erneut vorschauen. Wiederholtes Speichern allein löst keine Konflikte.
+
+Der Abgleich erhält unveränderliche Anforderungsversionen und prüft kanonischen
+Titel/Text/Version/Hash gegen die portable aktuelle Version. Geänderte verwaltete
+Portfolioblöcke werden vor der Git-Veröffentlichung atomar mit dem Editorjournal
+materialisiert; exakte Retries materialisieren nicht doppelt. Nicht unterstützte
+Auslassungen von Fachblöcken erfordern `LOCAL` und ausdrückliche Archivierung.
+Unverträgliche Portfolioentscheidungen setzen die Annahme zurück; ein späterer
+Git-Speicherfehler bleibt ein Fall für die Checkpoint-Wiederaufnahme. Siehe den
+[API-Vertrag](PROJECT_PORTFOLIO_API.md#editor-version-reconciliation-api).
+
 ## Empfohlener Ablauf
 
 ```text

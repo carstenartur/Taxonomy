@@ -21,8 +21,11 @@ public class RequirementIntakeService {
                 || request.title() != null && request.title().length() > 240 || request.projectId() != null && request.projectId() < 1)
             throw PortfolioException.validation("A requirement text of at most 100000 characters is required");
         var frozen = candidates.discover(candidates.freeze(request.projectId(), username, context), username);
+        // Authorization may have changed while canonical documents were being captured.
+        candidates.recheck(frozen, username, context);
         var result = frozen.providerAllowed() ? matcher.review(request.text(), frozen.candidates(), request.analysisLanguage())
                 : new RequirementIntakeMatcher.Result(Status.UNAVAILABLE, "PROJECT_PROVIDER_BOUND", null, frozen.candidates());
+        candidates.recheckSources(frozen, username);
         candidates.recheck(frozen, username, context);
         // This deterministic fallback proves equality only, never semantic absence or provider success.
         List<Candidate> assessed = result.candidates().stream().map(candidate ->

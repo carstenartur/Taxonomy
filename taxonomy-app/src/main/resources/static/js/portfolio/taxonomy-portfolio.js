@@ -333,6 +333,7 @@
         document.getElementById('projectList').addEventListener('click', onProjectListClick);
         document.getElementById('projectForm').addEventListener('submit', createProject);
         document.getElementById('requirementForm').addEventListener('submit', createRequirement);
+        window.TaxonomyRequirementIntake?.attach(document.getElementById('requirementForm'), {textElement:document.querySelector('#requirementForm [name="text"]'), projectId:function () { return state.selectedProjectId; }});
         document.getElementById('solutionForm').addEventListener('submit', createSolution);
         document.getElementById('productForm').addEventListener('submit', createProduct);
         document.getElementById('refreshPortfolioBtn').addEventListener('click', refreshSelectedProject);
@@ -472,6 +473,8 @@
             const status = document.createElement('span');
             status.className = 'badge ' + statusBadgeClass(project.status);
             status.textContent = humanize(project.status);
+            window.TaxonomyAppChrome?.setStatus(status,project.status);
+            title.classList.add('taxonomy-entity-key');
             header.append(title, status);
 
             const name = document.createElement('div');
@@ -501,6 +504,7 @@
         state.selectedRequirementId = null;
         state.snapshots = [];
         state.selectedSnapshotId = null;
+        window.TaxonomyAppChrome?.updateContext({project:null, requirement:null, source:null});
         window.localStorage.setItem('taxonomy.portfolio.projectId', String(projectId));
         renderProjectList();
         await refreshSelectedProject(false);
@@ -514,6 +518,7 @@
     function showNoProjectSelected() {
         state.selectedProjectId = null;
         state.portfolio = null;
+        window.TaxonomyAppChrome?.updateContext({project:null,requirement:null,source:null});
         renderProjectTools(null);
         document.getElementById('projectWorkspace').classList.add('d-none');
         document.getElementById('noProjectSelected').classList.remove('d-none');
@@ -526,6 +531,7 @@
             api('/api/projects/' + projectId + '/portfolio'),
             api('/api/products')
         ]);
+        if (state.selectedProjectId !== projectId) return;
         state.portfolio = results[0];
         state.products = results[1] || [];
         renderPortfolio();
@@ -537,10 +543,13 @@
     function renderPortfolio() {
         if (!state.portfolio) return;
         const project = state.portfolio.project;
+        publishSelection();
         renderProjectTools(project.id);
         document.getElementById('selectedProjectKey').textContent = project.projectKey;
         document.getElementById('selectedProjectStatus').textContent = humanize(project.status);
         document.getElementById('selectedProjectStatus').className = 'badge ' + statusBadgeClass(project.status);
+        window.TaxonomyAppChrome?.setStatus('selectedProjectStatus', project.status);
+        document.getElementById('selectedProjectKey').className = 'taxonomy-entity-key';
         document.getElementById('selectedProjectTitle').textContent = project.title;
         document.getElementById('selectedProjectDescription').textContent = project.description || '';
         renderMetrics(state.portfolio.metrics);
@@ -556,7 +565,7 @@
             const stillExists = (state.portfolio.requirements || []).some(function (requirement) {
                 return requirement.id === state.selectedRequirementId;
             });
-            if (!stillExists) resetSnapshots();
+            if (!stillExists) { state.selectedRequirementId = null; state.selectedSnapshotId = null; state.snapshots = []; publishSelection(null); }
         }
     }
 
@@ -642,6 +651,7 @@
                     ? '<button type="button" class="btn btn-outline-success requirement-confirm" data-requirement-id="'
                         + requirement.id + '">' + escapeHtml(t('action.confirm')) + '</button>' : '')
                 + '</div></td>';
+            window.TaxonomyAppChrome?.setStatus(row.querySelector('td:nth-child(5) span'), requirement.reviewStatus);
             body.appendChild(row);
         });
         document.getElementById('requirementsEmpty').classList.toggle('d-none', requirements.length > 0);
@@ -755,15 +765,19 @@
         const form = event.currentTarget;
         await withBusy(async function () {
             const payload = formDataObject(form);
+            payload.text = form.querySelector('[name="text"]').value;
             payload.status = 'DRAFT';
             payload.priority = 50;
             payload.criticality = 'MEDIUM';
             payload.reviewStatus = 'PROPOSED';
             payload.changeReason = 'Created in the project portfolio';
-            const requirement = await api('/api/projects/' + state.selectedProjectId + '/requirements', {
-                method: 'POST',
-                body: payload
-            });
+            const command = await window.TaxonomyRequirementIntake.prepare(form, payload, state.selectedProjectId);
+            if (!command) return;
+            const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
+            if (saved.publication?.state === 'CHECKPOINT_PENDING') { showInfo(window.TaxonomyI18n.t('lifecycle.pending')); return; }
+            if (command.choice === 'LINK') { showInfo(window.TaxonomyI18n.t('lifecycle.linked')); return; }
+            const requirement = saved.requirement;
+            if (!window.TaxonomyRequirementIntake.isCurrent(form)) { showInfo(t('status.requirement.created')); return; }
             bootstrap.Modal.getOrCreateInstance(document.getElementById('requirementModal')).hide();
             form.reset();
             state.selectedRequirementId = requirement.id;
@@ -902,6 +916,10 @@
                 + 'class="form-control form-control-sm candidate-coverage-percent" value="100" required></div>'
                 + '<div class="col-md-4"><button type="submit" class="btn btn-sm btn-outline-primary w-100">'
                 + escapeHtml(t('action.add')) + '</button></div></form></details></div>';
+            const badges = Array.from(card.querySelectorAll('.badge'));
+            const statuses = [projectSolution.reviewStatus].concat((projectSolution.taxonomyCoverage || []).map(function (value) { return value.reviewStatus; }),
+                (projectSolution.productCandidates || []).map(function (value) { return value.reviewStatus; }));
+            badges.forEach(function (badge,index) { window.TaxonomyAppChrome?.setStatus(badge,statuses[index]); });
             column.appendChild(card);
             target.appendChild(column);
         });
@@ -940,6 +958,7 @@
                 + 'class="form-control form-control-sm product-coverage-percent" value="100" required></div>'
                 + '<div class="col-md-4"><button type="submit" class="btn btn-sm btn-outline-primary w-100">'
                 + escapeHtml(t('action.add')) + '</button></div></form></details></div>';
+            window.TaxonomyAppChrome?.setStatus(card.querySelector('.badge'),product.productStatus);
             column.appendChild(card);
             target.appendChild(column);
         });
@@ -968,6 +987,9 @@
                 + '" data-status="RESOLVED">' + escapeHtml(t('action.resolve')) + '</button></div>'
                 + (conflict.resolutionNote ? '<div class="alert alert-light border mt-3 mb-0">'
                     + escapeHtml(conflict.resolutionNote) + '</div>' : '') + '</div>';
+            const badges = card.querySelectorAll('.badge');
+            window.TaxonomyAppChrome?.setStatus(badges[0],conflict.conflictType);
+            window.TaxonomyAppChrome?.setStatus(badges[1],conflict.status);
             target.appendChild(card);
         });
         if (conflicts.length === 0) target.innerHTML = '<div class="portfolio-empty"><span>✓</span><p>'
@@ -1115,10 +1137,33 @@
         }).catch(function () {});
     }
 
+    function publishSelection(source) {
+        const project = state.portfolio?.project;
+        const requirement = (state.portfolio?.requirements || []).find(function (item) { return item.id === state.selectedRequirementId; });
+        const facts = {project:project ? {id:project.id,key:project.projectKey,title:project.title} : null,
+            requirement:requirement ? {id:requirement.id,key:requirement.requirementKey,title:requirement.title,
+                version:requirement.currentVersion?.versionNumber,versionId:requirement.currentVersion?.id || requirement.currentVersionId} : null};
+        if (arguments.length) facts.source = source;
+        window.TaxonomyAppChrome?.updateContext(facts);
+    }
+    function snapshotSource(snapshot) {
+        const summary = snapshot.summary || snapshot;
+        const current = window.TaxonomyArchitectureWorkflow?.getScope() || {};
+        return {projectId:summary.projectId || state.selectedProjectId,requirementId:summary.requirementId || state.selectedRequirementId,
+            projectKey:state.portfolio?.project?.projectKey,requirementKey:summary.requirementKey,
+            snapshotId:summary.id || state.selectedSnapshotId,requirementVersionId:summary.requirementVersionId,
+            requirementVersion:summary.requirementVersionNumber,repositoryId:snapshot.exportProvenance?.repositoryId || current.repositoryId,
+            workspaceScopeKey:summary.workspaceId || '__shared__',branch:summary.branchName};
+    }
     async function loadSnapshots(requirementId) {
         state.selectedRequirementId = requirementId;
-        state.snapshots = await api('/api/projects/' + state.selectedProjectId + '/requirements/'
+        state.selectedSnapshotId = null; publishSelection(null);
+        document.getElementById('snapshotDetail').replaceChildren();
+        const selectedProject = state.selectedProjectId;
+        const loaded = await api('/api/projects/' + selectedProject + '/requirements/'
             + requirementId + '/analyses');
+        if (state.selectedProjectId !== selectedProject || state.selectedRequirementId !== requirementId) return;
+        state.snapshots = loaded;
         renderSnapshotList();
         const tab = bootstrap.Tab.getOrCreateInstance(document.getElementById('snapshots-tab'));
         tab.show();
@@ -1154,9 +1199,13 @@
 
     async function showSnapshot(snapshotId) {
         state.selectedSnapshotId = snapshotId;
+        publishSelection(null);
+        const selectedProject = state.selectedProjectId, selectedRequirement = state.selectedRequirementId;
         renderSnapshotList();
         const snapshot = await api('/api/projects/' + state.selectedProjectId + '/requirements/'
             + state.selectedRequirementId + '/analyses/' + encodeURIComponent(snapshotId));
+        if (state.selectedProjectId !== selectedProject || state.selectedRequirementId !== selectedRequirement || state.selectedSnapshotId !== snapshotId) return;
+        publishSelection(snapshotSource(snapshot));
         const target = document.getElementById('snapshotDetail');
         target.innerHTML = '<div class="d-flex justify-content-between gap-2"><div><h4 class="h5">'
             + escapeHtml(formatDate(snapshot.createdAt)) + '</h4><div class="text-body-secondary">'
@@ -1189,7 +1238,8 @@
             + 'type="button">' + escapeHtml(t('action.compare.previous')) + '</button></div><div id="snapshotDiff" class="mt-3"></div>';
         if (window.TaxonomyInventoryComparison) {
             const exact = await window.TaxonomyPortfolioApi.getSnapshot(state.selectedProjectId, snapshotId);
-            if (state.selectedSnapshotId !== snapshotId) return;
+            if (state.selectedProjectId !== selectedProject || state.selectedRequirementId !== selectedRequirement || state.selectedSnapshotId !== snapshotId) return;
+            publishSelection(snapshotSource(exact));
             const inventory = document.createElement('div');
             inventory.id = 'inventoryComparison';
             target.append(inventory);

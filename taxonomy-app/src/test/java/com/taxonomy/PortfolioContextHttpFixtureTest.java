@@ -38,6 +38,22 @@ class PortfolioContextHttpFixtureTest {
             assertThat(projects.get(1).get("requirementCount").asInt()).isEqualTo(1);
             var state = json.readTree(get(client, root + context + "/api/git/state").body());
             assertThat(json.convertValue(state.get("branches"), String[].class)).containsExactlyElementsOf(BRANCHES);
+            var lifecycle = json.readTree(get(client, root + context + "/api/architecture/lifecycle").body());
+            assertThat(lifecycle.path("context").path("repositoryId").asText()).isEqualTo("qa-architecture");
+            assertThat(lifecycle.path("context").path("workspaceScopeKey").asText()).isEqualTo("qa-context-workspace");
+            assertThat(lifecycle.path("context").path("branch").asText()).isEqualTo("qa-context-main");
+            assertThat(lifecycle.path("requirements").size()).isEqualTo(5);
+            String intake = root + context + "/api/architecture/lifecycle/intake-review?" + SCOPE_QUERY;
+            var review = client.send(HttpRequest.newBuilder(URI.create(intake)).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"projectId\":739101,\"text\":\"abc\"}")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(review.statusCode()).isEqualTo(200);
+            var reviewed = json.readTree(review.body());
+            assertThat(reviewed.path("status").asText()).isEqualTo("UNAVAILABLE");
+            assertThat(reviewed.path("manualReviewRequired").asBoolean()).isTrue();
+            assertThat(reviewed.path("inputHash").asText()).isEqualTo("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+            assertThat(reviewed.path("candidates").get(0).path("requirementId").asLong()).isEqualTo(REQUIREMENT_A);
+            assertThat(reviewed.path("candidates").get(0).path("classification").isNull()).isTrue();
             var portfolio = json.readTree(get(client, root + context + "/api/projects/" + PROJECT_A + "/portfolio").body());
             var values = portfolio.get("requirementSolutionMatrix").get("values").get("QA-SOL-A");
             assertThat(values.get("QA-REQ-0").asInt()).isZero();
@@ -107,6 +123,7 @@ class PortfolioContextHttpFixtureTest {
             assertThat(fixture.submittedVersions.getFirst().text()).isEqualTo("  Draft\nStill here  ");
             String sibling = context.isEmpty() ? "/sibling" : context + "-sibling";
             assertThat(get(client, root + sibling + "/api/projects").statusCode()).isEqualTo(599);
+            assertThat(get(client, root + sibling + "/api/architecture/lifecycle").statusCode()).isEqualTo(599);
             assertThat(get(client, root + sibling + "/api/projects/" + PROJECT_A + "/analysis-jobs/qa-running")
                     .statusCode()).isEqualTo(599);
             assertThat(get(client, root + context + "/api/projects/" + PROJECT_A + "/unexpected").statusCode()).isEqualTo(599);
@@ -139,6 +156,9 @@ class PortfolioContextHttpFixtureTest {
             assertThat(response.body()).isEqualTo("actual backend form");
             assertThat(upstream.requests).containsExactly("/api/projects");
             assertThat(fixture.submittedVersions).isEmpty();
+            var lifecycle = get(client, root + "/api/architecture/lifecycle");
+            assertThat(lifecycle.body()).isEqualTo("Real backend response");
+            assertThat(upstream.requests).containsExactly("/api/projects", "/api/architecture/lifecycle");
             var redirect = get(client, root + "/session-redirect");
             assertThat(redirect.statusCode()).isEqualTo(302);
             assertThat(redirect.headers().firstValue("Location")).contains("/taxonomy/login?continue");

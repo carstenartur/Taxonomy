@@ -1,6 +1,7 @@
 package com.taxonomy.composition.architecture;
 
 import com.taxonomy.dsl.requirements.RequirementTrace;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.identity.StableIdentityHash;
@@ -82,6 +83,8 @@ public class ArchitectureRequirementService {
                         contributorId=projects.createProject(request.newProject(),context.username(),scope).id();
                     }
                     var contributor=contributorId==null?project:projects.getProject(contributorId,context.username(),scope);
+                    projects.refreshIntegrationRequirements(projectId,context.username(),scope);
+                    result=projects.getRequirement(projectId,result.id(),context.username(),scope);
                     String next=portfolio.contributeTo(source,context.username(),scope);
                     String id=portfolio.planRequirementIdentity(project.projectKey(),result.requirementKey(),next,context.username(),scope);
                     next=RequirementTrace.contribute(next,id,contributor.projectKey());
@@ -101,6 +104,20 @@ public class ArchitectureRequirementService {
             else result=projects.listRequirements(projectId,context.username(),workspace(context)).stream()
                     .filter(r->r.requirementKey().equalsIgnoreCase(request.requirement().requirementKey())).findFirst()
                     .orElseThrow(()->problem("NOT_FOUND","The retained requirement is unavailable"));
+            var project=projects.getProject(projectId,context.username(),workspace(context));
+            String requirementKey=result.requirementKey();
+            var retained=ArchitectureSemanticPatch.index(editor.read(context,null,accepted.revision()).dsl()).values().stream()
+                    .filter(block->"requirement".equals(block.getKind()) && project.projectKey().equals(block.property("x-project-key"))
+                            && requirementKey.equals(block.property("x-requirement-key"))).findFirst()
+                    .orElseThrow(()->problem("NOT_FOUND","The original accepted requirement source is unavailable"));
+            int number=Integer.parseInt(retained.property("x-version"));
+            var version=projects.listRequirementVersions(projectId,result.id(),context.username(),workspace(context)).stream()
+                    .filter(item->item.versionNumber()==number && item.contentHash().equals(retained.property("x-content-hash"))
+                            && item.text().equals(retained.property("text"))).findFirst()
+                    .orElseThrow(()->problem("NOT_FOUND","The original immutable requirement version is unavailable"));
+            result=new RequirementView(result.id(),result.projectId(),result.requirementKey(),retained.property("title"),
+                    result.status(),result.priority(),result.criticality(),result.requirementType(),result.reviewStatus(),result.ownerUsername(),
+                    version.id(),result.currentAnalysisSnapshotId(),result.createdAt(),result.updatedAt(),version);
         }
         return new Saved(result.projectId(),result.id(),result,lifecycle.finish(context,accepted,checkpoint));
     }

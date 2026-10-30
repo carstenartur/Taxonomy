@@ -133,13 +133,16 @@ class SharedApplicationChromeBrowserIT {
     @ParameterizedTest @ValueSource(ints = {1440, 390})
     void expandedRequirementsKeepWorkbenchControlsReachable(int width) {
         open(new View("architecture-workbench", "/architecture/workbench", "architecture", "printArchitectureView"), "en", width);
-        var requirements = java.util.stream.IntStream.rangeClosed(1, 12).mapToObj(number -> Map.of(
-                "id", "requirement-" + number, "projectKey", "P", "requirementKey", "REQ-" + number,
-                "title", "Communication requirement " + number, "currentVersion", "1", "text", "Authored layout fixture " + number,
-                "realization", Map.of("state", "OPEN"))).toList();
+        var requirements = java.util.stream.IntStream.rangeClosed(1, 12).mapToObj(number -> Map.<String, Object>ofEntries(
+                Map.entry("id", "requirement-" + number), Map.entry("projectId", 42), Map.entry("projectKey", "P"),
+                Map.entry("requirementId", number), Map.entry("requirementKey", "REQ-" + number),
+                Map.entry("title", "Communication requirement " + number), Map.entry("version", 1), Map.entry("versionId", 100 + number),
+                Map.entry("contentHash", "fixture-hash-" + number), Map.entry("text", "Authored layout fixture " + number),
+                Map.entry("realization", Map.of("state", "OPEN")), Map.entry("contributors", List.of()), Map.entry("links", List.of()))).toList();
         page.route("GET", "/taxonomy/api/architecture/lifecycle", request -> json(200, Map.of(
                 "context", Map.of("repositoryId", "architecture-a", "workspaceScopeKey", "private-a", "branch", "review/current", "commit", "a".repeat(40), "revision", 4),
-                "architectureTitle", "Communication architecture", "publicationState", "CHECKPOINTED", "mayEdit", false,
+                "architectureTitle", "Communication architecture", "source", "WORKSPACE_AND_PORTFOLIO", "projectionState", "READY",
+                "publicationState", "CHECKPOINTED", "mayEdit", false,
                 "projects", List.of(), "dependencies", List.of(), "requirements", requirements)));
         wait.until(driver -> !driver.findElements(By.cssSelector("#architectureLifecycle > details > summary")).isEmpty());
         page.driver().executeAsyncScript("const done=arguments[arguments.length-1];TaxonomyArchitectureLifecycle.refresh().then(done);");
@@ -399,16 +402,18 @@ class SharedApplicationChromeBrowserIT {
         requirement.put("currentVersion", currentVersion);
         fixture.requirement.set(requirement);
         fixture.versions.set(List.of(currentVersion, previousVersion));
-        var requirements = java.util.stream.IntStream.rangeClosed(1, 19).mapToObj(number -> Map.of(
-                "id", "control-requirement-" + number, "projectKey", "PROJECT", "requirementKey", "REQ-" + number,
-                "title", number == 2 ? "Pump control" : "Control requirement " + number,
-                "currentVersion", "2", "text", "Authored browser fixture " + number,
-                "realization", Map.of("state", "REVIEW_REQUIRED"))).toList();
+        var requirements = java.util.stream.IntStream.rangeClosed(1, 19).mapToObj(number -> Map.<String, Object>ofEntries(
+                Map.entry("id", "control-requirement-" + number), Map.entry("projectId", 1), Map.entry("projectKey", "PROJECT"),
+                Map.entry("requirementId", number), Map.entry("requirementKey", "REQ-" + number),
+                Map.entry("title", number == 2 ? "Pump control" : "Control requirement " + number),
+                Map.entry("version", 2), Map.entry("versionId", number == 2 ? 912345 : 1000 + number),
+                Map.entry("contentHash", "fixture-hash-" + number), Map.entry("text", "Authored browser fixture " + number),
+                Map.entry("realization", Map.of("state", "REVIEW_REQUIRED")), Map.entry("contributors", List.of()), Map.entry("links", List.of()))).toList();
         page.route("GET", "/api/architecture/lifecycle", request -> json(200, Map.of(
                 "context", Map.of("repositoryId", COMPACT_REPOSITORY, "workspaceScopeKey", COMPACT_WORKSPACE,
                         "branch", "draft", "actor", "qa-client", "writeMode", "WORKSPACE",
                         "commit", COMPACT_COMMIT, "revision", 4),
-                "architectureTitle", "Control architecture", "source", "WORKSPACE_AND_PORTFOLIO",
+                "architectureTitle", "Control architecture", "source", "WORKSPACE_AND_PORTFOLIO", "projectionState", "READY",
                 "publicationState", "CHECKPOINTED", "mayEdit", true,
                 "projects", List.of(PortfolioRequirementFixture.project()), "dependencies", List.of(), "requirements", requirements)));
         if (withSource) {

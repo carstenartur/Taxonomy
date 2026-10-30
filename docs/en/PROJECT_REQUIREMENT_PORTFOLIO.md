@@ -18,8 +18,126 @@ Use the portfolio when you need to:
 
 All end-user steps described below are available through the web interface. Technical integration examples are documented separately in [PROJECT_PORTFOLIO_API.md](PROJECT_PORTFOLIO_API.md).
 
+<a id="architecture-lifecycle"></a>
+## Continue one architecture across projects
+
+An architecture has a stable repository identity. Completing a project does not
+complete, delete or replace that architecture. A later project can contribute new
+requirements, revise an existing requirement or reuse it in the same architecture.
+The original project-qualified requirement identity remains stable. The later
+project is recorded as a contributor; it does not silently become the requirement's
+original project. A similarly worded requirement is not automatically the same one.
+
+The shared navigation connects analysis, projects, requirement detail, the saved
+architecture workbench, the architecture editor and versioning. The context keeps
+the architecture, project, requirement and selected model stand visible. Readable
+names and business keys appear first; expand **Technical details** for repository,
+workspace, full commit, snapshot and requirement-version identifiers when available.
+The existing help links open the relevant section of this guide or the
+[editor guide](ARCHITECTURE_EDITOR.md).
+
+Expand **Requirements, realization and history** to compare **Text version in selected stand**
+with **Reviewed text version**. Three records have different meanings:
+
+| Record | Meaning |
+|---|---|
+| Current requirement text | The latest immutable text version in the portfolio. A text edit creates a new version. |
+| Selected architecture stand | The current workspace, an earlier semantic revision or a Git checkpoint; its requirement text belongs to that stand. |
+| Reviewed realization | A person's assessment of one exact text version and hash against recorded architecture dependencies. |
+
+The current requirement header can show version 2 while an older selected model
+contains version 1. The table describes that older model; it does not relabel the
+current portfolio version. An analysis snapshot also retains its own source version.
+Changing text, generating an analysis or completing a project does not prove that
+the architecture implements the new text.
+
+| State | Interpretation |
+|---|---|
+| `OPEN` | No applicable partial or complete realization review is recorded. |
+| `PARTIAL` | A person reviewed part of the exact requirement against selected evidence. |
+| `COMPLETE` | A person recorded complete realization for the reviewed version and dependencies. |
+| `REVIEW_REQUIRED` | The requirement or a recorded dependency changed after review; the earlier reviewed version remains visible. |
+| `INVALID_EVIDENCE` | The recorded evidence cannot support a valid assessment and must be corrected. |
+
+Choose the contribution project, status, architecture dependencies and rationale,
+then preview and explicitly accept the review. Partial and complete assessments
+require evidence. A relevance score is not an implementation percentage. See
+[Review requirement realization](ARCHITECTURE_EDITOR.md#requirement-realization).
+
+Selecting an earlier workspace revision or a reachable Git version makes the
+model read-only. Historical stands use their stored source without overlaying
+today's portfolio. An explicitly selected current revision remains the current
+working stand. The editor, lifecycle panel and context header share the selection,
+including browser Back/Forward. **Show current working state** returns to the live
+model; **Refresh** reloads the selected stand. A missing or inaccessible stand
+produces an error instead of silently showing current data.
+
+An accepted contribution and a completed Git checkpoint are separate outcomes.
+`CHECKPOINT_PENDING` means the change is retained but its Git write still needs to
+finish. `RECONCILIATION_REQUIRED` requires comparing the local and incoming stands.
+Keep the original command identity for an exact retry; changing the input requires
+a fresh review. See [Reconcile versions](ARCHITECTURE_EDITOR.md#editor-version-reconciliation).
+
+<a id="requirement-history"></a>
+## Follow requirement and realization history
+
+Open the history from **Requirements, realization and history**. It searches actual reachable
+Git commits for the selected architecture and branch using native JGit and the
+database-backed Git repository. It is separate from the editor's operation journal
+and from the list of immutable text versions. No local Git command is required.
+
+Enter text in **Search the Git log** and choose **Search**, or use a requirement
+row's history action to narrow the result to its original project and requirement
+identity. A follow-up project's contribution does not change that original filter.
+Entries identify
+requirement, metadata, dependency and realization changes, additions, removals and
+merges where relevant. The commit subject keeps the list readable; expand **Commit details** for the full message, commit identity, actual parents, author, time
+and available signature evidence. Parent links describe actual ancestry, not an
+invented sequence of requirement versions.
+
+The result identifies its Git source and captured HEAD. Pages have a bounded scan;
+partial coverage or an empty bounded page does not prove that no older matching
+change exists. Continue while another page is offered. If the branch advances,
+restart the search against its new HEAD. A storage or authorization error is not
+an empty history, and inaccessible branches or other users' private workspaces are
+not searched. Opening a historical result selects its read-only model stand.
+
+<a id="requirement-intake"></a>
+## Review incoming text before saving
+
+Use the intake review when saving a new requirement or promoting an analysis into
+a project. The review can suggest a duplicate, change, addition or conflict against
+the candidates it was permitted to inspect. Review the quoted evidence and source
+before making one explicit choice:
+
+| Choice | Result |
+|---|---|
+| `NEW` | Create a requirement with its own identity in the selected or new project. |
+| `CHANGE` | Create a new immutable text version of the selected existing requirement, retaining its original identity. |
+| `LINK` | Reuse the selected requirement and record the contribution without replacing its stored text. |
+
+A follow-up project can contribute through `CHANGE` or `LINK`; verify the original
+requirement and the contributing project separately. A candidate in another
+architecture is evidence to inspect, not permission to mutate that architecture.
+The offered actions respect the candidate's scope.
+
+Retrieval and provider assessment are bounded. Inspect the displayed coverage and
+provider status; an unassessed candidate, unavailable provider, timeout or failed
+response is not a finding that no duplicate or conflict exists. Exact text equality
+can be reported without proving semantic equivalence. Manual review and an explicit
+choice remain available when AI review is unavailable. Local embeddings and mock
+providers do not establish real generative assessment quality.
+
+Changing text or context invalidates the previous review. `CHANGE` and `LINK` bind
+to the selected current version and hash; if that version changes, reload, compare
+and decide again. Nothing is created, linked or overwritten by merely opening the
+review. See the [intake and publication API](PROJECT_PORTFOLIO_API.md#architecture-lifecycle-api).
+
 <a id="requirement-clarification-workflow"></a>
 ## Clarify a requirement using its architecture context
+
+For a new incoming text, start with the [intake decision](#requirement-intake).
+For a later project, retain the [continuing architecture](#architecture-lifecycle).
 
 Use the requirement detail workspace when the initial wording leaves decisions open.
 A saved reformulation offer is separate from the source requirement and architecture.
@@ -96,6 +214,9 @@ The placeholders are replaced automatically when you navigate from a selected pr
 
 <a id="portfolio-projects"></a>
 ## 1. Create or select a project
+
+For a follow-up project, retain the existing architecture and use the
+[lifecycle workflow](#architecture-lifecycle) to create, change or link requirements.
 
 Open `/projects`.
 
@@ -203,6 +324,10 @@ Empty cells mean that no relationship is stored. They do not mean that a relatio
 
 <a id="portfolio-versioning"></a>
 ## 9. Commit and merge reviewed portfolio states
+
+For requirement changes and actual Git ancestry, use
+[requirement history](#requirement-history). For a changed HEAD with accepted local
+work, follow [explicit reconciliation](ARCHITECTURE_EDITOR.md#editor-version-reconciliation).
 
 Open `/projects/{projectId}/versioning`.
 

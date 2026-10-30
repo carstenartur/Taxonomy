@@ -153,7 +153,10 @@ public final class RequirementHistoryService {
             else if (b == null) kinds.add(ChangeKind.REMOVED);
             else {
                 if (!properties(a, PropertyGroup.CONTENT).equals(properties(b, PropertyGroup.CONTENT))) kinds.add(ChangeKind.REQUIREMENT_CHANGED);
-                if (!properties(a, PropertyGroup.METADATA).equals(properties(b, PropertyGroup.METADATA))
+                if (!a.getHeaderTokens().equals(b.getHeaderTokens())
+                        || !a.getChildren().stream().map(RequirementHistoryService::serialized).toList()
+                        .equals(b.getChildren().stream().map(RequirementHistoryService::serialized).toList())
+                        || !properties(a, PropertyGroup.METADATA).equals(properties(b, PropertyGroup.METADATA))
                         || !portable(before, a).equals(portable(after, b))) kinds.add(ChangeKind.REQUIREMENT_METADATA_CHANGED);
                 if (!properties(a, PropertyGroup.REALIZATION).equals(properties(b, PropertyGroup.REALIZATION))) kinds.add(ChangeKind.REALIZATION_CHANGED);
                 Set<String> dependencies = new LinkedHashSet<>(dependencyIds(before, a));
@@ -188,6 +191,8 @@ public final class RequirementHistoryService {
             Map<String, BlockAst> requirements = new LinkedHashMap<>();
             for (BlockAst block : blocks.values()) {
                 if (!"requirement".equals(block.getKind())) continue;
+                if (block.propertyValues("x-project-key").size() > 1 || block.propertyValues("x-requirement-key").size() > 1)
+                    throw new IOException("Ambiguous historical requirement identity");
                 String project = block.property("x-project-key"), requirement = block.property("x-requirement-key");
                 String identity = project != null && requirement != null ? project + '\0' + requirement : "unbound\0" + block.getHeaderTokens().getFirst();
                 if (requirements.putIfAbsent(identity, block) != null) throw new IOException("Ambiguous historical requirement identity");

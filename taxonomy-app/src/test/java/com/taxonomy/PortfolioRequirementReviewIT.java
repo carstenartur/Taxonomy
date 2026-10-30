@@ -23,6 +23,7 @@ import java.util.function.Supplier;
 import static com.taxonomy.PortfolioClientTestPage.json;
 import static com.taxonomy.PortfolioRequirementFixture.REQUIREMENT;
 import static com.taxonomy.PortfolioRequirementFixture.ROOT;
+import static com.taxonomy.PortfolioRequirementFixture.SAVE_REQUIREMENT;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real form events and HTTP races, owned by JUnit/Failsafe rather than a script suite. */
@@ -104,7 +105,7 @@ class PortfolioRequirementReviewIT {
         var fixture = open();
         String message = status == 409 ? "This requirement changed. Review the new version."
                 : "Change reason is required.";
-        page.route("POST", REQUIREMENT + "/versions", request -> json(status, Map.of("detail", message)));
+        page.route("POST", SAVE_REQUIREMENT, request -> json(status, Map.of("detail", message)));
         fixture.openVersionModal();
         fixture.editVersion();
         fixture.submitVersion();
@@ -113,23 +114,30 @@ class PortfolioRequirementReviewIT {
         assertThat(fixture.element("newVersionModal").isDisplayed()).isTrue();
         assertThat(fixture.element("detailError").getDomProperty("textContent")).isEmpty();
         var submitted = page.requests().stream()
-                .filter(request -> request.method().equals("POST") && request.path().endsWith("/versions"))
+                .filter(request -> request.method().equals("POST") && request.path().equals(SAVE_REQUIREMENT))
                 .reduce((first, second) -> second).orElseThrow();
         var body = JSON.readTree(submitted.body());
-        assertThat(body.path("text").asString()).isEqualTo(PortfolioRequirementFixture.DRAFT.getFirst());
-        assertThat(body.path("source").path("sourceArtifactId").asInt()).isEqualTo(91);
-        assertThat(body.path("source").path("pageNumber").asInt()).isEqualTo(9);
+        assertThat(body.path("choice").asString()).isEqualTo("CHANGE");
+        assertThat(body.path("projectId").asInt()).isEqualTo(1);
+        assertThat(body.path("requirementId").asInt()).isEqualTo(2);
+        assertThat(body.path("expectedVersionId").asInt()).isEqualTo(12);
+        assertThat(body.path("expectedContentHash").asString()).isEqualTo(PortfolioRequirementFixture.hash("Stored text"));
+        assertThat(body.path("inputHash").asString()).isEqualTo(PortfolioRequirementFixture.hash(PortfolioRequirementFixture.DRAFT.getFirst()));
+        assertThat(body.path("requirement").path("text").asString()).isEqualTo(PortfolioRequirementFixture.DRAFT.getFirst());
+        assertThat(body.path("requirement").path("source").path("sourceArtifactId").asInt()).isEqualTo(91);
+        assertThat(body.path("requirement").path("source").path("pageNumber").asInt()).isEqualTo(9);
+        assertThat(page.requests()).noneMatch(request -> request.method().equals("POST") && request.path().endsWith("/versions"));
     }
 
     @Test void retryClearsTheOldErrorWhileKeepingSubmittedFields() throws Exception {
         var fixture = open();
-        page.route("POST", REQUIREMENT + "/versions", request -> json(409, Map.of("detail", "First attempt failed")));
+        page.route("POST", SAVE_REQUIREMENT, request -> json(409, Map.of("detail", "First attempt failed")));
         fixture.openVersionModal();
         fixture.editVersion();
         fixture.submitVersion();
         error(fixture, "First attempt failed");
         try (var pending = new PendingResponse(() -> json(400, Map.of("detail", "Retry failed")))) {
-            page.route("POST", REQUIREMENT + "/versions", pending::respond);
+            page.route("POST", SAVE_REQUIREMENT, pending::respond);
             fixture.submitVersion();
             pending.awaitStarted();
             assertThat(fixture.element("newVersionError").isDisplayed()).isFalse();
@@ -198,10 +206,10 @@ class PortfolioRequirementReviewIT {
 
     @Test void savedVersionClearsDirtyStateAndAllowsLaterBaselineRefresh() {
         var fixture = open();
-        page.route("POST", REQUIREMENT + "/versions", request -> {
+        page.route("POST", SAVE_REQUIREMENT, request -> {
             var body = JSON.readTree(request.body());
-            fixture.updateBaseline(body.path("text").asString(), "Pump control");
-            return json(201, fixture.requirement.get().get("currentVersion"));
+            fixture.updateBaseline(body.path("requirement").path("text").asString(), "Pump control");
+            return json(200, fixture.saved());
         });
         fixture.openVersionModal();
         fixture.editVersion();

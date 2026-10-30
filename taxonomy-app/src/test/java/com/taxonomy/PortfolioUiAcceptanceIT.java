@@ -21,6 +21,7 @@ import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.OutputType;
 import org.openqa.selenium.remote.LocalFileDetector;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedCondition;
@@ -250,6 +251,135 @@ class PortfolioUiAcceptanceIT {
         PortfolioContextBrowserChecks.run(driver, fixture, browserOrigin, contextPath);
     }
 
+    @Test
+    @Order(4)
+    void twelveRequirementsRetainTextVersionsRealizationHistoryAndRestartRecovery() throws Exception {
+        fixture.deactivate();
+        String projectKey="P-LIFECYCLE-"+uniqueSuffix();
+        open("/projects?lang=en",By.id("portfolioMain"));
+        createProject(projectKey);
+        long projectId=selectedProjectId();
+        String completedTenthCommit=null;long completedTenthRevision=0;
+        for(int number=1;number<=12;number++) {
+            String key="REQ-"+number;
+            createRequirement(key,"Lifecycle requirement "+number,
+                    "The architecture shall retain auditable requirement evidence for capability "+number+".");
+            if(number<=10) {
+                if(number==10) reviewRealization(key,"PARTIAL");
+                reviewRealization(key,"COMPLETE");
+            }
+            if(number==10) {
+                var overview=lifecycleOverview();completedTenthCommit=overview.path("context").path("commit").asString();
+                completedTenthRevision=overview.path("context").path("revision").asLong();
+                assertThat(completedTenthCommit).matches("[0-9a-f]{40}");
+            }
+        }
+        long ninth=requirementId("REQ-9");
+        String scope=lifecycleScope();
+        open("/projects/"+projectId+"/requirements/"+ninth+"?lang=en&"+scope,By.id("requirementMain"));
+        click(By.cssSelector("[data-bs-target='#newVersionModal']"));
+        fill("versionText","The architecture shall retain immutable evidence for capability 9, including supplier clarifications.");
+        fill("changeReason","Clarify requirement 9 after requirement 10 was completed");
+        click(By.cssSelector("#newVersionForm button[type='submit']"));
+        click(By.cssSelector("#newVersionForm [data-intake-choice='CHANGE']"));
+        wait.until(textPresent(By.id("currentText"),"supplier clarifications"));
+        open("/projects?projectId="+projectId+"&lang=en&"+scope,By.id("portfolioMain"));
+        wait.until(browser->lifecycleRequirement("REQ-9").path("version").asInt()==2);
+        assertLifecycleTwelve();
+        openLifecycle();
+        var ninthRow=lifecycleRow("REQ-9");
+        assertThat(ninthRow.getText()).contains("2","1");
+        captureLifecycleEvidence("twelve-current");
+
+        click(lifecycleRow("REQ-10").findElement(By.cssSelector("[data-lifecycle-action='history']")));
+        String tenthCommit=completedTenthCommit;
+        wait.until(browser->browser.findElements(By.cssSelector("[data-lifecycle-history-list] a[href*='commit="+tenthCommit+"']")).size()>0);
+        assertThat(driver.findElement(By.cssSelector("[data-lifecycle-history-list]")).getText()).contains("Complete REQ-10");
+        captureLifecycleEvidence("tenth-history");
+        click(By.cssSelector("[data-lifecycle-history-list] a[href*='commit="+tenthCommit+"']"));
+        wait.until(browser->"HISTORICAL".equals(lifecycleOverview().path("projectionState").asString()));
+        assertThat(lifecycleRequirement("REQ-9").path("version").asInt()).isEqualTo(1);
+        assertThat(lifecycleOverview().path("mayEdit").asBoolean()).isFalse();
+        captureLifecycleEvidence("tenth-historical");
+
+        open("/architecture/editor?revision="+completedTenthRevision+"&lang=en&"+scope,By.id("architectureEditor"));
+        wait.until(browser->"HISTORICAL".equals(lifecycleOverview().path("projectionState").asString()));
+        assertThat(lifecycleRequirement("REQ-9").path("version").asInt()).isEqualTo(1);
+        assertThat(lifecycleOverview().path("source").asString()).isEqualTo("WORKSPACE_REVISION");
+
+        // Explicit local runtime restarts Spring against the same real file-backed HSQLDB/JGit store.
+        // Container restart persistence is independently exercised by ProductionPersistenceRestartIT.
+        if(localRuntime) {
+            driver.get("about:blank");stopApplication();startApplication(contextPath);fixture.upstream(applicationOrigin(),contextPath);
+            driver.manage().deleteAllCookies();login();
+        }
+        open("/projects?projectId="+projectId+"&lang=en&"+scope,By.id("portfolioMain"));
+        wait.until(browser->lifecycleRequirement("REQ-9").path("version").asInt()==2);
+        assertLifecycleTwelve();
+        openLifecycle();captureLifecycleEvidence("twelve-reloaded");
+    }
+
+    private static void assertLifecycleTwelve() {
+        var overview=lifecycleOverview();
+        assertThat(overview.path("requirements").size()).isGreaterThanOrEqualTo(12);
+        var ninth=lifecycleRequirement("REQ-9");
+        assertThat(ninth.path("version").asInt()).isEqualTo(2);
+        assertThat(ninth.path("realization").path("reviewed").path("requirementVersion").asInt()).isEqualTo(1);
+        assertThat(ninth.path("realization").path("state").asString()).isEqualTo("REVIEW_REQUIRED");
+        assertThat(lifecycleRequirement("REQ-10").path("realization").path("state").asString()).isEqualTo("COMPLETE");
+        for(String key:List.of("REQ-11","REQ-12")) assertThat(lifecycleRequirement(key).path("realization").path("state").asString()).isEqualTo("OPEN");
+    }
+
+    private static tools.jackson.databind.JsonNode lifecycleOverview() {
+        Object value=javascript().executeScript("return JSON.stringify(window.TaxonomyArchitectureLifecycle?.state?.() || {})");
+        return JsonMapper.builder().build().readTree(String.valueOf(value));
+    }
+
+    private static tools.jackson.databind.JsonNode lifecycleRequirement(String key) {
+        var requirements=lifecycleOverview().path("requirements");
+        for(var requirement:requirements) if(key.equals(requirement.path("requirementKey").asString())) return requirement;
+        return JsonMapper.builder().build().createObjectNode();
+    }
+
+    private static String lifecycleScope() {
+        var context=lifecycleOverview().path("context");
+        return "repositoryId="+context.path("repositoryId").asString()+"&workspaceId="+context.path("workspaceScopeKey").asString()
+                +"&workspaceScopeKey="+context.path("workspaceScopeKey").asString()+"&branch="+java.net.URLEncoder.encode(context.path("branch").asString(),StandardCharsets.UTF_8);
+    }
+
+    private static void openLifecycle() {
+        wait.until(browser->!lifecycleOverview().path("context").isMissingNode());
+        var disclosure=driver.findElement(By.cssSelector("#architectureLifecycle details"));
+        if(disclosure.getDomAttribute("open")==null) click(disclosure.findElement(By.tagName("summary")));
+    }
+
+    private static WebElement lifecycleRow(String key) {
+        return wait.until(browser->browser.findElements(By.cssSelector("#architectureLifecycle tr[data-requirement-key]"))
+                .stream().filter(row->key.equals(row.getAttribute("data-requirement-key"))).findFirst().orElse(null));
+    }
+
+    private static void reviewRealization(String key,String status) {
+        wait.until(browser->!lifecycleRequirement(key).path("requirementId").isMissingNode());openLifecycle();
+        click(lifecycleRow(key).findElement(By.cssSelector("[data-lifecycle-action='review']")));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("lifecycleReviewDialog")));
+        new Select(driver.findElement(By.id("lifecycleReviewStatus"))).selectByValue(status);
+        var dependencies=new Select(driver.findElement(By.id("lifecycleReviewDependencies")));
+        var actualElement=dependencies.getOptions().stream().filter(option->option.getAttribute("value").startsWith("element:"))
+                .findFirst().orElseThrow(()->new AssertionError("Real initialized catalogue must offer an architecture dependency"));
+        dependencies.selectByValue(actualElement.getAttribute("value"));
+        fill("lifecycleReviewReason",("COMPLETE".equals(status)?"Complete ":"Partially implement ")+key);
+        click(By.id("lifecycleReviewPreview"));
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("lifecycleReviewAccept")));click(By.id("lifecycleReviewAccept"));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("lifecycleReviewDialog")));
+        wait.until(browser->status.equals(lifecycleRequirement(key).path("realization").path("state").asString()));
+    }
+
+    private static void captureLifecycleEvidence(String name) throws Exception {
+        Path directory=Files.createDirectories(Path.of("target","coherent-lifecycle","evidence"));
+        Files.write(directory.resolve(name+".png"),driver.getScreenshotAs(OutputType.BYTES));
+        Files.writeString(directory.resolve(name+".json"),lifecycleOverview().toPrettyString());
+    }
+
     private static void login() {
         driver.get(browserOrigin + contextPath + "/login");
         wait.until(ExpectedConditions.presenceOfElementLocated(By.name("username")))
@@ -320,6 +450,7 @@ class PortfolioUiAcceptanceIT {
         new Select(modal.findElement(By.id("requirementType"))).selectByValue("SECURITY");
         fill(modal, "requirementText", text);
         modal.findElement(By.cssSelector("button[type='submit']")).click();
+        click(By.cssSelector("#requirementForm [data-intake-choice='NEW']"));
         waitForModalClosed("requirementModal");
         waitUntilPortfolioIdle();
         wait.until(textPresent(By.cssSelector("#requirementsTable tbody"), key));
@@ -622,8 +753,11 @@ class PortfolioUiAcceptanceIT {
      * condition instead of bypassing it with JavaScript.
      */
     private static void click(By locator) {
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(
-                By.cssSelector(".modal-backdrop.show")));
+        wait.until(browser -> {
+            var targets=browser.findElements(locator);
+            if(!targets.isEmpty() && !targets.getFirst().findElements(By.xpath("ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' modal ')]")).isEmpty()) return true;
+            return browser.findElements(By.cssSelector(".modal-backdrop.show")).isEmpty();
+        });
         new WebDriverWait(driver, UI_WAIT_TIMEOUT)
                 .ignoring(ElementClickInterceptedException.class)
                 .ignoring(StaleElementReferenceException.class)
@@ -640,8 +774,8 @@ class PortfolioUiAcceptanceIT {
     }
 
     private static void click(WebElement element) {
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(
-                By.cssSelector(".modal-backdrop.show")));
+        if(element.findElements(By.xpath("ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' modal ')]")).isEmpty())
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector(".modal-backdrop.show")));
         new WebDriverWait(driver, UI_WAIT_TIMEOUT)
                 .ignoring(ElementClickInterceptedException.class)
                 .withMessage("Native click on " + element)

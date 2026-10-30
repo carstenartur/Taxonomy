@@ -1,6 +1,6 @@
 # Architecture editor
 
-Open **Architecture editor** from Projects or the snapshot workbench. The context line shows repository, workspace, branch, semantic workspace revision, last checkpoint and actor. Historical revisions/versions and central read contexts are read-only. Use **Create private workspace** when repository membership allows it; editing also requires the ARCHITECT or ADMIN role.
+Open **Architecture editor** from Projects or the snapshot workbench. The shared context shows the architecture, project, requirement and selected stand. **Technical details** exposes the exact repository/workspace identities, full commit and available snapshot/version identifiers. Historical revisions/versions and central read contexts are read-only. Use **Create private workspace** when repository membership allows it; editing also requires the ARCHITECT or ADMIN role.
 
 ![Architecture editor — selected workspace and element](../images/architecture-editor-current-en.png)
 
@@ -25,7 +25,70 @@ SVG and vector PDF use the complete deterministic server layout at the displayed
 
 Implementation decision: [ADR 0005](../adr/0005-private-architecture-editor.md). [Deutsche Anleitung](../de/ARCHITECTURE_EDITOR.md).
 
-### Focus lens and arrangement
+<a id="editor-version-reconciliation"></a>
+## Reconcile a changed Git stand with local work
+
+An accepted local operation can survive even when its Git checkpoint has not
+finished. `CHECKPOINT_PENDING` is not a completed Git version. After an interrupted
+Git write, reload and use **Resume pending checkpoint** with the retained intent.
+The editor document exposes that intent as `pendingCheckpointId`. An exact retry
+keeps the original command identity and does not repeat its business changes.
+
+If Git HEAD has changed, use **Reconcile local and incoming state**. Simply repeating a save does
+not choose how to resolve a branch conflict. The existing **Recover completed
+version** action applies only when no newer uncheckpointed local changes exist.
+
+1. Choose **Preview** and inspect the base, local working source,
+   incoming Git source and proposed result. Previewing writes nothing.
+2. Read every conflict and select **Keep local** or **Use incoming**.
+   Each choice selects the complete source block, including its retained comments
+   and unknown properties. A separate source conflict can concern document metadata.
+3. Inspect additions and deletions. An absent side can remove a supported model
+   block; it cannot silently delete managed portfolio history.
+4. After choosing resolutions, choose **Preview** again and inspect
+   the resulting source. Later changes to decisions or scope invalidate acceptance.
+5. Choose **Accept reviewed change** only for that exact preview. If the
+   workspace revision or Git HEAD changes, obtain and review a new preview.
+
+Managed requirement text, title, version and hash must remain consistent with the
+portable current immutable version. Existing immutable version source cannot be
+rewritten. Keep the local blocks and create a new requirement version for changed
+text. If the incoming source omits managed business blocks, choose **Keep local** and use the explicit archival workflow. Incompatible choices are rejected;
+they do not become a partially accepted portfolio. Accepted portfolio changes and
+editor state are saved together before the Git checkpoint is published. A later
+Git storage interruption still uses the pending-checkpoint recovery above.
+
+The [API contract](PROJECT_PORTFOLIO_API.md#editor-version-reconciliation-api)
+describes the exact revision, HEAD and preview fingerprint checks.
+
+<a id="requirement-realization"></a>
+## Review requirement realization
+
+Expand **Requirements, realization and history**. **Text version in selected stand** is
+the requirement version in the loaded model; the reviewed version is the exact
+version assessed against its dependencies. The current requirement header can
+therefore show version 2 while a historical model still contains version 1.
+Snapshot source versions remain separate from both.
+
+In the current editable workspace, select the original requirement, contributing
+project, `OPEN`, `PARTIAL` or `COMPLETE`, supporting architecture dependencies and a
+rationale. Preview, compare the exact version and changes, then accept explicitly.
+Partial and complete reviews require evidence. Relationship endpoints and mapping
+targets are included in the dependency assessment. A later text or dependency
+change produces `REVIEW_REQUIRED`; invalid evidence produces `INVALID_EVIDENCE`.
+The previous reviewed version is retained. Neither an AI relevance score nor a
+project's completion substitutes for this review.
+
+This accepted lifecycle contribution includes an explicit Git checkpoint boundary.
+Inspect its publication state before treating it as a completed version. An older
+semantic revision or Git checkpoint is read-only and has no overlay from today's
+portfolio. The lifecycle panel, editor and shared context follow the same selected
+stand, including browser Back/Forward. **Show current working state** and **Refresh** reload the corresponding editor document as well.
+
+See [Architecture lifecycle](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle)
+and [Requirement history](PROJECT_REQUIREMENT_PORTFOLIO.md#requirement-history).
+
+## Focus lens and arrangement
 
 Open **Projects → Architecture editor** and scroll below the graph and arrangement
 controls to **Architecture focus lens**. Select the **Enable focus lens** checkbox.
@@ -68,7 +131,7 @@ camera stable. Rearrange again to optimize for subsequent changes. The URL recor
 the strategy and reference revision; SVG and PDF use that same server ordering
 with the currently displayed model. Ghost suggestions are excluded from exports.
 
-### Neutral packages and requirement mappings
+## Neutral packages and requirement mappings
 
 The **Packages** panel creates, renames, describes, moves and deletes organization
 boundaries without adding taxonomy elements or `CONTAINS` relations. It uses the

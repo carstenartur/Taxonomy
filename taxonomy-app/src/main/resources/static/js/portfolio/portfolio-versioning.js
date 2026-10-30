@@ -134,6 +134,9 @@
     }
 
     function render() {
+        window.TaxonomyAppChrome?.updateContext({project:{id:state.project.id,key:state.project.projectKey,title:state.project.title},
+            architecture:{repositoryId:state.exported.repositoryId,workspaceScopeKey:state.exported.workspaceId || '__shared__',
+                branch:state.repository.currentBranch || state.exported.activeBranch}});
         document.getElementById('versioningProject').textContent =
             `${state.project.projectKey} — ${state.project.title}`;
         document.getElementById('activeBranch').textContent =

@@ -4,7 +4,7 @@
 (function () {
     'use strict';
     var params = new URLSearchParams(window.location.search);
-    var workspacePin = params.has('workspaceId') ? params.get('workspaceId') : null;
+    var workspacePin = params.has('workspaceId') ? params.get('workspaceId') : params.has('workspaceScopeKey') ? (params.get('workspaceScopeKey') === '__shared__' ? '' : params.get('workspaceScopeKey')) : null;
     var repositoryPin = params.has('repositoryId') ? params.get('repositoryId') : null;
     var branchPin = params.has('branch') ? params.get('branch') : null;
     var decoratedLinks = new WeakMap();
@@ -59,7 +59,7 @@
         var target;
         try { target = new URL(value, window.location.href); } catch (_) { return value; }
         if (target.origin !== window.location.origin || !eligible(applicationPath(target))) return value;
-        var pins = {workspaceId:workspacePin,repositoryId:repositoryPin,branch:branchPin};
+        var pins = {workspaceId:workspacePin,repositoryId:repositoryPin,branch:branchPin,workspaceScopeKey:workspacePin === null ? null : workspacePin || '__shared__'};
         var keys = Object.keys(pins).filter(function (key) { return pins[key] !== null && pins[key] !== undefined; });
         if (keys.some(function (key) { return target.searchParams.has(key) && target.searchParams.get(key) !== pins[key]; })) return value;
         keys.forEach(function (key) { if (!target.searchParams.has(key)) target.searchParams.set(key,pins[key]); });

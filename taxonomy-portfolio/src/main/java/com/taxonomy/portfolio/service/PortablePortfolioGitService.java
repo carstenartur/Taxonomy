@@ -93,7 +93,8 @@ public class PortablePortfolioGitService extends PortfolioGitService {
         String requirements = addPortableCurrentVersion(
                 super.contributeTo(existingDsl, username, context), username, context);
         String decisions = decisionContributor.contributeTo(requirements, username, context);
-        return reformulationEvidence.contributeTo(decisions, PortfolioScope.key(username, context));
+        String projection = reformulationEvidence.contributeTo(decisions, PortfolioScope.key(username, context));
+        return ArchitectureSemanticPatch.applyProjection(existingDsl, projection);
     }
 
     @Override

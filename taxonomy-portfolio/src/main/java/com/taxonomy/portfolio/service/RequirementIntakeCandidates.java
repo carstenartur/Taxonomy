@@ -40,7 +40,13 @@ public class RequirementIntakeCandidates {
         this.documents = documents; this.policies = policies;
     }
 
-    public record Repository(String id, String branch, String title, String description) { }
+    public record Repository(String id, String branch, String title, String description,
+                             boolean observed, String sourceCommit) {
+        public Repository(String id, String branch, String title, String description) {
+            this(id, branch, title, description, false, null);
+        }
+        private Repository observedAt(String commit) { return new Repository(id, branch, title, description, true, commit); }
+    }
     public record Frozen(Scope scope, Long projectId, List<Candidate> candidates, List<Repository> repositories,
                          Coverage coverage, boolean providerAllowed) {
         public Frozen { candidates = List.copyOf(candidates); repositories = List.copyOf(repositories); }
@@ -91,16 +97,17 @@ public class RequirementIntakeCandidates {
     /** Canonical central documents are immutable observations, never another workspace's projections. */
     public Frozen discover(Frozen frozen, String username) {
         var budget = new Budget(frozen);
+        List<Repository> observations = new ArrayList<>();
         for (var source : frozen.repositories()) {
             // A second authorization precedes repository content access, after the initial DB snapshot.
             if (!canRead(source.id(), username)) throw PortfolioException.notFound("Architecture is unavailable");
-            budget.add(new Candidate("architecture:" + source.id(), "ARCHITECTURE", source.id(), null, source.branch(),
-                    null, null, null, null, null, source.title(), join(source.title(), source.description()),
-                    null, null, null, List.of(), List.of("VIEW", "NEW")));
+            Repository observed = source;
             try {
                 var repository = documents.resolveRepository(new WorkspaceContext(username, null, source.branch(), source.id()));
                 String head = repository.getHeadCommit(source.branch());
+                observed = source.observedAt(head);
                 String dsl = head == null ? null : repository.getDslAtCommit(head);
+                if (head != null && dsl == null) budget.partial = true;
                 if (dsl == null || dsl.isBlank()) continue;
                 if (dsl.length() > MAXIMUM_DOCUMENT_CHARACTERS) { budget.partial = true; continue; }
                 var document = new TaxDslParser().parse(dsl, "intake-central.taxdsl");
@@ -112,11 +119,38 @@ public class RequirementIntakeCandidates {
                             "ARCHITECTURE_REQUIREMENT", source.id(), null, source.branch(), null, block.property("x-project-key"),
                             null, null, Objects.toString(block.property("x-requirement-key"), identity),
                             Objects.toString(block.property("title"), identity), text, RequirementIntakeService.inputHash(text),
-                            null, null, List.of(), List.of("VIEW", "NEW")));
+                            null, null, List.of(), List.of("VIEW", "NEW"), head, block.property("x-version")));
                 }
             } catch (java.io.IOException | IllegalArgumentException unavailable) { budget.partial = true; }
+            finally {
+                if (!canRead(source.id(), username)) throw PortfolioException.notFound("Architecture is unavailable");
+                observations.add(observed);
+                budget.add(new Candidate("architecture:" + source.id(), "ARCHITECTURE", source.id(), null, source.branch(),
+                        null, null, null, null, null, source.title(), join(source.title(), source.description()),
+                        null, null, null, List.of(), List.of("VIEW", "NEW"), observed.sourceCommit(), null));
+            }
         }
-        return new Frozen(frozen.scope(), frozen.projectId(), budget.candidates, frozen.repositories(), budget.coverage(), frozen.providerAllowed());
+        return new Frozen(frozen.scope(), frozen.projectId(), budget.candidates, observations, budget.coverage(), frozen.providerAllowed());
+    }
+
+    /** Mutable branch heads are checked outside DB transactions; response links retain their immutable commit. */
+    public void recheckSources(Frozen frozen, String username) {
+        for (var source : frozen.repositories()) {
+            if (!canRead(source.id(), username)) throw PortfolioException.notFound("Architecture is unavailable");
+            if (!source.observed()) continue; // Discovery failed, so coverage is already explicitly incomplete.
+            try {
+                var repository = documents.resolveRepository(new WorkspaceContext(username, null, source.branch(), source.id()));
+                String current = repository.getHeadCommit(source.branch());
+                if (!Objects.equals(source.sourceCommit(), current))
+                    throw new PortfolioException(PortfolioException.Kind.CONFLICT, "INTAKE_SOURCE_CHANGED",
+                            "An architecture changed during intake review; review again", null);
+            } catch (java.io.IOException | IllegalArgumentException unavailable) {
+                throw new PortfolioException(PortfolioException.Kind.UNAVAILABLE, "INTAKE_SOURCE_UNAVAILABLE",
+                        "An architecture source could not be checked; review again", unavailable);
+            } finally {
+                if (!canRead(source.id(), username)) throw PortfolioException.notFound("Architecture is unavailable");
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -142,9 +176,8 @@ public class RequirementIntakeCandidates {
     }
     private void authorize(String username, WorkspaceContext context) {
         if (context == null || !Objects.equals(username, context.username())) throw PortfolioException.notFound("Review context is unavailable");
-        if (context.workspaceId() == null || context.workspaceId().isBlank()) {
-            if (!canRead(context.repositoryId(), username)) throw PortfolioException.notFound("Architecture is unavailable");
-        } else {
+        if (!canRead(context.repositoryId(), username)) throw PortfolioException.notFound("Architecture is unavailable");
+        if (context.workspaceId() != null && !context.workspaceId().isBlank()) {
             var workspace = workspaces.findByWorkspaceId(context.workspaceId())
                     .orElseThrow(() -> PortfolioException.notFound("Workspace is unavailable"));
             if (!Objects.equals(workspace.getUsername(), username) || workspace.isArchived() || workspace.isShared()
@@ -155,7 +188,9 @@ public class RequirementIntakeCandidates {
         }
     }
     private boolean canRead(String repositoryId, String username) {
-        return repositories.findByRepositoryId(repositoryId).filter(repository -> membership.canRead(repository, username)).isPresent();
+        return repositories.findByRepositoryId(repositoryId)
+                .filter(repository -> repository.getLifecycleState() == RepositoryLifecycleState.ACTIVE)
+                .filter(repository -> membership.canRead(repository, username)).isPresent();
     }
     private static String join(String... values) {
         return Arrays.stream(values).filter(Objects::nonNull).filter(value -> !value.isBlank()).reduce((left, right) -> left + "\n" + right).orElse("");

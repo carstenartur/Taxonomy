@@ -198,7 +198,12 @@
     function wireEvents() {
         document.getElementById('newVersionForm').addEventListener('submit', createVersion);
         document.getElementById('newVersionForm').addEventListener('input', () => { state.versionFormDirty = true; });
-        document.getElementById('newVersionModal').addEventListener('show.bs.modal', clearNewVersionError);
+        document.getElementById('newVersionModal').addEventListener('show.bs.modal', () => {
+            clearNewVersionError();
+            window.TaxonomyRequirementIntake.attach(document.getElementById('newVersionForm'), {
+                textElement:document.getElementById('versionText'),projectId:projectId,versionTarget:state.versionDraftBase
+            });
+        });
         document.getElementById('reanalyzeRequirement').addEventListener('click', analyzeRequirement);
         document.getElementById('versionList').addEventListener('click', event => {
             const button = event.target.closest('[data-version-id]');
@@ -244,11 +249,17 @@
 
     function renderAll(preserveVersionForm) {
         const requirement = state.requirement;
+        window.TaxonomyAppChrome?.updateContext({project:{id:state.project.id,key:state.project.projectKey,title:state.project.title},
+            requirement:{id:requirement.id,key:requirement.requirementKey,title:requirement.title,
+                version:requirement.currentVersion?.versionNumber,versionId:requirement.currentVersionId || requirement.currentVersion?.id}});
         document.getElementById('portfolioBack').href = applicationUrl(`/projects?lang=${locale}`);
         document.getElementById('matrixLink').href = applicationUrl(`/projects/${projectId}/matrices?lang=${locale}`);
         document.getElementById('requirementKey').textContent = requirement.requirementKey;
         document.getElementById('requirementStatus').textContent = humanize(requirement.status);
         document.getElementById('requirementReview').textContent = humanize(requirement.reviewStatus);
+        window.TaxonomyAppChrome?.setStatus('requirementStatus',requirement.status);
+        window.TaxonomyAppChrome?.setStatus('requirementReview',requirement.reviewStatus);
+        document.getElementById('requirementKey').className = 'taxonomy-entity-key';
         document.getElementById('requirementHeading').textContent = requirement.title;
         document.getElementById('requirementMeta').textContent = [
             state.project.projectKey + ' — ' + state.project.title,
@@ -269,6 +280,7 @@
         document.getElementById('currentText').textContent = version ? version.text : '—';
         const source = version && version.source;
         if (!preserveVersionForm) {
+            captureVersionDraftBase(version);
             document.getElementById('versionText').value = version ? version.text : '';
             document.getElementById('sourceSection').value = source?.sectionReference || '';
             document.getElementById('sourcePage').value = source?.pageNumber || '';
@@ -448,6 +460,11 @@
         const detail = state.snapshotDetail;
         if (!detail) return renderEmpty(target, t('noSnapshots'));
         const summary = detail.summary;
+        window.TaxonomyAppChrome?.updateContext({source:{projectId:summary.projectId,projectKey:state.project.projectKey,
+            requirementId:summary.requirementId,requirementKey:summary.requirementKey,snapshotId:summary.id,
+            requirementVersionId:summary.requirementVersionId,requirementVersion:summary.requirementVersionNumber,
+            repositoryId:window.TaxonomyArchitectureWorkflow?.getScope()?.repositoryId,
+            workspaceScopeKey:summary.workspaceId || '__shared__',branch:summary.branchName}});
         target.classList.add('portfolio-snapshot-detail');
         target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
             + `<div><h2 class="h4 mb-1">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
@@ -853,34 +870,96 @@
 
     async function createVersion(event) {
         event.preventDefault();
+        if (state.versionSaveInFlight) return;
+        state.versionSaveInFlight = true;
         clearNewVersionError();
         setBusy(true);
         try {
-            const sourcePage = document.getElementById('sourcePage').value;
-            await api().createRequirementVersion(projectId, requirementId, {
+            const form = document.getElementById('newVersionForm');
+            if (!state.versionAttempt) {
+                const sourcePage = document.getElementById('sourcePage').value;
+                const base = state.versionDraftBase;
+                window.TaxonomyRequirementIntake.attach(form, {textElement:document.getElementById('versionText'),projectId:projectId,versionTarget:base});
+                const beforeReview = versionDraftFingerprint();
+                const payload = {
+                requirementKey:state.requirement.requirementKey.slice(0,48)+'-'+Date.now().toString(36),
+                title:state.requirement.title,
                 text: document.getElementById('versionText').value,
                 changeReason: document.getElementById('changeReason').value,
                 source: {
-                    sourceArtifactId: state.requirement.currentVersion?.source?.sourceArtifactId || null,
-                    sourceVersionId: state.requirement.currentVersion?.source?.sourceVersionId || null,
-                    sourceFragmentIds: state.requirement.currentVersion?.source?.sourceFragmentIds || [],
+                    sourceArtifactId: state.versionDraftSource?.sourceArtifactId || null,
+                    sourceVersionId: state.versionDraftSource?.sourceVersionId || null,
+                    sourceFragmentIds: state.versionDraftSource?.sourceFragmentIds || [],
                     sectionReference: document.getElementById('sourceSection').value || null,
                     pageNumber: sourcePage ? Number(sourcePage) : null,
                     originalText: document.getElementById('sourceOriginal').value || null
                 }
-            });
-            state.versionFormDirty = false;
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('newVersionModal')).hide();
-            showInfo(t('versionCreated'));
-            await loadAll();
+                };
+                const command = await window.TaxonomyRequirementIntake.prepareVersion(form,payload,projectId,requirementId,
+                    base?.requirementVersionId,base?.contentHash);
+                if (!command || beforeReview !== versionDraftFingerprint()) return;
+                state.versionAttempt = {command:command,captured:versionDraftFingerprint()};
+            }
+            const {command,captured} = state.versionAttempt;
+            const saved = await window.TaxonomyArchitectureLifecycle.saveRequirement(command);
+            if (saved.publication?.state === 'CHECKPOINT_PENDING') {
+                versionRetryLabel(true);
+                const message=locale==='de'?'Die Anforderung ist gespeichert. Wiederholen Sie denselben Vorgang, um den offenen Architektur-Checkpoint abzuschließen.':'The requirement is saved. Retry this same operation to complete its pending architecture checkpoint.';
+                const target=document.getElementById('newVersionError');target.textContent=message;target.classList.remove('d-none');target.focus();
+                return;
+            }
+            state.versionAttempt=null;versionRetryLabel(false);
+            if (command.choice === 'LINK') {
+                showSavedRequirement(saved,locale==='de'?'Die bestehende Anforderung wurde verknüpft. Ihr Text bleibt für eine neue Version erhalten.':'The existing requirement was linked. Your text is retained for a new version.');return;
+            }
+            if (command.choice==='CHANGE' && saved.requirementId===requirementId)
+                captureVersionDraftBase(saved.requirement.currentVersion);
+            const unchanged = captured === versionDraftFingerprint();
+            if (unchanged) {
+                state.versionFormDirty = false;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('newVersionModal')).hide();
+            }
+            showSavedRequirement(saved,command.choice==='CHANGE'?t('versionCreated'):
+                (locale==='de'?'Eine neue Anforderung wurde angelegt.':'A new requirement was created.'));
+            await loadAll(!unchanged);
         } catch (error) {
+            if ([400,403,404,409,412,422].includes(error?.status)) { state.versionAttempt=null;versionRetryLabel(false); }
+            else if (state.versionAttempt) versionRetryLabel(true);
             const target = document.getElementById('newVersionError');
             target.textContent = error?.message || t('failed');
             target.classList.remove('d-none');
             target.focus();
         } finally {
+            state.versionSaveInFlight = false;
             setBusy(false);
         }
+    }
+
+    function captureVersionDraftBase(version) {
+        state.versionDraftBase=version?{projectId:projectId,requirementId:requirementId,requirementVersionId:version.id,contentHash:version.contentHash}:null;
+        state.versionDraftSource=version?.source || null;
+    }
+
+    function versionRetryLabel(retry) {
+        const button=document.querySelector('#newVersionForm button[type="submit"]');
+        if(!button.dataset.versionOriginalLabel) button.dataset.versionOriginalLabel=button.textContent;
+        button.textContent=retry?(locale==='de'?'Gespeicherten Vorgang wiederholen':'Retry saved operation'):button.dataset.versionOriginalLabel;
+    }
+
+    function showSavedRequirement(saved,message) {
+        showInfo(message);
+        const link=document.createElement('a');link.textContent=locale==='de'?'Gespeicherte Anforderung öffnen':'Open saved requirement';link.target='_blank';link.rel='noopener';link.className='ms-2';
+        const context=saved.publication?.context || {};
+        const url=new URL(applicationUrl('/projects/'+saved.projectId+'/requirements/'+saved.requirementId),window.location.href);
+        if(context.repositoryId) url.searchParams.set('repositoryId',context.repositoryId);
+        if(context.workspaceScopeKey!==undefined) url.searchParams.set('workspaceId',context.workspaceScopeKey==='__shared__'?'':context.workspaceScopeKey);
+        if(context.branch) url.searchParams.set('branch',context.branch);link.href=url.href;
+        document.getElementById('detailInfo').appendChild(link);
+    }
+
+    function versionDraftFingerprint() {
+        return JSON.stringify(['versionText','changeReason','sourceSection','sourcePage','sourceOriginal']
+            .map(id => document.getElementById(id).value));
     }
 
     function clearNewVersionError() {

@@ -2,8 +2,10 @@
 (function () {
     'use strict';
     var api = window.TaxonomyArchitectureLifecycleApi;
-    var root, summary, status, rows, historyList, disclosure, currentButton, reconcileButton;
+    var root, summary, status, rows, historyList, historySearch, disclosure, currentButton, reconcileButton;
     var listeners = new Set();
+    var pendingRequirements = new Map();
+    var subjectKey = null;
     var state = {overview:null, sequence:0, generation:0, selection:selectionFromUrl(), context:null, observed:null, history:null};
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -50,6 +52,7 @@
         ++state.sequence;
         state.context = clone(context || scope()); state.selection = next; state.observed = null;
         resetOverview(); if (changed) clearHistory(); invalidateStand();
+        window.TaxonomyAppChrome?.updateContext({architecture:{repositoryId:state.context.repositoryId,workspaceScopeKey:state.context.workspaceScopeKey || state.context.workspaceId,branch:state.context.branch,modelStand:null,commit:null,revision:null}});
         if (root) root.hidden = true;
     }
     function failedSelection(error) {
@@ -119,26 +122,49 @@
     function button(label, callback) {
         var value = node('button', label); value.type = 'button'; value.addEventListener('click', callback); return value;
     }
-    function metadata(reason) { return {commandId:crypto.randomUUID(), correlationId:crypto.randomUUID(), causationId:null, rationale:reason}; }
+    function metadata(reason) { var id = crypto.randomUUID(); return {commandId:id, correlationId:id, causationId:id, rationale:reason}; }
     function publicationOf(result) { return result?.publication || result; }
     function pendingPublication(result) { return publicationOf(result)?.state === 'CHECKPOINT_PENDING'; }
+    function showPublishedCurrentStand(context) {
+        if (!context || historicalSelection() || scopeKey(context) !== scopeKey(state.context)
+                || scopeKey(scope()) !== scopeKey(state.context)) return;
+        var url = new URL(location.href); url.searchParams.delete('commit'); url.searchParams.delete('revision');
+        window.history.replaceState(null,'',url);
+        window.TaxonomyAppChrome?.refreshNavigation();
+        refresh(context,null);
+    }
     function publishChanged(result, reconciled) {
         document.dispatchEvent(new CustomEvent(reconciled ? 'taxonomy:architecture-reconciled' : 'taxonomy:lifecycle-changed', {detail:result}));
-        if (!isEditor()) refresh(publicationOf(result)?.context, null);
+        if (!isEditor() && reconciled) showPublishedCurrentStand(publicationOf(result)?.context);
+    }
+    function selectedProject(value, context) {
+        var explicit = Object.prototype.hasOwnProperty.call(context,'project');
+        var projectId = explicit ? context.project?.id : new URLSearchParams(location.search).get('projectId');
+        var selected = (value.projects || []).find(function (project) { return projectId != null && String(project.id) === String(projectId); });
+        var projectKey = context.project?.key || selected?.projectKey;
+        if (!projectKey && projectId != null && String(context.source?.projectId) === String(projectId)) projectKey = context.source.projectKey;
+        return {id:projectId,key:projectKey,project:selected};
     }
     function filteredRequirements(value) {
         var context = window.TaxonomyAppChrome?.getContext() || {};
+        var selected = selectedProject(value,context);
         return (value.requirements || []).filter(function (requirement) {
-            return (!context.project?.id || String(requirement.projectId) === String(context.project.id))
-                && (!context.requirement?.id || String(requirement.requirementId) === String(context.requirement.id));
+            return (!selected.id && !selected.key) || (selected.id != null && String(requirement.projectId) === String(selected.id))
+                || (selected.key && requirement.projectKey === selected.key)
+                || (requirement.contributors || []).some(function (value) {
+                    return (selected.id != null && String(value.projectId || value.id || value) === String(selected.id))
+                        || (selected.key && (value.projectKey || value) === selected.key);
+                });
         });
     }
     function renderContext(value) {
         var c = value.context || {};
         var stand = value.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', c.commit?.substring(0, 12) || '') : t('editor.revision', c.revision);
         var facts = {architecture:{repositoryId:c.repositoryId, title:value.architectureTitle, branch:c.branch,
-            workspaceScopeKey:c.workspaceScopeKey, modelStand:stand}, editable:Boolean(value.mayEdit), publicationState:value.publicationState || value.projectionState};
+            workspaceScopeKey:c.workspaceScopeKey, modelStand:stand, commit:c.commit, revision:c.revision}, editable:Boolean(value.mayEdit), publicationState:value.publicationState || value.projectionState};
         var current = window.TaxonomyAppChrome?.getContext() || {};
+        var project = selectedProject(value,current).project;
+        if (!Object.prototype.hasOwnProperty.call(current,'project') && project && !historicalSelection()) facts.project = {id:project.id,key:project.projectKey,title:project.title};
         var requirement = (value.requirements || []).find(function (item) { return String(item.requirementId) === String(current.requirement?.id); });
         // Historical source evidence must not relabel the current business text version.
         if (requirement && !historicalSelection()) facts.requirement = {version:requirement.version, versionId:requirement.versionId};
@@ -155,28 +181,52 @@
         reconcileButton.hidden = historicalSelection() || !['VERSION_CHANGED','RECONCILIATION_REQUIRED'].includes(value.projectionState);
         rows.replaceChildren();
         visible.forEach(function (requirement) {
-            var row = node('tr'); row.dataset.requirementId = requirement.requirementId;
+            var row = node('tr'); row.dataset.requirementId = requirement.requirementId; row.dataset.requirementKey = requirement.requirementKey;
             var identity = node('td');
-            var link = node('a', [requirement.requirementKey, requirement.title].filter(Boolean).join(' · '));
-            link.href = window.TaxonomyArchitectureWorkflow?.scopeUrl(window.TaxonomyI18n.resolveUrl('/projects/' + requirement.projectId + '/requirements/' + requirement.requirementId)) || '#';
+            var link = node(requirement.projectId && requirement.requirementId ? 'a' : 'span', [requirement.requirementKey, requirement.title].filter(Boolean).join(' · '));
+            if (link.tagName === 'A') link.href = window.TaxonomyArchitectureWorkflow?.scopeUrl(window.TaxonomyI18n.resolveUrl('/projects/' + requirement.projectId + '/requirements/' + requirement.requirementId)) || '#';
             identity.append(link);
+            var versionCell = node('td',String(requirement.version)); versionCell.dataset.lifecycleVersion = '';
+            var reviewed = requirement.realization?.reviewed;
+            var reviewedCell = node('td',reviewed ? String(reviewed.requirementVersion) : t('lifecycle.unreviewed')); reviewedCell.dataset.lifecycleReviewedVersion = '';
             var realization = node('td');
             var code = requirement.realization?.state || 'OPEN';
             realization.dataset.state = code; realization.textContent = t('lifecycle.realization.' + code);
             var action = node('td');
             var review = button(t('lifecycle.review'), function () { openReview(requirement).catch(function (error) { status.textContent = errorText(error); }); });
-            review.dataset.lifecycleReview = requirement.requirementId; review.disabled = !value.mayEdit || historicalSelection();
-            action.append(review); row.append(identity, realization, action); rows.append(row);
+            review.dataset.lifecycleReview = requirement.requirementId; review.dataset.lifecycleAction = 'review'; review.disabled = !value.mayEdit || historicalSelection();
+            var rowHistory = button(t('lifecycle.history'), function () { loadHistory(0,null,{projectKey:requirement.projectKey,requirementKey:requirement.requirementKey,text:historySearch.value.trim()}); });
+            rowHistory.dataset.lifecycleAction = 'history';
+            var evidence = node('details'); evidence.append(node('summary',t('lifecycle.evidence')));
+            var facts = node('dl');
+            function fact(label,value) { if (value !== undefined && value !== null) facts.append(node('dt',t('lifecycle.'+label)),node('dd',String(value))); }
+            fact('contentHash',requirement.contentHash);
+            if (reviewed) {
+                fact('reviewedVersion',reviewed.requirementVersion); fact('reviewedHash',reviewed.contentHash);
+                fact('contributor',reviewed.contributorProject); fact('actor',reviewed.actor); fact('occurredAt',reviewed.occurredAt); fact('reason',reviewed.rationale);
+                var dependencies = node('ul'); (reviewed.dependencies || []).forEach(function (dependency) { dependencies.append(node('li',dependency.id+' · '+dependency.hash)); });
+                facts.append(node('dt',t('lifecycle.dependencies')),node('dd')); facts.lastChild.append(dependencies);
+            }
+            fact('changedDependencies',(requirement.realization?.changedDependencies || []).join(', '));
+            evidence.append(facts);
+            var contributors = node('ul'); (requirement.contributors || []).forEach(function (value) { contributors.append(node('li',[value.projectKey,t('lifecycle.version',value.requirementVersion),value.contentHash].join(' · '))); });
+            evidence.append(node('h3',t('lifecycle.contributions')),contributors);
+            var links = node('ul'); (requirement.links || []).forEach(function (value) { links.append(node('li',[value.projectKey,value.requirementKey,t('lifecycle.version',value.requirementVersion),value.contentHash].join(' · '))); });
+            evidence.append(node('h3',t('lifecycle.related')),links);
+            identity.append(evidence);
+            action.append(review,rowHistory); row.append(identity, versionCell, reviewedCell, realization, action); rows.append(row);
         });
         root.hidden = false; renderContext(value);
     }
-    async function loadHistory(offset, expectedHead) {
+    async function loadHistory(offset, expectedHead, filters) {
         if (!state.overview) return;
         var current = window.TaxonomyAppChrome?.getContext() || {};
-        var token = {context:clone(state.context), generation:state.generation}; state.history = token;
+        var paired = current.requirement?.key && current.project?.key;
+        var selectedFilters = filters || {projectKey:paired ? current.project.key : null,requirementKey:paired ? current.requirement.key : null,text:historySearch.value.trim()};
+        var token = {context:clone(state.context), generation:state.generation, filters:clone(selectedFilters)}; state.history = token;
         historyList.hidden = false; historyList.textContent = t('lifecycle.loading');
         try {
-            var result = await api.history(token.context, {projectKey:current.project?.key, requirementKey:current.requirement?.key,
+            var result = await api.history(token.context, {projectKey:token.filters.projectKey, requirementKey:token.filters.requirementKey,text:token.filters.text,
                 expectedHead:expectedHead || undefined, offset:offset || 0, limit:25, scanLimit:500});
             if (state.history !== token || token.generation !== state.generation) return;
             historyList.replaceChildren();
@@ -189,13 +239,17 @@
                 var link = node('a', subject || (commit || '').substring(0, 12));
                 var url = new URL(window.TaxonomyI18n.resolveUrl('/architecture/editor'), location.href);
                 Object.entries(token.context).forEach(function (pair) { if (['repositoryId','workspaceScopeKey','branch'].includes(pair[0])) url.searchParams.set(pair[0],pair[1]); });
+                url.searchParams.set('workspaceId',token.context.workspaceScopeKey === '__shared__' ? '' : token.context.workspaceScopeKey);
                 url.searchParams.set('commit',commit); url.searchParams.set('lang',window.TaxonomyI18n.getLocale()); link.href = url.pathname + url.search;
                 var details = node('details'); details.append(node('summary', t('lifecycle.history.details')),
                     node('pre', message), node('p', [entry.author, entry.timestamp || entry.occurredAt, commit].filter(Boolean).join(' · ')));
+                details.append(node('p',t('lifecycle.history.parents') + ': ' + (entry.parents || []).join(', ')),
+                    node('p',t('lifecycle.history.signature') + ': ' + JSON.stringify(entry.signature ?? null)),
+                    node('pre',JSON.stringify(entry.changes || [],null,2)));
                 item.append(link, details); list.append(item);
             });
             historyList.append(list);
-            if (result.hasMore || result.nextOffset != null) historyList.append(button(t('lifecycle.history.more'), function () { loadHistory(result.nextOffset == null ? (offset || 0) + 25 : result.nextOffset, result.head); }));
+            if (result.hasMore || result.nextOffset != null) historyList.append(button(t('lifecycle.history.more'), function () { loadHistory(result.nextOffset == null ? (offset || 0) + 25 : result.nextOffset, result.head, token.filters); }));
         } catch (error) { if (state.history === token) historyList.textContent = errorText(error); }
     }
     function dialogShell(id, title) {
@@ -219,7 +273,7 @@
         var pending = null;
         function recoverable() {
             return Boolean(pending?.context && state.overview && !historicalSelection()
-                && state.overview.source === 'WORKSPACE_REVISION'
+                && ['WORKSPACE_REVISION','WORKSPACE_AND_PORTFOLIO'].includes(state.overview.source)
                 && state.overview.projectionState === 'CHECKPOINT_PENDING'
                 && scopeKey(scope()) === scopeKey(captured.context)
                 && contextKey(state.overview.context) === contextKey(pending.context));
@@ -266,7 +320,7 @@
         contributor.value = requirement.projectId;
         var dependencies = field(shell.form, 'lifecycleReviewDependencies', t('lifecycle.dependencies'), 'select'); dependencies.multiple = true;
         (state.overview.dependencies || []).forEach(function (dependency) { option(dependencies, dependency.id, dependency.title || dependency.id); });
-        var reason = field(shell.form, 'lifecycleReviewReason', t('lifecycle.reason'), 'textarea'); reason.required = true;
+        var reason = field(shell.form, 'lifecycleReviewReason', t('lifecycle.reason'), 'textarea'); reason.required = true; reason.maxLength = 1000;
         var preview = button(t('lifecycle.preview'), previewReview); preview.id = 'lifecycleReviewPreview';
         var accept = button(t('lifecycle.accept'), acceptReview); accept.id = 'lifecycleReviewAccept'; accept.hidden = true;
         var changes = node('pre'); changes.dataset.lifecyclePreview = ''; shell.form.append(preview, changes, accept);
@@ -309,7 +363,7 @@
         var captured = captureStand();
         if (!matchesStand(captured, false)) { status.textContent = t('lifecycle.stale'); return; }
         var shell = dialogShell('lifecycleReconciliationDialog', t('lifecycle.reconcile'));
-        var reason = field(shell.form, 'lifecycleReconciliationReason', t('lifecycle.reason'), 'textarea'); reason.required = true;
+        var reason = field(shell.form, 'lifecycleReconciliationReason', t('lifecycle.reason'), 'textarea'); reason.required = true; reason.maxLength = 1000;
         var conflicts = node('div'); conflicts.dataset.lifecycleConflicts = '';
         var preview = button(t('lifecycle.preview'), previewReconciliation); preview.id = 'lifecycleReconciliationPreview';
         var accept = button(t('lifecycle.accept'), acceptReconciliation); accept.id = 'lifecycleReconciliationAccept'; accept.hidden = true;
@@ -362,16 +416,79 @@
     async function saveRequirement(command) {
         if (!state.overview && !historicalSelection()) await refresh();
         var captured = captureStand();
-        if (!matchesStand(captured, true) || state.observed?.mayEdit === false) throw staleError();
-        var request = Object.assign({}, command, {context:command.context || clone(captured.context),
-            metadata:command.metadata || metadata(command.requirement?.changeReason || t('lifecycle.requirement.reason'))});
-        if (contextKey(request.context) !== contextKey(captured.context)) throw staleError();
-        var result = await api.saveRequirement(request);
-        if (matchesStand(captured, true)) publishChanged(result, false);
-        return result;
+        var intent = Object.assign({},command); delete intent.context; delete intent.metadata;
+        var key = JSON.stringify([scopeKey(scope()),intent]);
+        var retained = pendingRequirements.get(key);
+        if (retained && command.metadata && command.metadata.commandId !== retained.request.metadata.commandId) throw new Error(t('lifecycle.pending'));
+        var recovery = Boolean(retained?.publication && !historicalSelection() && state.overview
+            && state.overview.projectionState === 'CHECKPOINT_PENDING'
+            && contextKey(state.overview.context) === contextKey(retained.publication.context)
+            && scopeKey(scope()) === scopeKey(retained.request.context));
+        if (!recovery && (!matchesStand(captured,true) || state.observed?.mayEdit === false)) throw staleError();
+        if (!retained) {
+            var request = Object.assign({},command,{context:command.context || clone(captured.context),
+                metadata:command.metadata || metadata(command.requirement?.changeReason || t('lifecycle.requirement.reason'))});
+            if (contextKey(request.context) !== contextKey(captured.context)) throw staleError();
+            retained = {request:clone(request),publication:null}; pendingRequirements.set(key,retained);
+        } else if (!recovery && contextKey(retained.request.context) !== contextKey(captured.context)) throw staleError();
+        // Expose the captured identity to the owning form so a pending result can retry this exact intent.
+        command.context = clone(retained.request.context); command.metadata = clone(retained.request.metadata);
+        try {
+            var result = await api.saveRequirement(retained.request);
+            if (pendingPublication(result)) retained.publication = clone(publicationOf(result)); else pendingRequirements.delete(key);
+            if (matchesStand(captured,!recovery)) publishChanged(result,false);
+            return result;
+        } catch (error) {
+            if ([400,403,404,409,412,422].includes(error.status)) pendingRequirements.delete(key);
+            throw error;
+        }
     }
     function openNewArchitecture() {
-        document.dispatchEvent(new CustomEvent('taxonomy:new-architecture-requested'));
+        var shell = dialogShell('lifecycleArchitectureDialog', t('lifecycle.newArchitecture'));
+        var name = field(shell.form, 'lifecycleArchitectureName', t('lifecycle.architecture.name')); name.required = true; name.maxLength = 200;
+        var description = field(shell.form, 'lifecycleArchitectureDescription', t('lifecycle.architecture.description'), 'textarea');
+        var create = button(t('lifecycle.architecture.create'), submit); create.id = 'lifecycleArchitectureCreate'; shell.form.append(create);
+        var request = null, architecture = null, workspace = null, attempted = false, workspaceAttempted = false, busy = false;
+        var openingGeneration = state.generation;
+        async function submit() {
+            if (busy || !shell.form.reportValidity()) return;
+            busy = true; create.disabled = true;
+            if (!request) request = {displayName:name.value.trim(),description:description.value,slug:'architecture-' + crypto.randomUUID()};
+            name.disabled = true; description.disabled = true;
+            try {
+                if (!architecture && attempted) {
+                    shell.message.textContent = t('lifecycle.architecture.recover');
+                    var owned = await api.architectures();
+                    architecture = (owned.repositories || owned || []).find(function (item) { return item.slug === request.slug; });
+                }
+                if (!architecture) { attempted = true; architecture = await api.createArchitecture(request); }
+                if (!workspace && workspaceAttempted) {
+                    var copies = await api.workspaces(architecture.repositoryId);
+                    workspace = (copies.workspaces || copies || []).find(function (item) {
+                        return item.sourceRepositoryId === architecture.repositoryId && item.currentBranch === architecture.defaultBranch
+                            && item.displayName === request.displayName;
+                    });
+                }
+                if (!workspace) {
+                    workspaceAttempted = true;
+                    workspace = await api.createWorkspace({repositoryId:architecture.repositoryId,workspaceScopeKey:'__shared__',branch:architecture.defaultBranch},request.displayName);
+                }
+                var target = new URL(window.TaxonomyI18n.resolveUrl('/architecture/editor'),location.href);
+                target.search = location.search;
+                ['commit','revision','element','viewId','layoutRevision','projectId','requirementId'].forEach(function (key) { target.searchParams.delete(key); });
+                target.searchParams.set('repositoryId',architecture.repositoryId); target.searchParams.set('workspaceScopeKey',workspace.workspaceId);
+                target.searchParams.set('workspaceId',workspace.workspaceId); target.searchParams.set('branch',workspace.currentBranch || architecture.defaultBranch);
+                target.searchParams.set('lang',window.TaxonomyI18n.getLocale());
+                if (openingGeneration === state.generation) location.assign(target.pathname + target.search);
+                else {
+                    shell.message.textContent = t('lifecycle.saved') + ' ' + t('lifecycle.stale');
+                    var link = node('a',request.displayName); link.href = target.pathname + target.search; shell.form.append(link);
+                    create.hidden = true;
+                }
+            } catch (error) { shell.message.textContent = errorText(error); }
+            finally { busy = false; create.disabled = false; }
+        }
+        shell.dialog.showModal(); name.focus();
     }
     function initialize() {
         root = document.getElementById('architectureLifecycle'); if (!root) return;
@@ -380,28 +497,42 @@
         var body = node('div', null, 'taxonomy-lifecycle__body');
         status = node('p'); status.setAttribute('role','status'); status.dataset.lifecycleStatus = '';
         var commands = node('div', null, 'taxonomy-lifecycle__commands');
-        var refreshButton = button(t('lifecycle.refresh'), function () { refresh(); }); refreshButton.dataset.lifecycleRefresh = '';
-        var newArchitecture = button(t('lifecycle.newArchitecture'), openNewArchitecture); newArchitecture.dataset.lifecycleNewArchitecture = '';
-        reconcileButton = button(t('lifecycle.reconcile'), openReconciliation); reconcileButton.dataset.lifecycleReconcile = ''; reconcileButton.hidden = true;
+        var refreshButton = button(t('lifecycle.refresh'), function () { refresh(); }); refreshButton.dataset.lifecycleRefresh = ''; refreshButton.dataset.lifecycleAction = 'refresh';
+        var newArchitecture = button(t('lifecycle.newArchitecture'), openNewArchitecture); newArchitecture.dataset.lifecycleNewArchitecture = ''; newArchitecture.dataset.lifecycleAction = 'new-architecture';
+        reconcileButton = button(t('lifecycle.reconcile'), openReconciliation); reconcileButton.dataset.lifecycleReconcile = ''; reconcileButton.dataset.lifecycleAction = 'reconcile'; reconcileButton.hidden = true;
         commands.append(refreshButton,newArchitecture,reconcileButton);
         var table = node('table'); var head = node('thead'); var header = node('tr');
-        ['requirement','realization','actions'].forEach(function (key) { var cell = node('th',t('lifecycle.' + key)); cell.scope = 'col'; header.append(cell); });
+        ['requirement','selectedVersion','reviewedVersion','realization','actions'].forEach(function (key) { var cell = node('th',t('lifecycle.' + key)); cell.scope = 'col'; header.append(cell); });
         head.append(header); rows = node('tbody'); table.append(head,rows);
-        var historyButton = button(t('lifecycle.history'),function () { loadHistory(0); }); historyButton.dataset.lifecycleHistory = '';
+        var historyButton = button(t('lifecycle.history'),function () { loadHistory(0); }); historyButton.dataset.lifecycleHistory = ''; historyButton.dataset.lifecycleAction = 'history';
+        var historyForm = node('form'); historyForm.id = 'lifecycleHistoryForm';
+        historySearch = field(historyForm,'lifecycleHistorySearch',t('lifecycle.history.search')); historySearch.type = 'search'; historySearch.maxLength = 300;
+        var search = node('button',t('lifecycle.history.searchAction')); search.type = 'submit'; historyForm.append(search);
+        historyForm.addEventListener('submit',function (event) {
+            event.preventDefault();
+            var filters = state.history?.filters ? Object.assign({},state.history.filters,{text:historySearch.value.trim()}) : undefined;
+            loadHistory(0,null,filters);
+        });
         historyList = node('div'); historyList.dataset.lifecycleHistoryList = ''; historyList.hidden = true;
-        body.append(status,commands,table,historyButton,historyList); disclosure.append(body);
-        currentButton = button(t('lifecycle.currentStand'),function () { requestStand(null); }); currentButton.dataset.lifecycleCurrent = ''; currentButton.hidden = true;
+        var tableContainer = node('div',null,'taxonomy-lifecycle__table'); tableContainer.append(table);
+        body.append(status,commands,tableContainer,historyButton,historyForm,historyList); disclosure.append(body);
+        currentButton = button(t('lifecycle.currentStand'),function () { requestStand(null); }); currentButton.dataset.lifecycleCurrent = ''; currentButton.dataset.lifecycleAction = 'current'; currentButton.hidden = true;
         root.append(disclosure,currentButton);
         if (!isEditor()) refresh(scope(),selectionFromUrl());
     }
-    document.addEventListener('taxonomy:entity-context-changed', function () { if (state.overview) render(); });
+    document.addEventListener('taxonomy:entity-context-changed', function () {
+        var value = window.TaxonomyAppChrome?.getContext() || {};
+        var next = JSON.stringify([value.project?.id,value.project?.key,value.requirement?.id,value.requirement?.key]);
+        if (subjectKey !== next) { subjectKey = next; clearHistory(); invalidateStand(); }
+        if (state.overview) render();
+    });
     document.addEventListener('taxonomy:lifecycle-changed', function (event) {
         if (isEditor() || historicalSelection()) return;
         var next = publicationOf(event.detail)?.context;
-        if (next && scopeKey(next) === scopeKey(state.context)) refresh(next,null);
+        if (next && scopeKey(next) === scopeKey(state.context)) showPublishedCurrentStand(next);
     });
     window.addEventListener('popstate',function () { if (!isEditor()) refresh(scope(),selectionFromUrl()); });
-    window.TaxonomyArchitectureLifecycle = {state:state, refresh:refresh, beginSelection:beginSelection, observe:observe,
+    window.TaxonomyArchitectureLifecycle = {state:function () { return clone(state.overview); }, refresh:refresh, beginSelection:beginSelection, observe:observe,
         failedSelection:failedSelection, saveRequirement:saveRequirement, openNewArchitecture:openNewArchitecture};
     window.TaxonomyI18n.ready().then(initialize);
 }());

@@ -29,6 +29,7 @@
     var saveDraft = C.saveCurrentDraft || C.saveDraft;
     var loadDraft = C.loadDraft;
     var setDraftDecisionPending = C.setDraftDecisionPending;
+    var promotionAttempts = new WeakMap();
 
     function generateProjectKey() {
         var now = new Date();
@@ -111,7 +112,8 @@
 
     function setDialogBusy(parts, busy) {
         parts.submit.disabled = busy;
-        parts.submit.textContent = busy ? text('saving') : text('create');
+        parts.submit.textContent = busy ? text('saving') : parts.savedPending
+            ? (language()==='de'?'Gespeicherten Vorgang wiederholen':'Retry saved operation') : text('create');
     }
 
     function safeDialogErrorMessage(error) {
@@ -125,14 +127,23 @@
 
     function showDialogError(parts, error) {
         parts.error.textContent = safeDialogErrorMessage(error);
-        parts.error.classList.remove('d-none');
+        parts.error.classList.remove('d-none','alert-info');
+        parts.error.classList.add('alert-danger');
         parts.error.focus();
     }
 
-    function createRequirement(projectId, values) {
-        return jsonRequest('/api/projects/' + encodeURIComponent(projectId) + '/requirements', {
-            method: 'POST',
-            body: JSON.stringify({
+    function showSavedEntry(parts,result,message) {
+        parts.error.textContent=message;parts.error.classList.remove('d-none','alert-danger');parts.error.classList.add('alert-info');
+        var link=document.createElement('a');link.textContent=language()==='de'?'Gespeicherte Anforderung öffnen':'Open saved requirement';link.target='_blank';link.rel='noopener';link.className='ms-2';
+        var target=new URL(applicationUrl('/projects/'+result.saved.projectId+'/requirements/'+result.saved.requirementId),window.location.href);
+        var context=result.saved.publication?.context||{};
+        if(context.repositoryId)target.searchParams.set('repositoryId',context.repositoryId);
+        if(context.workspaceScopeKey!==undefined)target.searchParams.set('workspaceId',context.workspaceScopeKey==='__shared__'?'':context.workspaceScopeKey);
+        if(context.branch)target.searchParams.set('branch',context.branch);link.href=target.href;parts.error.appendChild(link);parts.error.focus();
+    }
+
+    async function createRequirement(projectId, values, form, options, newProject) {
+        var payload = {
                 requirementKey: values.requirementKey,
                 title: values.title,
                 text: values.text,
@@ -144,8 +155,24 @@
                 ownerUsername: null,
                 changeReason: text('requirementReason'),
                 source: null
-            })
-        });
+        };
+        var attempt=promotionAttempts.get(form);
+        if(!attempt){
+            var target=options?.versionTarget;
+            var command=target?await window.TaxonomyRequirementIntake.prepareVersion(form,payload,projectId,target.requirementId,target.requirementVersionId,target.contentHash)
+                :await window.TaxonomyRequirementIntake.prepare(form,payload,projectId);
+            if(!command)return null;
+            if(newProject&&(command.choice!=='NEW'||!command.projectId))command.newProject=newProject;
+            attempt={command:command,captured:await saveBeforePromotion(options)};promotionAttempts.set(form,attempt);
+        }
+        try {
+            var saved=await window.TaxonomyArchitectureLifecycle.saveRequirement(attempt.command);
+            if(saved.publication?.state!=='CHECKPOINT_PENDING')promotionAttempts.delete(form);
+            return{saved:saved,captured:attempt.captured,choice:attempt.command.choice};
+        } catch(error) {
+            if([400,403,404,409,412,422].includes(error?.status))promotionAttempts.delete(form);
+            throw error;
+        }
     }
 
     function applicationUrl(value) {
@@ -155,8 +182,15 @@
             : value;
     }
 
-    function discardDraftAndNavigate(url) {
-        return resetDraft().finally(function () {
+    function discardDraftAndNavigate(url, captured) {
+        captured = captured === undefined ? comparable(currentPayload()) : captured;
+        if (comparable(currentPayload()) !== captured) return Promise.resolve(false);
+        return resetDraft().then(function (view) {
+            if (!view) throw new Error(text('draftSaveFailed'));
+            if (comparable(currentPayload()) !== captured) {
+                queueSave(0);
+                return false;
+            }
             invalidate({
                 keepText: false,
                 silent: true,
@@ -164,22 +198,32 @@
                 reason: 'promoted-to-project'
             });
             window.location.assign(applicationUrl(url));
+            return true;
         });
     }
 
     function saveBeforePromotion(options) {
-        if (!options?.preserveDraft) return Promise.resolve();
+        if (runtime.draftDecisionPending || runtime.serverUnconfirmed || runtime.conflict || runtime.restoring)
+            return Promise.reject(new Error(text('draftSaveFailed')));
+        var captured = comparable(currentPayload());
+        if (!meaningful(currentPayload()) && !options?.preserveDraft) return Promise.resolve(captured);
         return saveDraft().then(function (saved) {
             if (saved !== true) throw new Error(text('draftSaveFailed'));
+            if (comparable(currentPayload()) !== captured) throw new Error(text('draftSaveFailed'));
+            return captured;
         });
     }
 
-    function navigateAfterPromotion(url, options) {
+    function navigateAfterPromotion(url, options, captured) {
+        if (captured !== undefined && comparable(currentPayload()) !== captured) {
+            queueSave(0);
+            return Promise.resolve(false);
+        }
         if (options?.preserveDraft) {
             window.location.assign(applicationUrl(url));
             return;
         }
-        return discardDraftAndNavigate(url);
+        return discardDraftAndNavigate(url, captured);
     }
 
     function startNewAnalysis() {
@@ -302,6 +346,7 @@
                 option.textContent = project.projectKey + ' — ' + project.title;
                 projectSelect.appendChild(option);
             });
+            if (options?.projectId) projectSelect.value = String(options.projectId);
 
             var keyInput = document.createElement('input');
             keyInput.className = 'form-control';
@@ -327,6 +372,9 @@
                 field(text('requirementTitle'), titleInput),
                 field(text('requirementText'), textInput)
             );
+            window.TaxonomyRequirementIntake.attach(parts.form, {
+                textElement:textInput, projectId:function () { return Number(projectSelect.value); },versionTarget:options?.versionTarget
+            });
 
             function refreshKey() {
                 jsonRequest('/api/projects/' + encodeURIComponent(projectSelect.value) + '/requirements', {
@@ -342,15 +390,28 @@
                 event.preventDefault();
                 if (!parts.form.reportValidity()) return;
                 setDialogBusy(parts, true);
-                saveBeforePromotion(options).then(function () { return createRequirement(projectSelect.value, {
+                createRequirement(Number(projectSelect.value), {
                     requirementKey: keyInput.value.trim(),
                     title: titleInput.value.trim(),
                     text: textInput.value
-                }); }).then(function (requirement) {
+                }, parts.form, options).then(function (result) {
+                    if (!result) { setDialogBusy(parts, false); return; }
+                    parts.savedPending=result.saved.publication?.state==='CHECKPOINT_PENDING';
+                    if(parts.savedPending){setDialogBusy(parts,false);showSavedEntry(parts,result,language()==='de'?'Die Anforderung ist gespeichert. Wiederholen Sie den Vorgang, um den offenen Architektur-Checkpoint abzuschließen.':'The requirement is saved. Retry this operation to complete its pending architecture checkpoint.');return;}
+                    if (result.choice === 'LINK') {
+                        setDialogBusy(parts,false);
+                        showSavedEntry(parts,result,language()==='de'?'Die bestehende Anforderung wurde verknüpft. Ihr eingegebener Text bleibt für eine neue Anforderung oder Version erhalten.':'The existing requirement was linked. Your entered text is retained for a new requirement or version.');return;
+                    }
+                    if (!window.TaxonomyRequirementIntake.isCurrent(parts.form)) {
+                        setDialogBusy(parts,false);
+                        showSavedEntry(parts,result,language()==='de'?'Der gewählte Stand wurde gespeichert. Ihre neueren Eingaben bleiben erhalten.':'The selected entry was saved. Your newer edits are retained.');
+                        return;
+                    }
                     parts.dialog.close();
-                    return navigateAfterPromotion('/projects/' + encodeURIComponent(projectSelect.value)
-                        + '/requirements/' + encodeURIComponent(requirement.id), options);
+                    return navigateAfterPromotion('/projects/' + encodeURIComponent(result.saved.projectId)
+                        + '/requirements/' + encodeURIComponent(result.saved.requirementId), options, result.captured);
                 }).catch(function (error) {
+                    parts.savedPending=promotionAttempts.has(parts.form);
                     setDialogBusy(parts, false);
                     showDialogError(parts, error);
                 });
@@ -390,6 +451,7 @@
         );
 
         var createRequirementCheck = null;
+        var seedTextInput = null;
         if (seed) {
             var checkGroup = document.createElement('div');
             checkGroup.className = 'form-check mb-3';
@@ -404,13 +466,41 @@
             checkLabel.textContent = text('createFirstRequirement');
             checkGroup.append(createRequirementCheck, checkLabel);
             parts.body.appendChild(checkGroup);
+            seedTextInput = document.createElement('textarea');
+            seedTextInput.className = 'form-control'; seedTextInput.rows = 8; seedTextInput.value = seed;
+            parts.body.appendChild(field(text('requirementText'), seedTextInput));
+            window.TaxonomyRequirementIntake.attach(parts.form, {textElement:seedTextInput,projectId:null});
         }
 
         parts.form.addEventListener('submit', function (event) {
             event.preventDefault();
             if (!parts.form.reportValidity()) return;
             setDialogBusy(parts, true);
-            saveBeforePromotion(options).then(function () { return jsonRequest('/api/projects', {
+            var projectRequest = {
+                projectKey:keyInput.value.trim(), title:titleInput.value.trim(), description:descriptionInput.value.trim(),
+                status:'PLANNING',targetArchitecture:null,targetDate:null,budgetAmount:null,budgetCurrency:null
+            };
+            if (seed && createRequirementCheck && createRequirementCheck.checked) {
+                createRequirement(null, {requirementKey:'REQ-001',title:deriveTitle(seedTextInput.value),text:seedTextInput.value},
+                    parts.form, options, projectRequest).then(function (result) {
+                    if (!result) { setDialogBusy(parts,false); return; }
+                    parts.savedPending=result.saved.publication?.state==='CHECKPOINT_PENDING';
+                    if(parts.savedPending){setDialogBusy(parts,false);showSavedEntry(parts,result,language()==='de'?'Die Anforderung ist gespeichert. Wiederholen Sie denselben Vorgang für den offenen Checkpoint.':'The requirement is saved. Retry the same operation to complete its pending checkpoint.');return;}
+                    if (result.choice === 'LINK') {
+                        setDialogBusy(parts,false);
+                        showSavedEntry(parts,result,language()==='de'?'Die bestehende Anforderung wurde verknüpft. Ihr eingegebener Text bleibt erhalten.':'The existing requirement was linked. Your entered text is retained.');return;
+                    }
+                    if (!window.TaxonomyRequirementIntake.isCurrent(parts.form)) {
+                        setDialogBusy(parts,false);
+                        showSavedEntry(parts,result,language()==='de'?'Der gewählte Stand wurde gespeichert. Ihre neueren Eingaben bleiben erhalten.':'The selected entry was saved. Your newer edits are retained.');return;
+                    }
+                    parts.dialog.close();
+                    return navigateAfterPromotion('/projects/'+encodeURIComponent(result.saved.projectId)+'/requirements/'+encodeURIComponent(result.saved.requirementId),options,result.captured);
+                }).catch(function(error){parts.savedPending=promotionAttempts.has(parts.form);setDialogBusy(parts,false);showDialogError(parts,error);});
+                return;
+            }
+            var promotionCapture;
+            saveBeforePromotion(options).then(function (captured) { promotionCapture=captured;return jsonRequest('/api/projects', {
                 method: 'POST',
                 body: JSON.stringify({
                     projectKey: keyInput.value.trim(),
@@ -423,20 +513,10 @@
                     budgetCurrency: null
                 })
             }); }).then(function (project) {
-                if (seed && createRequirementCheck && createRequirementCheck.checked) {
-                    return createRequirement(project.id, {
-                        requirementKey: 'REQ-001',
-                        title: deriveTitle(seed),
-                        text: seed
-                    }).then(function (requirement) {
-                        return '/projects/' + encodeURIComponent(project.id)
-                            + '/requirements/' + encodeURIComponent(requirement.id);
-                    });
-                }
                 return '/projects';
             }).then(function (url) {
                 parts.dialog.close();
-                return navigateAfterPromotion(url, options);
+                return navigateAfterPromotion(url, options, promotionCapture);
             }).catch(function (error) {
                 setDialogBusy(parts, false);
                 showDialogError(parts, error);
@@ -446,20 +526,15 @@
     }
 
     function saveAsRequirementVersion(context, requirementText) {
-        jsonRequest('/api/projects/' + encodeURIComponent(context.projectId)
-                + '/requirements/' + encodeURIComponent(context.requirementId) + '/versions', {
-            method: 'POST',
-            body: JSON.stringify({
-                text: requirementText,
-                changeReason: text('versionReason'),
-                source: null
-            })
-        }).then(function () {
-            invalidate({ keepText: true, silent: true, reason: 'promoted-to-version' });
-            showActionAlert('success', text('versionSaved'), '', [], 'version-saved');
-        }).catch(function (error) {
-            showActionAlert('danger', text('createFailed'), error.message, [], 'version-error');
-        });
+        if(!context?.projectId||!context?.requirementId||!context?.requirementVersionId){
+            showActionAlert('danger',text('createFailed'),language()==='de'?'Die ursprüngliche Anforderungsversion fehlt. Öffnen Sie die Anforderungsdetails.':'The original requirement version is missing. Open the requirement details.',[],'version-error');return Promise.resolve(false);
+        }
+        return jsonRequest('/api/projects/'+encodeURIComponent(context.projectId)+'/requirements/'+encodeURIComponent(context.requirementId),{method:'GET'})
+            .then(function(requirement){
+                if(String(requirement.currentVersion?.id)!==String(context.requirementVersionId))throw new Error(language()==='de'?'Die Anforderung hat sich seit dem geladenen Stand geändert. Öffnen Sie ihre Details.':'The requirement changed since the loaded version. Open its details.');
+                return openRequirementDialog(requirementText,{projectId:context.projectId,preserveDraft:true,
+                    versionTarget:{projectId:Number(context.projectId),requirementId:Number(context.requirementId),requirementVersionId:Number(context.requirementVersionId),contentHash:requirement.currentVersion.contentHash}});
+            }).catch(function(error){showActionAlert('danger',text('createFailed'),error.message,[],'version-error');return false;});
     }
 
     function beginDraftResolution() {

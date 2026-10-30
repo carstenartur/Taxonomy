@@ -375,3 +375,12 @@ TOKEN=$(kubectl -n taxonomy get secret taxonomy-secrets \
 curl --fail -H "Authorization: Bearer ${TOKEN}" \
   http://127.0.0.1:8080/actuator/prometheus
 ```
+
+### Native PostgreSQL recovery rehearsal
+
+Use the [same-version PostgreSQL 16 recovery procedure](../../../docs/testing/native-postgresql-recovery.md)
+to capture the stopped database and application files together, inspect an isolated
+empty target, restore SQL transactionally and verify the recovered application
+across restarts. It includes Rancher writer/controller/PVC precautions and the
+explicit native identity/secret boundary. Portable owner import remains closed;
+a Helm rollback alone does not restore a database.

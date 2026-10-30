@@ -192,7 +192,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         sourceRepository.verifyExpectedHead(sourceBranch, sourceSnapshot.head());
         String localCommit = integrateHistory(sourceRepository, sourceBranch, sourceSnapshot.head(),
                 workspaceGit, userBranch, localSnapshot.head(), merge.mergedText(), ours, theirs,
-                username, "Semantic pull from " + sourceMetadata.getSlug(), provenance);
+                username, "Semantic pull from " + sourceMetadata.getSlug(), provenance, sourceMetadata, false);
         trackBase(workspaceGit, state, merge.mergedText(), username);
         portfolioGitPort.materializePortfolio(merge.mergedText(), username, context);
 
@@ -264,12 +264,12 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         requireSourceAuthority(username, sourceMetadata, true);
         String sourceCommit = integrateHistory(workspaceGit, userBranch, localSnapshot.head(),
                 sourceRepository, sourceBranch, sourceSnapshot.head(), merge.mergedText(), sourceDsl, workspaceDsl,
-                username, "Semantic publish from workspace " + context.workspaceId(), provenance);
+                username, "Semantic publish from workspace " + context.workspaceId(), provenance, sourceMetadata, true);
         CommitProvenance published = CommitProvenance.capture("pull", sourceRepository,
                 sourceMetadata.getRepositoryId(), sourceBranch, sourceCommit, integrationBase(workspaceMetadata));
         String workspaceCommit = integrateHistory(sourceRepository, sourceBranch, sourceCommit,
                 workspaceGit, userBranch, localSnapshot.head(), merge.mergedText(), workspaceDsl, merge.mergedText(),
-                username, "Integrate source changes after publish", published);
+                username, "Integrate source changes after publish", published, sourceMetadata, true);
         trackBase(workspaceGit, state, merge.mergedText(), username);
 
         WorkspaceContext centralContext = new WorkspaceContext(
@@ -542,12 +542,14 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private String integrateHistory(DslGitRepository incomingRepository, String incomingBranch, String incomingHead,
                                     DslGitRepository destination, String branch, String expectedHead,
                                     String merged, String previous, String incomingContent, String username,
-                                    String message, CommitProvenance provenance) throws IOException {
+                                    String message, CommitProvenance provenance,
+                                    SystemRepository sourceMetadata, boolean publish) throws IOException {
         GitHistoryTransfer.copyCommitClosure(incomingRepository, destination, incomingHead,
                 expectedHead == null ? java.util.List.of() : java.util.List.of(expectedHead));
         // Copying never changes refs. Recheck both captured inputs before the destination CAS.
         incomingRepository.verifyExpectedHead(incomingBranch, incomingHead);
         destination.verifyExpectedHead(branch, expectedHead);
+        requireSourceAuthority(username, sourceMetadata, publish);
         if (expectedHead != null && destination.isAncestor(incomingHead, expectedHead)) {
             return commitIfChanged(destination, branch, merged, previous, expectedHead, username, message, provenance);
         }

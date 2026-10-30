@@ -216,8 +216,9 @@
         var parameters = new URLSearchParams(window.location.search);
         var projectId = parameters.get('projectId');
         var requirementId = parameters.get('requirementId');
+        var requirementVersionId = parameters.get('requirementVersionId');
         return projectId && requirementId
-            ? { projectId: projectId, requirementId: requirementId }
+            ? { projectId: projectId, requirementId: requirementId, requirementVersionId:requirementVersionId }
             : null;
     }
 
@@ -316,7 +317,7 @@
         ];
 
         var context = projectContextFromUrl();
-        if (context) {
+        if (context?.requirementVersionId) {
             actions.splice(2, 0, {
                 id: 'save-version',
                 label: text('saveVersion'),

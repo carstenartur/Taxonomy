@@ -15,12 +15,20 @@ public final class RequirementIntakeDtos {
                             Long projectId, String projectKey, Long requirementId, Long requirementVersionId,
                             String requirementKey, String title, String text, String contentHash,
                             Classification classification, String rationale, List<String> quotes,
-                            List<String> actions) {
+                            List<String> actions, String sourceCommit, String sourceVersion) {
         public Candidate { quotes = List.copyOf(quotes); actions = List.copyOf(actions); }
+        public Candidate(String id, String kind, String repositoryId, String workspaceId, String branch,
+                         Long projectId, String projectKey, Long requirementId, Long requirementVersionId,
+                         String requirementKey, String title, String text, String contentHash,
+                         Classification classification, String rationale, List<String> quotes, List<String> actions) {
+            this(id, kind, repositoryId, workspaceId, branch, projectId, projectKey, requirementId,
+                    requirementVersionId, requirementKey, title, text, contentHash, classification, rationale,
+                    quotes, actions, null, null);
+        }
         public Candidate assessed(Classification classification, String rationale, List<String> quotes) {
             return new Candidate(id, kind, repositoryId, workspaceId, branch, projectId, projectKey,
                     requirementId, requirementVersionId, requirementKey, title, text, contentHash,
-                    classification, rationale, quotes, actions);
+                    classification, rationale, quotes, actions, sourceCommit, sourceVersion);
         }
     }
     public record Response(Status status, String code, String inputHash, Scope scope, String provider,

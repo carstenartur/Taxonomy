@@ -87,3 +87,5 @@ taxonomy-app/src/test/js/ux-state-recovery.cjs
 taxonomy-app/src/test/js/contextual-help.cjs
 
 .github/scripts/analysis-snapshot-adoption.test.mjs
+.github/scripts/requirement-intake.test.mjs
+.github/scripts/requirement-promotion-draft.test.mjs

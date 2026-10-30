@@ -11,6 +11,9 @@ import com.taxonomy.architecture.service.ArchitectureRecommendationService;
 import com.taxonomy.catalog.service.ArchiMateXmlImporter;
 import com.taxonomy.architecture.service.EnrichedImpactService;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
+import com.taxonomy.workspace.service.RepositoryWorkspaceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +51,8 @@ class ArchitectureIntelligenceTests {
     @Autowired private EnrichedImpactService enrichedImpactService;
     @Autowired private ArchiMateXmlImporter archiMateXmlImporter;
     @Autowired private TaxonomyRelationRepository relationRepository;
+    @Autowired private ArchitectureRepositoryProvisioningService repositoryProvisioning;
+    @Autowired private RepositoryWorkspaceService workspaceService;
 
     @BeforeEach
     void cleanRelations() {
@@ -234,7 +239,14 @@ class ArchitectureIntelligenceTests {
     }
 
     @Test
-    void archiMateImportEndpointReturnsOk() throws Exception {
+    @WithMockUser(username = "architecture-intelligence-import", roles = "ADMIN")
+    void archiMateImportEndpointReturnsOkInWorkingCopy() throws Exception {
+        var repository = repositoryProvisioning.createRepository(
+                "ArchiMate endpoint", "archimate-endpoint-" + java.util.UUID.randomUUID(),
+                "Independent import fixture", RepositoryVisibility.PRIVATE, "architecture-intelligence-import", "main");
+        var workspace = workspaceService.createWorkingCopy(
+                "architecture-intelligence-import", repository.getRepositoryId(), repository.getDefaultBranch(),
+                "ArchiMate import endpoint", "Ready working copy for the positive import contract");
         String xml = """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <model xmlns="http://www.opengroup.org/xsd/archimate/3.0/"
@@ -254,8 +266,10 @@ class ArchitectureIntelligenceTests {
                 MediaType.APPLICATION_XML_VALUE,
                 xml.getBytes(StandardCharsets.UTF_8));
 
-        mockMvc.perform(multipart("/api/import/archimate").file(file))
+        mockMvc.perform(multipart("/api/import/archimate").file(file)
+                        .header("X-Taxonomy-Workspace-Id", workspace.getWorkspaceId()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.writableContext").value(true))
                 .andExpect(jsonPath("$.elementsImported").isNumber())
                 .andExpect(jsonPath("$.notes").isArray());
     }

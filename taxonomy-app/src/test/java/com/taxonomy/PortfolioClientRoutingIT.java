@@ -550,8 +550,13 @@ class PortfolioClientRoutingIT {
 
         page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
         wait.until(ignored -> text("selectedProjectKey").equals("P-40") && hidden("portfolioBusy"));
-        assertThat(driver.findElements(By.cssSelector("#projectList .project-select .badge")))
+        assertThat(driver.findElements(By.cssSelector("#projectList .project-select .taxonomy-status[data-state][data-tone]")))
                 .extracting(WebElement::getText).containsExactlyElementsOf(expected);
+        assertThat(driver.findElements(By.cssSelector("#projectList .taxonomy-status")))
+                .extracting(element -> element.getDomAttribute("data-state"))
+                .containsExactly("PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED", "ARCHIVED", "FUTURE_REVIEW");
+        assertThat(driver.findElements(By.cssSelector("#projectList .taxonomy-entity-key")))
+                .extracting(WebElement::getText).containsExactly("P-40", "P-41", "P-42", "P-43", "P-44", "P-45");
         assertThat(driver.findElements(By.cssSelector("#projectList .project-select > .small.mt-1:not(.opacity-75)")))
                 .extracting(WebElement::getText).containsOnly(LABEL_TITLE);
         assertThat(driver.findElements(By.cssSelector("#projectList pump"))).isEmpty();
@@ -561,6 +566,7 @@ class PortfolioClientRoutingIT {
             click(By.cssSelector(".project-select[data-project-id='" + projectId + "']"));
             wait.until(ignored -> text("selectedProjectKey").equals("P-" + projectId) && hidden("portfolioBusy"));
             assertThat(text("selectedProjectStatus")).isEqualTo(expected.get(index));
+            assertThat(driver.findElement(By.id("selectedProjectKey")).getDomAttribute("class")).contains("taxonomy-entity-key");
             assertThat(text("selectedProjectTitle")).isEqualTo(LABEL_TITLE);
             assertThat(driver.findElements(By.cssSelector("#selectedProjectTitle pump"))).isEmpty();
         }
@@ -586,11 +592,14 @@ class PortfolioClientRoutingIT {
         page.open("projects", prefix, "/projects", locale, "localStorage.clear();\n" + OBSERVE_FETCH);
         wait.until(ignored -> text("selectedProjectKey").equals("P-42") && hidden("portfolioBusy"));
 
-        assertThat(driver.findElements(By.cssSelector("#requirementsTable tbody td:nth-child(5) .badge")))
+        assertThat(driver.findElements(By.cssSelector("#requirementsTable tbody td:nth-child(5) .taxonomy-status[data-state][data-tone]")))
                 .extracting(WebElement::getText)
                 .containsExactlyElementsOf(german
                         ? List.of("Vorgeschlagen", "Bestätigt", "Verworfen")
                         : List.of("Proposed", "Confirmed", "Rejected"));
+        assertThat(driver.findElements(By.cssSelector("#requirementsTable tbody td:nth-child(5) .taxonomy-status")))
+                .extracting(element -> element.getDomAttribute("data-state"))
+                .containsExactly("PROPOSED", "CONFIRMED", "REJECTED");
 
         click(By.id("solutions-tab"));
         wait.until(ignored -> driver.findElement(By.cssSelector("#solutionsList .portfolio-solution-card")).isDisplayed());
@@ -616,14 +625,14 @@ class PortfolioClientRoutingIT {
         assertThat(driver.findElements(By.cssSelector(candidateDetails))).hasSize(1);
         click(By.cssSelector(candidateDetails + " > summary"));
         wait.until(ignored -> driver.findElement(By.cssSelector(candidateDetails + " .product-candidate-review")).isDisplayed());
-        assertThat(driver.findElement(By.cssSelector(candidateDetails + " .badge")).getText())
+        assertThat(driver.findElement(By.cssSelector(candidateDetails + " .taxonomy-status[data-state][data-tone]")).getText())
                 .isEqualTo(german ? "Bestätigt" : "Confirmed");
         assertThat(driver.findElement(By.cssSelector(candidateDetails + " .small.text-body-secondary")).getText())
                 .isEqualTo(german ? "80% · In engerer Auswahl" : "80% · Shortlisted");
 
         click(By.id("products-tab"));
         wait.until(ignored -> driver.findElement(By.cssSelector("#productsList .portfolio-product-card")).isDisplayed());
-        assertThat(driver.findElement(By.cssSelector("#productsList .badge")).getText())
+        assertThat(driver.findElement(By.cssSelector("#productsList .taxonomy-status[data-state][data-tone]")).getText())
                 .isEqualTo(german ? "Support beendet" : "End Of Support");
         assertThat(driver.findElement(By.cssSelector("#productsList .portfolio-card-meta strong")).getText())
                 .isEqualTo(german ? "SaaS" : "Saas");
@@ -633,7 +642,7 @@ class PortfolioClientRoutingIT {
 
         click(By.id("conflicts-tab"));
         wait.until(ignored -> driver.findElement(By.cssSelector("#conflictsList .portfolio-conflict-card")).isDisplayed());
-        assertThat(driver.findElements(By.cssSelector("#conflictsList .badge"))).extracting(WebElement::getText)
+        assertThat(driver.findElements(By.cssSelector("#conflictsList .taxonomy-status[data-state][data-tone]"))).extracting(WebElement::getText)
                 .containsExactlyElementsOf(german ? List.of("Datenstandort", "Gelöst") : List.of("Data Location", "Resolved"));
         assertThat(driver.findElement(By.cssSelector("#conflictsList .conflict-assessment")).getText())
                 .contains(german ? "Regelgewicht" : "Rule weight")

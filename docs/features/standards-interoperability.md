@@ -189,3 +189,52 @@ tests cover role restrictions, reviewed import, idempotent retry, reload,
 cancellation, frozen download, German labels, keyboard operation and narrow
 viewports. PostgreSQL, MSSQL and Oracle tests exercise concurrent HTTP acceptance
 and durable mapping/checkpoint reload. Complete CI validation remains a release gate.
+
+## Bounded Archi return to catalogue relations
+
+The explicit `taxonomy-archi-5.10-return-v1` profile supports a **content-preserving
+return** of a Taxonomy workbench export through Archi 5.10. It does not support
+semantic editing in Archi. The strict `taxonomy-archimate-3.1-v2` reader and
+ordinary XML interpretation remain unchanged. Both HTTP import actions require
+an editable working copy; central read contexts allow preview only.
+
+In **Architecture → Export → Review an Archi 5.10 return**, choose both the
+original `model.archimate.xml` extracted from the downloaded bundle and the XML
+exported by Archi. Preview validates both against the pinned schema, requires a
+strict original and compares the complete content. Exact model, element,
+relationship, view and occurrence identities, endpoints, values, source metadata,
+geometry and view order must agree. Property declarations may receive new IDs
+only when their unique names still agree. XML formatting, namespace prefixes and
+schema-location hints are not model content; property/definition/element/relation
+collection order is compared independently of serialization order.
+
+The preview lists each accepted representation change: number/boolean declarations
+become strings; English name/property-value markers, node labels and flat type
+folders disappear; the observed node line width disappears; the exact observed
+node/connection styling is added; property declaration IDs are rewritten; and the
+implicit diagram type becomes explicit. Other changes fail. The supplied original
+provides the erased type/presentation interpretation; missing property values,
+identities or provenance are never inferred. This comparison is not proof that a
+user-supplied original came from an authorized snapshot.
+
+Open or create an editable working copy using the existing workspace controls.
+Read the losses, acknowledge relation-only application, then apply. A central
+preview explains this prerequisite and leaves acknowledgement/application disabled. The review
+fingerprint binds the two exact files, profile and active user/repository/workspace/
+branch. It does not bind a target repository revision. A changed file or context
+requires a new preview. Application checks the
+current catalogue and duplicates again and uses the existing authorized relation
+writer and transaction. It records `ARCHIMATE_RETURN` with the review fingerprint;
+retries skip existing endpoint/type relations. It does not restore snapshot IDs,
+review decisions, scores, source authority, views or catalogue labels. Their
+omissions remain visible in the preview.
+
+The corresponding multipart endpoints are `POST /api/import/preview/archimate-return`
+(`original`, `file`) and `POST /api/import/archimate-return` (the same files plus
+`reviewedFingerprint`). Each file is limited to 16 MiB. Preview follows the existing
+read authorization; applying requires the existing architect/admin permission.
+The existing installed-product gate invokes this adapter on its exact fresh
+workbench/Archi file pair and retains both hashes and the separate return losses.
+That product comparison does not certify authenticated application. The existing
+`ArchiMateReturnUiIT` in the existing browser owner covers actual upload, acknowledgement, application and duplicate
+handling after reload; each current head must execute these owners before release.

@@ -18,6 +18,206 @@ Unbekannte API-Schreibmethoden werden standardmäßig abgelehnt. Workspacegebund
 
 Validierungs-, Nicht-gefunden- und Konfliktfehler verwenden RFC-9457-`ProblemDetail`-JSON. Clients sollten hauptsächlich `status`, `title` und `detail` auswerten.
 
+Lifecycle-/Editor-Befehlsfehler liefern außerdem stabile `code`-Werte sowie bei
+Bedarf `field`, Abhängigkeits- oder Revisionsangaben. Daraus Aktualisierung, neue
+Vorschau oder Wiederaufnahme ableiten; keine übersetzten Fehlermeldungen parsen.
+
+<a id="architecture-lifecycle-api"></a>
+## Architektur-Lifecycle, Eingangsprüfung und Umsetzung
+
+Das Architektur-Repository besteht unabhängig vom Projektabschluss weiter. Ein
+Folgeprojekt trägt zur selben Architektur bei; die ursprüngliche projektqualifizierte
+Anforderungsidentität bleibt erhalten. Siehe den
+[Benutzerablauf](PROJECT_REQUIREMENT_PORTFOLIO.md#architecture-lifecycle).
+
+| Methode | Route | Zweck |
+|---|---|---|
+| GET | `/api/architecture/lifecycle` | Exakten gewählten Architekturstand samt Umsetzungsbewertungen lesen. |
+| GET | `/api/architecture/lifecycle/history` | Tatsächlich erreichbare Git-Historie mit begrenzter Abdeckung durchsuchen. |
+| POST | `/api/architecture/lifecycle/intake-review` | Eingangstext gegen erlaubte Kandidaten prüfen, ohne zu schreiben. |
+| POST | `/api/architecture/editor/requirements` | Ausdrückliche Auswahl `NEW`, `CHANGE` oder `LINK` ausführen und ihren Checkpoint vorbereiten/veröffentlichen. |
+| POST | `/api/architecture/lifecycle/realizations/preview` | Prüfung einer exakten Anforderungsversion und ihrer Architekturabhängigkeiten vorschauen. |
+| POST | `/api/architecture/lifecycle/realizations` | Exakte Prüfungsvorschau annehmen und ihren Checkpoint vorbereiten/veröffentlichen. |
+
+Die Übersicht akzeptiert optionale `repositoryId`, `workspaceScopeKey` und `branch`
+als Abgleich mit dem berechtigten Kontext. Sie gewähren keinen Zugriff auf einen
+anderen Workspace. `commit` (vollständiger erreichbarer Git-SHA) **oder** semantische
+`revision` wählen, niemals beide. Die Abfrageauswahl wird nicht aus der
+`context.revision` eines Befehls abgeleitet.
+
+| Auswahl | Quelle und Verhalten |
+|---|---|
+| Privater Workspace: kein Selektor oder ausdrücklich aktuelle Revision | `WORKSPACE_REVISION`; aktuelle Portfoliobeiträge können überblendet werden. Bearbeitung benötigt weiterhin passende Rolle und bereite Projektion. |
+| Frühere erhaltene semantische Revision | `WORKSPACE_REVISION`, `projectionState=HISTORICAL`, `mayEdit=false`; gespeicherte Quelle ohne heutige Portfolioüberblendung. |
+| Erreichbarer Git-Commit | `GIT_CHECKPOINT`, `projectionState=HISTORICAL`, `mayEdit=false`; exakt gespeicherte Commit-Quelle. |
+| Zentraler/Fork-Lesekontext ohne Selektor | `GIT_CHECKPOINT` am aktuellen HEAD, `mayEdit=false`; keine private semantische Journalrevision oder aktuelle Portfolioüberblendung. |
+
+Ungültige, fehlende oder unzugängliche Stände ergeben Fehler statt aktueller Daten.
+Die Antwort enthält `context`, `architectureTitle`, `source`, `projectionState`,
+`publicationState`, `mayEdit`, `projects`, `requirements` und auswählbare `dependencies`.
+`version`, `versionId`, `contentHash` und Text jeder Anforderung beschreiben den
+gewählten Modellstand. Eine historische Zeile überschreibt nicht den aktuellen
+Portfolio-Anforderungskopf. `realization`, `contributors` und `links` erhalten Prüf-
+und Beitragsherkunft. Historische portable Quellen benötigen keine aktuellen Datenbank-IDs.
+
+### Exakter Kontext, Eingabe und Veröffentlichung
+
+Schreibende Lifecycle-Befehle und Umsetzungsvorschauen benötigen
+`If-Match: "workspace-revision-N"` passend zur `context.revision` im Body;
+`If-None-Match` darf nicht zusätzlich gesendet werden. Fehlende Vorbedingungen ergeben
+428, fehlerhafte Vorbedingungen 400 und eine verschobene semantische Revision 412.
+Kontext-/Versionskonflikte erfordern einen neuen Vergleich. Der Kontext enthält
+`repositoryId`, `workspaceScopeKey`, `branch`, `commit`, `revision`, `actor` und
+`writeMode`. Leseantworten liefern ETag, semantische Revision und No-Store-Vorgabe;
+die Übersicht nennt ihre Quelle zusätzlich in `X-Taxonomy-Source`.
+
+`metadata` enthält stabile UUIDs `commandId`, `correlationId`, `causationId` und
+eine Begründung. Für einen Transport-Retry exakte Anfrage und Befehlsidentität
+behalten. Dieselbe Befehlsidentität mit geändertem Inhalt wird abgewiesen. Eine
+erfolgreiche Wiederholung erzeugt keine weitere Anforderungsversion und wiederholt
+keinen angenommenen Beitrag.
+
+Der Anforderungsbefehl enthält `context`, `metadata`, `choice`, `projectId`,
+`newProject`, `contributorProjectId`, `requirementId`, `requirement`,
+`expectedVersionId`, `expectedContentHash` und `inputHash`. `inputHash` ist SHA-256
+des exakten UTF-8-Anforderungstexts ohne Trimmen oder Normalisierung.
+
+| Auswahl | Erforderliche Absicht |
+|---|---|
+| `NEW` | Genau eine vorhandene `projectId` oder `newProject`, Felder zum Anlegen einer Anforderung und keine bestehende `requirementId`. |
+| `CHANGE` | Bestehendes Projekt/Anforderung und exakte aktuelle Versions-ID/Hash; erzeugt eine neue unveränderliche Version unter der ursprünglichen Identität. |
+| `LINK` | Bestehendes Projekt/Anforderung und exakte aktuelle Versions-ID/Hash; speichert den Beitrag, ohne gespeicherten Text zu ersetzen. |
+
+Für `CHANGE`/`LINK` kann `contributorProjectId` oder `newProject` ein Folgeprojekt
+bestimmen. Die ursprüngliche projektqualifizierte Anforderung bleibt das Ziel.
+Kandidatenvorschläge erlauben keine workspaceübergreifenden Schreibzugriffe. Eine
+geänderte aktuelle Anforderungsversion ergibt `REQUIREMENT_VERSION_CHANGED`, statt
+stillschweigend die neueste Version auszuwählen.
+
+Die Analyseaktion zum Speichern einer neuen Anforderungsversion benötigt zusätzlich
+eine `requirementVersionId` im geladenen Quellkontext, die zur aktuellen Version passt.
+Fehlende oder veraltete Quell-IDs stoppen die Aktion vor dem Absenden mit einem
+ausdrücklichen Hinweis. Der resultierende Befehl bindet weiterhin `expectedVersionId`
+und `expectedContentHash` für die serverseitige Prüfung. Während der Übertragung
+neu eingegebener Text bleibt ein gesonderter Entwurf. Das gespeicherte Ergebnis
+kann ohne Verwerfen des Entwurfs in einem anderen Tab geöffnet werden. Siehe den
+[Ablauf der Analyseübernahme](USER_GUIDE.md#analysis-requirement-promotion).
+
+Umsetzungsanfragen enthalten `projectId`, `requirementId`, `expectedVersionId`,
+`expectedContentHash`, `contributorProjectId`, `status` (`OPEN`, `PARTIAL`, `COMPLETE`)
+und `dependencyIds` zusätzlich zu Kontext und Metadaten. Die Annahme übergibt den
+`fingerprint` der Vorschau als `previewFingerprint`. Nachweise verwenden bestehende
+Elemente, Relationen oder Mappings; Relationsendpunkte und Mappingziele werden
+einbezogen. Teilweise/vollständige Prüfungen benötigen Nachweise; die Abhängigkeitsmenge
+ist begrenzt. Geänderter Text oder geänderte Abhängigkeiten ergeben `REVIEW_REQUIRED`,
+fehlerhafte Nachweise `INVALID_EVIDENCE`. Die frühere geprüfte Version bleibt
+erhalten. KI-Relevanzwerte bestimmen diese Zustände nicht.
+
+Anforderungsantworten enthalten `projectId`, `requirementId`, `requirement` und
+`publication`; die Umsetzungsannahme liefert die Veröffentlichung direkt.
+`publication.state` prüfen: Nur `CHECKPOINTED` belegt einen abgeschlossenen Checkpoint.
+`CHECKPOINT_PENDING` und `RECONCILIATION_REQUIRED` erhalten einen angenommenen Beitrag,
+ohne eine abgeschlossene Git-Veröffentlichung zu belegen. Die Veröffentlichung
+enthält `context`, `checkpoint`, `code` und `detail`. `document.pendingCheckpointId`
+des Editors identifiziert einen vorbereiteten Schreibvorgang für die vorhandene
+Resume-Route. Die nachfolgenden Projekt-CRUD-Routen bleiben Entwurfsoperationen
+ohne diese Lifecycle-Checkpoint-Garantie.
+
+### Suchabdeckung und Providerergebnisse der Eingangsprüfung
+
+Die schreibfreie Anfrage benötigt `text`; `projectId`, `title` und `analysisLanguage`
+sind optional. Die Antwort enthält `status`, `code`, `inputHash`, `scope`,
+`provider`, `coverage`, `candidates` und `manualReviewRequired`. Die Abdeckung nennt
+`scanned`, `admitted` und `truncated`. Grenzen für Projekte, Anforderungen,
+Repositories, Dokumente und Nachweisgröße begrenzen die Suche. Private Workspaces
+anderer Benutzer sind keine Kandidatenquelle. Kandidatenaktionen berücksichtigen
+den tatsächlich erlaubten Geltungsbereich.
+
+`scope` identifiziert `repositoryId`, `workspaceId`, `workspaceScopeKey` und `branch`.
+Kandidatenarten sind `REQUIREMENT`, `PROJECT`, `ARCHITECTURE` und
+`ARCHITECTURE_REQUIREMENT`. Anforderungskandidaten behalten Quell-IDs, Textversion
+und Inhaltshash. Der Provider vergleicht begrenzte berechtigte Textkandidaten direkt.
+Der semantische Taxonomieindex ist kein Anforderungs-Vektorindex.
+
+`status` ist `COMPLETE`, `PARTIAL`, `UNAVAILABLE` oder `FAILED`. Die Klassifikation
+eines Kandidaten ist `DUPLICATE`, `CHANGE`, `ADDITION`, `CONFLICT` oder `NONE`, bei
+Bewertung mit Begründung und Quellauszügen. Eine vollständige Bewertung bezieht sich
+nur auf zugelassene Kandidaten; bei ungeprüften Kandidaten bleibt `classification` null.
+`NONE`, Begrenzung oder leeres Ergebnis garantiert
+keine globale Neuartigkeit. Exakte Gleichheit gespeicherten Texts kann auch ohne
+Providererfolg deterministisch erkannt werden. Fehlende Konfiguration,
+Projekt-Providerregeln, lokale/simulierte/Replay-Provider, Timeout und Ratenlimits
+sind von gültigen negativen Befunden getrennt. Ungültige oder unvollständige
+Modellantworten sind fehlgeschlagene Prüfungen, keine leeren Erfolge. Manuelle
+Prüfung und ausdrückliches Speichern bleiben von der Modellverfügbarkeit getrennt.
+
+### Native Git-Historie und Fortsetzung
+
+Die Historie akzeptiert Kontextabgleiche sowie gemeinsam `projectKey`/`requirementKey`,
+optional `text`, `expectedHead`, `offset` (Standard 0), `limit` (Standard 25, maximal
+100) und `scanLimit` (Standard 100, maximal 500). Ein positiver Offset benötigt den
+erfassten `expectedHead`. Beide Fachschlüssel müssen gemeinsam angegeben werden.
+Die Suche verwendet natives JGit über das bestehende `jgit-storage-hibernate`-Repository,
+keinen Shell-Git-Befehl oder parallelen Audit-Speicher. Durchsucht werden nur vom
+gewählten Branch-HEAD erreichbare Vorgänger. Änderungen vergleichen jeden Commit mit
+seinem ersten Elterncommit; die Einträge behalten alle tatsächlichen Eltern.
+Die Merge-Topologie wird nicht zu einer erfundenen linearen Historie umgedeutet.
+
+Die Seite enthält `head`, `entries`, `offset`, `nextOffset`, `scanned`, `coverage`
+und `source=LIVE_GIT`. Einträge enthalten `commitId`, `parents`, `author`, `timestamp`,
+vollständige `message`, Signaturbelege und `changes`. Änderungsarten umfassen `ADDED`,
+`REMOVED`, `REQUIREMENT_CHANGED`, `REQUIREMENT_METADATA_CHANGED`, `DEPENDENCIES_CHANGED`,
+`REALIZATION_CHANGED`, `MERGE` und `GIT_CHANGE`. Die Abdeckung ist `COMPLETE`, `PARTIAL`
+oder `LIMIT_REACHED`. Mit zurückgegebenem Offset und demselben HEAD fortsetzen;
+nach Branch-Änderung neu beginnen. Begrenzte Seiten können ohne Treffer bleiben,
+obwohl weitere Historie existiert. Berechtigungs-, Speicher- und Quelllesefehler
+dürfen nicht als leere Historie dargestellt werden.
+
+<a id="editor-version-reconciliation-api"></a>
+### Lokale Beiträge mit geändertem Git-HEAD abgleichen
+
+| Methode | Route | Vertrag |
+|---|---|---|
+| POST | `/api/architecture/editor/versions/reconciliation/preview` | Basis, angenommenen lokalen Stand und eingehende Git-Quelle ohne Änderung vergleichen. |
+| POST | `/api/architecture/editor/versions/reconciliation/accept` | Exakte aufgelöste Vorschau annehmen und ihren Checkpoint abschließen. |
+| POST | `/api/architecture/editor/checkpoints/resume` | Vorbereiteten Checkpoint nach unterbrochenem Git-Schreibvorgang abschließen. |
+
+Beide Abgleichrouten benötigen das `If-Match` der exakten Revision. Die Anfrage ist
+`{context, metadata, resolutions, headCommit, previewFingerprint}`. `resolutions`
+ordnet zurückgegebenen Konflikt-IDs `LOCAL` oder `INCOMING` zu. Jede Entscheidung
+wählt einen vollständigen Quellblock; der reservierte Konflikt `$document` wählt
+Dokumentmetadaten außerhalb der Blöcke. Die Vorschau liefert `context`, `headCommit`,
+`fingerprint`, `baseDsl`, `localDsl`, `incomingDsl`, `mergedDsl`, `changes`, `conflicts`
+und `canAccept`. Ein Konflikt enthält `id`, `reason`, `base`, `local`, `incoming` und
+`resolution`. Fehlende Entscheidungen ergeben `canAccept=false`; das kombinierte
+Modell muss ebenfalls die Validierung bestehen. Nach der Auswahl erneut vorschauen.
+Die Annahme bindet dieselben Entscheidungen, Metadaten, Kontext, erfassten HEAD und
+`fingerprint` als `previewFingerprint`. Geänderte Eingaben benötigen eine neue Vorschau.
+
+Die schreibfreie Prüfung des Portfolio-Fachmoduls gleicht verwalteten kanonischen
+Titel, Text, `x-version` und `x-content-hash` mit dem portablen Fachdatensatz und
+seiner aktuellen unveränderlichen Version ab. Die Quelle vorhandener lokaler
+`requirementVersion`-Blöcke darf nicht umgeschrieben werden; geänderter Text benötigt
+eine neue Version. Ungültige Kombinationen erscheinen als Quellkonflikte mit
+ausdrücklicher `LOCAL`-/`INCOMING`-Auswahl. Konsistente lokale Blöcke beibehalten und
+anschließend eine neue Version anlegen. Git-Auslassungen löschen keine verwaltete
+Fachhistorie: `LOCAL` wählen und ausdrücklich archivieren. Unverträgliche Entscheidungen
+ergeben HTTP 409 `PORTFOLIO_RECONCILIATION_REQUIRED`.
+
+Bei der Annahme werden geänderte verwaltete Portfolioblöcke über
+`WorkspacePortfolioGitPort` innerhalb der Journaltransaktion materialisiert, vor
+Checkpoint-Absicht und Git-Veröffentlichung. Portfolio-Validierungs-/Materialisierungskonflikte
+setzen diese Annahme ohne neue Datenbankänderungen, Journaloperationen oder
+Git-Checkpoints zurück. Eine exakte Wiederholung verwendet den erhaltenen Vorgang
+ohne zweite Materialisierung. Ein späterer Git-Speicherfehler verwendet weiterhin
+die Wiederaufnahme des ausstehenden Checkpoints. Erfolg liefert den vorhandenen
+`CheckpointAccepted`-Beleg (`context`, `commandId`, `commitId`, `fromRevision`,
+`throughRevision`, `commitCreated`, `replayed`), keine Lifecycle-Veröffentlichungshülle.
+Geänderter HEAD/Revision benötigt eine neue Vorschau; wiederholtes Speichern löst
+keinen Branch-Konflikt. `/api/architecture/editor/versions/recover` bleibt für
+abgeschlossene Versionsschreibvorgänge ohne neuere uncheckpointete lokale Änderungen
+vorgesehen. Siehe den [Editorablauf](ARCHITECTURE_EDITOR.md#editor-version-reconciliation).
+
 ## Projekte
 
 ```text

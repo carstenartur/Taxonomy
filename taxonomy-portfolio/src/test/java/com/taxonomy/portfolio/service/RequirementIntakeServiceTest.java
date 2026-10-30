@@ -44,8 +44,13 @@ class RequirementIntakeServiceTest {
     @Test void authorizationIsRecheckedAfterModelWorkBeforeDisclosingCandidateEvidence() {
         frozen(List.of(), false, true);
         when(matcher.review(anyString(), anyList(), any())).thenReturn(new RequirementIntakeMatcher.Result(Status.COMPLETE, null, "GEMINI", List.of()));
-        doThrow(PortfolioException.notFound("Unavailable")).when(candidates).recheck(any(), eq("alice"), eq(context));
+        doNothing().doThrow(PortfolioException.notFound("Unavailable")).when(candidates).recheck(any(), eq("alice"), eq(context));
         assertThatThrownBy(() -> service.review(new Request(2L, null, "text", null), "alice", context)).isInstanceOf(PortfolioException.class);
+        var order=inOrder(candidates,matcher);
+        order.verify(candidates).recheck(any(),eq("alice"),eq(context));
+        order.verify(matcher).review(anyString(),anyList(),any());
+        order.verify(candidates).recheckSources(any(),eq("alice"));
+        order.verify(candidates).recheck(any(),eq("alice"),eq(context));
     }
 
     @Test void invalidInputIsRejectedBeforeReadingPrivateEvidence() {

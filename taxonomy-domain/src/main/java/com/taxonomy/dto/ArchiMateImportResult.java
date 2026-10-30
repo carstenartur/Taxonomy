@@ -21,10 +21,19 @@ public class ArchiMateImportResult {
     private int relationsRejected;
     private boolean preview;
     private String mappingProfile;
+    private String reviewFingerprint;
+    private boolean writableContext;
     private List<ImportLoss> losses = List.of();
     private List<String> notes = new ArrayList<>();
 
     public record ImportLoss(String scope, String id, String field, String kind, String rationale) { }
+
+    /** Request-derived capability; absent/false fails closed for non-HTTP callers. */
+    public boolean isWritableContext() { return writableContext; }
+    public void setWritableContext(boolean value) { this.writableContext = value; }
+
+    public String getReviewFingerprint() { return reviewFingerprint; }
+    public void setReviewFingerprint(String value) { this.reviewFingerprint = value; }
 
     public String getMappingProfile() { return mappingProfile; }
     public void setMappingProfile(String mappingProfile) { this.mappingProfile = mappingProfile; }

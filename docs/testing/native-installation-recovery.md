@@ -126,3 +126,18 @@ The helper never starts an application, changes the live data path or replaces a
 existing target. Point only a separate same-version application at the verified
 target, then follow the service-level checks above. Keep the snapshot and any
 surviving original source until the recovery is accepted.
+
+## Read-only planning and publication retry
+
+The same native tooling now supports `plan` with the restore arguments. It checks
+version, every snapshot byte, stopped-source locks and target isolation without
+creating a target. `resume` accepts an absent target or a byte-identical existing
+target; it never merges, overwrites or silently repairs a changed target. After
+application startup has changed files, an existing target is no longer a valid
+publication retry. Both operations retain the explicit stopped-writer precondition.
+
+PostgreSQL deployments use the separate database operations described in
+[native PostgreSQL recovery](native-postgresql-recovery.md), with real database
+identity/emptiness checks and transactional SQL restore. A file-only `restore`
+extracts PostgreSQL bundle files but does not restore the database. Portable owner
+readiness remains blocked as detailed in [the owner inventory](portable-restore-owner-gaps.md).
